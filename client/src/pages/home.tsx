@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { TickerSearch } from "@/components/TickerSearch";
 import { VerdictSummary } from "@/components/VerdictSummary";
@@ -85,6 +86,19 @@ export default function Home() {
             {data && !isLoading && (
               <div className="space-y-6">
                 <VerdictSummary data={data} />
+                <div className="flex justify-end">
+                  <Link href={`/trade/${data.ticker}`}>
+                    <button
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors border border-primary/20"
+                      data-testid="button-view-trade-analysis"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+                      </svg>
+                      View Trade Analysis
+                    </button>
+                  </Link>
+                </div>
                 <QuickTradeAnalysis data={data} />
                 <Snapshot data={data} />
                 <BusinessQuality data={data} />

@@ -6,11 +6,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
+import TradeAnalysis from "@/pages/trade-analysis";
 
 function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/trade/:ticker?" component={TradeAnalysis} />
       <Route component={NotFound} />
     </Switch>
   );

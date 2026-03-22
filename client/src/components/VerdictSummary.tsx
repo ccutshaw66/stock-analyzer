@@ -1,5 +1,6 @@
-import { CheckCircle2, XCircle, TrendingUp, TrendingDown, Shield, Target } from "lucide-react";
+import { CheckCircle2, XCircle, TrendingUp, TrendingDown, Shield, Target, Activity } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Link } from "wouter";
 import { formatCurrency, formatLargeNumber, getVerdictColor, getChangeColor, formatPercent } from "@/lib/format";
 
 interface VerdictSummaryProps {
@@ -57,6 +58,12 @@ export function VerdictSummary({ data }: VerdictSummaryProps) {
             <Target className="h-3 w-3" />
             {data.bestUse}
           </Badge>
+          <Link href={`/trade/${data.ticker}`}>
+            <Badge variant="outline" className="gap-1 text-xs cursor-pointer hover:bg-primary/10 transition-colors" data-testid="link-trade-analysis">
+              <Activity className="h-3 w-3" />
+              Trade Analysis
+            </Badge>
+          </Link>
         </div>
 
         {/* Price */}

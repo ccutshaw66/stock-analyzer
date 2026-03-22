@@ -717,6 +717,418 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // Trade Analysis API
+  // ============================================================
+
+  function computeEMA(closes: number[], length: number): number[] {
+    const ema: number[] = new Array(closes.length).fill(NaN);
+    const k = 2 / (length + 1);
+    // seed with SMA of first 'length' values
+    let sum = 0;
+    for (let i = 0; i < length && i < closes.length; i++) sum += closes[i];
+    if (closes.length >= length) {
+      ema[length - 1] = sum / length;
+      for (let i = length; i < closes.length; i++) {
+        ema[i] = closes[i] * k + ema[i - 1] * (1 - k);
+      }
+    }
+    return ema;
+  }
+
+  function computeSMA(closes: number[], length: number): number[] {
+    const sma: number[] = new Array(closes.length).fill(NaN);
+    let sum = 0;
+    for (let i = 0; i < closes.length; i++) {
+      sum += closes[i];
+      if (i >= length) sum -= closes[i - length];
+      if (i >= length - 1) sma[i] = sum / length;
+    }
+    return sma;
+  }
+
+  function computeRSI(closes: number[], period: number): number[] {
+    const rsi: number[] = new Array(closes.length).fill(NaN);
+    if (closes.length < period + 1) return rsi;
+    let avgGain = 0, avgLoss = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) avgGain += diff;
+      else avgLoss += Math.abs(diff);
+    }
+    avgGain /= period;
+    avgLoss /= period;
+    rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    for (let i = period + 1; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? Math.abs(diff) : 0;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
+      rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+    return rsi;
+  }
+
+  function computeATR(highs: number[], lows: number[], closes: number[], period: number): number[] {
+    const atr: number[] = new Array(closes.length).fill(NaN);
+    const tr: number[] = new Array(closes.length).fill(0);
+    tr[0] = highs[0] - lows[0];
+    for (let i = 1; i < closes.length; i++) {
+      tr[i] = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+    }
+    let sum = 0;
+    for (let i = 0; i < period && i < tr.length; i++) sum += tr[i];
+    if (tr.length >= period) {
+      atr[period - 1] = sum / period;
+      for (let i = period; i < tr.length; i++) {
+        atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period;
+      }
+    }
+    return atr;
+  }
+
+  app.get("/api/trade-analysis/:ticker", async (req, res) => {
+    const ticker = req.params.ticker.toUpperCase();
+    try {
+      // Fetch 1-year daily for BBTC + RSI, 2-year weekly for SMA200
+      const [chart1YResult, chart2YResult] = await Promise.allSettled([
+        getChart(ticker, "1y", "1d"),
+        getChart(ticker, "2y", "1wk"),
+      ]);
+
+      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+      const chart2Y = chart2YResult.status === "fulfilled" ? chart2YResult.value : null;
+
+      if (!chart1Y || !chart1Y.timestamp) {
+        return res.status(404).json({ error: `No chart data available for "${ticker}".` });
+      }
+
+      const timestamps: number[] = chart1Y.timestamp;
+      const quoteData = chart1Y.indicators?.quote?.[0] || {};
+      const opens: number[] = quoteData.open || [];
+      const highs: number[] = quoteData.high || [];
+      const lows: number[] = quoteData.low || [];
+      const closes: number[] = quoteData.close || [];
+      const volumes: number[] = quoteData.volume || [];
+
+      // Clean nulls — replace with previous valid value
+      for (let i = 0; i < closes.length; i++) {
+        if (closes[i] == null && i > 0) closes[i] = closes[i - 1];
+        if (highs[i] == null && i > 0) highs[i] = highs[i - 1];
+        if (lows[i] == null && i > 0) lows[i] = lows[i - 1];
+        if (opens[i] == null && i > 0) opens[i] = opens[i - 1];
+        if (volumes[i] == null) volumes[i] = 0;
+      }
+
+      // Compute BBTC indicators on daily data
+      const ema9 = computeEMA(closes, 9);
+      const ema21 = computeEMA(closes, 21);
+      const ema50 = computeEMA(closes, 50);
+      const atr14 = computeATR(highs, lows, closes, 14);
+
+      // Compute DTS indicators
+      // Use 2-year weekly data for SMA200 if available, otherwise compute on daily
+      let sma200Daily: number[] = new Array(closes.length).fill(NaN);
+      if (chart2Y && chart2Y.timestamp) {
+        const weeklyCloses: number[] = chart2Y.indicators?.quote?.[0]?.close || [];
+        // Clean nulls
+        for (let i = 0; i < weeklyCloses.length; i++) {
+          if (weeklyCloses[i] == null && i > 0) weeklyCloses[i] = weeklyCloses[i - 1];
+        }
+        // Compute SMA200 on the combined weekly data as a proxy
+        // But the spec says SMA(200) on close prices — this should be 200-period SMA
+        // We have ~104 weekly bars for 2 years which isn't enough for 200-week SMA.
+        // So compute SMA(200) on daily data. We need more daily data.
+        // Actually, let's just compute it on the daily closes we have (252 trading days ~ 1 year)
+        // If we don't have 200 bars, we'll have partial data.
+        sma200Daily = computeSMA(closes, 200);
+
+        // If daily doesn't have enough bars, approximate from weekly:
+        // Use a 40-week SMA as a rough proxy for 200-day SMA
+        if (isNaN(sma200Daily[closes.length - 1])) {
+          const weeklySma40 = computeSMA(weeklyCloses, 40);
+          const lastWeeklySma = weeklySma40[weeklyCloses.length - 1];
+          if (!isNaN(lastWeeklySma)) {
+            // Fill sma200Daily with the weekly proxy value for all bars
+            for (let i = 0; i < closes.length; i++) {
+              sma200Daily[i] = lastWeeklySma;
+            }
+          }
+        }
+      } else {
+        sma200Daily = computeSMA(closes, 200);
+      }
+
+      const rsi14 = computeRSI(closes, 14);
+
+      // ---- Strategy 1: BBTC EMA Pyramid Risk ----
+      type BBTCSignal = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
+      const bbtcSignals: BBTCSignal[] = new Array(closes.length).fill(null);
+      let inPosition = false;
+      let positionSide: "LONG" | "SHORT" | null = null;
+      let entryPrice = 0;
+      let highestSinceEntry = 0;
+
+      for (let i = 1; i < closes.length; i++) {
+        if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
+
+        const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
+        const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
+
+        if (!inPosition) {
+          if (crossAbove && closes[i] > ema50[i]) {
+            bbtcSignals[i] = "BUY";
+            inPosition = true;
+            positionSide = "LONG";
+            entryPrice = closes[i];
+            highestSinceEntry = highs[i];
+          } else if (crossBelow && closes[i] < ema50[i]) {
+            bbtcSignals[i] = "SELL";
+            inPosition = true;
+            positionSide = "SHORT";
+            entryPrice = closes[i];
+            highestSinceEntry = highs[i];
+          }
+        } else {
+          highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
+          if (positionSide === "LONG") {
+            const stopLoss = entryPrice - atr14[i] * 2.0;
+            const trailStop = highestSinceEntry - atr14[i] * 1.5;
+            const target = entryPrice + atr14[i] * 3.0;
+            if (lows[i] <= stopLoss || lows[i] <= trailStop) {
+              bbtcSignals[i] = "STOP_HIT";
+              inPosition = false;
+              positionSide = null;
+            } else if (highs[i] >= target) {
+              bbtcSignals[i] = "REDUCE";
+            } else if (crossAbove && closes[i] > ema50[i]) {
+              bbtcSignals[i] = "ADD_LONG";
+            } else if (crossBelow && closes[i] < ema50[i]) {
+              bbtcSignals[i] = "SELL";
+              inPosition = false;
+              positionSide = null;
+            }
+          } else if (positionSide === "SHORT") {
+            if (crossAbove && closes[i] > ema50[i]) {
+              bbtcSignals[i] = "BUY";
+              inPosition = false;
+              positionSide = null;
+            } else if (crossBelow && closes[i] < ema50[i]) {
+              bbtcSignals[i] = "ADD_LONG";
+            }
+          }
+        }
+      }
+
+      // ---- Strategy 2: DTS Reversal Swing ----
+      type DTSSignal = "BUY" | "SELL" | null;
+      const dtsSignals: DTSSignal[] = new Array(closes.length).fill(null);
+
+      for (let i = 15; i < closes.length; i++) {
+        if (isNaN(rsi14[i]) || isNaN(sma200Daily[i])) continue;
+
+        // Buy: RSI < 40 AND low > SMA200
+        if (rsi14[i] < 40 && lows[i] > sma200Daily[i]) {
+          dtsSignals[i] = "BUY";
+        }
+
+        // Sell: high > highest(high, 15 bars back) AND close > SMA200
+        let highest15 = -Infinity;
+        for (let j = i - 15; j < i; j++) {
+          if (j >= 0) highest15 = Math.max(highest15, highs[j]);
+        }
+        if (highs[i] > highest15 && closes[i] > sma200Daily[i]) {
+          dtsSignals[i] = "SELL";
+        }
+      }
+
+      // ---- Build response ----
+      const lastIdx = closes.length - 1;
+      const currentPrice = closes[lastIdx];
+
+      // BBTC current state
+      const lastBbtcSignal = (() => {
+        for (let i = lastIdx; i >= 0; i--) {
+          if (bbtcSignals[i]) return bbtcSignals[i];
+        }
+        return null;
+      })();
+
+      let bbtcTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+      if (lastBbtcSignal === "BUY" || lastBbtcSignal === "ADD_LONG") bbtcTopSignal = "ENTER";
+      else if (lastBbtcSignal === "SELL" || lastBbtcSignal === "STOP_HIT" || lastBbtcSignal === "REDUCE") bbtcTopSignal = "SELL";
+
+      const bbtcBias: "LONG" | "SHORT" | "FLAT" =
+        !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
+          ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "LONG"
+             : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "SHORT"
+             : "FLAT")
+          : "FLAT";
+
+      const bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" =
+        !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
+          ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "UP"
+             : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "DOWN"
+             : "SIDEWAYS")
+          : "SIDEWAYS";
+
+      let bbtcSignalDetail = "";
+      if (bbtcTrend === "UP") bbtcSignalDetail = "EMA9 above EMA21, bullish trend confirmed";
+      else if (bbtcTrend === "DOWN") bbtcSignalDetail = "EMA9 below EMA21, bearish trend confirmed";
+      else bbtcSignalDetail = "EMAs converging, no clear directional bias";
+
+      const lastAtr = isNaN(atr14[lastIdx]) ? null : Number(atr14[lastIdx].toFixed(2));
+      const stopPrice = entryPrice && lastAtr ? Number((entryPrice - lastAtr * 2.0).toFixed(2)) : null;
+      const targetPrice = entryPrice && lastAtr ? Number((entryPrice + lastAtr * 3.0).toFixed(2)) : null;
+      const trailStop = lastAtr ? Number((highestSinceEntry - lastAtr * 1.5).toFixed(2)) : null;
+
+      // Recent BBTC signals
+      const bbtcRecent: {date: string; signal: string; price: number}[] = [];
+      for (let i = lastIdx; i >= 0 && bbtcRecent.length < 10; i--) {
+        if (bbtcSignals[i]) {
+          bbtcRecent.unshift({
+            date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+            signal: bbtcSignals[i]!,
+            price: Number(closes[i].toFixed(2)),
+          });
+        }
+      }
+
+      // DTS current state
+      const lastDtsSignal = (() => {
+        for (let i = lastIdx; i >= 0; i--) {
+          if (dtsSignals[i]) return dtsSignals[i];
+        }
+        return null;
+      })();
+
+      let dtsTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+      if (lastDtsSignal === "BUY") dtsTopSignal = "ENTER";
+      else if (lastDtsSignal === "SELL") dtsTopSignal = "SELL";
+
+      let highest15 = -Infinity;
+      for (let j = lastIdx - 15; j < lastIdx; j++) {
+        if (j >= 0) highest15 = Math.max(highest15, highs[j]);
+      }
+
+      let dtsSignalDetail = "";
+      if (dtsTopSignal === "ENTER") dtsSignalDetail = `RSI at ${rsi14[lastIdx]?.toFixed(1)}, below 40 threshold with price above SMA200`;
+      else if (dtsTopSignal === "SELL") dtsSignalDetail = `Price breaking above 15-bar high with close above SMA200`;
+      else dtsSignalDetail = `RSI at ${rsi14[lastIdx]?.toFixed(1) ?? "N/A"}, no active signal`;
+
+      const dtsRecent: {date: string; signal: string; price: number}[] = [];
+      for (let i = lastIdx; i >= 0 && dtsRecent.length < 10; i--) {
+        if (dtsSignals[i]) {
+          dtsRecent.unshift({
+            date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+            signal: dtsSignals[i]!,
+            price: Number(closes[i].toFixed(2)),
+          });
+        }
+      }
+
+      // Combined signal
+      const bbtcIsBuy = bbtcTopSignal === "ENTER";
+      const bbtcIsSell = bbtcTopSignal === "SELL";
+      const dtsIsBuy = dtsTopSignal === "ENTER";
+      const dtsIsSell = dtsTopSignal === "SELL";
+
+      let combinedSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
+      let confidence: "Strong" | "Moderate" | "Weak" = "Moderate";
+      let reasoning = "";
+
+      if (bbtcIsBuy && dtsIsBuy) {
+        combinedSignal = "ENTER"; confidence = "Strong"; reasoning = "Both strategies agree on bullish entry";
+      } else if (bbtcIsSell && dtsIsSell) {
+        combinedSignal = "SELL"; confidence = "Strong"; reasoning = "Both strategies agree on exit/sell";
+      } else if (bbtcIsBuy && !dtsIsSell) {
+        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = "BBTC signals entry, DTS neutral";
+      } else if (dtsIsBuy && !bbtcIsSell) {
+        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = "DTS signals entry, BBTC neutral";
+      } else if (bbtcIsSell && !dtsIsBuy) {
+        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = "BBTC signals exit, DTS neutral";
+      } else if (dtsIsSell && !bbtcIsBuy) {
+        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = "DTS signals exit, BBTC neutral";
+      } else if ((bbtcIsBuy && dtsIsSell) || (bbtcIsSell && dtsIsBuy)) {
+        combinedSignal = "HOLD"; confidence = "Weak"; reasoning = "Strategies conflict — wait for alignment";
+      } else {
+        combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from either strategy";
+      }
+
+      // Chart data (subsample for frontend — every 3rd bar for ~80-90 points)
+      const step = Math.max(1, Math.floor(closes.length / 120));
+      const chartDataArr: any[] = [];
+      for (let i = 0; i < closes.length; i += step) {
+        chartDataArr.push({
+          date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+          close: Number(closes[i].toFixed(2)),
+          ema9: isNaN(ema9[i]) ? null : Number(ema9[i].toFixed(2)),
+          ema21: isNaN(ema21[i]) ? null : Number(ema21[i].toFixed(2)),
+          ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
+          sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
+          rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
+          bbtcSignal: bbtcSignals[i] || null,
+          dtsSignal: dtsSignals[i] || null,
+        });
+      }
+      // Always include the last bar
+      if (chartDataArr.length === 0 || chartDataArr[chartDataArr.length - 1].date !== new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0]) {
+        chartDataArr.push({
+          date: new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0],
+          close: Number(closes[lastIdx].toFixed(2)),
+          ema9: isNaN(ema9[lastIdx]) ? null : Number(ema9[lastIdx].toFixed(2)),
+          ema21: isNaN(ema21[lastIdx]) ? null : Number(ema21[lastIdx].toFixed(2)),
+          ema50: isNaN(ema50[lastIdx]) ? null : Number(ema50[lastIdx].toFixed(2)),
+          sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
+          rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
+          bbtcSignal: bbtcSignals[lastIdx] || null,
+          dtsSignal: dtsSignals[lastIdx] || null,
+        });
+      }
+
+      res.json({
+        ticker,
+        currentPrice: Number(currentPrice.toFixed(2)),
+        bbtc: {
+          signal: bbtcTopSignal,
+          signalDetail: bbtcSignalDetail,
+          bias: bbtcBias,
+          trend: bbtcTrend,
+          ema9: isNaN(ema9[lastIdx]) ? null : Number(ema9[lastIdx].toFixed(2)),
+          ema21: isNaN(ema21[lastIdx]) ? null : Number(ema21[lastIdx].toFixed(2)),
+          ema50: isNaN(ema50[lastIdx]) ? null : Number(ema50[lastIdx].toFixed(2)),
+          atr: lastAtr,
+          stopPrice,
+          targetPrice,
+          trailStop,
+          recentSignals: bbtcRecent,
+        },
+        dts: {
+          signal: dtsTopSignal,
+          signalDetail: dtsSignalDetail,
+          rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
+          sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
+          highestHigh15: Number(highest15.toFixed(2)),
+          recentSignals: dtsRecent,
+        },
+        combined: {
+          signal: combinedSignal,
+          confidence,
+          reasoning,
+        },
+        chartData: chartDataArr,
+      });
+    } catch (error: any) {
+      console.error(`Error in trade analysis for ${ticker}:`, error?.message || error);
+      res.status(500).json({ error: `Failed to analyze trades for "${ticker}". ${error?.message || "Unknown error."}` });
+    }
+  });
+
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {
