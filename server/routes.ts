@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { storage } from "./storage";
 
 // ============================================================
 // Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
@@ -657,6 +658,100 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error(`Error analyzing ${ticker}:`, error?.message || error);
       res.status(500).json({ error: `Failed to analyze ticker "${ticker}". ${error?.message || "Unknown error."}` });
+    }
+  });
+
+  // ============================================================
+  // Favorites API
+  // ============================================================
+
+  // Get all favorites for a list type
+  app.get("/api/favorites/:listType", async (req, res) => {
+    try {
+      const listType = req.params.listType;
+      if (listType !== "watchlist" && listType !== "portfolio") {
+        return res.status(400).json({ error: "listType must be 'watchlist' or 'portfolio'" });
+      }
+      const items = await storage.getFavorites(listType);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to fetch favorites" });
+    }
+  });
+
+  // Add a favorite
+  app.post("/api/favorites", async (req, res) => {
+    try {
+      const { ticker, companyName, listType, score, verdict, sector } = req.body;
+      if (!ticker || !listType) {
+        return res.status(400).json({ error: "ticker and listType are required" });
+      }
+      // Check if already exists
+      const existing = await storage.getFavorite(ticker.toUpperCase(), listType);
+      if (existing) {
+        return res.status(409).json({ error: "Already in list" });
+      }
+      const fav = await storage.addFavorite({
+        ticker: ticker.toUpperCase(),
+        companyName: companyName || ticker.toUpperCase(),
+        listType,
+        score: score ?? null,
+        verdict: verdict ?? null,
+        sector: sector ?? null,
+        addedAt: new Date().toISOString(),
+      });
+      res.json(fav);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to add favorite" });
+    }
+  });
+
+  // Remove a favorite
+  app.delete("/api/favorites/:listType/:ticker", async (req, res) => {
+    try {
+      const { listType, ticker } = req.params;
+      await storage.removeFavorite(ticker.toUpperCase(), listType);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to remove favorite" });
+    }
+  });
+
+  // Refresh scores for all favorites in a list
+  app.post("/api/favorites/:listType/refresh", async (req, res) => {
+    try {
+      const listType = req.params.listType;
+      const items = await storage.getFavorites(listType);
+      const results = [];
+
+      for (const item of items) {
+        try {
+          const summary = await getQuote(item.ticker);
+          if (summary) {
+            const { quote, financials } = extractQuoteData(summary);
+            const chart1Y = await getChart(item.ticker, "1y", "1d").catch(() => null);
+            const { computedReturn: ret1Y } = extractChartData(chart1Y);
+            const chart3Y = await getChart(item.ticker, "3y", "1wk").catch(() => null);
+            const { computedReturn: ret3Y } = extractChartData(chart3Y);
+            const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: null };
+            const fullData = { quote, financials, historicalReturns };
+            const scoring = computeScoring(fullData);
+            const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+            const { verdict } = computeVerdict(weightedScore);
+            const score = Number(weightedScore.toFixed(2));
+            await storage.updateFavoriteScore(item.ticker, listType, score, verdict);
+            results.push({ ...item, score, verdict });
+          } else {
+            results.push(item);
+          }
+        } catch {
+          results.push(item);
+        }
+      }
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to refresh scores" });
     }
   });
 

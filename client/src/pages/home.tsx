@@ -11,6 +11,7 @@ import { IncomeAnalysis } from "@/components/IncomeAnalysis";
 import { ScoringModel } from "@/components/ScoringModel";
 import { RedFlags } from "@/components/RedFlags";
 import { DecisionShortcut } from "@/components/DecisionShortcut";
+import { FavoritesPanel } from "@/components/FavoritesPanel";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
@@ -33,7 +34,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <header className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-2">
@@ -51,49 +52,65 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Ticker Search */}
-        <TickerSearch onAnalyze={handleAnalyze} isLoading={isLoading} />
+        {/* Main layout: Sidebar + Content */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Favorites Sidebar */}
+          <aside className="w-full lg:w-72 shrink-0 order-2 lg:order-1">
+            <div className="lg:sticky lg:top-8">
+              <FavoritesPanel
+                onSelectTicker={handleAnalyze}
+                currentAnalysis={data && !isLoading ? data : null}
+              />
+            </div>
+          </aside>
 
-        {/* Loading Skeleton */}
-        {isLoading && <LoadingSkeleton />}
+          {/* Main Content */}
+          <main className="flex-1 min-w-0 space-y-6 order-1 lg:order-2">
+            {/* Ticker Search */}
+            <TickerSearch onAnalyze={handleAnalyze} isLoading={isLoading} />
 
-        {/* Error State */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
-            <p className="text-red-400 font-medium">
-              {(error as Error).message || "Failed to analyze ticker. Please try again."}
-            </p>
-          </div>
-        )}
+            {/* Loading Skeleton */}
+            {isLoading && <LoadingSkeleton />}
 
-        {/* Analysis Results */}
-        {data && !isLoading && (
-          <div className="space-y-6">
-            <VerdictSummary data={data} />
-            <QuickTradeAnalysis data={data} />
-            <Snapshot data={data} />
-            <BusinessQuality data={data} />
-            <Performance data={data} />
-            <IncomeAnalysis data={data} />
-            <ScoringModel data={data} />
-            <RedFlags data={data} />
-            <DecisionShortcut data={data} />
-          </div>
-        )}
+            {/* Error State */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
+                <p className="text-red-400 font-medium">
+                  {(error as Error).message || "Failed to analyze ticker. Please try again."}
+                </p>
+              </div>
+            )}
 
-        {/* Empty State */}
-        {!data && !isLoading && !error && (
-          <div className="text-center py-16 text-muted-foreground" data-testid="empty-state">
-            <div className="text-4xl mb-4 opacity-30">📊</div>
-            <p className="text-lg">Enter a ticker symbol to get started</p>
-            <p className="text-sm mt-1">Try AAPL, MSFT, GOOGL, or any stock symbol</p>
-          </div>
-        )}
+            {/* Analysis Results */}
+            {data && !isLoading && (
+              <div className="space-y-6">
+                <VerdictSummary data={data} />
+                <QuickTradeAnalysis data={data} />
+                <Snapshot data={data} />
+                <BusinessQuality data={data} />
+                <Performance data={data} />
+                <IncomeAnalysis data={data} />
+                <ScoringModel data={data} />
+                <RedFlags data={data} />
+                <DecisionShortcut data={data} />
+              </div>
+            )}
 
-        {/* Footer */}
-        <footer className="pt-8 pb-4">
-          <PerplexityAttribution />
-        </footer>
+            {/* Empty State */}
+            {!data && !isLoading && !error && (
+              <div className="text-center py-16 text-muted-foreground" data-testid="empty-state">
+                <div className="text-4xl mb-4 opacity-30">📊</div>
+                <p className="text-lg">Enter a ticker symbol to get started</p>
+                <p className="text-sm mt-1">Try AAPL, MSFT, GOOGL, or any stock symbol</p>
+              </div>
+            )}
+
+            {/* Footer */}
+            <footer className="pt-8 pb-4">
+              <PerplexityAttribution />
+            </footer>
+          </main>
+        </div>
       </div>
     </div>
   );
