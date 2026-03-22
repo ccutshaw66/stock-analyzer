@@ -1,9 +1,146 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import YahooFinanceModule from "yahoo-finance2";
-// Handle both ESM and CJS default export patterns
-const YF = (YahooFinanceModule as any).default || YahooFinanceModule;
-const yahooFinance = typeof YF === 'function' ? new YF() : YF;
+
+// ============================================================
+// Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
+// which gets blocked on cloud servers like Railway/Render)
+// ============================================================
+
+const YF_BASE_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
+let _crumb: string | null = null;
+let _cookie: string | null = null;
+let _crumbTimestamp = 0;
+
+async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
+  // Cache crumb for 30 minutes
+  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 30 * 60 * 1000) {
+    return { crumb: _crumb, cookie: _cookie };
+  }
+
+  console.log("[yahoo] Fetching new crumb...");
+
+  // Step 1: Get cookies from Yahoo Finance
+  const consentResp = await fetch("https://fc.yahoo.com/", {
+    headers: YF_BASE_HEADERS,
+    redirect: "manual",
+  });
+  
+  // Try getSetCookie first, fall back to get('set-cookie')
+  let cookieParts: string[] = [];
+  if (typeof consentResp.headers.getSetCookie === 'function') {
+    cookieParts = consentResp.headers.getSetCookie();
+  }
+  if (cookieParts.length === 0) {
+    const raw = consentResp.headers.get('set-cookie');
+    if (raw) cookieParts = [raw];
+  }
+  let cookie = cookieParts.map(c => c.split(";")[0]).join("; ");
+  console.log("[yahoo] Cookie obtained:", cookie ? "yes" : "no");
+
+  if (!cookie) {
+    // Fallback: try the main page
+    const mainResp = await fetch("https://finance.yahoo.com/", {
+      headers: YF_BASE_HEADERS,
+      redirect: "follow",
+    });
+    let mainParts: string[] = [];
+    if (typeof mainResp.headers.getSetCookie === 'function') {
+      mainParts = mainResp.headers.getSetCookie();
+    }
+    if (mainParts.length === 0) {
+      const raw = mainResp.headers.get('set-cookie');
+      if (raw) mainParts = [raw];
+    }
+    cookie = mainParts.map(c => c.split(";")[0]).join("; ");
+    console.log("[yahoo] Fallback cookie obtained:", cookie ? "yes" : "no");
+  }
+
+  // Step 2: Get crumb (must accept text/plain)
+  const crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+    headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
+  });
+  const crumb = await crumbResp.text();
+  console.log("[yahoo] Crumb obtained:", crumb ? crumb.substring(0, 20) : "EMPTY", "status:", crumbResp.status);
+
+  if (!crumb || crumb.includes("<!DOCTYPE") || crumb.includes("{")) {
+    throw new Error("Failed to obtain Yahoo Finance crumb. The service may be temporarily unavailable.");
+  }
+
+  _crumb = crumb;
+  _cookie = cookie;
+  _crumbTimestamp = Date.now();
+
+  return { crumb, cookie };
+}
+
+async function yahooFetch(url: string, retries = 2): Promise<any> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const { crumb, cookie } = await getYahooCrumb();
+      const separator = url.includes("?") ? "&" : "?";
+      const fullUrl = `${url}${separator}crumb=${encodeURIComponent(crumb)}`;
+      console.log(`[yahoo] Fetching: ${fullUrl.substring(0, 120)}...`);
+
+      const resp = await fetch(fullUrl, {
+        headers: { ...YF_BASE_HEADERS, Cookie: cookie },
+      });
+
+      if (resp.status === 401 || resp.status === 403) {
+        // Crumb expired, clear and retry
+        _crumb = null;
+        _cookie = null;
+        _crumbTimestamp = 0;
+        if (attempt < retries) continue;
+        throw new Error(`Yahoo Finance returned ${resp.status}`);
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        console.log(`[yahoo] Error response: ${resp.status} ${errText.substring(0, 200)}`);
+        throw new Error(`Yahoo Finance API error: ${resp.status} ${resp.statusText}`);
+      }
+
+      const json = await resp.json();
+      console.log(`[yahoo] Response status: ${resp.status}, has data: ${!!json}`);
+      return json;
+    } catch (err: any) {
+      if (attempt < retries) {
+        _crumb = null;
+        _cookie = null;
+        _crumbTimestamp = 0;
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function getQuote(ticker: string): Promise<any> {
+  const modules = [
+    "price", "summaryDetail", "defaultKeyStatistics",
+    "financialData", "summaryProfile", "recommendationTrend", "earningsTrend"
+  ].join("%2C");
+  const data = await yahooFetch(
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
+  );
+  return data?.quoteSummary?.result?.[0] || null;
+}
+
+async function getChart(ticker: string, range: string, interval: string): Promise<any> {
+  const data = await yahooFetch(
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
+  );
+  return data?.chart?.result?.[0] || null;
+}
+
+// ============================================================
+// Types
+// ============================================================
 
 interface ScoringCategory {
   name: string;
@@ -26,12 +163,10 @@ interface DecisionQuestion {
 
 function safeNum(val: any): number | null {
   if (val === undefined || val === null || isNaN(val)) return null;
-  return Number(val);
-}
-
-function pctChange(current: number, previous: number): number | null {
-  if (!previous || previous === 0) return null;
-  return ((current - previous) / Math.abs(previous)) * 100;
+  const n = Number(val);
+  // Yahoo sometimes returns raw values as {raw: 123, fmt: "123"}
+  if (typeof val === "object" && val.raw !== undefined) return safeNum(val.raw);
+  return n;
 }
 
 function formatLargeNumber(num: number | null): string {
@@ -44,17 +179,11 @@ function formatLargeNumber(num: number | null): string {
   return num.toFixed(2);
 }
 
-function trendDirection(values: (number | null)[]): "up" | "down" | "flat" {
-  const valid = values.filter((v): v is number => v !== null);
-  if (valid.length < 2) return "flat";
-  const recent = valid.slice(-Math.min(3, valid.length));
-  const first = recent[0];
-  const last = recent[recent.length - 1];
-  const change = pctChange(last, first);
-  if (change === null) return "flat";
-  if (change > 5) return "up";
-  if (change < -5) return "down";
-  return "flat";
+// Helper to safely extract a raw numeric value from Yahoo's {raw, fmt} format
+function raw(val: any): number | null {
+  if (val === undefined || val === null) return null;
+  if (typeof val === "object" && val.raw !== undefined) return safeNum(val.raw);
+  return safeNum(val);
 }
 
 function computeScoring(data: any): ScoringCategory[] {
@@ -195,7 +324,6 @@ function generateBullBear(data: any): { positives: string[]; risks: string[] } {
   const risks: string[] = [];
   const { quote, financials, historicalReturns } = data;
 
-  // Positives
   const pe = safeNum(quote?.trailingPE);
   const divYield = safeNum(quote?.dividendYield);
   const marketCap = safeNum(quote?.marketCap);
@@ -214,7 +342,6 @@ function generateBullBear(data: any): { positives: string[]; risks: string[] } {
   if (ret1y !== null && ret1y !== undefined && ret1y > 15) positives.push(`Strong 1-year return of ${ret1y.toFixed(1)}%`);
   if (pe !== null && pe > 0 && pe < 20) positives.push(`Reasonable valuation at ${pe.toFixed(1)}x earnings`);
 
-  // Risks
   if (pe !== null && pe > 40) risks.push(`Elevated valuation at ${pe.toFixed(1)}x earnings`);
   if (pe !== null && pe < 0) risks.push(`Negative earnings — currently unprofitable`);
   if (debtToEquity !== null && debtToEquity > 100) risks.push(`High leverage with D/E of ${debtToEquity.toFixed(1)}%`);
@@ -225,7 +352,6 @@ function generateBullBear(data: any): { positives: string[]; risks: string[] } {
   if (beta !== null && beta > 1.5) risks.push(`High volatility with beta of ${beta.toFixed(2)}`);
   if (marketCap !== null && marketCap < 2e9) risks.push(`Small-cap risk (${formatLargeNumber(marketCap)} market cap)`);
 
-  // Ensure at least 3 of each
   const fallbackPositives = [
     "Established public company with market access",
     "Listed on major exchange with regulatory oversight",
@@ -237,13 +363,9 @@ function generateBullBear(data: any): { positives: string[]; risks: string[] } {
     "Interest rate and monetary policy sensitivity",
   ];
   let pIdx = 0;
-  while (positives.length < 3 && pIdx < fallbackPositives.length) {
-    positives.push(fallbackPositives[pIdx++]);
-  }
+  while (positives.length < 3 && pIdx < fallbackPositives.length) positives.push(fallbackPositives[pIdx++]);
   let rIdx = 0;
-  while (risks.length < 3 && rIdx < fallbackRisks.length) {
-    risks.push(fallbackRisks[rIdx++]);
-  }
+  while (risks.length < 3 && rIdx < fallbackRisks.length) risks.push(fallbackRisks[rIdx++]);
 
   return { positives: positives.slice(0, 3), risks: risks.slice(0, 3) };
 }
@@ -251,7 +373,6 @@ function generateBullBear(data: any): { positives: string[]; risks: string[] } {
 function generateRedFlags(data: any): RedFlag[] {
   const { quote, financials } = data;
   const pe = safeNum(quote?.trailingPE);
-  const divYield = safeNum(quote?.dividendYield);
   const debtToEquity = safeNum(financials?.debtToEquity);
   const payoutRatio = safeNum(financials?.payoutRatio);
   const revenueGrowth = safeNum(financials?.revenueGrowth);
@@ -262,56 +383,16 @@ function generateRedFlags(data: any): RedFlag[] {
   const fcf = safeNum(financials?.freeCashFlow);
 
   return [
-    {
-      label: "Negative Earnings",
-      flagged: pe !== null && pe < 0,
-      detail: pe !== null && pe < 0 ? `P/E is negative (${pe.toFixed(1)})` : "Company is profitable",
-    },
-    {
-      label: "Excessive Debt",
-      flagged: debtToEquity !== null && debtToEquity > 150,
-      detail: debtToEquity !== null ? `D/E ratio: ${debtToEquity.toFixed(1)}%` : "No debt data",
-    },
-    {
-      label: "Dividend Cut Risk",
-      flagged: payoutRatio !== null && payoutRatio > 100,
-      detail: payoutRatio !== null ? `Payout ratio: ${payoutRatio.toFixed(1)}%` : "No payout data",
-    },
-    {
-      label: "Revenue Decline",
-      flagged: revenueGrowth !== null && revenueGrowth < -5,
-      detail: revenueGrowth !== null ? `Revenue growth: ${revenueGrowth.toFixed(1)}%` : "No growth data",
-    },
-    {
-      label: "Low Liquidity",
-      flagged: avgVolume !== null && avgVolume < 100000,
-      detail: avgVolume !== null ? `Avg volume: ${formatLargeNumber(avgVolume)}` : "No volume data",
-    },
-    {
-      label: "Micro-Cap Risk",
-      flagged: marketCap !== null && marketCap < 300e6,
-      detail: marketCap !== null ? `Market cap: ${formatLargeNumber(marketCap)}` : "No market cap data",
-    },
-    {
-      label: "Poor Liquidity Ratio",
-      flagged: currentRatio !== null && currentRatio < 1,
-      detail: currentRatio !== null ? `Current ratio: ${currentRatio.toFixed(2)}` : "No data",
-    },
-    {
-      label: "Extremely High Valuation",
-      flagged: pe !== null && pe > 60,
-      detail: pe !== null ? `P/E: ${pe.toFixed(1)}` : "No P/E data",
-    },
-    {
-      label: "Negative Free Cash Flow",
-      flagged: fcf !== null && fcf < 0,
-      detail: fcf !== null ? `FCF: ${formatLargeNumber(fcf)}` : "No FCF data",
-    },
-    {
-      label: "Eroding Margins",
-      flagged: grossMargin !== null && grossMargin < 15,
-      detail: grossMargin !== null ? `Gross margin: ${grossMargin.toFixed(1)}%` : "No margin data",
-    },
+    { label: "Negative Earnings", flagged: pe !== null && pe < 0, detail: pe !== null && pe < 0 ? `P/E is negative (${pe.toFixed(1)})` : "Company is profitable" },
+    { label: "Excessive Debt", flagged: debtToEquity !== null && debtToEquity > 150, detail: debtToEquity !== null ? `D/E ratio: ${debtToEquity.toFixed(1)}%` : "No debt data" },
+    { label: "Dividend Cut Risk", flagged: payoutRatio !== null && payoutRatio > 100, detail: payoutRatio !== null ? `Payout ratio: ${payoutRatio.toFixed(1)}%` : "No payout data" },
+    { label: "Revenue Decline", flagged: revenueGrowth !== null && revenueGrowth < -5, detail: revenueGrowth !== null ? `Revenue growth: ${revenueGrowth.toFixed(1)}%` : "No growth data" },
+    { label: "Low Liquidity", flagged: avgVolume !== null && avgVolume < 100000, detail: avgVolume !== null ? `Avg volume: ${formatLargeNumber(avgVolume)}` : "No volume data" },
+    { label: "Micro-Cap Risk", flagged: marketCap !== null && marketCap < 300e6, detail: marketCap !== null ? `Market cap: ${formatLargeNumber(marketCap)}` : "No market cap data" },
+    { label: "Poor Liquidity Ratio", flagged: currentRatio !== null && currentRatio < 1, detail: currentRatio !== null ? `Current ratio: ${currentRatio.toFixed(2)}` : "No data" },
+    { label: "Extremely High Valuation", flagged: pe !== null && pe > 60, detail: pe !== null ? `P/E: ${pe.toFixed(1)}` : "No P/E data" },
+    { label: "Negative Free Cash Flow", flagged: fcf !== null && fcf < 0, detail: fcf !== null ? `FCF: ${formatLargeNumber(fcf)}` : "No FCF data" },
+    { label: "Eroding Margins", flagged: grossMargin !== null && grossMargin < 15, detail: grossMargin !== null ? `Gross margin: ${grossMargin.toFixed(1)}%` : "No margin data" },
   ];
 }
 
@@ -325,46 +406,113 @@ function generateDecisionShortcut(data: any): DecisionQuestion[] {
   const marketCap = safeNum(quote?.marketCap);
   const fcf = safeNum(financials?.freeCashFlow);
 
-  const questions: DecisionQuestion[] = [
-    {
-      question: "Is the company profitable?",
-      answer: pe !== null && pe > 0 ? "Yes" : "No",
-      color: pe !== null && pe > 0 ? "green" : "red",
-    },
-    {
-      question: "Is revenue growing?",
-      answer: revenueGrowth !== null && revenueGrowth > 0 ? "Yes" : revenueGrowth === null ? "N/A" : "No",
-      color: revenueGrowth !== null && revenueGrowth > 0 ? "green" : revenueGrowth === null ? "yellow" : "red",
-    },
-    {
-      question: "Is debt manageable (D/E < 100%)?",
-      answer: debtToEquity !== null && debtToEquity < 100 ? "Yes" : debtToEquity === null ? "N/A" : "No",
-      color: debtToEquity !== null && debtToEquity < 100 ? "green" : debtToEquity === null ? "yellow" : "red",
-    },
-    {
-      question: "Does it pay or grow dividends?",
-      answer: divYield !== null && divYield > 0 ? "Yes" : "No",
-      color: divYield !== null && divYield > 0 ? "green" : "red",
-    },
-    {
-      question: "Has it outperformed over 1 year?",
-      answer: ret1y !== null && ret1y !== undefined && ret1y > 0 ? "Yes" : ret1y === null || ret1y === undefined ? "N/A" : "No",
-      color: ret1y !== null && ret1y !== undefined && ret1y > 0 ? "green" : (ret1y === null || ret1y === undefined) ? "yellow" : "red",
-    },
-    {
-      question: "Is it large-cap (>$10B)?",
-      answer: marketCap !== null && marketCap > 10e9 ? "Yes" : "No",
-      color: marketCap !== null && marketCap > 10e9 ? "green" : "red",
-    },
-    {
-      question: "Is free cash flow positive?",
-      answer: fcf !== null && fcf > 0 ? "Yes" : fcf === null ? "N/A" : "No",
-      color: fcf !== null && fcf > 0 ? "green" : fcf === null ? "yellow" : "red",
-    },
+  return [
+    { question: "Is the company profitable?", answer: pe !== null && pe > 0 ? "Yes" : "No", color: pe !== null && pe > 0 ? "green" : "red" },
+    { question: "Is revenue growing?", answer: revenueGrowth !== null && revenueGrowth > 0 ? "Yes" : revenueGrowth === null ? "N/A" : "No", color: revenueGrowth !== null && revenueGrowth > 0 ? "green" : revenueGrowth === null ? "yellow" : "red" },
+    { question: "Is debt manageable (D/E < 100%)?", answer: debtToEquity !== null && debtToEquity < 100 ? "Yes" : debtToEquity === null ? "N/A" : "No", color: debtToEquity !== null && debtToEquity < 100 ? "green" : debtToEquity === null ? "yellow" : "red" },
+    { question: "Does it pay or grow dividends?", answer: divYield !== null && divYield > 0 ? "Yes" : "No", color: divYield !== null && divYield > 0 ? "green" : "red" },
+    { question: "Has it outperformed over 1 year?", answer: ret1y != null && ret1y > 0 ? "Yes" : ret1y == null ? "N/A" : "No", color: ret1y != null && ret1y > 0 ? "green" : ret1y == null ? "yellow" : "red" },
+    { question: "Is it large-cap (>$10B)?", answer: marketCap !== null && marketCap > 10e9 ? "Yes" : "No", color: marketCap !== null && marketCap > 10e9 ? "green" : "red" },
+    { question: "Is free cash flow positive?", answer: fcf !== null && fcf > 0 ? "Yes" : fcf === null ? "N/A" : "No", color: fcf !== null && fcf > 0 ? "green" : fcf === null ? "yellow" : "red" },
   ];
-
-  return questions;
 }
+
+// ============================================================
+// Extract data from Yahoo's quoteSummary response
+// ============================================================
+
+function extractQuoteData(summary: any) {
+  const price = summary?.price || {};
+  const detail = summary?.summaryDetail || {};
+  const keyStats = summary?.defaultKeyStatistics || {};
+  const financialData = summary?.financialData || {};
+  const profile = summary?.summaryProfile || {};
+  const recTrend = summary?.recommendationTrend;
+
+  // Build a normalized quote object
+  const quote: any = {
+    longName: price.longName || price.shortName || null,
+    shortName: price.shortName || null,
+    quoteType: price.quoteType || "EQUITY",
+    currency: price.currency || "USD",
+    regularMarketPrice: raw(price.regularMarketPrice),
+    regularMarketChange: raw(price.regularMarketChange),
+    regularMarketChangePercent: raw(price.regularMarketChangePercent) !== null ? raw(price.regularMarketChangePercent)! * (Math.abs(raw(price.regularMarketChangePercent)!) < 1 ? 100 : 1) : null,
+    marketCap: raw(price.marketCap),
+    trailingPE: raw(detail.trailingPE) || raw(keyStats.trailingPE),
+    forwardPE: raw(detail.forwardPE) || raw(keyStats.forwardPE),
+    epsTrailingTwelveMonths: raw(keyStats.trailingEps),
+    dividendYield: raw(detail.dividendYield) !== null ? raw(detail.dividendYield)! * 100 : (raw(detail.trailingAnnualDividendYield) !== null ? raw(detail.trailingAnnualDividendYield)! * 100 : null),
+    regularMarketVolume: raw(price.regularMarketVolume),
+    averageDailyVolume3Month: raw(price.averageDailyVolume3Month) || raw(detail.averageVolume),
+    beta: raw(keyStats.beta),
+    fiftyTwoWeekHigh: raw(detail.fiftyTwoWeekHigh),
+    fiftyTwoWeekLow: raw(detail.fiftyTwoWeekLow),
+    sector: profile.sector || null,
+    industry: profile.industry || null,
+  };
+
+  // Build financials
+  const financials: any = {
+    revenueGrowth: raw(financialData.revenueGrowth) !== null ? raw(financialData.revenueGrowth)! * 100 : null,
+    grossMargin: raw(financialData.grossMargins) !== null ? raw(financialData.grossMargins)! * 100 : null,
+    ebitdaMargin: raw(financialData.ebitdaMargins) !== null ? raw(financialData.ebitdaMargins)! * 100 : null,
+    operatingMargin: raw(financialData.operatingMargins) !== null ? raw(financialData.operatingMargins)! * 100 : null,
+    profitMargin: raw(financialData.profitMargins) !== null ? raw(financialData.profitMargins)! * 100 : null,
+    debtToEquity: raw(financialData.debtToEquity),
+    currentRatio: raw(financialData.currentRatio),
+    returnOnEquity: raw(financialData.returnOnEquity) !== null ? raw(financialData.returnOnEquity)! * 100 : null,
+    freeCashFlow: raw(financialData.freeCashflow),
+    operatingCashFlow: raw(financialData.operatingCashflow),
+    totalRevenue: raw(financialData.totalRevenue),
+    totalDebt: raw(financialData.totalDebt),
+    totalCash: raw(financialData.totalCash),
+    payoutRatio: raw(keyStats.payoutRatio) !== null ? raw(keyStats.payoutRatio)! * 100 : null,
+    earningsGrowth: raw(financialData.earningsGrowth) !== null ? raw(financialData.earningsGrowth)! * 100 : null,
+  };
+
+  // Analyst data
+  const trend = recTrend?.trend?.[0] || {};
+  const analystData = {
+    buy: (raw(trend.strongBuy) ?? 0) + (raw(trend.buy) ?? 0),
+    hold: raw(trend.hold) ?? 0,
+    sell: (raw(trend.sell) ?? 0) + (raw(trend.strongSell) ?? 0),
+    targetMean: raw(financialData.targetMeanPrice),
+    targetHigh: raw(financialData.targetHighPrice),
+    targetLow: raw(financialData.targetLowPrice),
+    recommendation: financialData.recommendationKey || null,
+  };
+
+  return { quote, financials, analystData, profile };
+}
+
+function extractChartData(chartResult: any): { chartData: any[]; computedReturn: number | null } {
+  if (!chartResult || !chartResult.timestamp) return { chartData: [], computedReturn: null };
+
+  const timestamps = chartResult.timestamp;
+  const closes = chartResult.indicators?.quote?.[0]?.close || [];
+
+  const chartData = timestamps.map((t: number, i: number) => {
+    const close = closes[i];
+    if (close == null) return null;
+    const date = new Date(t * 1000).toISOString().split("T")[0];
+    return { date, close: Number(close.toFixed(2)) };
+  }).filter(Boolean);
+
+  let computedReturn: number | null = null;
+  const validCloses = chartData.filter((d: any) => d.close > 0);
+  if (validCloses.length >= 2) {
+    const first = validCloses[0].close;
+    const last = validCloses[validCloses.length - 1].close;
+    computedReturn = ((last - first) / first) * 100;
+  }
+
+  return { chartData, computedReturn };
+}
+
+// ============================================================
+// Routes
+// ============================================================
 
 export async function registerRoutes(
   httpServer: Server,
@@ -376,88 +524,36 @@ export async function registerRoutes(
 
     try {
       // Fetch all data in parallel
-      const [quoteData, summaryDetail, historicalData1Y, historicalData3Y, historicalData5Y] = await Promise.allSettled([
-        yahooFinance.quote(ticker),
-        yahooFinance.quoteSummary(ticker, {
-          modules: [
-            "summaryProfile",
-            "financialData",
-            "defaultKeyStatistics",
-            "incomeStatementHistory",
-            "balanceSheetHistory",
-            "cashflowStatementHistory",
-            "recommendationTrend",
-            "upgradeDowngradeHistory",
-            "earningsTrend",
-          ],
-        }),
-        yahooFinance.chart(ticker, { period1: getDateYearsAgo(1), period2: new Date().toISOString().split("T")[0], interval: "1d" }),
-        yahooFinance.chart(ticker, { period1: getDateYearsAgo(3), period2: new Date().toISOString().split("T")[0], interval: "1wk" }),
-        yahooFinance.chart(ticker, { period1: getDateYearsAgo(5), period2: new Date().toISOString().split("T")[0], interval: "1wk" }),
+      const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
+        getQuote(ticker),
+        getChart(ticker, "1y", "1d"),
+        getChart(ticker, "3y", "1wk"),
+        getChart(ticker, "5y", "1wk"),
       ]);
 
-      const quote = quoteData.status === "fulfilled" ? quoteData.value : null;
-      const summary = summaryDetail.status === "fulfilled" ? summaryDetail.value : null;
-      const chart1Y = historicalData1Y.status === "fulfilled" ? historicalData1Y.value : null;
-      const chart3Y = historicalData3Y.status === "fulfilled" ? historicalData3Y.value : null;
-      const chart5Y = historicalData5Y.status === "fulfilled" ? historicalData5Y.value : null;
+      const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+      const chart3Y = chart3YResult.status === "fulfilled" ? chart3YResult.value : null;
+      const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
 
-      if (!quote) {
+      if (!summary) {
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
-      // Extract financials
-      const financialData = summary?.financialData;
-      const keyStats = summary?.defaultKeyStatistics;
-      const profile = summary?.summaryProfile;
-      const recommendations = summary?.recommendationTrend;
+      const { quote, financials, analystData, profile } = extractQuoteData(summary);
 
-      // Compute historical returns
-      const compute1YReturn = computeReturn(chart1Y);
-      const compute3YReturn = computeReturn(chart3Y);
-      const compute5YReturn = computeReturn(chart5Y);
+      if (!quote.regularMarketPrice && !quote.marketCap) {
+        return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
+      }
 
-      // Build chart data (1Y daily prices)
-      const chartData = chart1Y?.quotes?.map((q: any) => ({
-        date: q.date instanceof Date ? q.date.toISOString().split("T")[0] : String(q.date).split("T")[0],
-        close: q.close ? Number(q.close.toFixed(2)) : null,
-      })).filter((d: any) => d.close !== null) ?? [];
-
-      // Build financials object
-      const financials = {
-        revenueGrowth: safeNum(financialData?.revenueGrowth) !== null ? safeNum(financialData?.revenueGrowth)! * 100 : null,
-        grossMargin: safeNum(financialData?.grossMargins) !== null ? safeNum(financialData?.grossMargins)! * 100 : null,
-        ebitdaMargin: safeNum(financialData?.ebitdaMargins) !== null ? safeNum(financialData?.ebitdaMargins)! * 100 : null,
-        operatingMargin: safeNum(financialData?.operatingMargins) !== null ? safeNum(financialData?.operatingMargins)! * 100 : null,
-        profitMargin: safeNum(financialData?.profitMargins) !== null ? safeNum(financialData?.profitMargins)! * 100 : null,
-        debtToEquity: safeNum(financialData?.debtToEquity),
-        currentRatio: safeNum(financialData?.currentRatio),
-        returnOnEquity: safeNum(financialData?.returnOnEquity) !== null ? safeNum(financialData?.returnOnEquity)! * 100 : null,
-        freeCashFlow: safeNum(financialData?.freeCashflow),
-        operatingCashFlow: safeNum(financialData?.operatingCashflow),
-        totalRevenue: safeNum(financialData?.totalRevenue),
-        totalDebt: safeNum(financialData?.totalDebt),
-        totalCash: safeNum(financialData?.totalCash),
-        payoutRatio: safeNum(keyStats?.payoutRatio) !== null ? safeNum(keyStats?.payoutRatio)! * 100 : null,
-        earningsGrowth: safeNum(financialData?.earningsGrowth) !== null ? safeNum(financialData?.earningsGrowth)! * 100 : null,
-      };
+      const { chartData, computedReturn: ret1Y } = extractChartData(chart1Y);
+      const { computedReturn: ret3Y } = extractChartData(chart3Y);
+      const { computedReturn: ret5Y } = extractChartData(chart5Y);
 
       const historicalReturns = {
-        oneYear: compute1YReturn,
-        threeYear: compute3YReturn,
-        fiveYear: compute5YReturn,
-      };
-
-      // Analyst data
-      const recTrend = recommendations?.trend?.[0];
-      const analystData = {
-        buy: (safeNum(recTrend?.strongBuy) ?? 0) + (safeNum(recTrend?.buy) ?? 0),
-        hold: safeNum(recTrend?.hold) ?? 0,
-        sell: (safeNum(recTrend?.sell) ?? 0) + (safeNum(recTrend?.strongSell) ?? 0),
-        targetMean: safeNum(financialData?.targetMeanPrice),
-        targetHigh: safeNum(financialData?.targetHighPrice),
-        targetLow: safeNum(financialData?.targetLowPrice),
-        recommendation: financialData?.recommendationKey ?? null,
+        oneYear: ret1Y,
+        threeYear: ret3Y,
+        fiveYear: ret5Y,
       };
 
       const fullData = { quote, financials, historicalReturns };
@@ -471,23 +567,17 @@ export async function registerRoutes(
       const decisionShortcut = generateDecisionShortcut(fullData);
 
       // Determine asset type
-      const quoteType = (quote as any).quoteType || "EQUITY";
       let assetType = "Stock";
-      if (quoteType === "ETF") assetType = "ETF";
-      else if (quoteType === "MUTUALFUND") assetType = "Mutual Fund";
-      else if (quoteType === "CRYPTOCURRENCY") assetType = "Cryptocurrency";
+      if (quote.quoteType === "ETF") assetType = "ETF";
+      else if (quote.quoteType === "MUTUALFUND") assetType = "Mutual Fund";
+      else if (quote.quoteType === "CRYPTOCURRENCY") assetType = "Cryptocurrency";
 
-      // Determine mission fit and best use
+      // Mission fit
       const divYield = safeNum(quote?.dividendYield);
       let missionFit = "Growth";
       let bestUse = "Capital Appreciation";
-      if (divYield !== null && divYield > 3) {
-        missionFit = "Income";
-        bestUse = "Dividend Income";
-      } else if (divYield !== null && divYield > 1) {
-        missionFit = "Balanced";
-        bestUse = "Growth + Income";
-      }
+      if (divYield !== null && divYield > 3) { missionFit = "Income"; bestUse = "Dividend Income"; }
+      else if (divYield !== null && divYield > 1) { missionFit = "Balanced"; bestUse = "Growth + Income"; }
 
       // Income analysis
       const incomeAnalysis = {
@@ -501,7 +591,7 @@ export async function registerRoutes(
         cutRiskColor: financials.payoutRatio !== null && financials.payoutRatio > 100 ? "red" : financials.payoutRatio !== null && financials.payoutRatio > 75 ? "yellow" : "green",
       };
 
-      // Business quality details
+      // Business quality
       const businessQuality = {
         revenueTrend: financials.revenueGrowth !== null ? (financials.revenueGrowth > 5 ? "up" : financials.revenueGrowth < -5 ? "down" : "flat") : "flat",
         revenueGrowth: financials.revenueGrowth,
@@ -522,21 +612,14 @@ export async function registerRoutes(
         else if (bullPct < 0.3) sentiment = "Bearish";
       }
 
-      // Price change data
-      const regularPrice = safeNum(quote?.regularMarketPrice);
-      const regularChange = safeNum(quote?.regularMarketChange);
-      const regularChangePct = safeNum(quote?.regularMarketChangePercent);
-
       const responseData = {
         ticker,
-        companyName: quote?.longName || quote?.shortName || ticker,
+        companyName: quote.longName || quote.shortName || ticker,
         assetType,
-        sector: profile?.sector || (quote as any)?.sector || "N/A",
-        industry: profile?.industry || (quote as any)?.industry || "N/A",
+        sector: quote.sector || profile?.sector || "N/A",
+        industry: quote.industry || profile?.industry || "N/A",
         description: profile?.longBusinessSummary || null,
-        employees: safeNum(profile?.fullTimeEmployees),
-
-        // Verdict
+        employees: raw(profile?.fullTimeEmployees),
         verdict,
         score: Number(weightedScore.toFixed(2)),
         ruling,
@@ -544,49 +627,29 @@ export async function registerRoutes(
         bestUse,
         positives,
         risks,
-
-        // Price
-        price: regularPrice,
-        change: regularChange,
-        changePercent: regularChangePct,
-        currency: quote?.currency || "USD",
-
-        // Snapshot
-        marketCap: safeNum(quote?.marketCap),
-        pe: safeNum(quote?.trailingPE),
-        forwardPe: safeNum(quote?.forwardPE),
-        eps: safeNum(quote?.epsTrailingTwelveMonths),
+        price: quote.regularMarketPrice,
+        change: quote.regularMarketChange,
+        changePercent: quote.regularMarketChangePercent,
+        currency: quote.currency || "USD",
+        marketCap: quote.marketCap,
+        pe: quote.trailingPE,
+        forwardPe: quote.forwardPE,
+        eps: quote.epsTrailingTwelveMonths,
         dividendYield: divYield,
-        volume: safeNum(quote?.regularMarketVolume),
-        avgVolume: safeNum(quote?.averageDailyVolume3Month),
-        beta: safeNum(quote?.beta),
-        fiftyTwoWeekHigh: safeNum(quote?.fiftyTwoWeekHigh),
-        fiftyTwoWeekLow: safeNum(quote?.fiftyTwoWeekLow),
-
-        // Quick trade
+        volume: quote.regularMarketVolume,
+        avgVolume: quote.averageDailyVolume3Month,
+        beta: quote.beta,
+        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
         sentiment,
         analystData,
-
-        // Business quality
         businessQuality,
-
-        // Financials
         financials,
-
-        // Performance
         historicalReturns,
         chartData,
-
-        // Income analysis
         incomeAnalysis,
-
-        // Scoring
         scoring,
-
-        // Red flags
         redFlags,
-
-        // Decision shortcut
         decisionShortcut,
       };
 
@@ -598,20 +661,4 @@ export async function registerRoutes(
   });
 
   return httpServer;
-}
-
-function getDateYearsAgo(years: number): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - years);
-  return d.toISOString().split("T")[0];
-}
-
-function computeReturn(chartData: any): number | null {
-  if (!chartData?.quotes || chartData.quotes.length < 2) return null;
-  const quotes = chartData.quotes.filter((q: any) => q.close != null);
-  if (quotes.length < 2) return null;
-  const first = quotes[0].close;
-  const last = quotes[quotes.length - 1].close;
-  if (!first || first === 0) return null;
-  return ((last - first) / first) * 100;
 }
