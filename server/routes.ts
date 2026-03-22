@@ -1129,6 +1129,410 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // Helper functions for Strategy 3 (Triple Confluence)
+  // ============================================================
+
+  function computeMACD(closes: number[]): { macdLine: number[]; signalLine: number[]; histogram: number[] } {
+    const ema12 = computeEMA(closes, 12);
+    const ema26 = computeEMA(closes, 26);
+    const macdLine: number[] = new Array(closes.length).fill(NaN);
+    for (let i = 0; i < closes.length; i++) {
+      if (!isNaN(ema12[i]) && !isNaN(ema26[i])) {
+        macdLine[i] = ema12[i] - ema26[i];
+      }
+    }
+    // Signal line = EMA(9) of MACD line
+    // Need to extract valid MACD values for EMA computation
+    const validMacd: number[] = [];
+    const validIndices: number[] = [];
+    for (let i = 0; i < macdLine.length; i++) {
+      if (!isNaN(macdLine[i])) {
+        validMacd.push(macdLine[i]);
+        validIndices.push(i);
+      }
+    }
+    const signalOfValid = computeEMA(validMacd, 9);
+    const signalLine: number[] = new Array(closes.length).fill(NaN);
+    for (let j = 0; j < validIndices.length; j++) {
+      signalLine[validIndices[j]] = signalOfValid[j];
+    }
+    const histogram: number[] = new Array(closes.length).fill(NaN);
+    for (let i = 0; i < closes.length; i++) {
+      if (!isNaN(macdLine[i]) && !isNaN(signalLine[i])) {
+        histogram[i] = macdLine[i] - signalLine[i];
+      }
+    }
+    return { macdLine, signalLine, histogram };
+  }
+
+  function computeBollingerBands(closes: number[], period = 20, mult = 2): { middle: number[]; upper: number[]; lower: number[] } {
+    const middle = computeSMA(closes, period);
+    const upper: number[] = new Array(closes.length).fill(NaN);
+    const lower: number[] = new Array(closes.length).fill(NaN);
+    for (let i = period - 1; i < closes.length; i++) {
+      let sumSq = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const diff = closes[j] - middle[i];
+        sumSq += diff * diff;
+      }
+      const stddev = Math.sqrt(sumSq / period);
+      upper[i] = middle[i] + mult * stddev;
+      lower[i] = middle[i] - mult * stddev;
+    }
+    return { middle, upper, lower };
+  }
+
+  function computeADX(highs: number[], lows: number[], closes: number[], period = 14): number[] {
+    const len = closes.length;
+    const adx: number[] = new Array(len).fill(NaN);
+    if (len < period * 2 + 1) return adx;
+
+    // True Range
+    const tr: number[] = new Array(len).fill(0);
+    tr[0] = highs[0] - lows[0];
+    for (let i = 1; i < len; i++) {
+      tr[i] = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+    }
+
+    // +DM and -DM
+    const plusDM: number[] = new Array(len).fill(0);
+    const minusDM: number[] = new Array(len).fill(0);
+    for (let i = 1; i < len; i++) {
+      const upMove = highs[i] - highs[i - 1];
+      const downMove = lows[i - 1] - lows[i];
+      plusDM[i] = (upMove > downMove && upMove > 0) ? upMove : 0;
+      minusDM[i] = (downMove > upMove && downMove > 0) ? downMove : 0;
+    }
+
+    // Wilder's smoothing (first period sum, then smooth)
+    let smoothTR = 0, smoothPlusDM = 0, smoothMinusDM = 0;
+    for (let i = 1; i <= period; i++) {
+      smoothTR += tr[i];
+      smoothPlusDM += plusDM[i];
+      smoothMinusDM += minusDM[i];
+    }
+
+    const dx: number[] = new Array(len).fill(NaN);
+    // First DI values at index=period
+    let plusDI = (smoothTR !== 0) ? (smoothPlusDM / smoothTR) * 100 : 0;
+    let minusDI = (smoothTR !== 0) ? (smoothMinusDM / smoothTR) * 100 : 0;
+    let diSum = plusDI + minusDI;
+    dx[period] = diSum !== 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0;
+
+    for (let i = period + 1; i < len; i++) {
+      smoothTR = smoothTR - (smoothTR / period) + tr[i];
+      smoothPlusDM = smoothPlusDM - (smoothPlusDM / period) + plusDM[i];
+      smoothMinusDM = smoothMinusDM - (smoothMinusDM / period) + minusDM[i];
+      plusDI = (smoothTR !== 0) ? (smoothPlusDM / smoothTR) * 100 : 0;
+      minusDI = (smoothTR !== 0) ? (smoothMinusDM / smoothTR) * 100 : 0;
+      diSum = plusDI + minusDI;
+      dx[i] = diSum !== 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0;
+    }
+
+    // ADX = Wilder's smoothing of DX over period
+    let adxSum = 0;
+    let adxCount = 0;
+    for (let i = period; i < period * 2 && i < len; i++) {
+      if (!isNaN(dx[i])) {
+        adxSum += dx[i];
+        adxCount++;
+      }
+    }
+    if (adxCount === period && period * 2 - 1 < len) {
+      adx[period * 2 - 1] = adxSum / period;
+      for (let i = period * 2; i < len; i++) {
+        adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period;
+      }
+    }
+
+    return adx;
+  }
+
+  // ============================================================
+  // Scanner Route
+  // ============================================================
+
+  app.get("/api/scanner", async (_req, res) => {
+    const SCAN_UNIVERSE = [
+      "AAPL","MSFT","GOOGL","AMZN","NVDA","META","TSLA","BRK-B","JPM","V",
+      "UNH","MA","HD","PG","JNJ","ABBV","MRK","AVGO","PEP","COST",
+      "ADBE","CRM","NFLX","AMD","QCOM","INTC","T","VZ","DIS","PYPL",
+      "BA","CAT","GS","AXP","MMM","IBM","ORCL","CSCO","ACN","TXN",
+      "NEE","XOM","CVX","COP","SLB","LMT","RTX","GE","HON","LOW"
+    ];
+
+    try {
+      const allResults: any[] = [];
+
+      // Process in batches of 5
+      for (let b = 0; b < SCAN_UNIVERSE.length; b += 5) {
+        const batch = SCAN_UNIVERSE.slice(b, b + 5);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (ticker) => {
+            const chart = await getChart(ticker, "6mo", "1d");
+            if (!chart || !chart.timestamp) return null;
+
+            const quoteData = chart.indicators?.quote?.[0] || {};
+            const closes: number[] = quoteData.close || [];
+            const highs: number[] = quoteData.high || [];
+            const lows: number[] = quoteData.low || [];
+            const volumes: number[] = quoteData.volume || [];
+
+            // Clean nulls
+            for (let i = 0; i < closes.length; i++) {
+              if (closes[i] == null && i > 0) closes[i] = closes[i - 1];
+              if (highs[i] == null && i > 0) highs[i] = highs[i - 1];
+              if (lows[i] == null && i > 0) lows[i] = lows[i - 1];
+              if (volumes[i] == null) volumes[i] = 0;
+            }
+
+            if (closes.length < 50) return null;
+
+            const lastIdx = closes.length - 1;
+            const currentPrice = closes[lastIdx];
+
+            // ---- Strategy 1: BBTC ----
+            const ema9 = computeEMA(closes, 9);
+            const ema21 = computeEMA(closes, 21);
+            const ema50 = computeEMA(closes, 50);
+            const atr14 = computeATR(highs, lows, closes, 14);
+
+            type BBTCSig = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
+            const bbtcSignals: BBTCSig[] = new Array(closes.length).fill(null);
+            let inPos = false;
+            let posSide: "LONG" | "SHORT" | null = null;
+            let entryPx = 0;
+            let highSince = 0;
+
+            for (let i = 1; i < closes.length; i++) {
+              if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
+              const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
+              const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
+
+              if (!inPos) {
+                if (crossAbove && closes[i] > ema50[i]) {
+                  bbtcSignals[i] = "BUY"; inPos = true; posSide = "LONG";
+                  entryPx = closes[i]; highSince = highs[i];
+                } else if (crossBelow && closes[i] < ema50[i]) {
+                  bbtcSignals[i] = "SELL"; inPos = true; posSide = "SHORT";
+                  entryPx = closes[i]; highSince = highs[i];
+                }
+              } else {
+                highSince = Math.max(highSince, highs[i]);
+                if (posSide === "LONG") {
+                  const stopLoss = entryPx - atr14[i] * 2.0;
+                  const trailStp = highSince - atr14[i] * 1.5;
+                  const target = entryPx + atr14[i] * 3.0;
+                  if (lows[i] <= stopLoss || lows[i] <= trailStp) {
+                    bbtcSignals[i] = "STOP_HIT"; inPos = false; posSide = null;
+                  } else if (highs[i] >= target) {
+                    bbtcSignals[i] = "REDUCE";
+                  } else if (crossAbove && closes[i] > ema50[i]) {
+                    bbtcSignals[i] = "ADD_LONG";
+                  } else if (crossBelow && closes[i] < ema50[i]) {
+                    bbtcSignals[i] = "SELL"; inPos = false; posSide = null;
+                  }
+                } else if (posSide === "SHORT") {
+                  if (crossAbove && closes[i] > ema50[i]) {
+                    bbtcSignals[i] = "BUY"; inPos = false; posSide = null;
+                  } else if (crossBelow && closes[i] < ema50[i]) {
+                    bbtcSignals[i] = "ADD_LONG";
+                  }
+                }
+              }
+            }
+
+            // BBTC current state
+            let lastBbtc: BBTCSig = null;
+            for (let i = lastIdx; i >= 0; i--) {
+              if (bbtcSignals[i]) { lastBbtc = bbtcSignals[i]; break; }
+            }
+            let bbtcTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+            if (lastBbtc === "BUY" || lastBbtc === "ADD_LONG") bbtcTopSignal = "ENTER";
+            else if (lastBbtc === "SELL" || lastBbtc === "STOP_HIT" || lastBbtc === "REDUCE") bbtcTopSignal = "SELL";
+
+            const bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" =
+              !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
+                ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "UP"
+                   : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "DOWN" : "SIDEWAYS")
+                : "SIDEWAYS";
+
+            const bbtcBias: "LONG" | "SHORT" | "FLAT" =
+              !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
+                ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "LONG"
+                   : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "SHORT" : "FLAT")
+                : "FLAT";
+
+            // ---- Strategy 2: DTS ----
+            const sma200 = computeSMA(closes, 200);
+            const rsi14 = computeRSI(closes, 14);
+
+            type DTSSig = "BUY" | "SELL" | null;
+            const dtsSignals: DTSSig[] = new Array(closes.length).fill(null);
+            for (let i = 15; i < closes.length; i++) {
+              if (isNaN(rsi14[i]) || isNaN(sma200[i])) continue;
+              if (rsi14[i] < 40 && lows[i] > sma200[i]) dtsSignals[i] = "BUY";
+              let highest15 = -Infinity;
+              for (let j = i - 15; j < i; j++) {
+                if (j >= 0) highest15 = Math.max(highest15, highs[j]);
+              }
+              if (highs[i] > highest15 && closes[i] > sma200[i]) dtsSignals[i] = "SELL";
+            }
+
+            let lastDts: DTSSig = null;
+            for (let i = lastIdx; i >= 0; i--) {
+              if (dtsSignals[i]) { lastDts = dtsSignals[i]; break; }
+            }
+            let dtsTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+            if (lastDts === "BUY") dtsTopSignal = "ENTER";
+            else if (lastDts === "SELL") dtsTopSignal = "SELL";
+
+            const lastRsi = isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(1));
+
+            // ---- Strategy 3: Triple Confluence ----
+            const { macdLine, signalLine: macdSignal, histogram } = computeMACD(closes);
+            const { upper: bbUpper, lower: bbLower } = computeBollingerBands(closes);
+            const adxArr = computeADX(highs, lows, closes);
+
+            // MACD assessment
+            let macdStatus: "bullish" | "bearish" | "neutral" = "neutral";
+            if (!isNaN(macdLine[lastIdx]) && !isNaN(macdSignal[lastIdx]) && !isNaN(histogram[lastIdx]) && lastIdx > 0 && !isNaN(histogram[lastIdx - 1])) {
+              const macdAboveSignal = macdLine[lastIdx] > macdSignal[lastIdx];
+              const histIncreasing = histogram[lastIdx] > histogram[lastIdx - 1];
+              const histDecreasing = histogram[lastIdx] < histogram[lastIdx - 1];
+              if (macdAboveSignal && histIncreasing) macdStatus = "bullish";
+              else if (!macdAboveSignal && histDecreasing) macdStatus = "bearish";
+            }
+
+            // Bollinger Band position
+            let bbPosition: "near_lower" | "near_upper" | "middle" = "middle";
+            if (!isNaN(bbUpper[lastIdx]) && !isNaN(bbLower[lastIdx])) {
+              const bbRange = bbUpper[lastIdx] - bbLower[lastIdx];
+              if (bbRange > 0) {
+                const pctPosition = (closes[lastIdx] - bbLower[lastIdx]) / bbRange;
+                if (pctPosition <= 0.25) bbPosition = "near_lower";
+                else if (pctPosition >= 0.75) bbPosition = "near_upper";
+              }
+            }
+
+            // Volume confirmation
+            const vol20 = computeSMA(volumes.map(v => v || 0), 20);
+            const lastVol = volumes[lastIdx] || 0;
+            const avgVol20 = isNaN(vol20[lastIdx]) ? 0 : vol20[lastIdx];
+            const volumeSurge = avgVol20 > 0 && lastVol > avgVol20 * 1.5;
+
+            // ADX
+            const lastAdx = isNaN(adxArr[lastIdx]) ? null : Number(adxArr[lastIdx].toFixed(1));
+            const adxTrending = lastAdx !== null && lastAdx > 25;
+            const adxRanging = lastAdx !== null && lastAdx < 20;
+
+            // Determine confirmation signal
+            let bullishCount = 0;
+            let bearishCount = 0;
+            if (macdStatus === "bullish") bullishCount++; else if (macdStatus === "bearish") bearishCount++;
+            if (bbPosition === "near_lower") bullishCount++; else if (bbPosition === "near_upper") bearishCount++;
+            if (volumeSurge) { bullishCount++; bearishCount++; } // volume confirms either direction
+            if (adxTrending) { bullishCount++; bearishCount++; } // trending confirms either direction
+
+            let confirmationSignal: "CONFIRMED_BUY" | "CONFIRMED_SELL" | "LEAN_BUY" | "LEAN_SELL" | "NEUTRAL" = "NEUTRAL";
+
+            // CONFIRMED_BUY: MACD bullish + price near/below lower BB + volume surge + ADX > 25
+            if (macdStatus === "bullish" && bbPosition === "near_lower" && volumeSurge && adxTrending) {
+              confirmationSignal = "CONFIRMED_BUY";
+            } else if (macdStatus === "bearish" && bbPosition === "near_upper" && volumeSurge && adxTrending) {
+              confirmationSignal = "CONFIRMED_SELL";
+            } else {
+              // Count bullish vs bearish indicators
+              let bCount = 0;
+              let sCount = 0;
+              if (macdStatus === "bullish") bCount++; else if (macdStatus === "bearish") sCount++;
+              if (bbPosition === "near_lower") bCount++; else if (bbPosition === "near_upper") sCount++;
+              if (volumeSurge) { bCount++; sCount++; } // confirms either
+              if (adxTrending) { bCount++; sCount++; } // confirms either
+
+              // For lean signals, check directional indicators (macd + bb) plus confirmations
+              let directionalBull = 0;
+              let directionalBear = 0;
+              if (macdStatus === "bullish") directionalBull++; else if (macdStatus === "bearish") directionalBear++;
+              if (bbPosition === "near_lower") directionalBull++; else if (bbPosition === "near_upper") directionalBear++;
+              if (volumeSurge) { directionalBull++; directionalBear++; }
+              if (adxTrending) { directionalBull++; directionalBear++; }
+
+              if (directionalBull >= 2 && directionalBull > directionalBear) confirmationSignal = "LEAN_BUY";
+              else if (directionalBear >= 2 && directionalBear > directionalBull) confirmationSignal = "LEAN_SELL";
+              else if (directionalBull >= 2) confirmationSignal = "LEAN_BUY";
+              else if (directionalBear >= 2) confirmationSignal = "LEAN_SELL";
+            }
+
+            // ---- Scoring ----
+            let score = 0;
+            // BBTC: ENTER +2, HOLD 0, SELL -2
+            if (bbtcTopSignal === "ENTER") score += 2;
+            else if (bbtcTopSignal === "SELL") score -= 2;
+            // DTS: ENTER +2, HOLD 0, SELL -2
+            if (dtsTopSignal === "ENTER") score += 2;
+            else if (dtsTopSignal === "SELL") score -= 2;
+            // Confirmation: CONFIRMED_BUY +3, LEAN_BUY +1, NEUTRAL 0, LEAN_SELL -1, CONFIRMED_SELL -3
+            if (confirmationSignal === "CONFIRMED_BUY") score += 3;
+            else if (confirmationSignal === "LEAN_BUY") score += 1;
+            else if (confirmationSignal === "LEAN_SELL") score -= 1;
+            else if (confirmationSignal === "CONFIRMED_SELL") score -= 3;
+
+            const alignmentLabel = score >= 5 ? "Strong Buy" : score >= 3 ? "Buy" : score >= 2 ? "Lean Buy" : null;
+
+            return {
+              ticker,
+              price: Number(currentPrice.toFixed(2)),
+              score,
+              bbtc: { signal: bbtcTopSignal, trend: bbtcTrend, bias: bbtcBias },
+              dts: { signal: dtsTopSignal, rsi: lastRsi },
+              confirmation: {
+                signal: confirmationSignal,
+                macd: macdStatus,
+                bollingerPosition: bbPosition,
+                volumeSurge,
+                adx: lastAdx,
+                adxTrending,
+              },
+              alignmentLabel,
+            };
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === "fulfilled" && result.value) {
+            allResults.push(result.value);
+          }
+        }
+
+        // Delay between batches to avoid overwhelming Yahoo Finance
+        if (b + 5 < SCAN_UNIVERSE.length) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      // Sort by score descending, filter score >= 2
+      const qualified = allResults
+        .filter(r => r.score >= 2)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+
+      res.json({
+        scannedAt: new Date().toISOString(),
+        totalScanned: SCAN_UNIVERSE.length,
+        results: qualified,
+      });
+    } catch (error: any) {
+      console.error("Scanner error:", error?.message || error);
+      res.status(500).json({ error: `Scanner failed: ${error?.message || "Unknown error."}` });
+    }
+  });
+
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {

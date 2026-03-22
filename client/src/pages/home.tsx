@@ -48,9 +48,15 @@ export default function Home() {
               Stock Analyzer
             </h1>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-3">
             Comprehensive investment analysis powered by real-time data
           </p>
+          <Link href="/scanner">
+            <span className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold rounded-full cursor-pointer transition-colors" data-testid="link-scanner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/><path d="M12 12l6-6"/></svg>
+              Strategy Scanner
+            </span>
+          </Link>
         </header>
 
         {/* Main layout: Sidebar + Content */}
