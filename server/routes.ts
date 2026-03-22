@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import YahooFinance from "yahoo-finance2";
-const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+import YahooFinanceModule from "yahoo-finance2";
+// Handle both ESM and CJS default export patterns
+const YF = (YahooFinanceModule as any).default || YahooFinanceModule;
+const yahooFinance = typeof YF === 'function' ? new YF() : YF;
 
 interface ScoringCategory {
   name: string;
