@@ -1056,6 +1056,17 @@ export async function registerRoutes(
       const dtsIsSell = dtsTopSignal === "SELL";
 
       // ---- Strategy 3: AMC (Adaptive Momentum Confluence) ----
+      // Compute MACD histogram for AMC
+      const macdEma12 = computeEMA(closes, 12);
+      const macdEma26 = computeEMA(closes, 26);
+      const macdLineArr = closes.map((_, i) => (!isNaN(macdEma12[i]) && !isNaN(macdEma26[i])) ? macdEma12[i] - macdEma26[i] : NaN);
+      const validMacdVals: number[] = []; const validMacdIdx: number[] = [];
+      macdLineArr.forEach((v, i) => { if (!isNaN(v)) { validMacdVals.push(v); validMacdIdx.push(i); } });
+      const macdSigEma = computeEMA(validMacdVals, 9);
+      const macdSignalArr = new Array(closes.length).fill(NaN);
+      validMacdIdx.forEach((idx, j) => { macdSignalArr[idx] = macdSigEma[j]; });
+      const histogram = closes.map((_, i) => (!isNaN(macdLineArr[i]) && !isNaN(macdSignalArr[i])) ? macdLineArr[i] - macdSignalArr[i] : NaN);
+
       // VAMI computation
       const vamiArr: number[] = new Array(closes.length).fill(0);
       const avgVol20 = computeSMA(volumes.map(v => v || 0), 20);
