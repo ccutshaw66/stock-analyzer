@@ -17,58 +17,66 @@ let _cookie: string | null = null;
 let _crumbTimestamp = 0;
 
 async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
-  // Cache crumb for 30 minutes
-  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 30 * 60 * 1000) {
+  // Cache crumb for 10 minutes (shorter = more reliable on cloud servers)
+  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 10 * 60 * 1000) {
     return { crumb: _crumb, cookie: _cookie };
   }
 
   console.log("[yahoo] Fetching new crumb...");
 
-  // Step 1: Get cookies from Yahoo Finance
-  const consentResp = await fetch("https://fc.yahoo.com/", {
-    headers: YF_BASE_HEADERS,
-    redirect: "manual",
-  });
-  
-  // Try getSetCookie first, fall back to get('set-cookie')
-  let cookieParts: string[] = [];
-  if (typeof consentResp.headers.getSetCookie === 'function') {
-    cookieParts = consentResp.headers.getSetCookie();
+  // Try multiple cookie sources to maximize compatibility across Node versions
+  let cookie = "";
+
+  // Method 1: fc.yahoo.com (fastest)
+  try {
+    const r = await fetch("https://fc.yahoo.com/", { headers: YF_BASE_HEADERS, redirect: "manual" });
+    const parts: string[] = [];
+    if (typeof r.headers.getSetCookie === 'function') {
+      for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
+    }
+    if (parts.length === 0) {
+      const raw = r.headers.get('set-cookie');
+      if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
+    }
+    cookie = parts.filter(Boolean).join("; ");
+  } catch (e) {
+    console.log("[yahoo] fc.yahoo.com failed:", (e as Error).message);
   }
-  if (cookieParts.length === 0) {
-    const raw = consentResp.headers.get('set-cookie');
-    if (raw) cookieParts = [raw];
+
+  // Method 2: Fallback to finance.yahoo.com
+  if (!cookie) {
+    try {
+      const r = await fetch("https://finance.yahoo.com/quote/AAPL", { headers: YF_BASE_HEADERS, redirect: "follow" });
+      const parts: string[] = [];
+      if (typeof r.headers.getSetCookie === 'function') {
+        for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
+      }
+      if (parts.length === 0) {
+        const raw = r.headers.get('set-cookie');
+        if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
+      }
+      cookie = parts.filter(Boolean).join("; ");
+    } catch (e) {
+      console.log("[yahoo] finance.yahoo.com failed:", (e as Error).message);
+    }
   }
-  let cookie = cookieParts.map(c => c.split(";")[0]).join("; ");
-  console.log("[yahoo] Cookie obtained:", cookie ? "yes" : "no");
+
+  console.log("[yahoo] Cookie:", cookie ? "obtained" : "MISSING");
 
   if (!cookie) {
-    // Fallback: try the main page
-    const mainResp = await fetch("https://finance.yahoo.com/", {
-      headers: YF_BASE_HEADERS,
-      redirect: "follow",
-    });
-    let mainParts: string[] = [];
-    if (typeof mainResp.headers.getSetCookie === 'function') {
-      mainParts = mainResp.headers.getSetCookie();
-    }
-    if (mainParts.length === 0) {
-      const raw = mainResp.headers.get('set-cookie');
-      if (raw) mainParts = [raw];
-    }
-    cookie = mainParts.map(c => c.split(";")[0]).join("; ");
-    console.log("[yahoo] Fallback cookie obtained:", cookie ? "yes" : "no");
+    throw new Error("Failed to obtain Yahoo Finance cookie");
   }
 
-  // Step 2: Get crumb (must accept text/plain)
+  // Get crumb with explicit text/plain accept
   const crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
     headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
   });
   const crumb = await crumbResp.text();
-  console.log("[yahoo] Crumb obtained:", crumb ? crumb.substring(0, 20) : "EMPTY", "status:", crumbResp.status);
+  console.log("[yahoo] Crumb:", crumbResp.status, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
 
-  if (!crumb || crumb.includes("<!DOCTYPE") || crumb.includes("{")) {
-    throw new Error("Failed to obtain Yahoo Finance crumb. The service may be temporarily unavailable.");
+  // Validate crumb is actually a crumb (short alphanumeric string, not HTML or JSON)
+  if (!crumb || crumb.length > 50 || crumb.includes("<") || crumb.includes("{") || crumbResp.status !== 200) {
+    throw new Error(`Failed to obtain crumb (status ${crumbResp.status})`);
   }
 
   _crumb = crumb;
@@ -90,18 +98,27 @@ async function yahooFetch(url: string, retries = 2): Promise<any> {
         headers: { ...YF_BASE_HEADERS, Cookie: cookie },
       });
 
-      if (resp.status === 401 || resp.status === 403) {
-        // Crumb expired, clear and retry
+      if (resp.status === 401 || resp.status === 403 || resp.status === 404) {
+        // Crumb likely expired or bad — clear cache and retry
+        console.log(`[yahoo] Got ${resp.status}, clearing crumb and retrying...`);
         _crumb = null;
         _cookie = null;
         _crumbTimestamp = 0;
-        if (attempt < retries) continue;
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
         throw new Error(`Yahoo Finance returned ${resp.status}`);
       }
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
         console.log(`[yahoo] Error response: ${resp.status} ${errText.substring(0, 200)}`);
+        if (attempt < retries) {
+          _crumb = null; _cookie = null; _crumbTimestamp = 0;
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
         throw new Error(`Yahoo Finance API error: ${resp.status} ${resp.statusText}`);
       }
 
