@@ -410,13 +410,13 @@ function WeightedPriceCalculator() {
 
       <HelpBlock title="How to use the Weighted Price Calculator">
         <p>This calculates <strong className="text-foreground">your average entry and exit prices</strong> when you scale in/out of a position at different prices.</p>
-        <p><strong className="text-foreground">Legs In = what you paid.</strong> Enter the number of contracts/shares and the price as a <strong className="text-foreground">positive number</strong>.</p>
-        <p><strong className="text-foreground">Legs Out = what you received.</strong> Enter contracts sold and the price received as a <strong className="text-foreground">positive number</strong>.</p>
-        <p><strong className="text-foreground">Profit = Legs Out - Legs In</strong> (what you got back minus what you paid).</p>
+        <p><strong className="text-foreground">Legs In = cost to enter.</strong> Enter contracts/shares and the price you paid as a positive number.</p>
+        <p><strong className="text-foreground">Legs Out = proceeds to exit.</strong> Enter contracts sold and the price you received as a positive number.</p>
+        <p><strong className="text-foreground">Profit = Legs Out - Legs In</strong> (proceeds minus cost).</p>
 
-        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Debit Example (buying calls):</strong> Legs In: 2 contracts at $3.00, then 3 more at $2.50. Weighted entry = (2×$3 + 3×$2.50) ÷ 5 = $2.70. Legs Out: Sell all 5 at $4.00. Profit = (5 × $4.00 × 100) - (5 × $2.70 × 100) = $2,000 - $1,350 = <strong className="text-green-400">$650</strong>.</p>
+        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Debit Example (buying calls):</strong> Legs In: Buy 2 contracts at $3.00, then 3 more at $2.50. Weighted entry = (2×$3.00 + 3×$2.50) ÷ 5 = $2.70. Cost = 5 × $2.70 × 100 = $1,350. Legs Out: Sell all 5 at $4.00. Proceeds = 5 × $4.00 × 100 = $2,000. Profit = $2,000 - $1,350 = <strong className="text-green-400">$650</strong>. ROI = $650 ÷ $1,350 = 48.15%.</p>
 
-        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Credit Example (selling puts):</strong> Legs In: Sell 3 contracts at $2.00 credit, then sell 2 more at $1.50. Weighted credit = $1.80. Legs Out: Buy back all 5 at $0.50. Profit = credit received - cost to close. Enter Legs In as what you received ($2.00, $1.50) and Legs Out as what you paid to close ($0.50). Since you received more than you paid back, profit is positive.</p>
+        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Credit Example (selling puts):</strong> You sell 3 puts at $2.00 then 2 more at $1.50, and later buy them all back at $0.50. For credit trades, <strong className="text-foreground">swap the sides</strong> — enter the buy-to-close as Legs In (your cost) and the original credit as Legs Out (your proceeds).<br/>Legs In: 5 contracts at $0.50 (cost to close = 5 × $0.50 × 100 = $250).<br/>Legs Out: 3 contracts at $2.00 + 2 at $1.50 (credit received = (3×$2.00 + 2×$1.50) × 100 = $900).<br/>Profit = $900 - $250 = <strong className="text-green-400">$650</strong>. ROI = $650 ÷ $250 = 260%.</p>
       </HelpBlock>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
