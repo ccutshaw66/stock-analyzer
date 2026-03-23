@@ -67,10 +67,16 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
     throw new Error("Failed to obtain Yahoo Finance cookie");
   }
 
-  // Get crumb with explicit text/plain accept
-  const crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+  // Get crumb - try query2 first, fall back to query1
+  let crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
     headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
   });
+  if (crumbResp.status !== 200) {
+    console.log(`[yahoo] query2 crumb failed (${crumbResp.status}), trying query1...`);
+    crumbResp = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
+    });
+  }
   const crumb = await crumbResp.text();
   console.log("[yahoo] Crumb:", crumbResp.status, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
 
@@ -140,20 +146,23 @@ async function yahooFetch(url: string, retries = 3): Promise<any> {
   }
 }
 
+// Use query1 as primary (better compatibility with cloud server IPs)
+const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
+
 async function getQuote(ticker: string): Promise<any> {
   const modules = [
     "price", "summaryDetail", "defaultKeyStatistics",
     "financialData", "summaryProfile", "recommendationTrend", "earningsTrend"
   ].join("%2C");
   const data = await yahooFetch(
-    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
+    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
   );
   return data?.quoteSummary?.result?.[0] || null;
 }
 
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
   const data = await yahooFetch(
-    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
+    `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
   );
   return data?.chart?.result?.[0] || null;
 }
@@ -539,6 +548,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Warm up Yahoo crumb on startup so first request doesn't fail
+  getYahooCrumb().then(() => console.log("[yahoo] Crumb warmed up")).catch(e => console.log("[yahoo] Warmup failed:", e.message));
+
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
@@ -557,12 +569,14 @@ export async function registerRoutes(
       const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
 
       if (!summary) {
+        console.log(`[analyze] ${ticker}: quoteSummary returned null. summaryResult status: ${summaryResult.status}, reason: ${summaryResult.status === 'rejected' ? (summaryResult as any).reason?.message : 'fulfilled but null'}`);
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
       const { quote, financials, analystData, profile } = extractQuoteData(summary);
 
       if (!quote.regularMarketPrice && !quote.marketCap) {
+        console.log(`[analyze] ${ticker}: No price or market cap in quote data. Keys: ${Object.keys(quote).filter(k => quote[k] != null).join(',')}`);
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
@@ -1410,7 +1424,7 @@ export async function registerRoutes(
 
     const { crumb, cookie } = await getYahooCrumb();
     const resp = await fetch(
-      `https://query2.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
+      `https://query1.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
       {
         method: "POST",
         headers: { ...YF_BASE_HEADERS, "Content-Type": "application/json", Cookie: cookie },
