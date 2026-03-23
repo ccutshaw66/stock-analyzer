@@ -10,6 +10,8 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import TradeAnalysis from "@/pages/trade-analysis";
 import Scanner from "@/pages/scanner";
+import TradeTracker from "@/pages/trade-tracker";
+import OptionsCalculator from "@/pages/options-calculator";
 
 function App() {
   return (
@@ -23,6 +25,8 @@ function App() {
                 <Route path="/" component={Home} />
                 <Route path="/trade" component={TradeAnalysis} />
                 <Route path="/scanner" component={Scanner} />
+                <Route path="/tracker" component={TradeTracker} />
+                <Route path="/calculator" component={OptionsCalculator} />
                 <Route component={NotFound} />
               </Switch>
             </AppLayout>

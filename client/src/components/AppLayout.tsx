@@ -18,6 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  ClipboardList,
+  Calculator,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -340,6 +342,8 @@ function Sidebar({
     { path: "/", label: "Analyzer", icon: BarChart3 },
     { path: "/trade", label: "Trade Analysis", icon: Activity },
     { path: "/scanner", label: "Scanner", icon: Radar },
+    { path: "/tracker", label: "Trade Tracker", icon: ClipboardList },
+    { path: "/calculator", label: "Options Calc", icon: Calculator },
   ];
 
   const sortedWatchlist = [...watchlistItems].sort(

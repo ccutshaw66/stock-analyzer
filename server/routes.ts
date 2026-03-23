@@ -1950,5 +1950,250 @@ export async function registerRoutes(
     }
   });
 
+  // ================================================================
+  // TRADE TRACKER API ROUTES
+  // ================================================================
+
+  // Get all trades
+  app.get("/api/trades", async (_req, res) => {
+    try {
+      const allTrades = await storage.getAllTrades();
+      res.json(allTrades);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get trades" });
+    }
+  });
+
+  // Create a trade
+  app.post("/api/trades", async (req, res) => {
+    try {
+      const trade = await storage.createTrade({
+        ...req.body,
+        createdAt: new Date().toISOString(),
+      });
+      res.json(trade);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to create trade" });
+    }
+  });
+
+  // Update a trade
+  app.patch("/api/trades/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const trade = await storage.updateTrade(id, req.body);
+      if (!trade) return res.status(404).json({ error: "Trade not found" });
+      res.json(trade);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to update trade" });
+    }
+  });
+
+  // Close a trade
+  app.post("/api/trades/:id/close", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { closeDate, closePrice, commOut } = req.body;
+      const trade = await storage.updateTrade(id, { closeDate, closePrice, commOut });
+      if (!trade) return res.status(404).json({ error: "Trade not found" });
+      res.json(trade);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to close trade" });
+    }
+  });
+
+  // Delete a trade
+  app.delete("/api/trades/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTrade(id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to delete trade" });
+    }
+  });
+
+  // Refresh prices for all open trades
+  app.post("/api/trades/refresh-prices", async (_req, res) => {
+    try {
+      const allTrades = await storage.getAllTrades();
+      const openTrades = allTrades.filter(t => !t.closeDate);
+      const uniqueSymbols = [...new Set(openTrades.map(t => t.symbol))];
+      const priceMap: Record<string, number> = {};
+
+      for (const sym of uniqueSymbols) {
+        try {
+          const data = await getQuote(sym);
+          if (data) {
+            const price = data?.quoteSummary?.result?.[0]?.price;
+            if (price?.regularMarketPrice?.raw) {
+              priceMap[sym] = price.regularMarketPrice.raw;
+            }
+          }
+        } catch { /* skip */ }
+      }
+
+      for (const trade of openTrades) {
+        if (priceMap[trade.symbol] !== undefined) {
+          await storage.updateTradePrice(trade.id, priceMap[trade.symbol]);
+        }
+      }
+
+      const updated = await storage.getAllTrades();
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to refresh prices" });
+    }
+  });
+
+  // Get trade summary stats
+  app.get("/api/trades/summary", async (_req, res) => {
+    try {
+      const allTrades = await storage.getAllTrades();
+      const settings = await storage.getAccountSettings();
+      const transactions = await storage.getAccountTransactions();
+
+      const closedTrades = allTrades.filter(t => t.closeDate);
+      const openTrades = allTrades.filter(t => !t.closeDate);
+
+      // Compute P/L for each closed trade
+      const tradeResults = closedTrades.map(t => {
+        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
+        const costToOpen = t.openPrice * t.contractsShares * multiplier;
+        const costToClose = (t.closePrice || 0) * t.contractsShares * multiplier;
+        const profit = costToOpen + costToClose - (t.commIn || 0) - (t.commOut || 0);
+        return { ...t, profit };
+      });
+
+      // Summary by trade type
+      const byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }> = {};
+      for (const t of tradeResults) {
+        if (!byType[t.tradeType]) byType[t.tradeType] = { profit: 0, loss: 0, count: 0, wins: 0, investment: 0 };
+        const entry = byType[t.tradeType];
+        entry.count++;
+        entry.investment += Math.abs(t.allocation || 0);
+        if (t.profit >= 0) {
+          entry.profit += t.profit;
+          entry.wins++;
+        } else {
+          entry.loss += t.profit;
+        }
+      }
+
+      const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
+      const totalWins = tradeResults.filter(t => t.profit >= 0).length;
+
+      // Account value
+      const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
+      const accountValue = settings.startingAccountValue + totalProfit + txTotal;
+
+      // Open P/L (for open trades using current price)
+      const openPL = openTrades.reduce((s, t) => {
+        if (!t.currentPrice) return s;
+        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
+        const costToOpen = t.openPrice * t.contractsShares * multiplier;
+        // For open trades, estimate P/L based on current price vs open
+        // Credit trades: profit = openPrice - currentPrice (want price to go down)
+        // Debit trades: profit = currentPrice - openPrice (want price to go up)
+        const currentValue = t.currentPrice * t.contractsShares * multiplier;
+        const pl = t.creditDebit === 'CREDIT'
+          ? costToOpen - currentValue - (t.commIn || 0)
+          : currentValue + costToOpen - (t.commIn || 0);
+        return s + pl;
+      }, 0);
+
+      // Allocated $
+      const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
+      const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
+
+      // Equity curve data points (by month)
+      const equityCurve: { date: string; value: number }[] = [];
+      const sortedTrades = [...closedTrades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+      let runningValue = settings.startingAccountValue;
+      for (const t of sortedTrades) {
+        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
+        const costToOpen = t.openPrice * t.contractsShares * multiplier;
+        const costToClose = (t.closePrice || 0) * t.contractsShares * multiplier;
+        const profit = costToOpen + costToClose - (t.commIn || 0) - (t.commOut || 0);
+        runningValue += profit;
+        equityCurve.push({ date: t.closeDate!, value: runningValue });
+      }
+
+      // Behavior tag counts
+      const behaviorCounts: Record<string, number> = {};
+      for (const t of closedTrades) {
+        if (t.behaviorTag) {
+          behaviorCounts[t.behaviorTag] = (behaviorCounts[t.behaviorTag] || 0) + 1;
+        }
+      }
+
+      res.json({
+        totalTrades: closedTrades.length,
+        openTrades: openTrades.length,
+        totalProfit,
+        totalWins,
+        winRate: closedTrades.length > 0 ? totalWins / closedTrades.length : 0,
+        accountValue,
+        openPL,
+        allocated,
+        allocatedPct,
+        byType,
+        equityCurve,
+        behaviorCounts,
+        settings,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get summary" });
+    }
+  });
+
+  // Account settings
+  app.get("/api/account/settings", async (_req, res) => {
+    try {
+      const settings = await storage.getAccountSettings();
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get settings" });
+    }
+  });
+
+  app.patch("/api/account/settings", async (req, res) => {
+    try {
+      const settings = await storage.updateAccountSettings(req.body);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to update settings" });
+    }
+  });
+
+  // Account transactions
+  app.get("/api/account/transactions", async (_req, res) => {
+    try {
+      const txs = await storage.getAccountTransactions();
+      res.json(txs);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to get transactions" });
+    }
+  });
+
+  app.post("/api/account/transactions", async (req, res) => {
+    try {
+      const tx = await storage.createAccountTransaction(req.body);
+      res.json(tx);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to create transaction" });
+    }
+  });
+
+  app.delete("/api/account/transactions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteAccountTransaction(id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to delete transaction" });
+    }
+  });
+
   return httpServer;
 }
