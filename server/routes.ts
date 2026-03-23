@@ -1254,24 +1254,122 @@ export async function registerRoutes(
   }
 
   // ============================================================
-  // Scanner Route
+  // Dynamic Stock Screener → fetch tickers from Yahoo screener API
   // ============================================================
 
-  app.get("/api/scanner", async (_req, res) => {
-    const SCAN_UNIVERSE = [
-      "AAPL","MSFT","GOOGL","AMZN","NVDA","META","TSLA","BRK-B","JPM","V",
-      "UNH","MA","HD","PG","JNJ","ABBV","MRK","AVGO","PEP","COST",
-      "ADBE","CRM","NFLX","AMD","QCOM","INTC","T","VZ","DIS","PYPL",
-      "BA","CAT","GS","AXP","MMM","IBM","ORCL","CSCO","ACN","TXN",
-      "NEE","XOM","CVX","COP","SLB","LMT","RTX","GE","HON","LOW"
+  async function screenStocks(options: {
+    minPrice?: number;
+    maxPrice?: number;
+    sector?: string;
+    minMarketCap?: number;
+    maxMarketCap?: number;
+    minVolume?: number;
+    count?: number;
+    sortBy?: string;
+  }): Promise<string[]> {
+    const {
+      minPrice = 5,
+      maxPrice = 10000,
+      sector,
+      minMarketCap = 500_000_000,
+      maxMarketCap,
+      minVolume = 500_000,
+      count = 100,
+      sortBy = "dayvolume",
+    } = options;
+
+    const operands: any[] = [
+      { operator: "or", operands: [{ operator: "EQ", operands: ["region", "us"] }] },
+      { operator: "gt", operands: ["dayvolume", minVolume] },
+      { operator: "gt", operands: ["intradaymarketcap", minMarketCap] },
+      { operator: "btwn", operands: ["intradayprice", minPrice, maxPrice] },
     ];
 
+    if (maxMarketCap) {
+      operands.push({ operator: "lt", operands: ["intradaymarketcap", maxMarketCap] });
+    }
+
+    if (sector && sector !== "all") {
+      operands.push({ operator: "EQ", operands: ["sector", sector] });
+    }
+
+    const body = JSON.stringify({
+      offset: 0,
+      size: Math.min(count, 250),
+      sortField: sortBy,
+      sortType: "DESC",
+      quoteType: "EQUITY",
+      query: { operator: "AND", operands },
+    });
+
+    const { crumb, cookie } = await getYahooCrumb();
+    const resp = await fetch(
+      `https://query2.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
+      {
+        method: "POST",
+        headers: { ...YF_BASE_HEADERS, "Content-Type": "application/json", Cookie: cookie },
+        body,
+      }
+    );
+
+    if (!resp.ok) {
+      console.log(`[screener] Error: ${resp.status}`);
+      return [];
+    }
+
+    const data = await resp.json();
+    const quotes = data?.finance?.result?.[0]?.quotes || [];
+    return quotes.map((q: any) => q.symbol as string).filter(Boolean);
+  }
+
+  // ============================================================
+  // Scanner Route (dynamic)
+  // ============================================================
+
+  app.get("/api/scanner", async (req, res) => {
+    // Parse filter params from query string
+    const minPrice = Number(req.query.minPrice) || 5;
+    const maxPrice = Number(req.query.maxPrice) || 10000;
+    const sector = (req.query.sector as string) || "all";
+    const marketCapTier = (req.query.marketCap as string) || "all";
+    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    const showAll = req.query.showAll === "true";
+
+    // Map market cap tier to min/max
+    let minMarketCap = 500_000_000;
+    let maxMarketCap: number | undefined;
+    switch (marketCapTier) {
+      case "mega": minMarketCap = 200_000_000_000; break;
+      case "large": minMarketCap = 10_000_000_000; maxMarketCap = 200_000_000_000; break;
+      case "mid": minMarketCap = 2_000_000_000; maxMarketCap = 10_000_000_000; break;
+      case "small": minMarketCap = 300_000_000; maxMarketCap = 2_000_000_000; break;
+      default: minMarketCap = 500_000_000; break;
+    }
+
     try {
+      console.log(`[scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}, count=${scanSize}`);
+
+      // Step 1: Get tickers from Yahoo screener
+      const tickers = await screenStocks({
+        minPrice,
+        maxPrice,
+        sector: sector === "all" ? undefined : sector,
+        minMarketCap,
+        maxMarketCap,
+        count: scanSize,
+      });
+
+      if (tickers.length === 0) {
+        return res.json({ scannedAt: new Date().toISOString(), totalScanned: 0, filters: { minPrice, maxPrice, sector, marketCapTier }, results: [] });
+      }
+
+      console.log(`[scanner] Found ${tickers.length} tickers, analyzing...`);
+
       const allResults: any[] = [];
 
       // Process in batches of 5
-      for (let b = 0; b < SCAN_UNIVERSE.length; b += 5) {
-        const batch = SCAN_UNIVERSE.slice(b, b + 5);
+      for (let b = 0; b < tickers.length; b += 5) {
+        const batch = tickers.slice(b, b + 5);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             const chart = await getChart(ticker, "6mo", "1d");
@@ -1516,16 +1614,15 @@ export async function registerRoutes(
         }
       }
 
-      // Sort by score descending, filter score >= 2
-      const qualified = allResults
-        .filter(r => r.score >= 2)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 10);
+      // Sort by score descending
+      const sorted = allResults.sort((a, b) => b.score - a.score);
+      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.score >= 2).slice(0, 20);
 
       res.json({
         scannedAt: new Date().toISOString(),
-        totalScanned: SCAN_UNIVERSE.length,
-        results: qualified,
+        totalScanned: tickers.length,
+        filters: { minPrice, maxPrice, sector, marketCapTier },
+        results,
       });
     } catch (error: any) {
       console.error("Scanner error:", error?.message || error);
