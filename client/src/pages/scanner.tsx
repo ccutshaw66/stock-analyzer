@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
+import { useTicker } from "@/contexts/TickerContext";
 import {
-  Radar, ArrowLeft, Search, TrendingUp, TrendingDown, Minus,
+  Radar, Search, TrendingUp, TrendingDown, Minus,
   Activity, BarChart3, Volume2, Zap, ChevronDown, ChevronUp,
   SlidersHorizontal, Eye, EyeOff
 } from "lucide-react";
@@ -116,7 +117,7 @@ function ConfirmationDetail({ c }: { c: ScanResult["confirmation"] }) {
   );
 }
 
-function ScanResultCard({ result, rank }: { result: ScanResult; rank: number }) {
+function ScanResultCard({ result, rank, onSelectTicker }: { result: ScanResult; rank: number; onSelectTicker: (ticker: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="bg-card border border-card-border rounded-lg p-4 hover:border-primary/30 transition-colors" data-testid={`scanner-result-${result.ticker}`}>
@@ -125,9 +126,13 @@ function ScanResultCard({ result, rank }: { result: ScanResult; rank: number }) 
           <span className="text-2xl font-bold text-muted-foreground/40 tabular-nums w-8">{rank}</span>
           <div>
             <div className="flex items-center gap-2">
-              <Link href={`/trade/${result.ticker}`}>
-                <span className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
-              </Link>
+              <span
+                onClick={() => onSelectTicker(result.ticker)}
+                className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors"
+                data-testid={`link-ticker-${result.ticker}`}
+              >
+                {result.ticker}
+              </span>
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5">
@@ -170,6 +175,8 @@ function ScanResultCard({ result, rank }: { result: ScanResult; rank: number }) 
 }
 
 export default function Scanner() {
+  const { setActiveTicker } = useTicker();
+  const [, navigate] = useLocation();
   const [sector, setSector] = useState("All Sectors");
   const [priceRange, setPriceRange] = useState("all");
   const [marketCap, setMarketCap] = useState("all");
@@ -198,174 +205,168 @@ export default function Scanner() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const handleSelectTicker = (ticker: string) => {
+    setActiveTicker(ticker);
+    navigate("/");
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-2">
-          <Link href="/"><span className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-colors"><ArrowLeft className="h-4 w-4" /> Back</span></Link>
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      {/* Filter Controls */}
+      <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+        <button
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
+        >
           <div className="flex items-center gap-2">
-            <Radar className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-bold text-foreground">Strategy Scanner</h1>
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            Scan Filters
           </div>
-        </div>
+          {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
 
-        {/* Filter Controls */}
-        <div className="bg-card border border-card-border rounded-lg overflow-hidden">
-          <button
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-primary" />
-              Scan Filters
-            </div>
-            {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-
-          {filtersOpen && (
-            <div className="px-4 pb-4 space-y-4 border-t border-card-border">
-              {/* Row 1: Sector + Market Cap */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Sector</label>
-                  <select
-                    value={sector}
-                    onChange={(e) => setSector(e.target.value)}
-                    className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
-                    data-testid="select-sector"
-                  >
-                    {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Market Cap</label>
-                  <select
-                    value={marketCap}
-                    onChange={(e) => setMarketCap(e.target.value)}
-                    className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
-                    data-testid="select-marketcap"
-                  >
-                    {MARKET_CAP_TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2: Price Range + Scan Size */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
-                  <select
-                    value={priceRange}
-                    onChange={(e) => setPriceRange(e.target.value)}
-                    className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
-                    data-testid="select-price"
-                  >
-                    {PRICE_RANGES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
-                  <div className="flex gap-2">
-                    {[50, 75, 100, 150].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => setScanCount(n)}
-                        className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3: Show all toggle + Scan button */}
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  onClick={() => setShowAll(!showAll)}
-                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="toggle-show-all"
+        {filtersOpen && (
+          <div className="px-4 pb-4 space-y-4 border-t border-card-border">
+            {/* Row 1: Sector + Market Cap */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Sector</label>
+                <select
+                  value={sector}
+                  onChange={(e) => setSector(e.target.value)}
+                  className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
+                  data-testid="select-sector"
                 >
-                  {showAll ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                  {showAll ? "Showing all results (buy + neutral + sell)" : "Showing buy-aligned only (score 2+)"}
-                </button>
-
-                <button
-                  onClick={() => refetch()}
-                  disabled={isFetching}
-                  className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-                  data-testid="button-scan"
+                  {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Market Cap</label>
+                <select
+                  value={marketCap}
+                  onChange={(e) => setMarketCap(e.target.value)}
+                  className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
+                  data-testid="select-marketcap"
                 >
-                  {isFetching ? (
-                    <><Radar className="h-4 w-4 animate-spin" />Scanning...</>
-                  ) : (
-                    <><Search className="h-4 w-4" />Scan {scanCount} Stocks</>
-                  )}
-                </button>
+                  {MARKET_CAP_TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Scan status */}
-        {data && !isFetching && (
-          <div className="text-center text-[11px] text-muted-foreground">
-            Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} results shown
-            {data.filters?.sector !== "all" && ` · ${data.filters.sector}`}
-            {data.filters?.marketCapTier !== "all" && ` · ${data.filters.marketCapTier} cap`}
-          </div>
-        )}
-
-        {/* Loading */}
-        {isFetching && (
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="bg-card border border-card-border rounded-lg p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded bg-muted skeleton-shimmer" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 w-24 rounded bg-muted skeleton-shimmer" />
-                    <div className="h-3 w-48 rounded bg-muted skeleton-shimmer" />
-                  </div>
-                  <div className="h-8 w-20 rounded bg-muted skeleton-shimmer" />
+            {/* Row 2: Price Range + Scan Size */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
+                <select
+                  value={priceRange}
+                  onChange={(e) => setPriceRange(e.target.value)}
+                  className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground"
+                  data-testid="select-price"
+                >
+                  {PRICE_RANGES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
+                <div className="flex gap-2">
+                  {[50, 75, 100, 150].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setScanCount(n)}
+                      className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
-            <p className="text-center text-sm text-muted-foreground animate-pulse">
-              Screening {scanCount} stocks across 3 strategies...
-            </p>
-          </div>
-        )}
-
-        {/* Results */}
-        {data && !isFetching && data.results.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                {showAll ? `All ${data.results.length} Results` : `Top ${data.results.length} Aligned`}
-              </h3>
-              <span className="text-xs text-muted-foreground">Ranked by strategy alignment</span>
             </div>
-            {data.results.map((result, idx) => (
-              <ScanResultCard key={result.ticker} result={result} rank={idx + 1} />
-            ))}
-          </div>
-        )}
 
-        {data && !isFetching && data.results.length === 0 && (
-          <div className="bg-card border border-card-border rounded-lg p-8 text-center">
-            <p className="text-muted-foreground">No stocks matched the current criteria.</p>
-            <p className="text-sm text-muted-foreground mt-1">Try widening your filters or scanning more stocks.</p>
-          </div>
-        )}
+            {/* Row 3: Show all toggle + Scan button */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                onClick={() => setShowAll(!showAll)}
+                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="toggle-show-all"
+              >
+                {showAll ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                {showAll ? "Showing all results (buy + neutral + sell)" : "Showing buy-aligned only (score 2+)"}
+              </button>
 
-        {!data && !isFetching && (
-          <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">Set your filters above and press "Scan" to find aligned stocks</p>
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                data-testid="button-scan"
+              >
+                {isFetching ? (
+                  <><Radar className="h-4 w-4 animate-spin" />Scanning...</>
+                ) : (
+                  <><Search className="h-4 w-4" />Scan {scanCount} Stocks</>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Scan status */}
+      {data && !isFetching && (
+        <div className="text-center text-[11px] text-muted-foreground">
+          Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} results shown
+          {data.filters?.sector !== "all" && ` · ${data.filters.sector}`}
+          {data.filters?.marketCapTier !== "all" && ` · ${data.filters.marketCapTier} cap`}
+        </div>
+      )}
+
+      {/* Loading */}
+      {isFetching && (
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-card border border-card-border rounded-lg p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-8 h-8 rounded bg-muted skeleton-shimmer" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-24 rounded bg-muted skeleton-shimmer" />
+                  <div className="h-3 w-48 rounded bg-muted skeleton-shimmer" />
+                </div>
+                <div className="h-8 w-20 rounded bg-muted skeleton-shimmer" />
+              </div>
+            </div>
+          ))}
+          <p className="text-center text-sm text-muted-foreground animate-pulse">
+            Screening {scanCount} stocks across 3 strategies...
+          </p>
+        </div>
+      )}
+
+      {/* Results */}
+      {data && !isFetching && data.results.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              {showAll ? `All ${data.results.length} Results` : `Top ${data.results.length} Aligned`}
+            </h3>
+            <span className="text-xs text-muted-foreground">Ranked by strategy alignment</span>
+          </div>
+          {data.results.map((result, idx) => (
+            <ScanResultCard key={result.ticker} result={result} rank={idx + 1} onSelectTicker={handleSelectTicker} />
+          ))}
+        </div>
+      )}
+
+      {data && !isFetching && data.results.length === 0 && (
+        <div className="bg-card border border-card-border rounded-lg p-8 text-center">
+          <p className="text-muted-foreground">No stocks matched the current criteria.</p>
+          <p className="text-sm text-muted-foreground mt-1">Try widening your filters or scanning more stocks.</p>
+        </div>
+      )}
+
+      {!data && !isFetching && (
+        <div className="text-center py-8 text-muted-foreground">
+          <p className="text-sm">Set your filters above and press "Scan" to find aligned stocks</p>
+        </div>
+      )}
     </div>
   );
 }
