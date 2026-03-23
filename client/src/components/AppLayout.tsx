@@ -480,6 +480,9 @@ function SidebarContent({
   handleAddCurrent,
   addMutation,
   onClose,
+  openTrades = [],
+  tradesOpen = true,
+  setTradesOpen = () => {},
 }: any) {
   return (
     <>
