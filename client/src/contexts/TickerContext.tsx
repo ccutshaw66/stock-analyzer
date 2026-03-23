@@ -48,6 +48,8 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
       return res.json();
     },
     enabled: !!activeTicker,
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
   });
 
   return (

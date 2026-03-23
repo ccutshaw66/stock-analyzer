@@ -175,10 +175,13 @@ export default function TradeAnalysis() {
       {isLoading && <LoadingState />}
 
       {/* Error */}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
-          <p className="text-red-400 font-medium">
-            {error.message || "Failed to load trade analysis."}
+      {error && !isLoading && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center" data-testid="error-message">
+          <p className="text-red-400 font-medium mb-2">Trade analysis unavailable</p>
+          <p className="text-sm text-muted-foreground">
+            {error.message?.includes("No chart data") || error.message?.includes("404")
+              ? "Chart data is temporarily unavailable. This can happen outside market hours or for tickers with limited history. Try again during market hours."
+              : error.message || "Failed to load trade analysis. Please try again."}
           </p>
         </div>
       )}

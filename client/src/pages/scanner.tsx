@@ -212,17 +212,30 @@ export default function Scanner() {
     marketCap, count: String(scanCount), showAll: String(showAll),
   }).toString();
 
-  const endpoint = scanMode === "amc" ? "/api/scanner/amc" : "/api/scanner";
-
-  const { data, isFetching, refetch } = useQuery<any>({
-    queryKey: [endpoint, queryParams],
+  // Separate queries so tab switching doesn't lose results
+  const { data: threeStratData, isFetching: threeStratFetching, refetch: threeStratRefetch } = useQuery<any>({
+    queryKey: ["/api/scanner", queryParams],
     queryFn: async () => {
-      const res = await apiRequest("GET", `${endpoint}?${queryParams}`);
+      const res = await apiRequest("GET", `/api/scanner?${queryParams}`);
       return res.json();
     },
     enabled: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
   });
+
+  const { data: amcData, isFetching: amcFetching, refetch: amcRefetch } = useQuery<any>({
+    queryKey: ["/api/scanner/amc", queryParams],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/scanner/amc?${queryParams}`);
+      return res.json();
+    },
+    enabled: false,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const data = scanMode === "amc" ? amcData : threeStratData;
+  const isFetching = scanMode === "amc" ? amcFetching : threeStratFetching;
+  const refetch = scanMode === "amc" ? amcRefetch : threeStratRefetch;
 
   const handleTickerClick = (ticker: string) => {
     setActiveTicker(ticker);
