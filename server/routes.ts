@@ -1038,26 +1038,93 @@ export async function registerRoutes(
       const dtsIsBuy = dtsTopSignal === "ENTER";
       const dtsIsSell = dtsTopSignal === "SELL";
 
+      // ---- Strategy 3: AMC (Adaptive Momentum Confluence) ----
+      // VAMI computation
+      const vamiArr: number[] = new Array(closes.length).fill(0);
+      const avgVol20 = computeSMA(volumes.map(v => v || 0), 20);
+      for (let i = 1; i < closes.length; i++) {
+        if (closes[i-1] === 0 || isNaN(avgVol20[i]) || avgVol20[i] === 0) continue;
+        const ret = (closes[i] - closes[i-1]) / closes[i-1] * 100;
+        const vr = Math.min(2.5, Math.max(0.5, volumes[i] / avgVol20[i]));
+        const wr = ret * vr;
+        const k = 2 / (12 + 1);
+        vamiArr[i] = wr * k + vamiArr[i-1] * (1 - k);
+      }
+      const vamiScaled = vamiArr.map(v => v * 8);
+
+      // AMC scoring for current bar
+      const li = lastIdx;
+      let amcScore = 0;
+      if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li-1]||0)) amcScore++;
+      if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++;
+      if (!isNaN(ema9[li]) && !isNaN(ema50[li]) && closes[li] > ema9[li] && ema9[li] > ema50[li]) amcScore++;
+      if (vamiScaled[li] > 0 && vamiScaled[li] > vamiScaled[li-1]) amcScore++;
+      // ADX not available in daily chart easily, use trend proxy
+      if (!isNaN(ema9[li]) && !isNaN(ema21[li]) && Math.abs(ema9[li] - ema21[li]) / closes[li] * 100 > 0.5) amcScore++;
+
+      const amcMomentumEntry = amcScore >= 4 && closes[li] > closes[li-1];
+      const amcReversionEntry = !isNaN(rsi14[li]) && rsi14[li] < 30 && !isNaN(sma200Daily[li]) && closes[li] > sma200Daily[li] * 0.95 && closes[li] > closes[li-1] && vamiScaled[li] > vamiScaled[li-1];
+
+      let amcSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
+      let amcMode: "momentum" | "reversion" | "flat" = "flat";
+      if (amcMomentumEntry) { amcSignal = "ENTER"; amcMode = "momentum"; }
+      else if (amcReversionEntry) { amcSignal = "ENTER"; amcMode = "reversion"; }
+      // Exit signals for current bar
+      if (!isNaN(rsi14[li]) && rsi14[li] > 75) { amcSignal = "SELL"; }
+      if (!isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li-1]) && histogram[li-1] >= 0) { amcSignal = "SELL"; }
+
+      let amcDetail = `Score: ${amcScore}/5`;
+      if (amcSignal === "ENTER") amcDetail += ` — ${amcMode} entry triggered`;
+      else if (amcSignal === "SELL") amcDetail += " — exit conditions met";
+      else amcDetail += " — waiting for 4+ conditions";
+
+      // AMC recent signals
+      const amcRecent: {date: string; signal: string; price: number}[] = [];
+      for (let i = lastIdx; i >= 60 && amcRecent.length < 10; i--) {
+        let sc = 0;
+        if (!isNaN(histogram[i]) && histogram[i] > 0 && histogram[i] > (histogram[i-1]||0)) sc++;
+        if (!isNaN(rsi14[i]) && rsi14[i] >= 45 && rsi14[i] <= 65) sc++;
+        if (!isNaN(ema9[i]) && !isNaN(ema50[i]) && closes[i] > ema9[i] && ema9[i] > ema50[i]) sc++;
+        if (vamiScaled[i] > 0 && vamiScaled[i] > vamiScaled[i-1]) sc++;
+        if (!isNaN(ema9[i]) && !isNaN(ema21[i]) && Math.abs(ema9[i] - ema21[i]) / closes[i] * 100 > 0.5) sc++;
+        const mEntry = sc >= 4 && closes[i] > closes[i-1];
+        const rEntry = !isNaN(rsi14[i]) && rsi14[i] < 30 && closes[i] > closes[i-1];
+        const exitSig = (!isNaN(rsi14[i]) && rsi14[i] > 75) || (!isNaN(histogram[i]) && histogram[i] < 0 && !isNaN(histogram[i-1]) && histogram[i-1] >= 0);
+        if (mEntry || rEntry || exitSig) {
+          amcRecent.unshift({
+            date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+            signal: mEntry ? "BUY (M)" : rEntry ? "BUY (R)" : "SELL",
+            price: Number(closes[i].toFixed(2)),
+          });
+        }
+      }
+
+      // Combined signal (now includes AMC)
+      const amcIsBuy = amcSignal === "ENTER";
+      const amcIsSell = amcSignal === "SELL";
+      let buyVotes = (bbtcIsBuy ? 1 : 0) + (dtsIsBuy ? 1 : 0) + (amcIsBuy ? 1 : 0);
+      let sellVotes = (bbtcIsSell ? 1 : 0) + (dtsIsSell ? 1 : 0) + (amcIsSell ? 1 : 0);
+
       let combinedSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
       let confidence: "Strong" | "Moderate" | "Weak" = "Moderate";
       let reasoning = "";
 
-      if (bbtcIsBuy && dtsIsBuy) {
-        combinedSignal = "ENTER"; confidence = "Strong"; reasoning = "Both strategies agree on bullish entry";
-      } else if (bbtcIsSell && dtsIsSell) {
-        combinedSignal = "SELL"; confidence = "Strong"; reasoning = "Both strategies agree on exit/sell";
-      } else if (bbtcIsBuy && !dtsIsSell) {
-        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = "BBTC signals entry, DTS neutral";
-      } else if (dtsIsBuy && !bbtcIsSell) {
-        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = "DTS signals entry, BBTC neutral";
-      } else if (bbtcIsSell && !dtsIsBuy) {
-        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = "BBTC signals exit, DTS neutral";
-      } else if (dtsIsSell && !bbtcIsBuy) {
-        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = "DTS signals exit, BBTC neutral";
-      } else if ((bbtcIsBuy && dtsIsSell) || (bbtcIsSell && dtsIsBuy)) {
+      if (buyVotes >= 3) {
+        combinedSignal = "ENTER"; confidence = "Strong"; reasoning = "All three strategies agree on entry";
+      } else if (sellVotes >= 3) {
+        combinedSignal = "SELL"; confidence = "Strong"; reasoning = "All three strategies agree on exit";
+      } else if (buyVotes === 2 && sellVotes === 0) {
+        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = `${[bbtcIsBuy&&"BBTC",dtsIsBuy&&"DTS",amcIsBuy&&"AMC"].filter(Boolean).join(" + ")} signal entry`;
+      } else if (sellVotes === 2 && buyVotes === 0) {
+        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = `${[bbtcIsSell&&"BBTC",dtsIsSell&&"DTS",amcIsSell&&"AMC"].filter(Boolean).join(" + ")} signal exit`;
+      } else if (buyVotes === 1 && sellVotes === 0) {
+        combinedSignal = "ENTER"; confidence = "Weak"; reasoning = `Only ${[bbtcIsBuy&&"BBTC",dtsIsBuy&&"DTS",amcIsBuy&&"AMC"].filter(Boolean)[0]} signals entry`;
+      } else if (sellVotes === 1 && buyVotes === 0) {
+        combinedSignal = "SELL"; confidence = "Weak"; reasoning = `Only ${[bbtcIsSell&&"BBTC",dtsIsSell&&"DTS",amcIsSell&&"AMC"].filter(Boolean)[0]} signals exit`;
+      } else if (buyVotes > 0 && sellVotes > 0) {
         combinedSignal = "HOLD"; confidence = "Weak"; reasoning = "Strategies conflict — wait for alignment";
       } else {
-        combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from either strategy";
+        combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from any strategy";
       }
 
       // Chart data (subsample for frontend — every 3rd bar for ~80-90 points)
@@ -1116,10 +1183,19 @@ export async function registerRoutes(
           highestHigh15: Number(highest15.toFixed(2)),
           recentSignals: dtsRecent,
         },
+        amc: {
+          signal: amcSignal,
+          signalDetail: amcDetail,
+          mode: amcMode,
+          score: amcScore,
+          vami: Number(vamiScaled[lastIdx]?.toFixed(2) || 0),
+          recentSignals: amcRecent,
+        },
         combined: {
           signal: combinedSignal,
           confidence,
           reasoning,
+          votes: { buy: buyVotes, sell: sellVotes },
         },
         chartData: chartDataArr,
       });

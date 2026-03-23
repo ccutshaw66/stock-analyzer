@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ArrowUpCircle,
   ArrowDownCircle,
+  Zap,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -223,7 +224,7 @@ export default function TradeAnalysis() {
           </div>
 
           {/* Strategy Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* BBTC EMA Pyramid Card */}
             <Card data-testid="card-bbtc">
               <CardHeader className="pb-3">
@@ -373,6 +374,75 @@ export default function TradeAnalysis() {
                   </div>
                   <RecentSignalsList signals={data.dts.recentSignals} />
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* AMC Strategy Card */}
+            <Card data-testid="card-amc">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-purple-400" />
+                    <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${tradeData.amc?.signal === "ENTER" ? "bg-green-500/80 text-white" : tradeData.amc?.signal === "SELL" ? "bg-red-500/80 text-white" : "bg-yellow-500/20 text-yellow-400"}`}>
+                    {tradeData.amc?.signal || "HOLD"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{tradeData.amc?.signalDetail || "Adaptive Momentum Confluence"}</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Score + Mode */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Score</p>
+                    <p className={`text-lg font-bold tabular-nums ${(tradeData.amc?.score || 0) >= 4 ? "text-green-400" : (tradeData.amc?.score || 0) >= 3 ? "text-yellow-400" : "text-muted-foreground"}`}>
+                      {tradeData.amc?.score || 0}<span className="text-xs text-muted-foreground">/5</span>
+                    </p>
+                  </div>
+                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Mode</p>
+                    <p className={`text-sm font-bold ${tradeData.amc?.mode === "momentum" ? "text-green-400" : tradeData.amc?.mode === "reversion" ? "text-cyan-400" : "text-muted-foreground"}`}>
+                      {tradeData.amc?.mode === "momentum" ? "Momentum" : tradeData.amc?.mode === "reversion" ? "Reversion" : "Flat"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* VAMI Value */}
+                <div className="bg-muted/30 rounded-md p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-muted-foreground uppercase">VAMI (Custom)</p>
+                    <span className={`text-xs ${(tradeData.amc?.vami || 0) > 0 ? "text-green-400" : (tradeData.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                      {(tradeData.amc?.vami || 0) > 0 ? "Bullish" : (tradeData.amc?.vami || 0) < 0 ? "Bearish" : "Neutral"}
+                    </span>
+                  </div>
+                  <p className={`text-xl font-bold tabular-nums ${(tradeData.amc?.vami || 0) > 0 ? "text-green-400" : (tradeData.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                    {(tradeData.amc?.vami || 0).toFixed(2)}
+                  </p>
+                  {/* VAMI bar */}
+                  <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${(tradeData.amc?.vami || 0) > 0 ? "bg-green-500" : "bg-red-500"}`}
+                      style={{ width: `${Math.min(100, Math.abs(tradeData.amc?.vami || 0) * 2)}%`, marginLeft: (tradeData.amc?.vami || 0) >= 0 ? "50%" : `${50 - Math.min(50, Math.abs(tradeData.amc?.vami || 0) * 2)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Recent Signals */}
+                {tradeData.amc?.recentSignals?.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Signals</h4>
+                    <div className="space-y-1">
+                      {tradeData.amc.recentSignals.slice(-5).map((s: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground font-mono">{s.date}</span>
+                          <span className={s.signal.includes("BUY") ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>{s.signal}</span>
+                          <span className="tabular-nums text-muted-foreground">${s.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
