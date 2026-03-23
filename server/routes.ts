@@ -1609,7 +1609,7 @@ export async function registerRoutes(
         }
 
         // Delay between batches to avoid overwhelming Yahoo Finance
-        if (b + 5 < SCAN_UNIVERSE.length) {
+        if (b + 5 < tickers.length) {
           await new Promise(r => setTimeout(r, 500));
         }
       }
