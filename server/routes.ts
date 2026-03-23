@@ -86,7 +86,7 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
   return { crumb, cookie };
 }
 
-async function yahooFetch(url: string, retries = 2): Promise<any> {
+async function yahooFetch(url: string, retries = 3): Promise<any> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const { crumb, cookie } = await getYahooCrumb();
@@ -98,32 +98,34 @@ async function yahooFetch(url: string, retries = 2): Promise<any> {
         headers: { ...YF_BASE_HEADERS, Cookie: cookie },
       });
 
-      if (resp.status === 401 || resp.status === 403 || resp.status === 404) {
-        // Crumb likely expired or bad — clear cache and retry
-        console.log(`[yahoo] Got ${resp.status}, clearing crumb and retrying...`);
-        _crumb = null;
-        _cookie = null;
-        _crumbTimestamp = 0;
-        if (attempt < retries) {
-          await new Promise(r => setTimeout(r, 500));
-          continue;
-        }
+      if (resp.status === 401 || resp.status === 403) {
+        // Auth issue — clear crumb and retry
+        console.log(`[yahoo] Auth error ${resp.status}, refreshing crumb...`);
+        _crumb = null; _cookie = null; _crumbTimestamp = 0;
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
         throw new Error(`Yahoo Finance returned ${resp.status}`);
       }
 
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '');
-        console.log(`[yahoo] Error response: ${resp.status} ${errText.substring(0, 200)}`);
-        if (attempt < retries) {
+        console.log(`[yahoo] Error ${resp.status}: ${errText.substring(0, 150)}`);
+        // If the error body suggests auth/crumb issue, retry with fresh crumb
+        if (errText.includes('Unauthorized') || errText.includes('crumb')) {
           _crumb = null; _cookie = null; _crumbTimestamp = 0;
-          await new Promise(r => setTimeout(r, 500));
-          continue;
+          if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
         }
-        throw new Error(`Yahoo Finance API error: ${resp.status} ${resp.statusText}`);
+        throw new Error(`Yahoo Finance API error: ${resp.status}`);
       }
 
       const json = await resp.json();
-      console.log(`[yahoo] Response status: ${resp.status}, has data: ${!!json}`);
+      
+      // Check if quoteSummary returned null result (bad crumb returns 200 but empty result)
+      if (json?.quoteSummary?.result === null && json?.quoteSummary?.error) {
+        console.log(`[yahoo] quoteSummary returned error: ${JSON.stringify(json.quoteSummary.error)}`);
+        _crumb = null; _cookie = null; _crumbTimestamp = 0;
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
+      }
+      
       return json;
     } catch (err: any) {
       if (attempt < retries) {
