@@ -1750,6 +1750,168 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // AMC Scanner Route — scores stocks using AMC strategy only
+  // ============================================================
+
+  app.get("/api/scanner/amc", async (req, res) => {
+    const minPrice = Number(req.query.minPrice) || 5;
+    const maxPrice = Number(req.query.maxPrice) || 10000;
+    const sector = (req.query.sector as string) || "all";
+    const marketCapTier = (req.query.marketCap as string) || "all";
+    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    const showAll = req.query.showAll === "true";
+
+    let minMarketCap = 500_000_000;
+    let maxMarketCap: number | undefined;
+    switch (marketCapTier) {
+      case "mega": minMarketCap = 200_000_000_000; break;
+      case "large": minMarketCap = 10_000_000_000; maxMarketCap = 200_000_000_000; break;
+      case "mid": minMarketCap = 2_000_000_000; maxMarketCap = 10_000_000_000; break;
+      case "small": minMarketCap = 300_000_000; maxMarketCap = 2_000_000_000; break;
+      default: minMarketCap = 500_000_000; break;
+    }
+
+    try {
+      console.log(`[amc-scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}`);
+
+      const tickers = await screenStocks({
+        minPrice, maxPrice,
+        sector: sector === "all" ? undefined : sector,
+        minMarketCap, maxMarketCap,
+        count: scanSize,
+      });
+
+      if (tickers.length === 0) {
+        return res.json({ scannedAt: new Date().toISOString(), totalScanned: 0, filters: { minPrice, maxPrice, sector, marketCapTier }, results: [] });
+      }
+
+      console.log(`[amc-scanner] Found ${tickers.length} tickers, running AMC analysis...`);
+
+      const allResults: any[] = [];
+
+      for (let b = 0; b < tickers.length; b += 5) {
+        const batch = tickers.slice(b, b + 5);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (ticker) => {
+            const chart = await getChart(ticker, "6mo", "1d");
+            if (!chart || !chart.timestamp) return null;
+
+            const quoteData = chart.indicators?.quote?.[0] || {};
+            const closes: number[] = quoteData.close || [];
+            const highs: number[] = quoteData.high || [];
+            const lows: number[] = quoteData.low || [];
+            const volumes: number[] = quoteData.volume || [];
+
+            for (let i = 0; i < closes.length; i++) {
+              if (closes[i] == null && i > 0) closes[i] = closes[i - 1];
+              if (highs[i] == null && i > 0) highs[i] = highs[i - 1];
+              if (lows[i] == null && i > 0) lows[i] = lows[i - 1];
+              if (volumes[i] == null) volumes[i] = 0;
+            }
+
+            if (closes.length < 60) return null;
+            const lastIdx = closes.length - 1;
+            const currentPrice = closes[lastIdx];
+
+            // Compute AMC indicators
+            const { macdLine, signalLine: macdSig, histogram } = computeMACD(closes);
+            const rsi14 = computeRSI(closes, 14);
+            const ema20 = computeEMA(closes, 20);
+            const ema50 = computeEMA(closes, 50);
+            const { lower: bbLo, middle: bbMid } = computeBollingerBands(closes);
+
+            // VAMI
+            const vamiArr: number[] = new Array(closes.length).fill(0);
+            const avgV = computeSMA(volumes.map(v => v || 0), 20);
+            for (let i = 1; i < closes.length; i++) {
+              if (closes[i-1] === 0 || isNaN(avgV[i]) || avgV[i] === 0) continue;
+              const ret = (closes[i] - closes[i-1]) / closes[i-1] * 100;
+              const vr = Math.min(2.5, Math.max(0.5, volumes[i] / avgV[i]));
+              const k = 2 / (12 + 1);
+              vamiArr[i] = ret * vr * k + vamiArr[i-1] * (1 - k);
+            }
+            const vami = vamiArr.map(v => v * 8);
+
+            // AMC Score (0-5)
+            let amcScore = 0;
+            const li = lastIdx;
+            if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li-1]||0)) amcScore++; // MACD accel
+            if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++; // RSI sweet spot
+            if (!isNaN(ema20[li]) && !isNaN(ema50[li]) && closes[li] > ema20[li] && ema20[li] > ema50[li]) amcScore++; // Trend
+            if (vami[li] > 0 && vami[li] > vami[li-1]) amcScore++; // VAMI positive & rising
+            if (!isNaN(ema20[li]) && !isNaN(ema50[li]) && Math.abs(ema20[li] - ema50[li]) / closes[li] * 100 > 0.5) amcScore++; // Trend strength
+
+            const greenClose = closes[li] > closes[li-1];
+            const momentumEntry = amcScore >= 4 && greenClose;
+            const reversionEntry = !isNaN(rsi14[li]) && rsi14[li] < 30 && !isNaN(bbLo[li]) && closes[li] <= bbLo[li] * 1.01 && greenClose && vami[li] > vami[li-1];
+
+            // Exit check
+            const rsiExit = !isNaN(rsi14[li]) && rsi14[li] > 75;
+            const macdFlip = !isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li-1]) && histogram[li-1] >= 0;
+
+            let signal: "ENTER" | "HOLD" | "SELL" = "HOLD";
+            let mode: "momentum" | "reversion" | "flat" = "flat";
+            if (momentumEntry) { signal = "ENTER"; mode = "momentum"; }
+            else if (reversionEntry) { signal = "ENTER"; mode = "reversion"; }
+            if (rsiExit || macdFlip) { signal = "SELL"; }
+
+            const vamiVal = Number(vami[li]?.toFixed(2) || 0);
+            const rsiVal = isNaN(rsi14[li]) ? null : Number(rsi14[li].toFixed(1));
+
+            // Trend direction
+            const trend: "UP" | "DOWN" | "SIDEWAYS" = 
+              !isNaN(ema20[li]) && !isNaN(ema50[li])
+                ? (closes[li] > ema20[li] && ema20[li] > ema50[li] ? "UP"
+                   : closes[li] < ema20[li] && ema20[li] < ema50[li] ? "DOWN" : "SIDEWAYS")
+                : "SIDEWAYS";
+
+            const label = amcScore >= 5 ? "Strong Entry" : amcScore >= 4 ? "Entry" : amcScore >= 3 ? "Near Entry" : null;
+
+            return {
+              ticker,
+              price: Number(currentPrice.toFixed(2)),
+              amcScore,
+              signal,
+              mode,
+              trend,
+              vami: vamiVal,
+              rsi: rsiVal,
+              macd: !isNaN(histogram[li]) ? (histogram[li] > 0 ? "bullish" : "bearish") : "neutral",
+              macdAccel: !isNaN(histogram[li]) && !isNaN(histogram[li-1]) && histogram[li] > histogram[li-1],
+              greenClose,
+              label,
+            };
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === "fulfilled" && result.value) {
+            allResults.push(result.value);
+          }
+        }
+
+        if (b + 5 < tickers.length) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      // Sort by AMC score descending, then by VAMI
+      const sorted = allResults.sort((a, b) => b.amcScore - a.amcScore || b.vami - a.vami);
+      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.amcScore >= 3).slice(0, 20);
+
+      res.json({
+        scannedAt: new Date().toISOString(),
+        totalScanned: tickers.length,
+        filters: { minPrice, maxPrice, sector, marketCapTier },
+        results,
+      });
+    } catch (error: any) {
+      console.error("AMC Scanner error:", error?.message || error);
+      res.status(500).json({ error: `AMC Scanner failed: ${error?.message || "Unknown error."}` });
+    }
+  });
+
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {
