@@ -16,49 +16,98 @@ let _crumb: string | null = null;
 let _cookie: string | null = null;
 let _crumbTimestamp = 0;
 
+function extractCookies(r: Response): string {
+  const parts: string[] = [];
+  if (typeof r.headers.getSetCookie === 'function') {
+    for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
+  }
+  if (parts.length === 0) {
+    const raw = r.headers.get('set-cookie');
+    if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
+  }
+  return parts.filter(Boolean).join("; ");
+}
+
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+];
+
 async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
-  // Cache crumb for 10 minutes (shorter = more reliable on cloud servers)
-  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 10 * 60 * 1000) {
+  // Cache crumb for 5 minutes
+  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 5 * 60 * 1000) {
     return { crumb: _crumb, cookie: _cookie };
   }
 
   console.log("[yahoo] Fetching new crumb...");
+  const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+  const headers: Record<string, string> = {
+    ...YF_BASE_HEADERS,
+    "User-Agent": ua,
+  };
 
-  // Try multiple cookie sources to maximize compatibility across Node versions
   let cookie = "";
 
-  // Method 1: fc.yahoo.com (fastest)
+  // Method 1: fc.yahoo.com with consent cookie pre-set
   try {
-    const r = await fetch("https://fc.yahoo.com/", { headers: YF_BASE_HEADERS, redirect: "manual" });
-    const parts: string[] = [];
-    if (typeof r.headers.getSetCookie === 'function') {
-      for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
-    }
-    if (parts.length === 0) {
-      const raw = r.headers.get('set-cookie');
-      if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
-    }
-    cookie = parts.filter(Boolean).join("; ");
+    const r = await fetch("https://fc.yahoo.com/", {
+      headers: { ...headers, Cookie: "A3=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S" },
+      redirect: "manual",
+    });
+    cookie = extractCookies(r);
+    if (cookie) console.log("[yahoo] fc.yahoo.com: cookie obtained");
   } catch (e) {
     console.log("[yahoo] fc.yahoo.com failed:", (e as Error).message);
   }
 
-  // Method 2: Fallback to finance.yahoo.com
+  // Method 2: consent.yahoo.com (bypasses geo blocks)
   if (!cookie) {
     try {
-      const r = await fetch("https://finance.yahoo.com/quote/AAPL", { headers: YF_BASE_HEADERS, redirect: "follow" });
-      const parts: string[] = [];
-      if (typeof r.headers.getSetCookie === 'function') {
-        for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
-      }
-      if (parts.length === 0) {
-        const raw = r.headers.get('set-cookie');
-        if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
-      }
-      cookie = parts.filter(Boolean).join("; ");
+      const r = await fetch("https://consent.yahoo.com/v2/collectConsent?sessionId=1", {
+        headers,
+        redirect: "manual",
+      });
+      cookie = extractCookies(r);
+      if (cookie) console.log("[yahoo] consent.yahoo.com: cookie obtained");
+    } catch (e) {
+      console.log("[yahoo] consent.yahoo.com failed:", (e as Error).message);
+    }
+  }
+
+  // Method 3: login.yahoo.com
+  if (!cookie) {
+    try {
+      const r = await fetch("https://login.yahoo.com/", {
+        headers,
+        redirect: "manual",
+      });
+      cookie = extractCookies(r);
+      if (cookie) console.log("[yahoo] login.yahoo.com: cookie obtained");
+    } catch (e) {
+      console.log("[yahoo] login.yahoo.com failed:", (e as Error).message);
+    }
+  }
+
+  // Method 4: finance.yahoo.com direct
+  if (!cookie) {
+    try {
+      const r = await fetch("https://finance.yahoo.com/", {
+        headers,
+        redirect: "follow",
+      });
+      cookie = extractCookies(r);
+      if (cookie) console.log("[yahoo] finance.yahoo.com: cookie obtained");
     } catch (e) {
       console.log("[yahoo] finance.yahoo.com failed:", (e as Error).message);
     }
+  }
+
+  // Method 5: Synthetic cookie (last resort — works for some endpoints)
+  if (!cookie) {
+    cookie = "A1=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S; A3=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S";
+    console.log("[yahoo] Using synthetic cookie as last resort");
   }
 
   console.log("[yahoo] Cookie:", cookie ? "obtained" : "MISSING");
@@ -67,20 +116,20 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
     throw new Error("Failed to obtain Yahoo Finance cookie");
   }
 
-  // Get crumb - try query2 first, fall back to query1
-  let crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-    headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
+  // Try query1 first (better for cloud servers), then query2
+  let crumbResp = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+    headers: { ...headers, Accept: "text/plain", Cookie: cookie },
   });
   if (crumbResp.status !== 200) {
-    console.log(`[yahoo] query2 crumb failed (${crumbResp.status}), trying query1...`);
-    crumbResp = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-      headers: { ...YF_BASE_HEADERS, Accept: "text/plain", Cookie: cookie },
+    console.log(`[yahoo] query1 crumb failed (${crumbResp.status}), trying query2...`);
+    crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { ...headers, Accept: "text/plain", Cookie: cookie },
     });
   }
   const crumb = await crumbResp.text();
   console.log("[yahoo] Crumb:", crumbResp.status, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
 
-  // Validate crumb is actually a crumb (short alphanumeric string, not HTML or JSON)
+  // Validate crumb
   if (!crumb || crumb.length > 50 || crumb.includes("<") || crumb.includes("{") || crumbResp.status !== 200) {
     throw new Error(`Failed to obtain crumb (status ${crumbResp.status})`);
   }
