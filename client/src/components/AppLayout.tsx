@@ -705,84 +705,89 @@ function SidebarContent({
           )}
         </div>
 
-        {/* Active Trades */}
-        <div className="px-2 pt-1">
-          <button
-            onClick={() => setTradesOpen(!tradesOpen)}
-            className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="toggle-trades"
-          >
-            {expanded ? (
-              <>
-                <span className="flex items-center gap-2">
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  Active Trades
-                  {openTrades.length > 0 && (
-                    <span className="text-[10px] bg-yellow-500/15 text-yellow-400 px-1.5 py-0.5 rounded-full tabular-nums">
-                      {openTrades.length}
-                    </span>
-                  )}
-                </span>
-                {tradesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </>
-            ) : (
-              <ClipboardList className="h-4 w-4 mx-auto" />
-            )}
-          </button>
-          {tradesOpen && expanded && (
-            <div className="space-y-0.5 mt-1">
-              {openTrades.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-3">
-                  No open trades
-                </p>
-              ) : (
-                openTrades.slice(0, 10).map((t: any) => {
-                  const mult = t.tradeCategory === 'Option' ? 100 : 1;
-                  let pl = 0;
-                  if (t.currentPrice) {
-                    const costOpen = t.openPrice * t.contractsShares * mult;
-                    const curVal = t.currentPrice * t.contractsShares * mult;
-                    pl = t.creditDebit === 'CREDIT'
-                      ? costOpen - curVal - (t.commIn || 0)
-                      : curVal + costOpen - (t.commIn || 0);
-                  }
-                  const isUp = pl >= 0;
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => handleSelectTicker(t.symbol)}
-                      className="flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
-                          <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-purple-500/15 text-purple-400">{t.tradeType}</span>
+        {/* Active Options */}
+        {(() => {
+          const optionTrades = openTrades.filter((t: any) => t.tradeCategory === 'Option');
+          const stockTrades = openTrades.filter((t: any) => t.tradeCategory === 'Stock');
+          const renderTrade = (t: any) => {
+            let pl = 0;
+            if (t.currentPrice && t.tradeCategory === 'Stock') {
+              const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
+              pl = isShort
+                ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
+                : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
+            }
+            const isUp = pl >= 0;
+            return (
+              <div key={t.id} onClick={() => handleSelectTicker(t.symbol)}
+                className="flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
+                    <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  {t.currentPrice ? (
+                    t.tradeCategory === 'Stock' ? (
+                      <>
+                        <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                          {isUp ? '+' : ''}{pl.toFixed(0)}
                         </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        {t.currentPrice ? (
-                          <>
-                            <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                              {isUp ? '+' : ''}{pl.toFixed(0)}
-                            </div>
-                            <div className="text-[9px] text-muted-foreground tabular-nums">
-                              ${t.currentPrice.toFixed(2)}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">—</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
+                        <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+                      </>
+                    ) : (
+                      <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+                    )
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          };
+          return (
+            <>
+              <div className="px-2 pt-1">
+                <button onClick={() => setTradesOpen(!tradesOpen)}
+                  className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors" data-testid="toggle-trades">
+                  {expanded ? (
+                    <><span className="flex items-center gap-2">
+                      <ClipboardList className="h-3.5 w-3.5" />Active Options
+                      {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
+                    </span>{tradesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</>
+                  ) : (<ClipboardList className="h-4 w-4 mx-auto" />)}
+                </button>
+                {tradesOpen && expanded && (
+                  <div className="space-y-0.5 mt-1">
+                    {optionTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open options</p>
+                    : optionTrades.slice(0, 10).map(renderTrade)}
+                  </div>
+                )}
+              </div>
+              <div className="px-2 pt-1">
+                <button onClick={() => setTradesOpen(!tradesOpen)}
+                  className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
+                  {expanded ? (
+                    <><span className="flex items-center gap-2">
+                      <TrendingUp className="h-3.5 w-3.5" />Active Stocks
+                      {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
+                    </span>{tradesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</>
+                  ) : (<TrendingUp className="h-4 w-4 mx-auto" />)}
+                </button>
+                {tradesOpen && expanded && (
+                  <div className="space-y-0.5 mt-1">
+                    {stockTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open stocks</p>
+                    : stockTrades.slice(0, 10).map(renderTrade)}
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Add to list buttons (bottom) */}

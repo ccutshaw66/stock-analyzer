@@ -6,60 +6,34 @@ import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
-  CheckCircle2, XCircle, Loader2, Filter, ArrowUpDown
+  CheckCircle2, Loader2, History, Clock
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Trade {
-  id: number;
-  pilotOrAdd: string;
-  tradeDate: string;
-  expiration: string | null;
-  contractsShares: number;
-  symbol: string;
-  currentPrice: number | null;
-  target: number | null;
-  tradeType: string;
-  tradeCategory: string;
-  strikes: string | null;
-  openPrice: number;
-  commIn: number | null;
-  allocation: number | null;
-  maxProfit: number | null;
-  closeDate: string | null;
-  closePrice: number | null;
-  commOut: number | null;
-  spreadWidth: number | null;
-  creditDebit: string | null;
-  tradePlanNotes: string | null;
-  behaviorTag: string | null;
-  createdAt: string;
+  id: number; pilotOrAdd: string; tradeDate: string; expiration: string | null;
+  contractsShares: number; symbol: string; currentPrice: number | null;
+  target: number | null; tradeType: string; tradeCategory: string;
+  strikes: string | null; openPrice: number; commIn: number | null;
+  allocation: number | null; maxProfit: number | null; closeDate: string | null;
+  closePrice: number | null; commOut: number | null; spreadWidth: number | null;
+  creditDebit: string | null; tradePlanNotes: string | null;
+  behaviorTag: string | null; createdAt: string;
 }
 
 interface Summary {
-  totalTrades: number;
-  openTrades: number;
-  totalProfit: number;
-  totalWins: number;
-  winRate: number;
-  accountValue: number;
-  openPL: number;
-  allocated: number;
-  allocatedPct: number;
+  totalTrades: number; openTrades: number; totalProfit: number;
+  totalWins: number; winRate: number; accountValue: number; openPL: number;
+  allocated: number; allocatedPct: number;
   byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }>;
   equityCurve: { date: string; value: number }[];
-  behaviorCounts: Record<string, number>;
-  settings: any;
+  behaviorCounts: Record<string, number>; settings: any;
 }
 
 interface AccountSettings {
-  id: number;
-  startingAccountValue: number;
-  commPerSharesTrade: number;
-  commPerOptionContract: number;
-  maxAllocationPerTrade: number;
-  totalAllocatedLimit: number;
+  id: number; startingAccountValue: number; commPerSharesTrade: number;
+  commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
 }
 
 type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
@@ -76,15 +50,12 @@ function computeTradeProfit(t: Trade): number {
   return open + close - (t.commIn || 0) - (t.commOut || 0);
 }
 
-function computeOpenPL(t: Trade): number {
+function computeStockPL(t: Trade): number {
   if (!t.currentPrice || t.closeDate) return 0;
-  const mult = t.tradeCategory === "Option" ? 100 : 1;
-  const costOpen = t.openPrice * t.contractsShares * mult;
-  const currentVal = t.currentPrice * t.contractsShares * mult;
-  if (t.creditDebit === "CREDIT") {
-    return costOpen - currentVal - (t.commIn || 0);
-  }
-  return currentVal + costOpen - (t.commIn || 0);
+  if (t.tradeCategory !== "Stock") return 0;
+  const isShort = t.creditDebit === "CREDIT" || t.tradeType === "SHORT";
+  if (isShort) return (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares;
+  return (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
 }
 
 function daysInTrade(t: Trade): number {
@@ -93,29 +64,45 @@ function daysInTrade(t: Trade): number {
   return Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
 }
 
-// ─── Add Trade Modal ──────────────────────────────────────────────────────────
+// ─── Trade Form (shared by Add, Edit, Historical) ─────────────────────────────
 
-function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: AccountSettings }) {
-  const [category, setCategory] = useState<"Stock" | "Option">("Option");
-  const [tradeType, setTradeType] = useState<TradeTypeCode>("C");
-  const [pilotOrAdd, setPilotOrAdd] = useState("Pilot");
-  const [symbol, setSymbol] = useState("");
-  const [tradeDate, setTradeDate] = useState(new Date().toISOString().split("T")[0]);
-  const [expiration, setExpiration] = useState("");
-  const [contractsShares, setContractsShares] = useState(1);
-  const [openPrice, setOpenPrice] = useState("");
-  const [strikes, setStrikes] = useState("");
-  const [spreadWidth, setSpreadWidth] = useState("");
-  const [allocation, setAllocation] = useState("");
-  const [notes, setNotes] = useState("");
-  const [behaviorTag, setBehaviorTag] = useState("");
+function TradeForm({ mode, initial, settings, onClose }: {
+  mode: "add" | "edit" | "historical";
+  initial?: Trade;
+  settings: AccountSettings;
+  onClose: () => void;
+}) {
+  const isEdit = mode === "edit";
+  const isHistorical = mode === "historical";
+
+  const [category, setCategory] = useState<"Stock" | "Option">(initial?.tradeCategory as any || "Option");
+  const [tradeType, setTradeType] = useState<TradeTypeCode>((initial?.tradeType as TradeTypeCode) || "C");
+  const [pilotOrAdd, setPilotOrAdd] = useState(initial?.pilotOrAdd || "Pilot");
+  const [symbol, setSymbol] = useState(initial?.symbol || "");
+  const [tradeDate, setTradeDate] = useState(initial?.tradeDate || new Date().toISOString().split("T")[0]);
+  const [expiration, setExpiration] = useState(initial?.expiration || "");
+  const [contractsShares, setContractsShares] = useState(initial?.contractsShares || 1);
+  const [openPrice, setOpenPrice] = useState(initial ? String(Math.abs(initial.openPrice)) : "");
+  const [strikes, setStrikes] = useState(initial?.strikes || "");
+  const [spreadWidth, setSpreadWidth] = useState(initial?.spreadWidth ? String(initial.spreadWidth) : "");
+  const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");
+  const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
+  const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
+
+  // Historical-only fields
+  const [closeDate, setCloseDate] = useState(initial?.closeDate || "");
+  const [closePrice, setClosePrice] = useState(initial?.closePrice ? String(Math.abs(initial.closePrice)) : "");
 
   const typeDef = TRADE_TYPES[tradeType];
-  const isCredit = openPrice !== "" && parseFloat(openPrice) > 0;
+  const isCredit = typeDef?.isCredit ?? false;
   const numLegs = typeDef?.legs || 0;
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
+      if (isEdit && initial) {
+        const res = await apiRequest("PATCH", `/api/trades/${initial.id}`, data);
+        return res.json();
+      }
       const res = await apiRequest("POST", "/api/trades", data);
       return res.json();
     },
@@ -128,11 +115,12 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const price = parseFloat(openPrice) || 0;
+    const rawPrice = parseFloat(openPrice) || 0;
+    // Auto-apply sign: credit = positive, debit = negative
+    const signedPrice = isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice);
     const sw = parseFloat(spreadWidth) || null;
     const alloc = parseFloat(allocation) || null;
 
-    // Auto-calculate commission
     let commIn = 0;
     if (category === "Option") {
       commIn = contractsShares * numLegs * (settings.commPerOptionContract || 0.65);
@@ -140,21 +128,16 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
       commIn = settings.commPerSharesTrade || 0;
     }
 
-    // Auto-calculate max profit for spreads
     let maxProfit: number | null = null;
     if (sw && numLegs >= 2) {
-      if (isCredit) {
-        maxProfit = price * contractsShares * 100;
-      } else {
-        maxProfit = (sw - Math.abs(price)) * contractsShares * 100;
-      }
+      if (isCredit) maxProfit = rawPrice * contractsShares * 100;
+      else maxProfit = (sw - rawPrice) * contractsShares * 100;
     }
 
-    // Auto-calculate target
     const targetROI = typeDef?.targetROI || 0;
-    const target = targetROI > 0 ? Math.abs(price) * (targetROI / 100) : null;
+    const target = targetROI > 0 ? rawPrice * (targetROI / 100) : null;
 
-    createMutation.mutate({
+    const tradeData: any = {
       pilotOrAdd,
       tradeDate,
       expiration: expiration || null,
@@ -163,16 +146,34 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
       tradeType,
       tradeCategory: category,
       strikes: strikes || null,
-      openPrice: price,
+      openPrice: signedPrice,
       commIn,
       allocation: alloc,
       maxProfit,
       target,
       spreadWidth: sw,
-      creditDebit: price > 0 ? "CREDIT" : "DEBIT",
+      creditDebit: isCredit ? "CREDIT" : "DEBIT",
       tradePlanNotes: notes || null,
       behaviorTag: behaviorTag || null,
-    });
+    };
+
+    // Historical: include close data
+    if (isHistorical && closeDate) {
+      const rawClose = parseFloat(closePrice) || 0;
+      // Close price sign is opposite: closing a credit = debit (negative), closing a debit = credit (positive)
+      const signedClose = isCredit ? -Math.abs(rawClose) : Math.abs(rawClose);
+      let commOut = 0;
+      if (category === "Option") {
+        commOut = contractsShares * numLegs * (settings.commPerOptionContract || 0.65);
+      } else {
+        commOut = settings.commPerSharesTrade || 0;
+      }
+      tradeData.closeDate = closeDate;
+      tradeData.closePrice = signedClose;
+      tradeData.commOut = commOut;
+    }
+
+    createMutation.mutate(tradeData);
   };
 
   const filteredTypes = category === "Stock" ? STOCK_TYPES : OPTION_TYPES;
@@ -181,44 +182,31 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-card border border-card-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-card-border">
-          <h2 className="text-base font-bold text-foreground">Add Trade</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-5 w-5" />
-          </button>
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            {isHistorical && <History className="h-4 w-4" />}
+            {isEdit ? "Edit Trade" : isHistorical ? "Add Historical Trade" : "Add Trade"}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Category Toggle */}
           <div className="flex gap-2">
             {(["Stock", "Option"] as const).map(cat => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => {
-                  setCategory(cat);
-                  setTradeType(cat === "Stock" ? "LONG" : "C");
-                }}
+              <button key={cat} type="button"
+                onClick={() => { setCategory(cat); setTradeType(cat === "Stock" ? "LONG" : "C"); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  category === cat
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {cat}
-              </button>
+                  category === cat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}>{cat}</button>
             ))}
           </div>
 
-          {/* Row 1: Type + Pilot/Add */}
+          {/* Type + Pilot/Add */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
-              <select
-                value={tradeType}
-                onChange={e => setTradeType(e.target.value as TradeTypeCode)}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-                data-testid="select-trade-type"
-              >
+              <select value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" data-testid="select-trade-type">
                 {filteredTypes.map(code => (
                   <option key={code} value={code}>{code} - {TRADE_TYPES[code].label}</option>
                 ))}
@@ -226,155 +214,123 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
-              <select
-                value={pilotOrAdd}
-                onChange={e => setPilotOrAdd(e.target.value)}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-              >
+              <select value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
                 <option value="Pilot">Pilot</option>
                 <option value="Add">Add</option>
               </select>
             </div>
           </div>
 
-          {/* Row 2: Symbol + Contracts/Shares */}
+          {/* Symbol + Contracts */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
-              <input
-                type="text"
-                value={symbol}
-                onChange={e => setSymbol(e.target.value.toUpperCase())}
-                placeholder="AAPL"
+              <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
-                required
-                data-testid="input-trade-symbol"
-              />
+                required data-testid="input-trade-symbol" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {category === "Option" ? "Contracts" : "Shares"}
-              </label>
-              <input
-                type="number"
-                value={contractsShares}
-                onChange={e => setContractsShares(parseInt(e.target.value) || 1)}
-                min={1}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-              />
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
+              <input type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
 
-          {/* Row 3: Dates */}
+          {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
-              <input
-                type="date"
-                value={tradeDate}
-                onChange={e => setTradeDate(e.target.value)}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-                required
-              />
+              <input type="date" value={tradeDate} onChange={e => setTradeDate(e.target.value)}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
             </div>
             {category === "Option" && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
-                <input
-                  type="date"
-                  value={expiration}
-                  onChange={e => setExpiration(e.target.value)}
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-                />
+                <input type="date" value={expiration} onChange={e => setExpiration(e.target.value)}
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
               </div>
             )}
           </div>
 
-          {/* Row 4: Open Price + Strikes */}
+          {/* Price — auto credit/debit label */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Open Price <span className="text-[10px]">(+ credit, - debit)</span>
+              <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>
+                {isCredit ? "Credit Received" : "Debit Paid"} <span className="text-[10px] text-muted-foreground">(enter as positive)</span>
               </label>
-              <input
-                type="number"
-                step="0.01"
-                value={openPrice}
-                onChange={e => setOpenPrice(e.target.value)}
-                placeholder="-2.50"
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
-                required
-              />
+              <div className="relative">
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-green-400" : "text-red-400"}`}>
+                  {isCredit ? "+" : "−"}
+                </span>
+                <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
+                  className={`w-full h-9 pl-7 pr-3 text-sm bg-background border rounded-md font-mono text-foreground ${
+                    isCredit ? "border-green-500/30" : "border-red-500/30"
+                  }`} required />
+              </div>
             </div>
             {category === "Option" && numLegs >= 1 && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Strike(s) <span className="text-[10px]">e.g. 55/60</span>
+                  Strike(s) <span className="text-[10px]">{numLegs >= 3 ? "e.g. 55/60/65" : numLegs >= 2 ? "e.g. 55/60" : "e.g. 55"}</span>
                 </label>
-                <input
-                  type="text"
-                  value={strikes}
-                  onChange={e => setStrikes(e.target.value)}
-                  placeholder={numLegs >= 3 ? "55/60/65" : numLegs >= 2 ? "55/60" : "55"}
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
-                />
+                <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)}
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
               </div>
             )}
           </div>
 
-          {/* Row 5: Spread Width + Allocation */}
+          {/* Spread Width + Allocation */}
           <div className="grid grid-cols-2 gap-3">
             {numLegs >= 2 && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={spreadWidth}
-                  onChange={e => setSpreadWidth(e.target.value)}
-                  placeholder="5"
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-                />
+                <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
               </div>
             )}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
-              <input
-                type="number"
-                step="0.01"
-                value={allocation}
-                onChange={e => setAllocation(e.target.value)}
-                placeholder="500"
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-              />
+              <input type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
 
-          {/* Behavior Tag */}
+          {/* Historical: Close fields */}
+          {isHistorical && (
+            <div className="border-t border-card-border pt-4">
+              <p className="text-xs font-semibold text-yellow-400 mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+                  <input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)}
+                    className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
+                </div>
+                <div>
+                  <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+                    {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-[10px] text-muted-foreground">(positive)</span>
+                  </label>
+                  <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
+                    className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Behavior + Notes */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Behavior Tag</label>
-            <select
-              value={behaviorTag}
-              onChange={e => setBehaviorTag(e.target.value)}
-              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-            >
+            <select value={behaviorTag} onChange={e => setBehaviorTag(e.target.value)}
+              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
               <option value="">None</option>
-              {BEHAVIOR_TAGS.map(tag => (
-                <option key={tag} value={tag}>{tag}</option>
-              ))}
+              {BEHAVIOR_TAGS.map(tag => <option key={tag} value={tag}>{tag}</option>)}
             </select>
           </div>
-
-          {/* Notes */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Plan Notes</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
               className="w-full px-3 py-2 text-sm bg-background border border-card-border rounded-md text-foreground resize-none"
-              placeholder="Entry rule, catalyst, setup..."
-            />
+              placeholder="Entry rule, catalyst, setup..." />
           </div>
 
           {/* Info badges */}
@@ -386,20 +342,16 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
               {numLegs} leg{numLegs !== 1 ? "s" : ""}
             </span>
             {typeDef?.targetROI > 0 && (
-              <span className="text-[11px] px-2 py-1 rounded-md bg-primary/15 text-primary">
-                Target ROI: {typeDef.targetROI}%
-              </span>
+              <span className="text-[11px] px-2 py-1 rounded-md bg-primary/15 text-primary">Target ROI: {typeDef.targetROI}%</span>
             )}
+            {isHistorical && <span className="text-[11px] px-2 py-1 rounded-md bg-yellow-500/15 text-yellow-400">Historical Entry</span>}
           </div>
 
-          <button
-            type="submit"
-            disabled={createMutation.isPending || !symbol}
+          <button type="submit" disabled={createMutation.isPending || !symbol}
             className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
-            data-testid="button-submit-trade"
-          >
-            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Add Trade
+            data-testid="button-submit-trade">
+            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            {isEdit ? "Save Changes" : isHistorical ? "Add Historical Trade" : "Add Trade"}
           </button>
         </form>
       </div>
@@ -412,6 +364,8 @@ function AddTradeModal({ onClose, settings }: { onClose: () => void; settings: A
 function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: () => void; settings: AccountSettings }) {
   const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
   const [closePrice, setClosePrice] = useState("");
+  const typeDef = TRADE_TYPES[trade.tradeType as TradeTypeCode];
+  const isCredit = typeDef?.isCredit ?? trade.creditDebit === "CREDIT";
 
   const closeMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -427,7 +381,9 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
 
   const handleClose = (e: React.FormEvent) => {
     e.preventDefault();
-    const typeDef = TRADE_TYPES[trade.tradeType as TradeTypeCode];
+    const rawClose = parseFloat(closePrice) || 0;
+    // Closing a credit trade = paying debit (negative). Closing a debit trade = receiving credit (positive)
+    const signedClose = isCredit ? -Math.abs(rawClose) : Math.abs(rawClose);
     const numLegs = typeDef?.legs || 0;
     let commOut = 0;
     if (trade.tradeCategory === "Option") {
@@ -435,18 +391,14 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
     } else {
       commOut = settings.commPerSharesTrade || 0;
     }
-    closeMutation.mutate({
-      closeDate,
-      closePrice: parseFloat(closePrice) || 0,
-      commOut,
-    });
+    closeMutation.mutate({ closeDate, closePrice: signedClose, commOut });
   };
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-card border border-card-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-card-border">
-          <h2 className="text-base font-bold text-foreground">Close Trade: {trade.symbol} ({trade.tradeType})</h2>
+          <h2 className="text-base font-bold text-foreground">Close: {trade.symbol} ({trade.tradeType})</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={handleClose} className="p-4 space-y-4">
@@ -456,9 +408,13 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Price (+ credit, - debit)</label>
+            <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+              {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-[10px] text-muted-foreground">(enter positive)</span>
+            </label>
             <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
-              placeholder="0.00" className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
+              placeholder={isCredit ? "0.50" : "2.00"}
+              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
+            <p className="text-[10px] text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless (full profit)" : "Enter 0 if expired worthless (full loss)"}</p>
           </div>
           <button type="submit" disabled={closeMutation.isPending}
             className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50 flex items-center justify-center gap-2">
@@ -475,17 +431,9 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
 
 function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClose: () => void }) {
   const [vals, setVals] = useState(settings);
-
   const saveMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("PATCH", "/api/account/settings", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/account/settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
-      onClose();
-    },
+    mutationFn: async (data: any) => { const res = await apiRequest("PATCH", "/api/account/settings", data); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/account/settings"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
   });
 
   return (
@@ -505,20 +453,13 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
           ] as const).map(([key, label]) => (
             <div key={key}>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
-              <input
-                type="number"
-                step="0.01"
-                value={vals[key] ?? ""}
+              <input type="number" step="0.01" value={vals[key] ?? ""}
                 onChange={e => setVals(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-              />
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           ))}
-          <button
-            onClick={() => saveMutation.mutate(vals)}
-            disabled={saveMutation.isPending}
-            className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-50"
-          >
+          <button onClick={() => saveMutation.mutate(vals)} disabled={saveMutation.isPending}
+            className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">
             {saveMutation.isPending ? "Saving..." : "Save Settings"}
           </button>
         </div>
@@ -531,6 +472,8 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
 
 export default function TradeTracker() {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showHistoricalModal, setShowHistoricalModal] = useState(false);
+  const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
@@ -541,12 +484,10 @@ export default function TradeTracker() {
     queryKey: ["/api/trades"],
     queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
   });
-
   const { data: summary } = useQuery<Summary>({
     queryKey: ["/api/trades/summary"],
     queryFn: async () => { const r = await apiRequest("GET", "/api/trades/summary"); return r.json(); },
   });
-
   const { data: settings } = useQuery<AccountSettings>({
     queryKey: ["/api/account/settings"],
     queryFn: async () => { const r = await apiRequest("GET", "/api/account/settings"); return r.json(); },
@@ -554,28 +495,19 @@ export default function TradeTracker() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => { const r = await apiRequest("POST", "/api/trades/refresh-prices"); return r.json(); },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
   });
-
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
   });
 
-  // Filter & sort
   const filtered = useMemo(() => {
     let list = [...trades];
     if (filterTab === "open") list = list.filter(t => !t.closeDate);
     else if (filterTab === "closed") list = list.filter(t => !!t.closeDate);
     else if (filterTab === "stocks") list = list.filter(t => t.tradeCategory === "Stock");
     else if (filterTab === "options") list = list.filter(t => t.tradeCategory === "Option");
-
     list.sort((a, b) => {
       let cmp = 0;
       if (sortField === "tradeDate") cmp = a.tradeDate.localeCompare(b.tradeDate);
@@ -593,55 +525,39 @@ export default function TradeTracker() {
     else { setSortField(field); setSortAsc(false); }
   };
 
-  const SortButton = ({ field, label }: { field: SortField; label: string }) => (
-    <button
-      onClick={() => handleSort(field)}
+  const SortBtn = ({ field, label }: { field: SortField; label: string }) => (
+    <button onClick={() => handleSort(field)}
       className={`flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider hover:text-foreground ${
         sortField === field ? "text-primary" : "text-muted-foreground"
-      }`}
-    >
+      }`}>
       {label}
       {sortField === field && (sortAsc ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
     </button>
   );
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto" data-testid="trade-tracker-page">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-lg font-bold text-foreground">Trade Tracker</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5"
-            data-testid="button-refresh-prices"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-            Refresh P/L
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
           </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5"
-          >
-            <Settings className="h-3.5 w-3.5" />
-            Settings
+          <button onClick={() => setShowSettings(true)}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
+            <Settings className="h-3.5 w-3.5" />Settings
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
-            data-testid="button-add-trade"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Trade
+          <button onClick={() => setShowHistoricalModal(true)}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-yellow-600/80 hover:bg-yellow-600 text-white flex items-center gap-1.5">
+            <History className="h-3.5 w-3.5" />Add Historical
+          </button>
+          <button onClick={() => setShowAddModal(true)}
+            className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
+            <Plus className="h-3.5 w-3.5" />Add Trade
           </button>
         </div>
       </div>
@@ -649,89 +565,41 @@ export default function TradeTracker() {
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <SummaryCard
-            label="Account Value"
-            value={formatCurrency(summary.accountValue)}
-            icon={<DollarSign className="h-4 w-4" />}
-            color="text-foreground"
-          />
-          <SummaryCard
-            label="Total P/L"
-            value={formatCurrency(summary.totalProfit)}
-            icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-            color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"}
-          />
-          <SummaryCard
-            label="Open P/L"
-            value={formatCurrency(summary.openPL)}
-            icon={<BarChart3 className="h-4 w-4" />}
-            color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"}
-          />
-          <SummaryCard
-            label="Win Rate"
-            value={`${(summary.winRate * 100).toFixed(1)}%`}
-            icon={<Target className="h-4 w-4" />}
-            color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"}
-          />
-          <SummaryCard
-            label="Open Trades"
-            value={String(summary.openTrades)}
-            icon={<BarChart3 className="h-4 w-4" />}
-            color="text-primary"
-          />
-          <SummaryCard
-            label="Allocated"
-            value={`${(summary.allocatedPct * 100).toFixed(1)}%`}
-            icon={<DollarSign className="h-4 w-4" />}
-            color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-red-400" : "text-foreground"}
-          />
+          <SC label="Account Value" value={formatCurrency(summary.accountValue)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
+          <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"} />
+          <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
+          <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
+          <SC label="Open Trades" value={String(summary.openTrades)} icon={<BarChart3 className="h-4 w-4" />} color="text-primary" />
+          <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-red-400" : "text-foreground"} />
         </div>
       )}
 
-      {/* Summary by Type (if there are closed trades) */}
+      {/* Performance by Type */}
       {summary && Object.keys(summary.byType).length > 0 && (
         <div className="bg-card border border-card-border rounded-lg p-4">
           <h3 className="text-sm font-bold text-foreground mb-3">Performance by Type</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="text-muted-foreground border-b border-card-border">
-                  <th className="text-left pb-2 pr-4">Type</th>
-                  <th className="text-right pb-2 px-3">Trades</th>
-                  <th className="text-right pb-2 px-3">Wins</th>
-                  <th className="text-right pb-2 px-3">Win %</th>
-                  <th className="text-right pb-2 px-3">Profit</th>
-                  <th className="text-right pb-2 px-3">Loss</th>
-                  <th className="text-right pb-2 px-3">Net</th>
-                  <th className="text-right pb-2 px-3">ROI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(summary.byType).map(([type, data]) => {
-                  const net = data.profit + data.loss;
-                  const winPct = data.count > 0 ? (data.wins / data.count * 100) : 0;
-                  const roi = data.investment > 0 ? (net / data.investment * 100) : 0;
-                  const label = TRADE_TYPES[type as TradeTypeCode]?.label || type;
-                  return (
-                    <tr key={type} className="border-b border-card-border/50">
-                      <td className="py-1.5 pr-4 font-semibold text-foreground">{label}</td>
-                      <td className="text-right px-3 text-foreground tabular-nums">{data.count}</td>
-                      <td className="text-right px-3 text-foreground tabular-nums">{data.wins}</td>
-                      <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-green-400" : winPct >= 45 ? "text-yellow-400" : "text-red-400"}`}>
-                        {winPct.toFixed(1)}%
-                      </td>
-                      <td className="text-right px-3 text-green-400 tabular-nums">{formatCurrency(data.profit)}</td>
-                      <td className="text-right px-3 text-red-400 tabular-nums">{formatCurrency(data.loss)}</td>
-                      <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {formatCurrency(net)}
-                      </td>
-                      <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {roi.toFixed(1)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
+              <thead><tr className="text-muted-foreground border-b border-card-border">
+                <th className="text-left pb-2 pr-4">Type</th><th className="text-right pb-2 px-3">Trades</th><th className="text-right pb-2 px-3">Win %</th>
+                <th className="text-right pb-2 px-3">Profit</th><th className="text-right pb-2 px-3">Loss</th><th className="text-right pb-2 px-3">Net</th><th className="text-right pb-2 px-3">ROI</th>
+              </tr></thead>
+              <tbody>{Object.entries(summary.byType).map(([type, d]) => {
+                const net = d.profit + d.loss;
+                const winPct = d.count > 0 ? (d.wins / d.count * 100) : 0;
+                const roi = d.investment > 0 ? (net / d.investment * 100) : 0;
+                return (
+                  <tr key={type} className="border-b border-card-border/50">
+                    <td className="py-1.5 pr-4 font-semibold text-foreground">{TRADE_TYPES[type as TradeTypeCode]?.label || type}</td>
+                    <td className="text-right px-3 tabular-nums">{d.count}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-green-400" : winPct >= 45 ? "text-yellow-400" : "text-red-400"}`}>{winPct.toFixed(1)}%</td>
+                    <td className="text-right px-3 text-green-400 tabular-nums">{formatCurrency(d.profit)}</td>
+                    <td className="text-right px-3 text-red-400 tabular-nums">{formatCurrency(d.loss)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(net)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-green-400" : "text-red-400"}`}>{roi.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         </div>
@@ -740,15 +608,10 @@ export default function TradeTracker() {
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
         {(["all", "open", "closed", "stocks", "options"] as FilterTab[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setFilterTab(tab)}
+          <button key={tab} onClick={() => setFilterTab(tab)}
             className={`h-7 px-3 text-xs font-medium rounded-md transition-colors ${
-              filterTab === tab
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
+              filterTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
             {tab !== "all" && ` (${
               tab === "open" ? trades.filter(t => !t.closeDate).length :
@@ -764,112 +627,91 @@ export default function TradeTracker() {
       <div className="bg-card border border-card-border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs" data-testid="trades-table">
-            <thead>
-              <tr className="bg-muted/30 border-b border-card-border">
-                <th className="text-left py-2.5 px-3"><SortButton field="tradeDate" label="Date" /></th>
-                <th className="text-left py-2.5 px-3"><SortButton field="symbol" label="Symbol" /></th>
-                <th className="text-left py-2.5 px-3"><SortButton field="tradeType" label="Type" /></th>
-                <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">P/A</th>
-                <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Qty</th>
-                <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Strikes</th>
-                <th className="text-right py-2.5 px-3"><SortButton field="openPrice" label="Open" /></th>
-                <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Close</th>
-                <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Price</th>
-                <th className="text-right py-2.5 px-3"><SortButton field="profit" label="P/L" /></th>
-                <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Days</th>
-                <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Status</th>
-                <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
-              </tr>
-            </thead>
+            <thead><tr className="bg-muted/30 border-b border-card-border">
+              <th className="text-left py-2.5 px-3"><SortBtn field="tradeDate" label="Date" /></th>
+              <th className="text-left py-2.5 px-3"><SortBtn field="symbol" label="Symbol" /></th>
+              <th className="text-left py-2.5 px-3"><SortBtn field="tradeType" label="Type" /></th>
+              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">P/A</th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Qty</th>
+              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Strikes</th>
+              <th className="text-right py-2.5 px-3"><SortBtn field="openPrice" label="Open" /></th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Close</th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Price</th>
+              <th className="text-right py-2.5 px-3"><SortBtn field="profit" label="P/L" /></th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Days</th>
+              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Status</th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
+            </tr></thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={13} className="text-center py-12 text-muted-foreground">
-                    No trades yet. Click "Add Trade" to get started.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map(t => {
-                  const profit = t.closeDate ? computeTradeProfit(t) : computeOpenPL(t);
-                  const isOpen = !t.closeDate;
-                  const days = daysInTrade(t);
-                  const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                  const isWin = profit >= 0;
-                  const typeDef = TRADE_TYPES[t.tradeType as TradeTypeCode];
-                  const typeLabel = typeDef?.label || t.tradeType;
+                <tr><td colSpan={13} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
+              ) : filtered.map(t => {
+                const profit = t.closeDate ? computeTradeProfit(t) : (t.tradeCategory === "Stock" ? computeStockPL(t) : 0);
+                const isOpen = !t.closeDate;
+                const days = daysInTrade(t);
+                const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                const isWin = profit >= 0;
+                const typeDef = TRADE_TYPES[t.tradeType as TradeTypeCode];
 
-                  return (
-                    <tr key={t.id} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
-                      <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
-                      <td className="py-2 px-3">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          t.tradeCategory === "Option" ? "bg-purple-500/15 text-purple-400" : "bg-blue-500/15 text-blue-400"
-                        }`}>
-                          {t.tradeType}
+                return (
+                  <tr key={t.id} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
+                    <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
+                    <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
+                    <td className="py-2 px-3">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                        t.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                      }`}>{t.tradeType}</span>
+                    </td>
+                    <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
+                    <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
+                    <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
+                    <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
+                      {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                      {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
+                      {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
+                    </td>
+                    <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                      {profit !== 0 ? formatCurrency(profit) : "—"}
+                      {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                    </td>
+                    <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
+                    <td className="py-2 px-3 text-center">
+                      {isOpen ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span>
+                      ) : (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${isWin ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+                          {isWin ? "WIN" : "LOSS"}
                         </span>
-                        <span className="text-muted-foreground ml-1">{typeLabel}</span>
-                      </td>
-                      <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
-                      <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${
-                        t.openPrice > 0 ? "text-green-400" : "text-red-400"
-                      }`}>
-                        {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
-                        {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
-                      </td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${isWin ? "text-green-400" : "text-red-400"}`}>
-                        {profit !== 0 ? formatCurrency(profit) : "—"}
-                        {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center">
-                        {isOpen ? (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span>
-                        ) : (
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                            isWin ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
-                          }`}>
-                            {isWin ? "WIN" : "LOSS"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {isOpen && (
-                            <button
-                              onClick={() => setClosingTrade(t)}
-                              className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors"
-                              title="Close trade"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteMutation.mutate(t.id)}
-                            className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors"
-                            title="Delete trade"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        {isOpen && (
+                          <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close trade">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+                        )}
+                        <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Behavior Tag Summary */}
+      {/* Behavior */}
       {summary && Object.keys(summary.behaviorCounts).length > 0 && (
         <div className="bg-card border border-card-border rounded-lg p-4">
           <h3 className="text-sm font-bold text-foreground mb-3">Behavior Analysis</h3>
@@ -877,27 +719,24 @@ export default function TradeTracker() {
             {Object.entries(summary.behaviorCounts).map(([tag, count]) => (
               <span key={tag} className={`text-xs px-3 py-1.5 rounded-md font-medium ${
                 tag === "All to Plan" ? "bg-green-500/15 text-green-400" :
-                tag.includes("Panic") || tag.includes("FOMO") ? "bg-red-500/15 text-red-400" :
-                "bg-yellow-500/15 text-yellow-400"
-              }`}>
-                {tag}: {count}
-              </span>
+                tag.includes("Panic") || tag.includes("FOMO") ? "bg-red-500/15 text-red-400" : "bg-yellow-500/15 text-yellow-400"
+              }`}>{tag}: {count}</span>
             ))}
           </div>
         </div>
       )}
 
       {/* Modals */}
-      {showAddModal && settings && <AddTradeModal onClose={() => setShowAddModal(false)} settings={settings} />}
+      {showAddModal && settings && <TradeForm mode="add" settings={settings} onClose={() => setShowAddModal(false)} />}
+      {showHistoricalModal && settings && <TradeForm mode="historical" settings={settings} onClose={() => setShowHistoricalModal(false)} />}
+      {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
       {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
 
-// ─── Reusable Components ──────────────────────────────────────────────────────
-
-function SummaryCard({ label, value, icon, color }: { label: string; value: string; icon: React.ReactNode; color: string }) {
+function SC({ label, value, icon, color }: { label: string; value: string; icon: React.ReactNode; color: string }) {
   return (
     <div className="bg-card border border-card-border rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1">

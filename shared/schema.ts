@@ -103,35 +103,35 @@ export type InsertAccountTransaction = z.infer<typeof insertAccountTransactionSc
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 
 export const TRADE_TYPES = {
-  // Options - Singles
-  C: { label: "Call", category: "Option", legs: 1, targetROI: 100 },
-  P: { label: "Put", category: "Option", legs: 1, targetROI: 100 },
-  SC: { label: "Short Call", category: "Option", legs: 1, targetROI: 100 },
-  SP: { label: "Short Put", category: "Option", legs: 1, targetROI: 100 },
+  // Options - Singles (buying = debit, selling = credit)
+  C: { label: "Call", category: "Option", legs: 1, targetROI: 100, isCredit: false },
+  P: { label: "Put", category: "Option", legs: 1, targetROI: 100, isCredit: false },
+  SC: { label: "Short Call", category: "Option", legs: 1, targetROI: 100, isCredit: true },
+  SP: { label: "Short Put", category: "Option", legs: 1, targetROI: 100, isCredit: true },
   // Options - Verticals
-  CCS: { label: "Call Credit Spread", category: "Option", legs: 2, targetROI: 80 },
-  CDS: { label: "Call Debit Spread", category: "Option", legs: 2, targetROI: 80 },
-  PCS: { label: "Put Credit Spread", category: "Option", legs: 2, targetROI: 80 },
-  PDS: { label: "Put Debit Spread", category: "Option", legs: 2, targetROI: 80 },
+  CCS: { label: "Call Credit Spread", category: "Option", legs: 2, targetROI: 80, isCredit: true },
+  CDS: { label: "Call Debit Spread", category: "Option", legs: 2, targetROI: 80, isCredit: false },
+  PCS: { label: "Put Credit Spread", category: "Option", legs: 2, targetROI: 80, isCredit: true },
+  PDS: { label: "Put Debit Spread", category: "Option", legs: 2, targetROI: 80, isCredit: false },
   // Options - Butterflies
-  CBFLY: { label: "Call Butterfly", category: "Option", legs: 3, targetROI: 200 },
-  PBFLY: { label: "Put Butterfly", category: "Option", legs: 3, targetROI: 200 },
-  CUBFLY: { label: "Call Unbal. Fly", category: "Option", legs: 3, targetROI: 0 },
-  PUBFLY: { label: "Put Unbal. Fly", category: "Option", legs: 3, targetROI: 0 },
-  CUBFLYD: { label: "Debit CUBFLY", category: "Option", legs: 3, targetROI: 0 },
-  PUBFLYD: { label: "Debit PUBFLY", category: "Option", legs: 3, targetROI: 0 },
+  CBFLY: { label: "Call Butterfly", category: "Option", legs: 3, targetROI: 200, isCredit: false },
+  PBFLY: { label: "Put Butterfly", category: "Option", legs: 3, targetROI: 200, isCredit: false },
+  CUBFLY: { label: "Call Unbal. Fly", category: "Option", legs: 3, targetROI: 0, isCredit: true },
+  PUBFLY: { label: "Put Unbal. Fly", category: "Option", legs: 3, targetROI: 0, isCredit: true },
+  CUBFLYD: { label: "Debit CUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
+  PUBFLYD: { label: "Debit PUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
   // Options - CTVs
-  CCTV: { label: "Call CTV", category: "Option", legs: 4, targetROI: 0 },
-  PCTV: { label: "Put CTV", category: "Option", legs: 4, targetROI: 0 },
+  CCTV: { label: "Call CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true },
+  PCTV: { label: "Put CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true },
   // Day Trades
-  DTC: { label: "Day Trade Call", category: "Option", legs: 1, targetROI: 50 },
-  DTP: { label: "Day Trade Put", category: "Option", legs: 1, targetROI: 50 },
-  DTCBFLY: { label: "DT Call Butterfly", category: "Option", legs: 3, targetROI: 200 },
-  DTPBFLY: { label: "DT Put Butterfly", category: "Option", legs: 3, targetROI: 200 },
-  DTS: { label: "Day Trade Shares", category: "Stock", legs: 0, targetROI: 25 },
+  DTC: { label: "Day Trade Call", category: "Option", legs: 1, targetROI: 50, isCredit: false },
+  DTP: { label: "Day Trade Put", category: "Option", legs: 1, targetROI: 50, isCredit: false },
+  DTCBFLY: { label: "DT Call Butterfly", category: "Option", legs: 3, targetROI: 200, isCredit: false },
+  DTPBFLY: { label: "DT Put Butterfly", category: "Option", legs: 3, targetROI: 200, isCredit: false },
+  DTS: { label: "Day Trade Shares", category: "Stock", legs: 0, targetROI: 25, isCredit: false },
   // Stocks
-  LONG: { label: "Long Stock", category: "Stock", legs: 0, targetROI: 25 },
-  SHORT: { label: "Short Stock", category: "Stock", legs: 0, targetROI: 25 },
+  LONG: { label: "Long Stock", category: "Stock", legs: 0, targetROI: 25, isCredit: false },
+  SHORT: { label: "Short Stock", category: "Stock", legs: 0, targetROI: 25, isCredit: true },
 } as const;
 
 export type TradeTypeCode = keyof typeof TRADE_TYPES;
