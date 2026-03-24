@@ -161,11 +161,17 @@ async function yahooFetch(url: string, retries = 3): Promise<any> {
         headers: { ...YF_BASE_HEADERS, Cookie: cookie },
       });
 
+      if (resp.status === 429) {
+        console.log(`[yahoo] Rate limited (429), waiting ${(attempt + 1) * 2}s before retry...`);
+        _crumb = null; _cookie = null; _crumbTimestamp = 0;
+        if (attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
+        throw new Error(`Yahoo Finance rate limited (429)`);
+      }
+
       if (resp.status === 401 || resp.status === 403) {
-        // Auth issue — clear crumb and retry
         console.log(`[yahoo] Auth error ${resp.status}, refreshing crumb...`);
         _crumb = null; _cookie = null; _crumbTimestamp = 0;
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 1000)); continue; }
         throw new Error(`Yahoo Finance returned ${resp.status}`);
       }
 
@@ -753,26 +759,38 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Warm up Yahoo crumb on startup with delay + retry to avoid 429 rate limits
-  (async () => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s delays
+  // Warm up Yahoo crumb on startup — API routes wait for this before making Yahoo calls
+  let _warmupDone = false;
+  const _warmupPromise = (async () => {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s, 8s, 10s
       try {
         await getYahooCrumb();
-        console.log("[yahoo] Crumb warmed up");
+        console.log("[yahoo] Crumb warmed up — ready to serve requests");
+        _warmupDone = true;
         return;
       } catch (e: any) {
-        console.log(`[yahoo] Warmup attempt ${attempt}/3 failed: ${e.message}`);
+        console.log(`[yahoo] Warmup attempt ${attempt}/5 failed: ${e.message}`);
         _crumb = null; _cookie = null; _crumbTimestamp = 0;
       }
     }
-    console.log("[yahoo] Warmup failed after 3 attempts — will retry on first request");
+    console.log("[yahoo] Warmup failed after 5 attempts — requests will retry on their own");
+    _warmupDone = true; // unblock requests even on failure so they can try themselves
   })();
+
+  // Helper: ensure warmup is done before any Yahoo API call
+  async function ensureReady() {
+    if (!_warmupDone) {
+      console.log("[yahoo] Request waiting for warmup to complete...");
+      await _warmupPromise;
+    }
+  }
 
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
     try {
+      await ensureReady();
       // Fetch all data in parallel
       const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
         getQuote(ticker),
@@ -1046,6 +1064,7 @@ export async function registerRoutes(
   app.get("/api/trade-analysis/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
     try {
+      await ensureReady();
       // Fetch 1-year daily for BBTC + RSI, 2-year weekly for SMA200
       const [chart1YResult, chart2YResult] = await Promise.allSettled([
         getChart(ticker, "1y", "1d"),
@@ -1685,6 +1704,7 @@ export async function registerRoutes(
     }
 
     try {
+      await ensureReady();
       console.log(`[scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}, count=${scanSize}`);
 
       // Step 1: Get tickers from Yahoo screener
@@ -1991,6 +2011,7 @@ export async function registerRoutes(
     }
 
     try {
+      await ensureReady();
       console.log(`[amc-scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}`);
 
       const tickers = await screenStocks({
@@ -2133,6 +2154,7 @@ export async function registerRoutes(
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {
+      await ensureReady();
       const listType = req.params.listType;
       const items = await storage.getFavorites(listType);
       const results = [];
@@ -2175,6 +2197,7 @@ export async function registerRoutes(
   // Get institutional data for a single ticker
   app.get("/api/institutional/:ticker", async (req, res) => {
     try {
+      await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
       const raw = await getInstitutionalData(ticker);
       const parsed = parseInstitutionalData(raw, ticker);
@@ -2188,6 +2211,7 @@ export async function registerRoutes(
   // Scan multiple tickers for institutional money flow (batch)
   app.get("/api/institutional-scan", async (req, res) => {
     try {
+      await ensureReady();
       // Default watchlist of popular/active stocks to scan
       const defaultTickers = [
         "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "CRM",
@@ -2340,6 +2364,7 @@ export async function registerRoutes(
   // Refresh prices for all open trades (static route before :id)
   app.post("/api/trades/refresh-prices", async (_req, res) => {
     try {
+      await ensureReady();
       const allTrades = await storage.getAllTrades();
       const openTrades = allTrades.filter(t => !t.closeDate);
       const uniqueSymbols = [...new Set(openTrades.map(t => t.symbol))];
