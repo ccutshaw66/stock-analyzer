@@ -116,22 +116,30 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
     throw new Error("Failed to obtain Yahoo Finance cookie");
   }
 
-  // Try query1 first (better for cloud servers), then query2
-  let crumbResp = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-    headers: { ...headers, Accept: "text/plain", Cookie: cookie },
-  });
-  if (crumbResp.status !== 200) {
-    console.log(`[yahoo] query1 crumb failed (${crumbResp.status}), trying query2...`);
-    crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+  // Try query1 first (better for cloud servers), then query2, with 429 retry
+  let crumb = "";
+  let crumbStatus = 0;
+  for (const host of ["query1", "query2"]) {
+    const crumbResp = await fetch(`https://${host}.finance.yahoo.com/v1/test/getcrumb`, {
       headers: { ...headers, Accept: "text/plain", Cookie: cookie },
     });
+    crumbStatus = crumbResp.status;
+    if (crumbResp.status === 429) {
+      console.log(`[yahoo] ${host} crumb returned 429 (rate limited), waiting 3s...`);
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (crumbResp.status === 200) {
+      crumb = await crumbResp.text();
+      console.log(`[yahoo] Crumb from ${host}:`, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
+      break;
+    }
+    console.log(`[yahoo] ${host} crumb failed (${crumbResp.status})`);
   }
-  const crumb = await crumbResp.text();
-  console.log("[yahoo] Crumb:", crumbResp.status, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
 
   // Validate crumb
-  if (!crumb || crumb.length > 50 || crumb.includes("<") || crumb.includes("{") || crumbResp.status !== 200) {
-    throw new Error(`Failed to obtain crumb (status ${crumbResp.status})`);
+  if (!crumb || crumb.length > 50 || crumb.includes("<") || crumb.includes("{")) {
+    throw new Error(`Failed to obtain crumb (status ${crumbStatus})`);
   }
 
   _crumb = crumb;
@@ -597,8 +605,21 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  // Warm up Yahoo crumb on startup so first request doesn't fail
-  getYahooCrumb().then(() => console.log("[yahoo] Crumb warmed up")).catch(e => console.log("[yahoo] Warmup failed:", e.message));
+  // Warm up Yahoo crumb on startup with delay + retry to avoid 429 rate limits
+  (async () => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s delays
+      try {
+        await getYahooCrumb();
+        console.log("[yahoo] Crumb warmed up");
+        return;
+      } catch (e: any) {
+        console.log(`[yahoo] Warmup attempt ${attempt}/3 failed: ${e.message}`);
+        _crumb = null; _cookie = null; _crumbTimestamp = 0;
+      }
+    }
+    console.log("[yahoo] Warmup failed after 3 attempts — will retry on first request");
+  })();
 
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
