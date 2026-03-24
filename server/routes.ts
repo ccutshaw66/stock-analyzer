@@ -225,6 +225,154 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 }
 
 // ============================================================
+// Institutional / Market Maker Data Fetchers
+// ============================================================
+
+async function getInstitutionalData(ticker: string): Promise<any> {
+  const modules = [
+    "institutionOwnership", "insiderHolders", "insiderTransactions",
+    "majorHoldersBreakdown", "netSharePurchaseActivity", "fundOwnership",
+    "price", "summaryDetail"
+  ].join("%2C");
+  const data = await yahooFetch(
+    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
+  );
+  return data?.quoteSummary?.result?.[0] || null;
+}
+
+function parseInstitutionalData(raw: any, ticker: string) {
+  if (!raw) return null;
+
+  const price = raw.price || {};
+  const summary = raw.summaryDetail || {};
+  const majorBreakdown = raw.majorHoldersBreakdown || {};
+  const instOwnership = raw.institutionOwnership?.ownershipList || [];
+  const fundOwnership = raw.fundOwnership?.ownershipList || [];
+  const insiderHolders = raw.insiderHolders?.holders || [];
+  const insiderTxns = raw.insiderTransactions?.transactions || [];
+  const netActivity = raw.netSharePurchaseActivity || {};
+
+  // Top institutional holders
+  const topInstitutions = instOwnership.slice(0, 25).map((inst: any) => ({
+    name: inst.organization || "Unknown",
+    shares: inst.position?.raw || 0,
+    value: inst.value?.raw || 0,
+    pctHeld: inst.pctHeld?.raw || 0,
+    changeQoQ: inst.pctChange?.raw || 0,
+    reportDate: inst.reportDate?.fmt || null,
+  }));
+
+  // Top fund holders (mutual funds / ETFs)
+  const topFunds = fundOwnership.slice(0, 15).map((fund: any) => ({
+    name: fund.organization || "Unknown",
+    shares: fund.position?.raw || 0,
+    value: fund.value?.raw || 0,
+    pctHeld: fund.pctHeld?.raw || 0,
+    changeQoQ: fund.pctChange?.raw || 0,
+    reportDate: fund.reportDate?.fmt || null,
+  }));
+
+  // Insider holders (current positions)
+  const insiders = insiderHolders.map((h: any) => ({
+    name: h.name || "Unknown",
+    relation: h.relation || "Unknown",
+    shares: h.positionDirect?.raw || 0,
+    sharesIndirect: h.positionIndirect?.raw || 0,
+    latestTransaction: h.transactionDescription || null,
+    latestDate: h.latestTransDate?.fmt || null,
+  }));
+
+  // Insider transactions (recent buys/sells)
+  const recentInsiderTxns = insiderTxns.slice(0, 30).map((tx: any) => ({
+    insider: tx.filerName || "Unknown",
+    relation: tx.filerRelation || "",
+    type: tx.transactionText || "Unknown",
+    shares: tx.shares?.raw || 0,
+    value: tx.value?.raw || 0,
+    date: tx.startDate?.fmt || null,
+  }));
+
+  // Compute money flow signals
+  const insiderBuyCount = netActivity.buyInfoCount?.raw || 0;
+  const insiderSellCount = netActivity.sellInfoCount?.raw || 0;
+  const insiderBuyShares = netActivity.buyInfoShares?.raw || 0;
+  const insiderSellShares = netActivity.sellInfoShares?.raw || 0;
+  const netInsiderShares = insiderBuyShares - insiderSellShares;
+  const insiderBuyPct = netActivity.buyPercentInsiderShares?.raw || 0;
+  const insiderSellPct = netActivity.sellPercentInsiderShares?.raw || 0;
+
+  // Institutional inflow/outflow from QoQ changes
+  let instInflow = 0;
+  let instOutflow = 0;
+  let instIncreased = 0;
+  let instDecreased = 0;
+  let instNew = 0;
+  let instSoldOut = 0;
+  for (const inst of instOwnership) {
+    const chg = inst.pctChange?.raw || 0;
+    if (chg > 50) instNew++;
+    else if (chg > 0) instIncreased++;
+    if (chg < -90) instSoldOut++;
+    else if (chg < 0) instDecreased++;
+    if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
+    if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
+  }
+
+  // Money Flow Score: -100 (all selling) to +100 (all buying)
+  const totalFlow = instInflow + instOutflow;
+  const flowScore = totalFlow > 0 ? Math.round(((instInflow - instOutflow) / totalFlow) * 100) : 0;
+  const insiderScore = (insiderBuyCount - insiderSellCount);
+  const combinedScore = Math.max(-100, Math.min(100, flowScore + insiderScore * 10));
+
+  // Signal
+  let signal = "NEUTRAL";
+  if (combinedScore >= 40) signal = "STRONG INFLOW";
+  else if (combinedScore >= 15) signal = "ACCUMULATING";
+  else if (combinedScore <= -40) signal = "STRONG OUTFLOW";
+  else if (combinedScore <= -15) signal = "DISTRIBUTING";
+
+  return {
+    ticker,
+    companyName: price.shortName || price.longName || ticker,
+    currentPrice: price.regularMarketPrice?.raw || 0,
+    marketCap: price.marketCap?.raw || summary.marketCap?.raw || 0,
+    volume: price.regularMarketVolume?.raw || 0,
+    avgVolume: summary.averageVolume?.raw || 0,
+
+    // Ownership breakdown
+    insiderPct: (majorBreakdown.insidersPercentHeld?.raw || 0) * 100,
+    institutionPct: (majorBreakdown.institutionsPercentHeld?.raw || 0) * 100,
+    institutionCount: majorBreakdown.institutionsCount?.raw || 0,
+    floatPct: (majorBreakdown.institutionsFloatPercentHeld?.raw || 0) * 100,
+
+    // Money flow
+    flowScore: combinedScore,
+    signal,
+    instInflow: Math.round(instInflow),
+    instOutflow: Math.round(instOutflow),
+    instIncreased,
+    instDecreased,
+    instNew,
+    instSoldOut,
+
+    // Net insider activity (6 months)
+    insiderBuyCount,
+    insiderSellCount,
+    insiderBuyShares,
+    insiderSellShares,
+    netInsiderShares,
+    insiderBuyPct: insiderBuyPct * 100,
+    insiderSellPct: insiderSellPct * 100,
+
+    // Detailed lists
+    topInstitutions,
+    topFunds,
+    insiders,
+    recentInsiderTxns,
+  };
+}
+
+// ============================================================
 // Types
 // ============================================================
 
@@ -2017,6 +2165,61 @@ export async function registerRoutes(
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to refresh scores" });
+    }
+  });
+
+  // ================================================================
+  // INSTITUTIONAL / MONEY FLOW API ROUTES
+  // ================================================================
+
+  // Get institutional data for a single ticker
+  app.get("/api/institutional/:ticker", async (req, res) => {
+    try {
+      const ticker = req.params.ticker.toUpperCase();
+      const raw = await getInstitutionalData(ticker);
+      const parsed = parseInstitutionalData(raw, ticker);
+      if (!parsed) return res.status(404).json({ error: `No institutional data for ${ticker}` });
+      res.json(parsed);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to fetch institutional data" });
+    }
+  });
+
+  // Scan multiple tickers for institutional money flow (batch)
+  app.get("/api/institutional-scan", async (req, res) => {
+    try {
+      // Default watchlist of popular/active stocks to scan
+      const defaultTickers = [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "CRM",
+        "AVGO", "ORCL", "COST", "JPM", "V", "UNH", "MA", "HD", "PG", "JNJ",
+        "BAC", "XOM", "ABBV", "KO", "PEP", "MRK", "LLY", "TMO", "ADBE", "PLTR",
+      ];
+      const tickerParam = req.query.tickers as string | undefined;
+      const tickers = tickerParam ? tickerParam.split(",").map(t => t.trim().toUpperCase()) : defaultTickers;
+      const results: any[] = [];
+
+      for (const ticker of tickers.slice(0, 30)) {
+        try {
+          const raw = await getInstitutionalData(ticker);
+          const parsed = parseInstitutionalData(raw, ticker);
+          if (parsed) results.push(parsed);
+          // Small delay to avoid rate limiting
+          await new Promise(r => setTimeout(r, 300));
+        } catch {
+          // Skip failed tickers
+        }
+      }
+
+      // Sort by absolute flow score (strongest moves first)
+      results.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+
+      res.json({
+        scannedAt: new Date().toISOString(),
+        totalScanned: tickers.length,
+        results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Institutional scan failed" });
     }
   });
 

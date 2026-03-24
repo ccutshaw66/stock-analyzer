@@ -13,6 +13,7 @@ import Scanner from "@/pages/scanner";
 import TradeTracker from "@/pages/trade-tracker";
 import OptionsCalculator from "@/pages/options-calculator";
 import Help from "@/pages/help";
+import Institutional from "@/pages/institutional";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
                 <Route path="/scanner" component={Scanner} />
                 <Route path="/tracker" component={TradeTracker} />
                 <Route path="/calculator" component={OptionsCalculator} />
+                <Route path="/institutional" component={Institutional} />
                 <Route path="/help" component={Help} />
                 <Route component={NotFound} />
               </Switch>

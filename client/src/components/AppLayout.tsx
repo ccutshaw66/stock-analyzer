@@ -23,6 +23,7 @@ import {
   BookOpen,
   TrendingUp,
   TrendingDown,
+  Building2,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -370,6 +371,7 @@ function Sidebar({
     { path: "/scanner", label: "Scanner", icon: Radar },
     { path: "/tracker", label: "Trade Tracker", icon: ClipboardList },
     { path: "/calculator", label: "Options Calc", icon: Calculator },
+    { path: "/institutional", label: "Institutional", icon: Building2 },
     { path: "/help", label: "Help / FAQ", icon: BookOpen },
   ];
 
@@ -420,7 +422,6 @@ function Sidebar({
             openTrades={openTrades}
             tradesOpen={tradesOpen}
             setTradesOpen={setTradesOpen}
-            handleSelectTicker={handleSelectTicker}
           />
         </aside>
       </>
