@@ -2466,6 +2466,306 @@ export async function registerRoutes(
   });
 
   // ================================================================
+  // SECTOR ROTATION HEATMAP
+  // ================================================================
+
+  const SECTOR_ETFS = [
+    { symbol: "XLK", name: "Technology" },
+    { symbol: "XLF", name: "Financials" },
+    { symbol: "XLV", name: "Healthcare" },
+    { symbol: "XLE", name: "Energy" },
+    { symbol: "XLY", name: "Consumer Discretionary" },
+    { symbol: "XLP", name: "Consumer Staples" },
+    { symbol: "XLI", name: "Industrials" },
+    { symbol: "XLU", name: "Utilities" },
+    { symbol: "XLB", name: "Materials" },
+    { symbol: "XLRE", name: "Real Estate" },
+    { symbol: "XLC", name: "Communication Services" },
+  ];
+
+  app.get("/api/sectors", async (_req, res) => {
+    try {
+      await ensureReady();
+      const results: any[] = [];
+
+      for (const etf of SECTOR_ETFS) {
+        try {
+          const chart = await getChart(etf.symbol, "3mo", "1d");
+          if (!chart) continue;
+
+          const closes: number[] = (chart.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
+          if (closes.length < 2) continue;
+
+          const last = closes[closes.length - 1];
+          const prev = closes[closes.length - 2];
+          const week1Idx = Math.max(0, closes.length - 6);
+          const month1Idx = Math.max(0, closes.length - 22);
+          const first = closes[0];
+
+          results.push({
+            symbol: etf.symbol,
+            name: etf.name,
+            price: Math.round(last * 100) / 100,
+            change: Math.round((last - prev) * 100) / 100,
+            returns: {
+              day1: prev > 0 ? Math.round((last - prev) / prev * 10000) / 100 : 0,
+              week1: closes[week1Idx] > 0 ? Math.round((last - closes[week1Idx]) / closes[week1Idx] * 10000) / 100 : 0,
+              month1: closes[month1Idx] > 0 ? Math.round((last - closes[month1Idx]) / closes[month1Idx] * 10000) / 100 : 0,
+              month3: first > 0 ? Math.round((last - first) / first * 10000) / 100 : 0,
+            },
+          });
+
+          await new Promise(r => setTimeout(r, 400));
+        } catch (e: any) {
+          console.log(`[sectors] ${etf.symbol} failed: ${e?.message}`);
+        }
+      }
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Sector data fetch failed" });
+    }
+  });
+
+  // ================================================================
+  // EARNINGS CALENDAR
+  // ================================================================
+
+  app.get("/api/earnings-calendar", async (_req, res) => {
+    try {
+      await ensureReady();
+      const watchlistItems = await storage.getFavorites("watchlist");
+      if (!watchlistItems.length) {
+        return res.json([]);
+      }
+
+      const results: any[] = [];
+
+      for (const item of watchlistItems) {
+        try {
+          const data = await yahooFetch(
+            `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(item.ticker)}?modules=earningsTrend%2CcalendarEvents%2Cearnings`
+          );
+
+          const summary = data?.quoteSummary?.result?.[0];
+          if (!summary) continue;
+
+          const calEvents = summary.calendarEvents;
+          const earningsModule = summary.earnings;
+
+          // Extract earnings date
+          const earningsDateRaw = calEvents?.earnings?.earningsDate;
+          const earningsDate = earningsDateRaw?.[0]?.fmt || null;
+
+          // Extract estimates
+          const epsEstimate = calEvents?.earnings?.earningsAverage?.raw ?? null;
+          const revenueEstimate = calEvents?.earnings?.revenueAverage?.raw ?? null;
+          const companyName = calEvents?.earnings?.earningsDate ? item.ticker : item.ticker;
+
+          // Extract quarterly earnings history
+          const history: any[] = [];
+          const earningsHistory = earningsModule?.earningsChart?.quarterly || [];
+          for (const q of earningsHistory) {
+            history.push({
+              quarter: q.date || "",
+              actual: q.actual?.raw ?? null,
+              estimate: q.estimate?.raw ?? null,
+              surprise: q.actual?.raw != null && q.estimate?.raw != null
+                ? Math.round((q.actual.raw - q.estimate.raw) * 10000) / 10000
+                : null,
+              surprisePct: q.actual?.raw != null && q.estimate?.raw != null && q.estimate.raw !== 0
+                ? Math.round((q.actual.raw - q.estimate.raw) / Math.abs(q.estimate.raw) * 10000) / 100
+                : null,
+            });
+          }
+
+          results.push({
+            ticker: item.ticker,
+            companyName: item.ticker,
+            earningsDate,
+            epsEstimate,
+            revenueEstimate,
+            history,
+          });
+
+          await new Promise(r => setTimeout(r, 400));
+        } catch (e: any) {
+          console.log(`[earnings] ${item.ticker} failed: ${e?.message}`);
+        }
+      }
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Earnings calendar fetch failed" });
+    }
+  });
+
+  // ================================================================
+  // TRADE ANALYTICS (MFE/MAE)
+  // ================================================================
+
+  app.get("/api/trades/analytics", async (_req, res) => {
+    try {
+      const allTrades = await storage.getAllTrades();
+      const closedTrades = allTrades.filter(t => t.closeDate);
+
+      if (closedTrades.length === 0) {
+        return res.json({
+          totalTrades: 0, wins: 0, losses: 0, winRate: 0,
+          avgWin: 0, avgLoss: 0, largestWin: 0, largestLoss: 0,
+          profitFactor: 0, expectancy: 0,
+          avgRWin: 0, avgRLoss: 0,
+          currentStreak: 0, longestWinStreak: 0, longestLossStreak: 0,
+          byType: {}, byDayOfWeek: {}, monthlyPL: {},
+          trades: [], exitEfficiency: [],
+        });
+      }
+
+      // Compute P/L and R-multiples for each trade
+      const tradeData = closedTrades.map(t => {
+        const multiplier = t.tradeCategory === "Option" ? 100 : 1;
+        const costToOpen = t.openPrice * t.contractsShares * multiplier;
+        const costToClose = (t.closePrice || 0) * t.contractsShares * multiplier;
+        const profit = costToOpen + costToClose - (t.commIn || 0) - (t.commOut || 0);
+        const isWin = profit >= 0;
+
+        // Initial risk calculation
+        let initialRisk: number;
+        const absOpen = Math.abs(t.openPrice);
+        if (t.spreadWidth && t.spreadWidth > 0 && t.tradeCategory === "Option") {
+          if (t.openPrice > 0) {
+            // Credit spread
+            initialRisk = (t.spreadWidth - absOpen) * t.contractsShares * 100;
+          } else {
+            // Debit spread
+            initialRisk = absOpen * t.contractsShares * 100;
+          }
+        } else if (t.tradeCategory === "Option") {
+          initialRisk = absOpen * t.contractsShares * 100;
+        } else {
+          initialRisk = absOpen * t.contractsShares;
+        }
+
+        const rMultiple = initialRisk > 0 ? profit / initialRisk : 0;
+
+        // MFE / MAE estimation
+        const mfe = t.maxProfit != null ? t.maxProfit : (t.spreadWidth ? t.spreadWidth * t.contractsShares * 100 - initialRisk : Math.abs(profit));
+        const mae = initialRisk;
+        const exitEfficiency = mfe > 0 ? profit / mfe : 0;
+
+        return {
+          id: t.id,
+          symbol: t.symbol,
+          tradeType: t.tradeType,
+          tradeDate: t.tradeDate,
+          closeDate: t.closeDate!,
+          profit,
+          isWin,
+          initialRisk,
+          rMultiple: Math.round(rMultiple * 100) / 100,
+          mfe,
+          mae,
+          exitEfficiency: Math.round(exitEfficiency * 10000) / 100,
+        };
+      });
+
+      const wins = tradeData.filter(t => t.isWin);
+      const losses = tradeData.filter(t => !t.isWin);
+
+      const grossProfits = wins.reduce((s, t) => s + t.profit, 0);
+      const grossLosses = Math.abs(losses.reduce((s, t) => s + t.profit, 0));
+
+      const avgWin = wins.length > 0 ? grossProfits / wins.length : 0;
+      const avgLoss = losses.length > 0 ? grossLosses / losses.length : 0;
+      const winRate = tradeData.length > 0 ? wins.length / tradeData.length : 0;
+      const lossRate = 1 - winRate;
+
+      // Streaks
+      let currentStreak = 0;
+      let longestWinStreak = 0;
+      let longestLossStreak = 0;
+      let ws = 0, ls = 0;
+      const sorted = [...tradeData].sort((a, b) => a.closeDate.localeCompare(b.closeDate));
+      for (const t of sorted) {
+        if (t.isWin) { ws++; ls = 0; longestWinStreak = Math.max(longestWinStreak, ws); }
+        else { ls++; ws = 0; longestLossStreak = Math.max(longestLossStreak, ls); }
+      }
+      if (sorted.length > 0) {
+        const lastWin = sorted[sorted.length - 1].isWin;
+        currentStreak = lastWin ? ws : -ls;
+      }
+
+      // Performance by trade type
+      const byType: Record<string, { profit: number; count: number; wins: number; avgR: number }> = {};
+      for (const t of tradeData) {
+        if (!byType[t.tradeType]) byType[t.tradeType] = { profit: 0, count: 0, wins: 0, avgR: 0 };
+        const entry = byType[t.tradeType];
+        entry.profit += t.profit;
+        entry.count++;
+        if (t.isWin) entry.wins++;
+        entry.avgR += t.rMultiple;
+      }
+      for (const key of Object.keys(byType)) {
+        byType[key].avgR = byType[key].count > 0 ? Math.round(byType[key].avgR / byType[key].count * 100) / 100 : 0;
+      }
+
+      // Performance by day of week
+      const byDayOfWeek: Record<string, { profit: number; count: number; wins: number }> = {};
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      for (const t of tradeData) {
+        const day = dayNames[new Date(t.tradeDate).getDay()];
+        if (!byDayOfWeek[day]) byDayOfWeek[day] = { profit: 0, count: 0, wins: 0 };
+        byDayOfWeek[day].profit += t.profit;
+        byDayOfWeek[day].count++;
+        if (t.isWin) byDayOfWeek[day].wins++;
+      }
+
+      // Monthly P/L breakdown
+      const monthlyPL: Record<string, number> = {};
+      for (const t of tradeData) {
+        const month = t.closeDate.substring(0, 7); // YYYY-MM
+        monthlyPL[month] = (monthlyPL[month] || 0) + t.profit;
+      }
+
+      // Exit efficiency data
+      const exitEfficiency = tradeData.map(t => ({
+        symbol: t.symbol,
+        tradeType: t.tradeType,
+        profit: Math.round(t.profit * 100) / 100,
+        mfe: Math.round(t.mfe * 100) / 100,
+        efficiency: t.exitEfficiency,
+      }));
+
+      const allProfits = tradeData.map(t => t.profit);
+
+      res.json({
+        totalTrades: tradeData.length,
+        wins: wins.length,
+        losses: losses.length,
+        winRate: Math.round(winRate * 10000) / 100,
+        avgWin: Math.round(avgWin * 100) / 100,
+        avgLoss: Math.round(avgLoss * 100) / 100,
+        largestWin: Math.round(Math.max(...allProfits) * 100) / 100,
+        largestLoss: Math.round(Math.min(...allProfits) * 100) / 100,
+        profitFactor: grossLosses > 0 ? Math.round(grossProfits / grossLosses * 100) / 100 : grossProfits > 0 ? Infinity : 0,
+        expectancy: Math.round((winRate * avgWin - lossRate * avgLoss) * 100) / 100,
+        avgRWin: wins.length > 0 ? Math.round(wins.reduce((s, t) => s + t.rMultiple, 0) / wins.length * 100) / 100 : 0,
+        avgRLoss: losses.length > 0 ? Math.round(losses.reduce((s, t) => s + t.rMultiple, 0) / losses.length * 100) / 100 : 0,
+        currentStreak,
+        longestWinStreak,
+        longestLossStreak,
+        byType,
+        byDayOfWeek,
+        monthlyPL,
+        trades: tradeData,
+        exitEfficiency,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to compute analytics" });
+    }
+  });
+
+  // ================================================================
   // TRADE TRACKER API ROUTES
   // ================================================================
 

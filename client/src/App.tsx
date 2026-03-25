@@ -15,6 +15,12 @@ import OptionsCalculator from "@/pages/options-calculator";
 import Help from "@/pages/help";
 import Institutional from "@/pages/institutional";
 import Verdict from "@/pages/verdict";
+import PayoffDiagram from "@/pages/payoff-diagram";
+import KellyCalculator from "@/pages/kelly-calculator";
+import GreeksCalculator from "@/pages/greeks-calculator";
+import SectorHeatmap from "@/pages/sector-heatmap";
+import EarningsCalendar from "@/pages/earnings-calendar";
+import TradeAnalytics from "@/pages/trade-analytics";
 
 function App() {
   return (
@@ -33,6 +39,12 @@ function App() {
                 <Route path="/verdict" component={Verdict} />
                 <Route path="/institutional" component={Institutional} />
                 <Route path="/help" component={Help} />
+                <Route path="/payoff" component={PayoffDiagram} />
+                <Route path="/kelly" component={KellyCalculator} />
+                <Route path="/greeks" component={GreeksCalculator} />
+                <Route path="/sectors" component={SectorHeatmap} />
+                <Route path="/earnings" component={EarningsCalendar} />
+                <Route path="/analytics" component={TradeAnalytics} />
                 <Route component={NotFound} />
               </Switch>
             </AppLayout>

@@ -27,6 +27,12 @@ import {
   Award,
   Plus,
   CheckCircle2,
+  LineChart,
+  Sigma,
+  Grid3X3,
+  Calendar,
+  PieChart,
+  Percent,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -391,7 +397,17 @@ function Sidebar({
       label: "Research",
       items: [
         { path: "/scanner", label: "Scanner", icon: Radar },
-        { path: "/calculator", label: "Calculator", icon: Calculator },
+        { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
+        { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
+      ],
+    },
+    {
+      label: "Calculators",
+      items: [
+        { path: "/calculator", label: "Options Calculator", icon: Calculator },
+        { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
+        { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
+        { path: "/kelly", label: "Kelly Criterion", icon: Percent },
       ],
     },
     {
@@ -400,6 +416,7 @@ function Sidebar({
         { path: "/tracker", label: "Current Positions", icon: ClipboardList },
         { path: "#add-trade", label: "Add Trade", icon: Plus },
         { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
+        { path: "/analytics", label: "Performance Analytics", icon: PieChart },
       ],
     },
   ];
@@ -411,7 +428,7 @@ function Sidebar({
   // Add/Close trade modal states
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [showCloseTrade, setShowCloseTrade] = useState(false);
-  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Trade Tracker": true });
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Calculators": true, "Trade Tracker": true });
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 
