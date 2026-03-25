@@ -5,7 +5,8 @@ import {
   type AccountSettings, type InsertAccountSettings,
   type AccountTransaction, type InsertAccountTransaction,
   type PasswordResetToken,
-  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens,
+  type TradePriceHistory, type InsertTradePriceHistory,
+  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -49,6 +50,12 @@ export interface IStorage {
   createPasswordResetToken(userId: number, token: string, expiresAt: Date): Promise<PasswordResetToken>;
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   deletePasswordResetToken(token: string): Promise<void>;
+  // Trade Price History
+  recordPriceSnapshot(snapshot: InsertTradePriceHistory): Promise<void>;
+  recordPriceSnapshots(snapshots: InsertTradePriceHistory[]): Promise<void>;
+  getPriceHistory(tradeId: number): Promise<TradePriceHistory[]>;
+  getPriceHistoryForUser(userId: number): Promise<TradePriceHistory[]>;
+  getTradesMFEMAE(userId: number): Promise<{tradeId: number; mfe: number; mae: number; exitEfficiency: number}[]>;
   // Admin
   getAllUsers(): Promise<User[]>;
   deleteUser(userId: number): Promise<void>;
@@ -129,6 +136,16 @@ export class DatabaseStorage implements IStorage {
           trans_type TEXT NOT NULL,
           date TEXT NOT NULL,
           note TEXT
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS trade_price_history (
+          id SERIAL PRIMARY KEY,
+          trade_id INTEGER NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          date TEXT NOT NULL,
+          price DOUBLE PRECISION NOT NULL,
+          unrealized_pl DOUBLE PRECISION
         )
       `);
       await client.query(`
@@ -292,6 +309,51 @@ export class DatabaseStorage implements IStorage {
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
   }
 
+  // ─── Trade Price History ─────────────────────────────────────────────────
+
+  async recordPriceSnapshot(snapshot: InsertTradePriceHistory): Promise<void> {
+    await db.insert(tradePriceHistory).values(snapshot);
+  }
+
+  async recordPriceSnapshots(snapshots: InsertTradePriceHistory[]): Promise<void> {
+    if (snapshots.length === 0) return;
+    await db.insert(tradePriceHistory).values(snapshots);
+  }
+
+  async getPriceHistory(tradeId: number): Promise<TradePriceHistory[]> {
+    return db.select().from(tradePriceHistory).where(eq(tradePriceHistory.tradeId, tradeId)).orderBy(tradePriceHistory.date);
+  }
+
+  async getPriceHistoryForUser(userId: number): Promise<TradePriceHistory[]> {
+    return db.select().from(tradePriceHistory).where(eq(tradePriceHistory.userId, userId)).orderBy(tradePriceHistory.date);
+  }
+
+  async getTradesMFEMAE(userId: number): Promise<{tradeId: number; mfe: number; mae: number; exitEfficiency: number}[]> {
+    // Get all closed trades for this user
+    const closedTrades = await db.select().from(trades).where(and(eq(trades.userId, userId), sql`close_date IS NOT NULL`));
+    
+    const results = [];
+    for (const trade of closedTrades) {
+      const history = await db.select().from(tradePriceHistory).where(eq(tradePriceHistory.tradeId, trade.id));
+      if (history.length === 0) continue;
+      
+      const plValues = history.map(h => h.unrealizedPL || 0);
+      const mfe = Math.max(...plValues, 0); // best unrealized P/L
+      const mae = Math.min(...plValues, 0); // worst unrealized P/L
+      
+      // Actual P/L for this trade
+      const multiplier = trade.tradeCategory === 'Option' ? 100 : 1;
+      const actualPL = trade.closePrice != null ? 
+        ((trade.closePrice + trade.openPrice) * trade.contractsShares * multiplier) - ((trade.commIn || 0) + (trade.commOut || 0))
+        : 0;
+      
+      const exitEfficiency = mfe > 0 ? (actualPL / mfe) * 100 : 0;
+      
+      results.push({ tradeId: trade.id, mfe, mae, exitEfficiency: Math.min(100, Math.max(-100, exitEfficiency)) });
+    }
+    return results;
+  }
+
   // ─── Admin ────────────────────────────────────────────────────────────────
 
   async getAllUsers(): Promise<User[]> {
@@ -300,6 +362,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(userId: number): Promise<void> {
     // Delete user's data first (cascading)
+    await db.delete(tradePriceHistory).where(eq(tradePriceHistory.userId, userId));
     await db.delete(accountTransactions).where(eq(accountTransactions.userId, userId));
     await db.delete(accountSettings).where(eq(accountSettings.userId, userId));
     await db.delete(trades).where(eq(trades.userId, userId));

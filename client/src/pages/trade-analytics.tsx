@@ -3,11 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3, TrendingUp, Target, DollarSign,
   Activity, AlertTriangle, Percent, Award,
+  Crosshair, Info,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Cell,
+  ScatterChart, Scatter, ZAxis,
+  LineChart, Line, ReferenceLine, Legend,
 } from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,11 +38,35 @@ interface AnalyticsData {
   exitEfficiency: { symbol: string; tradeType: string; profit: number; mfe: number; efficiency: number }[];
 }
 
+interface MFEMAEData {
+  trades: {
+    tradeId: number;
+    mfe: number;
+    mae: number;
+    exitEfficiency: number;
+    symbol: string;
+    tradeType: string;
+    openPrice: number;
+    closePrice: number;
+    history: { date: string; pl: number }[];
+  }[];
+  summary: {
+    avgMFE: number;
+    avgMAE: number;
+    avgExitEfficiency: number;
+    totalTracked: number;
+  };
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function TradeAnalytics() {
   const { data: analytics, isLoading, error } = useQuery<AnalyticsData>({
     queryKey: ["/api/trades/analytics"],
+  });
+
+  const { data: mfeData } = useQuery<MFEMAEData>({
+    queryKey: ["/api/trades/mfe-mae"],
   });
 
   const monthlyData = useMemo(() => {
@@ -83,6 +110,38 @@ export default function TradeAnalytics() {
     if (valid.length === 0) return null;
     return Math.round(valid.reduce((s, e) => s + e.efficiency, 0) / valid.length * 100) / 100;
   }, [analytics]);
+
+  // MFE/MAE chart data
+  const scatterData = useMemo(() => {
+    if (!mfeData?.trades?.length) return [];
+    return mfeData.trades.map(t => ({
+      mae: Math.round(t.mae * 100) / 100,
+      mfe: Math.round(t.mfe * 100) / 100,
+      symbol: t.symbol,
+      efficiency: Math.round(t.exitEfficiency * 10) / 10,
+      profitable: t.exitEfficiency > 0 ? 1 : 0,
+    }));
+  }, [mfeData]);
+
+  const exitEfficiencyBars = useMemo(() => {
+    if (!mfeData?.trades?.length) return [];
+    return [...mfeData.trades]
+      .sort((a, b) => b.exitEfficiency - a.exitEfficiency)
+      .map(t => ({
+        label: `${t.symbol} (${t.tradeType})`,
+        efficiency: Math.round(t.exitEfficiency * 10) / 10,
+        fill: t.exitEfficiency >= 70 ? "#22c55e" : t.exitEfficiency >= 30 ? "#eab308" : "#ef4444",
+      }));
+  }, [mfeData]);
+
+  // Pick top 5 trades with most history points for the timeline chart
+  const timelineTrades = useMemo(() => {
+    if (!mfeData?.trades?.length) return [];
+    return mfeData.trades
+      .filter(t => t.history.length >= 2)
+      .sort((a, b) => b.history.length - a.history.length)
+      .slice(0, 5);
+  }, [mfeData]);
 
   if (isLoading) {
     return (
@@ -360,6 +419,219 @@ export default function TradeAnalytics() {
           </div>
         </div>
       )}
+
+      {/* ================================================================ */}
+      {/* MFE / MAE Analysis Section */}
+      {/* ================================================================ */}
+      <div className="bg-card border border-card-border rounded-lg p-4" data-testid="mfe-mae-section">
+        <div className="flex items-center gap-2 mb-3">
+          <Crosshair className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-bold text-foreground">MFE / MAE Analysis</h3>
+        </div>
+
+        <HelpBlock title="Understanding MFE & MAE">
+          <p><strong className="text-foreground">MFE (Maximum Favorable Excursion):</strong> The BEST your trade ever got before you closed it — the peak unrealized profit during the life of the trade.</p>
+          <p><strong className="text-foreground">MAE (Maximum Adverse Excursion):</strong> The WORST your trade ever got before recovering — the maximum drawdown experienced during the trade.</p>
+          <p><strong className="text-foreground">Exit Efficiency:</strong> What percentage of the maximum available profit you actually captured. Actual P/L ÷ MFE.</p>
+          <Example type="good">
+            <strong className="text-green-400">Exit Efficiency = 75%:</strong> You captured 75% of the best price — excellent exit timing.
+          </Example>
+          <Example type="bad">
+            <strong className="text-red-400">Exit Efficiency = 15%:</strong> The trade was up big but you gave most of it back before closing.
+          </Example>
+          <p>If your exit efficiency is consistently low, you're closing winners too early or holding too long after the peak.</p>
+          <p>If your MAE is consistently large relative to your final P/L, your stops might be too wide.</p>
+          <ScoreRange label="Excellent" range="> 70%" color="green" description="Capturing most of the available profit — strong exit discipline" />
+          <ScoreRange label="Acceptable" range="30-70%" color="yellow" description="Decent but room to improve exit timing" />
+          <ScoreRange label="Needs Work" range="< 30%" color="red" description="Leaving significant profit on the table — review your exit strategy" />
+        </HelpBlock>
+
+        {(!mfeData || mfeData.summary.totalTracked === 0) ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
+            <Info className="h-6 w-6 text-muted-foreground/40 mb-2" />
+            <p className="text-xs text-muted-foreground font-medium">No MFE/MAE data yet</p>
+            <p className="text-[10px] text-muted-foreground mt-1 max-w-sm">
+              MFE/MAE data builds over time as you refresh prices on open trades.
+              Click "Refresh P/L" on the Trade Tracker page to start recording price snapshots.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <MetricCard
+                label="Avg MFE"
+                value={`$${mfeData.summary.avgMFE.toFixed(2)}`}
+                color="text-green-400"
+                icon={<TrendingUp className="h-3 w-3" />}
+                subtitle="avg peak profit"
+              />
+              <MetricCard
+                label="Avg MAE"
+                value={`$${mfeData.summary.avgMAE.toFixed(2)}`}
+                color="text-red-400"
+                icon={<AlertTriangle className="h-3 w-3" />}
+                subtitle="avg max drawdown"
+              />
+              <MetricCard
+                label="Avg Exit Efficiency"
+                value={`${mfeData.summary.avgExitEfficiency.toFixed(1)}%`}
+                color={mfeData.summary.avgExitEfficiency >= 70 ? "text-green-400" : mfeData.summary.avgExitEfficiency >= 30 ? "text-yellow-400" : "text-red-400"}
+                icon={<Target className="h-3 w-3" />}
+                subtitle="profit captured"
+              />
+              <MetricCard
+                label="Trades Tracked"
+                value={String(mfeData.summary.totalTracked)}
+                color="text-foreground"
+                icon={<BarChart3 className="h-3 w-3" />}
+                subtitle="with price history"
+              />
+            </div>
+
+            {/* MFE/MAE Scatter Chart */}
+            {scatterData.length > 0 && (
+              <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">MFE vs MAE Scatter</h4>
+                <p className="text-[10px] text-muted-foreground mb-3">Each dot is a trade. X = max drawdown (MAE), Y = peak profit (MFE). Green = profitable exit, Red = loss.</p>
+                <ResponsiveContainer width="100%" height={280}>
+                  <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.5} />
+                    <XAxis
+                      type="number"
+                      dataKey="mae"
+                      name="MAE"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                      label={{ value: "MAE (drawdown)", position: "insideBottom", offset: -5, style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" } }}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="mfe"
+                      name="MFE"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                      label={{ value: "MFE (peak profit)", angle: -90, position: "insideLeft", style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" } }}
+                    />
+                    <ZAxis dataKey="symbol" name="Symbol" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: 8, fontSize: 11 }}
+                      formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name]}
+                      labelFormatter={() => ""}
+                      content={({ payload }) => {
+                        if (!payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        if (!d) return null;
+                        return (
+                          <div className="bg-card border border-card-border rounded-lg p-2 text-xs">
+                            <p className="font-bold text-foreground">{d.symbol}</p>
+                            <p className="text-green-400">MFE: ${d.mfe.toFixed(2)}</p>
+                            <p className="text-red-400">MAE: ${d.mae.toFixed(2)}</p>
+                            <p className="text-muted-foreground">Efficiency: {d.efficiency}%</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Scatter data={scatterData.filter(d => d.profitable === 1)} fill="#22c55e" fillOpacity={0.7} />
+                    <Scatter data={scatterData.filter(d => d.profitable === 0)} fill="#ef4444" fillOpacity={0.7} />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Exit Efficiency Bar Chart */}
+            {exitEfficiencyBars.length > 0 && (
+              <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Exit Efficiency by Trade</h4>
+                <p className="text-[10px] text-muted-foreground mb-3">Green (&gt;70%) = excellent, Yellow (30-70%) = acceptable, Red (&lt;30%) = needs work.</p>
+                <ResponsiveContainer width="100%" height={Math.max(150, exitEfficiencyBars.length * 32)}>
+                  <BarChart data={exitEfficiencyBars} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 80 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.5} />
+                    <XAxis
+                      type="number"
+                      domain={[-100, 100]}
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickFormatter={(v: number) => `${v}%`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="label"
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      width={75}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: 8, fontSize: 11 }}
+                      formatter={(value: number) => [`${value.toFixed(1)}%`, "Exit Efficiency"]}
+                    />
+                    <Bar dataKey="efficiency" radius={[0, 4, 4, 0]}>
+                      {exitEfficiencyBars.map((entry, index) => (
+                        <Cell key={index} fill={entry.fill} fillOpacity={0.8} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Trade P/L Timeline */}
+            {timelineTrades.length > 0 && (
+              <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Trade P/L Timeline</h4>
+                <p className="text-[10px] text-muted-foreground mb-3">Unrealized P/L over time for top tracked trades. Peak = MFE, Trough = MAE.</p>
+                <div className="space-y-4">
+                  {timelineTrades.map(trade => {
+                    const data = trade.history.map(h => ({
+                      date: h.date,
+                      pl: Math.round(h.pl * 100) / 100,
+                    }));
+                    const maxPL = Math.max(...data.map(d => d.pl));
+                    const minPL = Math.min(...data.map(d => d.pl));
+                    return (
+                      <div key={trade.tradeId} className="border border-card-border/30 rounded-lg p-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-foreground">{trade.symbol} <span className="text-muted-foreground font-normal">({trade.tradeType})</span></span>
+                          <span className={`text-[10px] font-mono ${trade.exitEfficiency >= 50 ? "text-green-400" : trade.exitEfficiency >= 0 ? "text-yellow-400" : "text-red-400"}`}>
+                            Efficiency: {trade.exitEfficiency.toFixed(1)}%
+                          </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={120}>
+                          <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.3} />
+                            <XAxis
+                              dataKey="date"
+                              tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }}
+                              tickFormatter={(v: string) => v.substring(5)} // MM-DD
+                            />
+                            <YAxis
+                              tick={{ fontSize: 8, fill: "hsl(var(--muted-foreground))" }}
+                              tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                            />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: 8, fontSize: 10 }}
+                              formatter={(value: number) => [`$${value.toFixed(2)}`, "Unrealized P/L"]}
+                            />
+                            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" opacity={0.5} />
+                            <ReferenceLine y={maxPL} stroke="#22c55e" strokeDasharray="4 4" opacity={0.6} label={{ value: `MFE: $${maxPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: "#22c55e" } }} />
+                            <ReferenceLine y={minPL} stroke="#ef4444" strokeDasharray="4 4" opacity={0.6} label={{ value: `MAE: $${minPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: "#ef4444" } }} />
+                            <Line
+                              type="monotone"
+                              dataKey="pl"
+                              stroke="hsl(var(--primary))"
+                              strokeWidth={1.5}
+                              dot={{ fill: "hsl(var(--primary))", r: 2 }}
+                              activeDot={{ r: 4 }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

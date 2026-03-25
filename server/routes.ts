@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, db } from "./storage";
+import { tradePriceHistory } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 
 // ============================================================
@@ -2883,6 +2885,55 @@ export async function registerRoutes(
 
   // IMPORTANT: Static routes MUST come before parameterized /:id routes
 
+  // MFE/MAE analysis route
+  app.get("/api/trades/mfe-mae", async (req, res) => {
+    try {
+      const mfeData = await storage.getTradesMFEMAE(req.user!.id);
+      const allHistory = await storage.getPriceHistoryForUser(req.user!.id);
+
+      // Group history by tradeId
+      const historyByTrade: Record<number, {date: string; pl: number}[]> = {};
+      for (const h of allHistory) {
+        if (!historyByTrade[h.tradeId]) historyByTrade[h.tradeId] = [];
+        historyByTrade[h.tradeId].push({ date: h.date, pl: h.unrealizedPL || 0 });
+      }
+
+      // Get trade details for context
+      const allTrades = await storage.getAllTrades(req.user!.id);
+      const tradeMap = new Map(allTrades.map(t => [t.id, t]));
+
+      const enriched = mfeData.map(m => {
+        const trade = tradeMap.get(m.tradeId);
+        return {
+          ...m,
+          symbol: trade?.symbol || "?",
+          tradeType: trade?.tradeType || "?",
+          openPrice: trade?.openPrice || 0,
+          closePrice: trade?.closePrice || 0,
+          history: historyByTrade[m.tradeId] || [],
+        };
+      });
+
+      // Aggregate stats
+      const avgMFE = mfeData.length > 0 ? mfeData.reduce((s, m) => s + m.mfe, 0) / mfeData.length : 0;
+      const avgMAE = mfeData.length > 0 ? mfeData.reduce((s, m) => s + m.mae, 0) / mfeData.length : 0;
+      const avgExitEff = mfeData.length > 0 ? mfeData.reduce((s, m) => s + m.exitEfficiency, 0) / mfeData.length : 0;
+
+      res.json({
+        trades: enriched,
+        summary: {
+          avgMFE: Number(avgMFE.toFixed(2)),
+          avgMAE: Number(avgMAE.toFixed(2)),
+          avgExitEfficiency: Number(avgExitEff.toFixed(1)),
+          totalTracked: mfeData.length,
+        },
+      });
+    } catch (error: any) {
+      console.error("MFE/MAE error:", error?.message);
+      res.status(500).json({ error: "Failed to calculate MFE/MAE" });
+    }
+  });
+
   // Get trade summary stats
   app.get("/api/trades/summary", async (req, res) => {
     try {
@@ -3022,6 +3073,47 @@ export async function registerRoutes(
         if (priceMap[trade.symbol] !== undefined) {
           await storage.updateTradePrice(req.user!.id, trade.id, priceMap[trade.symbol]);
         }
+      }
+
+      // Record price snapshots for MFE/MAE tracking
+      const today = new Date().toISOString().split("T")[0];
+      const snapshots: { tradeId: number; userId: number; date: string; price: number; unrealizedPL: number }[] = [];
+      for (const trade of openTrades) {
+        const price = priceMap[trade.symbol];
+        if (price != null) {
+          // Calculate unrealized P/L
+          const multiplier = trade.tradeCategory === 'Option' ? 100 : 1;
+          const isCredit = trade.openPrice > 0;
+          let unrealizedPL;
+          if (isCredit) {
+            // Credit trade: profit when price goes down
+            unrealizedPL = (trade.openPrice - price) * trade.contractsShares * multiplier;
+          } else {
+            // Debit trade: profit when price goes up
+            unrealizedPL = (price + trade.openPrice) * trade.contractsShares * multiplier;
+          }
+          unrealizedPL -= (trade.commIn || 0);
+
+          snapshots.push({
+            tradeId: trade.id,
+            userId: req.user!.id,
+            date: today,
+            price,
+            unrealizedPL,
+          });
+        }
+      }
+      // Avoid duplicate snapshots for same day
+      if (snapshots.length > 0) {
+        for (const snap of snapshots) {
+          await db.delete(tradePriceHistory).where(
+            and(
+              eq(tradePriceHistory.tradeId, snap.tradeId),
+              eq(tradePriceHistory.date, today)
+            )
+          );
+        }
+        await storage.recordPriceSnapshots(snapshots);
       }
 
       const updated = await storage.getAllTrades(req.user!.id);

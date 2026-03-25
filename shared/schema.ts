@@ -70,6 +70,15 @@ export const accountTransactions = pgTable("account_transactions", {
   note: text("note"),
 });
 
+export const tradePriceHistory = pgTable("trade_price_history", {
+  id: serial("id").primaryKey(),
+  tradeId: integer("trade_id").notNull().references(() => trades.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  date: text("date").notNull(),
+  price: doublePrecision("price").notNull(),
+  unrealizedPL: doublePrecision("unrealized_pl"),
+});
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -102,6 +111,8 @@ export const insertAccountTransactionSchema = createInsertSchema(accountTransact
   id: true,
 });
 
+export const insertTradePriceHistorySchema = createInsertSchema(tradePriceHistory).omit({ id: true });
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -114,6 +125,8 @@ export type AccountSettings = typeof accountSettings.$inferSelect;
 export type InsertAccountSettings = z.infer<typeof insertAccountSettingsSchema>;
 export type AccountTransaction = typeof accountTransactions.$inferSelect;
 export type InsertAccountTransaction = z.infer<typeof insertAccountTransactionSchema>;
+export type TradePriceHistory = typeof tradePriceHistory.$inferSelect;
+export type InsertTradePriceHistory = z.infer<typeof insertTradePriceHistorySchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
