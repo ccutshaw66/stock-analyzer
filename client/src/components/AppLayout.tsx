@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import iconUrl from "@/assets/icon.png";
 import logoUrl from "@/assets/logo.png";
+import logoTextUrl from "@/assets/logo-text.png";
 import {
   BarChart3,
   Activity,
@@ -101,11 +102,8 @@ function StickyHeader({
 
       {/* Logo */}
       <Link href="/">
-        <div className="flex items-center gap-2 shrink-0 cursor-pointer" data-testid="link-home-logo">
-          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded-lg" />
-          <span className="text-sm font-bold text-foreground tracking-tight hidden md:inline">
-            Stock Otter
-          </span>
+        <div className="flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: '#040d22' }}>
+          <img src={logoTextUrl} alt="Stock Otter" className="h-8 w-auto" />
         </div>
       </Link>
 
@@ -794,8 +792,8 @@ function SidebarContent({
           <img src={logoUrl} alt="Stock Otter" className="w-full h-auto" />
         </div>
       ) : (
-        <div className="px-2 py-3 border-b border-card-border flex justify-center">
-          <img src={iconUrl} alt="Stock Otter" className="h-10 w-10 rounded-lg" />
+        <div className="p-1.5 border-b border-card-border flex justify-center" style={{ backgroundColor: '#040d22' }}>
+          <img src={iconUrl} alt="Stock Otter" className="w-full h-auto rounded-lg" />
         </div>
       )}
 
