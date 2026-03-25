@@ -2273,10 +2273,11 @@ export async function registerRoutes(
         name: event.name,
         desc: event.desc,
         period: `${event.start.substring(0, 7)} to ${event.end.substring(0, 7)}`,
-        ticker: getReturnDuringPeriod(tickerChart, event.start, event.end),
-        spy: getReturnDuringPeriod(spyChart, event.start, event.end),
-        gold: getReturnDuringPeriod(goldChart, event.start, event.end),
-        silver: getReturnDuringPeriod(silverChart, event.start, event.end),
+        ticker: getReturnDuringPeriod(tickerChart, event.start, event.end) ?? 0,
+        spy: getReturnDuringPeriod(spyChart, event.start, event.end) ?? 0,
+        gold: getReturnDuringPeriod(goldChart, event.start, event.end) ?? 0,
+        silver: getReturnDuringPeriod(silverChart, event.start, event.end) ?? 0,
+        hasData: getReturnDuringPeriod(tickerChart, event.start, event.end) !== null,
       }));
 
       // Current metals data
@@ -2321,7 +2322,7 @@ export async function registerRoutes(
       }
 
       // Stress resilience score based on historical performance
-      const validStress = stressTests.filter(s => s.ticker !== null && s.spy !== null);
+      const validStress = stressTests.filter(s => s.hasData);
       if (validStress.length > 0) {
         const beatCount = validStress.filter(s => (s.ticker || 0) > (s.spy || 0)).length;
         const s = Math.round((beatCount / validStress.length) * 100);

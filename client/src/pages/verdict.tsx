@@ -51,6 +51,7 @@ interface StressTest {
   spy: number;
   gold: number;
   silver: number;
+  hasData?: boolean;
 }
 
 interface MetalData {
@@ -137,13 +138,15 @@ function verdictBadgeStyle(verdict: string): string {
   }
 }
 
-function pctColor(val: number): string {
+function pctColor(val: number | null | undefined): string {
+  if (val == null) return "text-muted-foreground";
   if (val > 0) return "text-green-400";
   if (val < 0) return "text-red-400";
   return "text-muted-foreground";
 }
 
-function formatPct(val: number): string {
+function formatPct(val: number | null | undefined): string {
+  if (val == null || isNaN(val)) return "N/A";
   const sign = val > 0 ? "+" : "";
   return `${sign}${val.toFixed(1)}%`;
 }
@@ -483,12 +486,13 @@ export default function Verdict() {
               </thead>
               <tbody>
                 {data.stressTests.map((test, i) => {
-                  const beatSpy = test.ticker > test.spy;
+                  const noData = test.hasData === false;
+                  const beatSpy = !noData && test.ticker > test.spy;
                   return (
                     <tr
                       key={i}
                       className={`border-b border-card-border/40 transition-colors ${
-                        beatSpy ? "bg-green-500/[0.04]" : "hover:bg-muted/20"
+                        noData ? "opacity-40" : beatSpy ? "bg-green-500/[0.04]" : "hover:bg-muted/20"
                       }`}
                       title={test.desc}
                     >
@@ -496,17 +500,17 @@ export default function Verdict() {
                         <div className="font-semibold text-foreground">{test.name}</div>
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">{test.period}</td>
-                      <td className={`py-2.5 px-3 text-right font-bold tabular-nums ${pctColor(test.ticker)}`}>
-                        {formatPct(test.ticker)}
+                      <td className={`py-2.5 px-3 text-right font-bold tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.ticker)}`}>
+                        {noData ? "N/A" : formatPct(test.ticker)}
                       </td>
-                      <td className={`py-2.5 px-3 text-right tabular-nums ${pctColor(test.spy)}`}>
-                        {formatPct(test.spy)}
+                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.spy)}`}>
+                        {noData ? "N/A" : formatPct(test.spy)}
                       </td>
-                      <td className={`py-2.5 px-3 text-right tabular-nums ${pctColor(test.gold)}`}>
-                        {formatPct(test.gold)}
+                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.gold)}`}>
+                        {noData ? "N/A" : formatPct(test.gold)}
                       </td>
-                      <td className={`py-2.5 px-6 text-right tabular-nums ${pctColor(test.silver)}`}>
-                        {formatPct(test.silver)}
+                      <td className={`py-2.5 px-6 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.silver)}`}>
+                        {noData ? "N/A" : formatPct(test.silver)}
                       </td>
                     </tr>
                   );
@@ -692,11 +696,11 @@ export default function Verdict() {
                 <div className="grid grid-cols-2 gap-3 border-t border-card-border pt-3">
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Institutional %</p>
-                    <p className="text-sm font-bold text-foreground tabular-nums">{data.institutional.institutionPct.toFixed(1)}%</p>
+                    <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.institutionPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider %</p>
-                    <p className="text-sm font-bold text-foreground tabular-nums">{data.institutional.insiderPct.toFixed(1)}%</p>
+                    <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.insiderPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
