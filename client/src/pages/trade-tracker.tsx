@@ -89,12 +89,15 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
   const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
 
-  // Historical-only fields
-  const [closeDate, setCloseDate] = useState(initial?.closeDate || "");
-  const [closePrice, setClosePrice] = useState(initial?.closePrice ? String(Math.abs(initial.closePrice)) : "");
+  // CTV dual-vertical fields
+  const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
+  const [ctvBuyPrice, setCtvBuyPrice] = useState(""); // debit leg price
+  const [ctvSellStrikes, setCtvSellStrikes] = useState(""); // e.g. "70/75"
+  const [ctvSellPrice, setCtvSellPrice] = useState(""); // credit leg price
 
   const typeDef = TRADE_TYPES[tradeType];
   const isCredit = typeDef?.isCredit ?? false;
+  const isDualVertical = (typeDef as any)?.isDualVertical ?? false;
   const numLegs = typeDef?.legs || 0;
 
   const createMutation = useMutation({
@@ -115,9 +118,17 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const rawPrice = parseFloat(openPrice) || 0;
+    let rawPrice = parseFloat(openPrice) || 0;
+    // CTV: calculate net from two legs
+    if (isDualVertical && ctvBuyPrice && ctvSellPrice) {
+      const buyP = parseFloat(ctvBuyPrice) || 0;
+      const sellP = parseFloat(ctvSellPrice) || 0;
+      rawPrice = sellP - buyP; // positive = net credit, negative = net debit
+    }
     // Auto-apply sign: credit = positive, debit = negative
-    const signedPrice = isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice);
+    const signedPrice = isDualVertical
+      ? rawPrice // CTV already has correct sign from net calculation
+      : (isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice));
     const sw = parseFloat(spreadWidth) || null;
     const alloc = parseFloat(allocation) || null;
 
@@ -145,7 +156,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
       symbol: symbol.toUpperCase(),
       tradeType,
       tradeCategory: category,
-      strikes: strikes || null,
+      strikes: isDualVertical ? `${ctvBuyStrikes}|${ctvSellStrikes}` : (strikes || null),
       openPrice: signedPrice,
       commIn,
       allocation: alloc,
@@ -280,9 +291,47 @@ function TradeForm({ mode, initial, settings, onClose }: {
             )}
           </div>
 
+          {/* CTV Dual Vertical Entry */}
+          {isDualVertical && (
+            <div className="border border-primary/20 bg-primary/5 rounded-lg p-3 space-y-3">
+              <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
+                  <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
+                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
+                    <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
+                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
+                  <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
+                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
+                    <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
+                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                  </div>
+                </div>
+              </div>
+              {ctvBuyPrice && ctvSellPrice && (
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-muted-foreground">Net:</span>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                    {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
+                  </span>
+                  <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Spread Width + Allocation */}
           <div className="grid grid-cols-2 gap-3">
-            {numLegs >= 2 && (
+            {numLegs >= 2 && !isDualVertical && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
                 <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
@@ -472,7 +521,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
 
 export default function TradeTracker() {
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showHistoricalModal, setShowHistoricalModal] = useState(false);
+
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -551,10 +600,7 @@ export default function TradeTracker() {
             className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
             <Settings className="h-3.5 w-3.5" />Settings
           </button>
-          <button onClick={() => setShowHistoricalModal(true)}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-yellow-600/80 hover:bg-yellow-600 text-white flex items-center gap-1.5">
-            <History className="h-3.5 w-3.5" />Add Historical
-          </button>
+
           <button onClick={() => setShowAddModal(true)}
             className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
             <Plus className="h-3.5 w-3.5" />Add Trade
@@ -728,7 +774,7 @@ export default function TradeTracker() {
 
       {/* Modals */}
       {showAddModal && settings && <TradeForm mode="add" settings={settings} onClose={() => setShowAddModal(false)} />}
-      {showHistoricalModal && settings && <TradeForm mode="historical" settings={settings} onClose={() => setShowHistoricalModal(false)} />}
+
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
       {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}

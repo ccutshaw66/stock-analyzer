@@ -2591,12 +2591,18 @@ export async function registerRoutes(
         try {
           const data = await getQuote(sym);
           if (data) {
-            const price = data?.quoteSummary?.result?.[0]?.price;
-            if (price?.regularMarketPrice?.raw) {
-              priceMap[sym] = price.regularMarketPrice.raw;
+            // getQuote returns quoteSummary.result[0] directly
+            const price = data?.price?.regularMarketPrice?.raw;
+            if (price) {
+              priceMap[sym] = price;
+              console.log(`[refresh] ${sym}: $${price}`);
             }
           }
-        } catch { /* skip */ }
+          // Small delay between symbols to avoid rate limits
+          await new Promise(r => setTimeout(r, 300));
+        } catch (e: any) {
+          console.log(`[refresh] ${sym} failed: ${e?.message}`);
+        }
       }
 
       for (const trade of openTrades) {

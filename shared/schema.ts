@@ -120,9 +120,9 @@ export const TRADE_TYPES = {
   PUBFLY: { label: "Put Unbal. Fly", category: "Option", legs: 3, targetROI: 0, isCredit: true },
   CUBFLYD: { label: "Debit CUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
   PUBFLYD: { label: "Debit PUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
-  // Options - CTVs
-  CCTV: { label: "Call CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true },
-  PCTV: { label: "Put CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true },
+  // Options - CTVs (dual vertical = 2 spreads combined into a butterfly)
+  CCTV: { label: "Call CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
+  PCTV: { label: "Put CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
   // Day Trades
   DTC: { label: "Day Trade Call", category: "Option", legs: 1, targetROI: 50, isCredit: false },
   DTP: { label: "Day Trade Put", category: "Option", legs: 1, targetROI: 50, isCredit: false },

@@ -25,6 +25,8 @@ import {
   TrendingDown,
   Building2,
   Award,
+  Plus,
+  CheckCircle2,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -366,23 +368,42 @@ function Sidebar({
     if (isMobile) onClose();
   };
 
-  const navItems = [
-    { path: "/", label: "Analyzer", icon: BarChart3 },
-    { path: "/trade", label: "Trade Analysis", icon: Activity },
-    { path: "/scanner", label: "Scanner", icon: Radar },
-    { path: "/tracker", label: "Trade Tracker", icon: ClipboardList },
-    { path: "/calculator", label: "Options Calc", icon: Calculator },
-    { path: "/verdict", label: "Verdict", icon: Award },
-    { path: "/institutional", label: "Institutional", icon: Building2 },
-    { path: "/help", label: "Help / FAQ", icon: BookOpen },
+  // Grouped nav structure
+  const navGroups = [
+    {
+      label: "Company Information",
+      items: [
+        { path: "/", label: "Profile", icon: BarChart3 },
+        { path: "/institutional", label: "Institutions", icon: Building2 },
+        { path: "/trade", label: "Trade Analysis", icon: Activity },
+        { path: "/verdict", label: "Verdict", icon: Award },
+      ],
+    },
+    {
+      label: "Research",
+      items: [
+        { path: "/scanner", label: "Scanner", icon: Radar },
+        { path: "/calculator", label: "Calculator", icon: Calculator },
+      ],
+    },
+    {
+      label: "Trade Tracker",
+      items: [
+        { path: "/tracker", label: "Current Positions", icon: ClipboardList },
+        { path: "#add-trade", label: "Add Trade", icon: Plus },
+        { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
+      ],
+    },
   ];
+  const helpItem = { path: "/help", label: "Help / FAQ", icon: BookOpen };
 
   const sortedWatchlist = [...watchlistItems].sort(
     (a, b) => (b.score ?? 0) - (a.score ?? 0)
   );
-  const sortedPortfolio = [...portfolioItems].sort(
-    (a, b) => (b.score ?? 0) - (a.score ?? 0)
-  );
+  // Add/Close trade modal states
+  const [showAddTrade, setShowAddTrade] = useState(false);
+  const [showCloseTrade, setShowCloseTrade] = useState(false);
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Trade Tracker": true });
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 
@@ -404,13 +425,11 @@ function Sidebar({
           <SidebarContent
             expanded={true}
             location={location}
-            navItems={navItems}
+            navGroups={navGroups}
+            helpItem={helpItem}
             watchlistOpen={watchlistOpen}
             setWatchlistOpen={setWatchlistOpen}
-            portfolioOpen={portfolioOpen}
-            setPortfolioOpen={setPortfolioOpen}
             sortedWatchlist={sortedWatchlist}
-            sortedPortfolio={sortedPortfolio}
             removeMutation={removeMutation}
             refreshMutation={refreshMutation}
             handleSelectTicker={handleSelectTicker}
@@ -424,6 +443,10 @@ function Sidebar({
             openTrades={openTrades}
             tradesOpen={tradesOpen}
             setTradesOpen={setTradesOpen}
+            groupOpen={groupOpen}
+            setGroupOpen={setGroupOpen}
+            setShowAddTrade={setShowAddTrade}
+            setShowCloseTrade={setShowCloseTrade}
           />
         </aside>
       </>
@@ -438,13 +461,11 @@ function Sidebar({
       <SidebarContent
         expanded={expanded}
         location={location}
-        navItems={navItems}
+        navGroups={navGroups}
+        helpItem={helpItem}
         watchlistOpen={watchlistOpen}
         setWatchlistOpen={setWatchlistOpen}
-        portfolioOpen={portfolioOpen}
-        setPortfolioOpen={setPortfolioOpen}
         sortedWatchlist={sortedWatchlist}
-        sortedPortfolio={sortedPortfolio}
         removeMutation={removeMutation}
         refreshMutation={refreshMutation}
         handleSelectTicker={handleSelectTicker}
@@ -458,6 +479,10 @@ function Sidebar({
         openTrades={openTrades}
         tradesOpen={tradesOpen}
         setTradesOpen={setTradesOpen}
+        groupOpen={groupOpen}
+        setGroupOpen={setGroupOpen}
+        setShowAddTrade={setShowAddTrade}
+        setShowCloseTrade={setShowCloseTrade}
       />
     </aside>
   );
@@ -466,13 +491,11 @@ function Sidebar({
 function SidebarContent({
   expanded,
   location,
-  navItems,
+  navGroups,
+  helpItem,
   watchlistOpen,
   setWatchlistOpen,
-  portfolioOpen,
-  setPortfolioOpen,
   sortedWatchlist,
-  sortedPortfolio,
   removeMutation,
   refreshMutation,
   handleSelectTicker,
@@ -486,35 +509,74 @@ function SidebarContent({
   openTrades = [],
   tradesOpen = true,
   setTradesOpen = () => {},
+  groupOpen = {} as any,
+  setGroupOpen = (_: any) => {},
+  setShowAddTrade = () => {},
+  setShowCloseTrade = () => {},
 }: any) {
   return (
     <>
-      {/* Navigation */}
-      <nav className="p-2 space-y-0.5">
-        {navItems.map((item: any) => {
-          const Icon = item.icon;
-          const isActive = location === item.path;
+      {/* Grouped Navigation */}
+      <nav className="p-2 space-y-1">
+        {navGroups.map((group: any) => {
+          const isOpen = groupOpen[group.label] !== false;
           return (
-            <Link key={item.path} href={item.path}>
-              <div
-                className={`flex items-center gap-3 py-2 px-3 rounded-md cursor-pointer transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-                data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                title={expanded ? undefined : item.label}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {expanded && (
-                  <span className="text-sm font-medium truncate">
-                    {item.label}
-                  </span>
-                )}
-              </div>
-            </Link>
+            <div key={group.label}>
+              {expanded && (
+                <button
+                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, [group.label]: !isOpen }))}
+                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                >
+                  {group.label}
+                  {isOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                </button>
+              )}
+              {(isOpen || !expanded) && group.items.map((item: any) => {
+                const Icon = item.icon;
+                const isActive = location === item.path;
+                const isAction = item.path.startsWith("#");
+                if (isAction) {
+                  return (
+                    <div
+                      key={item.path}
+                      onClick={() => {
+                        if (item.path === "#add-trade") setShowAddTrade(true);
+                        if (item.path === "#close-trade") setShowCloseTrade(true);
+                      }}
+                      className="flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+                      title={expanded ? undefined : item.label}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {expanded && <span className="text-sm font-medium truncate">{item.label}</span>}
+                    </div>
+                  );
+                }
+                return (
+                  <Link key={item.path} href={item.path}>
+                    <div
+                      className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+                        isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                      title={expanded ? undefined : item.label}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {expanded && <span className="text-sm font-medium truncate">{item.label}</span>}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
+        {/* Help / FAQ */}
+        <Link href={helpItem.path}>
+          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+            location === helpItem.path ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}>
+            <helpItem.icon className="h-4 w-4 shrink-0" />
+            {expanded && <span className="text-sm font-medium truncate">{helpItem.label}</span>}
+          </div>
+        </Link>
       </nav>
 
       <div className="border-t border-card-border mx-2" />
@@ -614,100 +676,7 @@ function SidebarContent({
           )}
         </div>
 
-        {/* Portfolio */}
-        <div className="px-2 pt-1">
-          <button
-            onClick={() => setPortfolioOpen(!portfolioOpen)}
-            className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="toggle-portfolio"
-          >
-            {expanded ? (
-              <>
-                <span className="flex items-center gap-2">
-                  <Briefcase className="h-3.5 w-3.5" />
-                  Portfolio
-                  {sortedPortfolio.length > 0 && (
-                    <span className="text-[10px] bg-green-500/15 text-green-500 px-1.5 py-0.5 rounded-full tabular-nums">
-                      {sortedPortfolio.length}
-                    </span>
-                  )}
-                </span>
-                {portfolioOpen ? (
-                  <ChevronUp className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </>
-            ) : (
-              <Briefcase className="h-4 w-4 mx-auto" />
-            )}
-          </button>
-          {portfolioOpen && expanded && (
-            <div className="space-y-0.5 mt-1">
-              {sortedPortfolio.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-3">
-                  No stocks in portfolio
-                </p>
-              ) : (
-                sortedPortfolio.map((item: FavoriteItem) => (
-                  <div
-                    key={item.id}
-                    onClick={() => handleSelectTicker(item.ticker)}
-                    className={`flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer transition-colors group ${
-                      activeTicker === item.ticker
-                        ? "bg-primary/10"
-                        : "hover:bg-muted/50"
-                    }`}
-                    data-testid={`portfolio-${item.ticker}`}
-                  >
-                    <div className="min-w-0">
-                      <span className="font-mono font-bold text-xs text-foreground">
-                        {item.ticker}
-                      </span>
-                      <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">
-                        {item.companyName}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <ScoreBadge score={item.score} verdict={item.verdict} />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeMutation.mutate({
-                            ticker: item.ticker,
-                            listType: "portfolio",
-                          });
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-0.5"
-                        data-testid={`button-remove-portfolio-${item.ticker}`}
-                        aria-label={`Remove ${item.ticker} from portfolio`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-              {sortedPortfolio.length > 0 && (
-                <button
-                  onClick={() => refreshMutation.mutate("portfolio")}
-                  disabled={refreshMutation.isPending}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="button-refresh-portfolio"
-                >
-                  <RefreshCw
-                    className={`h-2.5 w-2.5 ${
-                      refreshMutation.isPending ? "animate-spin" : ""
-                    }`}
-                  />
-                  Refresh scores
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Active Options */}
+        {/* Active Trades (Options + Stocks) */}
         {(() => {
           const optionTrades = openTrades.filter((t: any) => t.tradeCategory === 'Option');
           const stockTrades = openTrades.filter((t: any) => t.tradeCategory === 'Stock');
@@ -792,9 +761,9 @@ function SidebarContent({
         })()}
       </div>
 
-      {/* Add to list buttons (bottom) */}
+      {/* Add to watchlist (bottom) */}
       {expanded && analysisData && !isAnalysisLoading && (
-        <div className="p-2 border-t border-card-border space-y-1.5">
+        <div className="p-2 border-t border-card-border">
           <button
             onClick={() => handleAddCurrent("watchlist")}
             disabled={isInList("watchlist") || addMutation.isPending}
@@ -807,19 +776,6 @@ function SidebarContent({
           >
             <Eye className="h-3 w-3" />
             {isInList("watchlist") ? "On Watchlist" : "+ Watchlist"}
-          </button>
-          <button
-            onClick={() => handleAddCurrent("portfolio")}
-            disabled={isInList("portfolio") || addMutation.isPending}
-            className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
-              isInList("portfolio")
-                ? "bg-green-500/10 text-green-500 cursor-default"
-                : "bg-green-600/80 hover:bg-green-600 text-white"
-            }`}
-            data-testid="button-add-portfolio"
-          >
-            <Briefcase className="h-3 w-3" />
-            {isInList("portfolio") ? "In Portfolio" : "+ Portfolio"}
           </button>
         </div>
       )}
