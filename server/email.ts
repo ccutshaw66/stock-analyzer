@@ -1,23 +1,30 @@
 import nodemailer from "nodemailer";
 
-// ─── SMTP Transport ───────────────────────────────────────────────────────────
+// ─── SMTP Transport (lazy initialization) ────────────────────────────────────
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.office365.com",
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: false, // STARTTLS
-  auth: {
-    user: process.env.SMTP_USER || "",
-    pass: process.env.SMTP_PASS || "",
-  },
-  tls: {
-    ciphers: "SSLv3",
-    rejectUnauthorized: false,
-  },
-});
+let _transporter: nodemailer.Transporter | null = null;
 
-const FROM = process.env.SMTP_FROM || "Stock Otter <superotter@stockotter.ai>";
-const APP_URL = process.env.APP_URL || "https://stockotter.ai";
+function getTransporter() {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.office365.com",
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER || "",
+        pass: process.env.SMTP_PASS || "",
+      },
+      tls: {
+        ciphers: "SSLv3",
+        rejectUnauthorized: false,
+      },
+    });
+  }
+  return _transporter;
+}
+
+function getFrom() { return process.env.SMTP_FROM || "Stock Otter <superotter@stockotter.ai>"; }
+function getAppUrl() { return process.env.APP_URL || "https://stockotter.ai"; }
 
 // ─── Branded Email Template ───────────────────────────────────────────────────
 
@@ -62,7 +69,7 @@ function emailWrapper(title: string, content: string): string {
             <td style="padding:20px 32px; border-top:1px solid #1E2235;">
               <p style="margin:0; font-size:12px; color:#4B5E80; line-height:1.5;">
                 Stock Otter — Smart Trading Analysis<br>
-                <a href="${APP_URL}" style="color:#6366F1; text-decoration:none;">${APP_URL.replace('https://', '')}</a>
+                <a href="${getAppUrl()}" style="color:#6366F1; text-decoration:none;">${getAppUrl().replace('https://', '')}</a>
               </p>
               <p style="margin:8px 0 0; font-size:10px; color:#3B4560; line-height:1.4;">
                 Stock Otter is not a financial advisor. All data is provided for informational purposes only.
@@ -137,7 +144,7 @@ function welcomeEmail(displayName: string | null): string {
     <table cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
       <tr>
         <td style="background:linear-gradient(135deg,#6366F1,#8B5CF6); border-radius:8px; padding:12px 28px;">
-          <a href="${APP_URL}" style="color:#ffffff; text-decoration:none; font-size:14px; font-weight:700; display:inline-block;">
+          <a href="${getAppUrl()}" style="color:#ffffff; text-decoration:none; font-size:14px; font-weight:700; display:inline-block;">
             Open Stock Otter
           </a>
         </td>
@@ -152,10 +159,10 @@ function welcomeEmail(displayName: string | null): string {
 // ─── Send Functions ───────────────────────────────────────────────────────────
 
 export async function sendPasswordResetEmail(to: string, token: string, displayName: string | null): Promise<boolean> {
-  const resetUrl = `${APP_URL}/#/reset-password?token=${token}`;
+  const resetUrl = `${getAppUrl()}/#/reset-password?token=${token}`;
   try {
-    await transporter.sendMail({
-      from: FROM,
+    await getTransporter().sendMail({
+      from: getFrom(),
       to,
       subject: "Reset Your Stock Otter Password",
       html: passwordResetEmail(resetUrl, displayName),
@@ -170,8 +177,8 @@ export async function sendPasswordResetEmail(to: string, token: string, displayN
 
 export async function sendWelcomeEmail(to: string, displayName: string | null): Promise<boolean> {
   try {
-    await transporter.sendMail({
-      from: FROM,
+    await getTransporter().sendMail({
+      from: getFrom(),
       to,
       subject: "Welcome to Stock Otter — Let's Trade Smarter",
       html: welcomeEmail(displayName),
@@ -188,7 +195,7 @@ export async function sendWelcomeEmail(to: string, displayName: string | null): 
 
 export async function verifyEmailConnection(): Promise<boolean> {
   try {
-    await transporter.verify();
+    await getTransporter().verify();
     console.log("[EMAIL] SMTP connection verified — ready to send");
     return true;
   } catch (error: any) {
