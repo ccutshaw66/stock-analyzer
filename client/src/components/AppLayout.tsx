@@ -101,7 +101,7 @@ function StickyHeader({
       {/* Logo */}
       <Link href="/">
         <div className="flex items-center gap-2 shrink-0 cursor-pointer" data-testid="link-home-logo">
-          <img src={iconUrl} alt="Stock Otter" className="h-7 w-7 rounded" />
+          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded-lg" />
           <span className="text-sm font-bold text-foreground tracking-tight hidden md:inline">
             Stock Otter
           </span>
@@ -789,16 +789,16 @@ function SidebarContent({
     <>
       {/* Logo */}
       {expanded ? (
-        <div className="px-3 py-4 border-b border-card-border flex items-center gap-2.5">
-          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded" />
+        <div className="px-3 py-5 border-b border-card-border flex items-center gap-3">
+          <img src={iconUrl} alt="Stock Otter" className="h-10 w-10 rounded-lg" />
           <div className="leading-none">
-            <span className="text-sm font-bold text-foreground">Stock</span>
-            <span className="text-sm font-bold gradient-text ml-0.5">Otter</span>
+            <span className="text-lg font-bold text-foreground">Stock</span>
+            <span className="text-lg font-bold gradient-text ml-1">Otter</span>
           </div>
         </div>
       ) : (
-        <div className="px-2 py-4 border-b border-card-border flex justify-center">
-          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded" />
+        <div className="px-2 py-5 border-b border-card-border flex justify-center">
+          <img src={iconUrl} alt="Stock Otter" className="h-10 w-10 rounded-lg" />
         </div>
       )}
 
