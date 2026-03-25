@@ -7,3 +7,5 @@ vite.config.ts.*
 *.db
 *.db-shm
 *.db-wal
+.env
+data.db

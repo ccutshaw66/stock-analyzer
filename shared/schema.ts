@@ -1,19 +1,19 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, serial, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = sqliteTable("users", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
 
-export const favorites = sqliteTable("favorites", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const favorites = pgTable("favorites", {
+  id: serial("id").primaryKey(),
   ticker: text("ticker").notNull(),
   companyName: text("company_name").notNull(),
   listType: text("list_type").notNull(), // "watchlist" or "portfolio"
-  score: real("score"),
+  score: doublePrecision("score"),
   verdict: text("verdict"),
   sector: text("sector"),
   addedAt: text("added_at").notNull(),
@@ -21,44 +21,44 @@ export const favorites = sqliteTable("favorites", {
 
 // ─── Trade Tracker Tables ─────────────────────────────────────────────────────
 
-export const trades = sqliteTable("trades", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const trades = pgTable("trades", {
+  id: serial("id").primaryKey(),
   pilotOrAdd: text("pilot_or_add").notNull(), // "Pilot" or "Add"
   tradeDate: text("trade_date").notNull(),
   expiration: text("expiration"), // null for stock trades
   contractsShares: integer("contracts_shares").notNull(),
   symbol: text("symbol").notNull(),
-  currentPrice: real("current_price"),
-  target: real("target"),
+  currentPrice: doublePrecision("current_price"),
+  target: doublePrecision("target"),
   tradeType: text("trade_type").notNull(), // C, P, CCS, PCS, CDS, PDS, CBFLY, PBFLY, etc.
   tradeCategory: text("trade_category").notNull(), // "Stock" or "Option"
   strikes: text("strikes"), // e.g. "55/60" or "32.5/40/47.5"
-  openPrice: real("open_price").notNull(), // negative=debit, positive=credit
-  commIn: real("comm_in").default(0),
-  allocation: real("allocation"), // risk $ amount
-  maxProfit: real("max_profit"),
+  openPrice: doublePrecision("open_price").notNull(), // negative=debit, positive=credit
+  commIn: doublePrecision("comm_in").default(0),
+  allocation: doublePrecision("allocation"), // risk $ amount
+  maxProfit: doublePrecision("max_profit"),
   closeDate: text("close_date"),
-  closePrice: real("close_price"),
-  commOut: real("comm_out").default(0),
-  spreadWidth: real("spread_width"),
+  closePrice: doublePrecision("close_price"),
+  commOut: doublePrecision("comm_out").default(0),
+  spreadWidth: doublePrecision("spread_width"),
   creditDebit: text("credit_debit"), // "CREDIT" or "DEBIT"
   tradePlanNotes: text("trade_plan_notes"),
   behaviorTag: text("behavior_tag"), // Panic, FOMO, Bias, Other, Feed the Pigeons, All to Plan
   createdAt: text("created_at").notNull(),
 });
 
-export const accountSettings = sqliteTable("account_settings", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  startingAccountValue: real("starting_account_value").notNull().default(10000),
-  commPerSharesTrade: real("comm_per_shares_trade").default(0),
-  commPerOptionContract: real("comm_per_option_contract").default(0.65),
-  maxAllocationPerTrade: real("max_allocation_per_trade").default(500),
-  totalAllocatedLimit: real("total_allocated_limit").default(0.30),
+export const accountSettings = pgTable("account_settings", {
+  id: serial("id").primaryKey(),
+  startingAccountValue: doublePrecision("starting_account_value").notNull().default(10000),
+  commPerSharesTrade: doublePrecision("comm_per_shares_trade").default(0),
+  commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
+  maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
+  totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
 });
 
-export const accountTransactions = sqliteTable("account_transactions", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  amount: real("amount").notNull(),
+export const accountTransactions = pgTable("account_transactions", {
+  id: serial("id").primaryKey(),
+  amount: doublePrecision("amount").notNull(),
   transType: text("trans_type").notNull(), // Deposit, Withdrawal, Reconcile
   date: text("date").notNull(),
   note: text("note"),

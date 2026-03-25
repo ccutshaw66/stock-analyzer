@@ -6,14 +6,15 @@ import {
   type AccountTransaction, type InsertAccountTransaction,
   users, favorites, trades, accountSettings, accountTransactions,
 } from "@shared/schema";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
 import { eq, and, desc } from "drizzle-orm";
 
-const sqlite = new Database("data.db");
-sqlite.pragma("journal_mode = WAL");
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
+});
 
-export const db = drizzle(sqlite);
+export const db = drizzle(pool);
 
 export interface IStorage {
   // Users
@@ -43,173 +44,192 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  constructor() {
-    // Ensure tables exist
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS favorites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ticker TEXT NOT NULL,
-        company_name TEXT NOT NULL,
-        list_type TEXT NOT NULL,
-        score REAL,
-        verdict TEXT,
-        sector TEXT,
-        added_at TEXT NOT NULL
-      )
-    `);
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS trades (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pilot_or_add TEXT NOT NULL DEFAULT 'Pilot',
-        trade_date TEXT NOT NULL,
-        expiration TEXT,
-        contracts_shares INTEGER NOT NULL DEFAULT 1,
-        symbol TEXT NOT NULL,
-        current_price REAL,
-        target REAL,
-        trade_type TEXT NOT NULL,
-        trade_category TEXT NOT NULL DEFAULT 'Option',
-        strikes TEXT,
-        open_price REAL NOT NULL DEFAULT 0,
-        comm_in REAL DEFAULT 0,
-        allocation REAL,
-        max_profit REAL,
-        close_date TEXT,
-        close_price REAL,
-        comm_out REAL DEFAULT 0,
-        spread_width REAL,
-        credit_debit TEXT,
-        trade_plan_notes TEXT,
-        behavior_tag TEXT,
-        created_at TEXT NOT NULL
-      )
-    `);
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS account_settings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        starting_account_value REAL NOT NULL DEFAULT 10000,
-        comm_per_shares_trade REAL DEFAULT 0,
-        comm_per_option_contract REAL DEFAULT 0.65,
-        max_allocation_per_trade REAL DEFAULT 500,
-        total_allocated_limit REAL DEFAULT 0.30
-      )
-    `);
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS account_transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
-        trans_type TEXT NOT NULL,
-        date TEXT NOT NULL,
-        note TEXT
-      )
-    `);
-    // Seed default account settings if empty
-    const existing = db.select().from(accountSettings).get();
-    if (!existing) {
-      db.insert(accountSettings).values({
-        startingAccountValue: 10000,
-        commPerSharesTrade: 0,
-        commPerOptionContract: 0.65,
-        maxAllocationPerTrade: 500,
-        totalAllocatedLimit: 0.30,
-      }).run();
+  async initialize() {
+    // Create tables if they don't exist using raw SQL
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS favorites (
+          id SERIAL PRIMARY KEY,
+          ticker TEXT NOT NULL,
+          company_name TEXT NOT NULL,
+          list_type TEXT NOT NULL,
+          score DOUBLE PRECISION,
+          verdict TEXT,
+          sector TEXT,
+          added_at TEXT NOT NULL
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS trades (
+          id SERIAL PRIMARY KEY,
+          pilot_or_add TEXT NOT NULL DEFAULT 'Pilot',
+          trade_date TEXT NOT NULL,
+          expiration TEXT,
+          contracts_shares INTEGER NOT NULL DEFAULT 1,
+          symbol TEXT NOT NULL,
+          current_price DOUBLE PRECISION,
+          target DOUBLE PRECISION,
+          trade_type TEXT NOT NULL,
+          trade_category TEXT NOT NULL DEFAULT 'Option',
+          strikes TEXT,
+          open_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+          comm_in DOUBLE PRECISION DEFAULT 0,
+          allocation DOUBLE PRECISION,
+          max_profit DOUBLE PRECISION,
+          close_date TEXT,
+          close_price DOUBLE PRECISION,
+          comm_out DOUBLE PRECISION DEFAULT 0,
+          spread_width DOUBLE PRECISION,
+          credit_debit TEXT,
+          trade_plan_notes TEXT,
+          behavior_tag TEXT,
+          created_at TEXT NOT NULL
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS account_settings (
+          id SERIAL PRIMARY KEY,
+          starting_account_value DOUBLE PRECISION NOT NULL DEFAULT 10000,
+          comm_per_shares_trade DOUBLE PRECISION DEFAULT 0,
+          comm_per_option_contract DOUBLE PRECISION DEFAULT 0.65,
+          max_allocation_per_trade DOUBLE PRECISION DEFAULT 500,
+          total_allocated_limit DOUBLE PRECISION DEFAULT 0.30
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS account_transactions (
+          id SERIAL PRIMARY KEY,
+          amount DOUBLE PRECISION NOT NULL,
+          trans_type TEXT NOT NULL,
+          date TEXT NOT NULL,
+          note TEXT
+        )
+      `);
+
+      // Seed default account settings if empty
+      const result = await client.query('SELECT COUNT(*) FROM account_settings');
+      if (parseInt(result.rows[0].count) === 0) {
+        await db.insert(accountSettings).values({
+          startingAccountValue: 10000,
+          commPerSharesTrade: 0,
+          commPerOptionContract: 0.65,
+          maxAllocationPerTrade: 500,
+          totalAllocatedLimit: 0.30,
+        });
+      }
+    } finally {
+      client.release();
     }
   }
 
   // ─── Users ─────────────────────────────────────────────────────────────────
 
   async getUser(id: number): Promise<User | undefined> {
-    return db.select().from(users).where(eq(users.id, id)).get();
+    const rows = await db.select().from(users).where(eq(users.id, id));
+    return rows[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return db.select().from(users).where(eq(users.username, username)).get();
+    const rows = await db.select().from(users).where(eq(users.username, username));
+    return rows[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    return db.insert(users).values(insertUser).returning().get();
+    const rows = await db.insert(users).values(insertUser).returning();
+    return rows[0];
   }
 
   // ─── Favorites ─────────────────────────────────────────────────────────────
 
   async getFavorites(listType: string): Promise<Favorite[]> {
-    return db.select().from(favorites).where(eq(favorites.listType, listType)).all();
+    return db.select().from(favorites).where(eq(favorites.listType, listType));
   }
 
   async addFavorite(fav: InsertFavorite): Promise<Favorite> {
-    return db.insert(favorites).values(fav).returning().get();
+    const rows = await db.insert(favorites).values(fav).returning();
+    return rows[0];
   }
 
   async removeFavorite(ticker: string, listType: string): Promise<void> {
-    db.delete(favorites)
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)))
-      .run();
+    await db.delete(favorites)
+      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
   }
 
   async getFavorite(ticker: string, listType: string): Promise<Favorite | undefined> {
-    return db.select().from(favorites)
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)))
-      .get();
+    const rows = await db.select().from(favorites)
+      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
+    return rows[0];
   }
 
   async updateFavoriteScore(ticker: string, listType: string, score: number, verdict: string): Promise<void> {
-    db.update(favorites)
+    await db.update(favorites)
       .set({ score, verdict })
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)))
-      .run();
+      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
   }
 
   // ─── Trades ────────────────────────────────────────────────────────────────
 
   async getAllTrades(): Promise<Trade[]> {
-    return db.select().from(trades).orderBy(desc(trades.tradeDate)).all();
+    return db.select().from(trades).orderBy(desc(trades.tradeDate));
   }
 
   async getTrade(id: number): Promise<Trade | undefined> {
-    return db.select().from(trades).where(eq(trades.id, id)).get();
+    const rows = await db.select().from(trades).where(eq(trades.id, id));
+    return rows[0];
   }
 
   async createTrade(trade: InsertTrade): Promise<Trade> {
-    return db.insert(trades).values(trade).returning().get();
+    const rows = await db.insert(trades).values(trade).returning();
+    return rows[0];
   }
 
   async updateTrade(id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined> {
-    db.update(trades).set(trade).where(eq(trades.id, id)).run();
-    return db.select().from(trades).where(eq(trades.id, id)).get();
+    await db.update(trades).set(trade).where(eq(trades.id, id));
+    const rows = await db.select().from(trades).where(eq(trades.id, id));
+    return rows[0];
   }
 
   async deleteTrade(id: number): Promise<void> {
-    db.delete(trades).where(eq(trades.id, id)).run();
+    await db.delete(trades).where(eq(trades.id, id));
   }
 
   async updateTradePrice(id: number, price: number): Promise<void> {
-    db.update(trades).set({ currentPrice: price }).where(eq(trades.id, id)).run();
+    await db.update(trades).set({ currentPrice: price }).where(eq(trades.id, id));
   }
 
   // ─── Account Settings ──────────────────────────────────────────────────────
 
   async getAccountSettings(): Promise<AccountSettings> {
-    const settings = db.select().from(accountSettings).get();
-    return settings!;
+    const rows = await db.select().from(accountSettings);
+    return rows[0]!;
   }
 
   async updateAccountSettings(settings: Partial<InsertAccountSettings>): Promise<AccountSettings> {
-    db.update(accountSettings).set(settings).where(eq(accountSettings.id, 1)).run();
+    await db.update(accountSettings).set(settings).where(eq(accountSettings.id, 1));
     return (await this.getAccountSettings())!;
   }
 
   // ─── Account Transactions ──────────────────────────────────────────────────
 
   async getAccountTransactions(): Promise<AccountTransaction[]> {
-    return db.select().from(accountTransactions).orderBy(desc(accountTransactions.date)).all();
+    return db.select().from(accountTransactions).orderBy(desc(accountTransactions.date));
   }
 
   async createAccountTransaction(tx: InsertAccountTransaction): Promise<AccountTransaction> {
-    return db.insert(accountTransactions).values(tx).returning().get();
+    const rows = await db.insert(accountTransactions).values(tx).returning();
+    return rows[0];
   }
 
   async deleteAccountTransaction(id: number): Promise<void> {
-    db.delete(accountTransactions).where(eq(accountTransactions.id, id)).run();
+    await db.delete(accountTransactions).where(eq(accountTransactions.id, id));
   }
 }
 
