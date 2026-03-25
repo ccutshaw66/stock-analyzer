@@ -2249,11 +2249,7 @@ export async function registerRoutes(
 
       const analysis = analysisRes.status === "fulfilled" ? analysisRes.value : null;
       const institutional = instRes.status === "fulfilled" ? instRes.value : null;
-      const strategies = stratRes.status === "fulfilled" ? stratRes.value : null;
-      const tickerChart = tickerChartRes.status === "fulfilled" ? tickerChartRes.value : null;
-      const spyChart = spyChartRes.status === "fulfilled" ? spyChartRes.value : null;
-      const goldChart = goldChartRes.status === "fulfilled" ? goldChartRes.value : null;
-      const silverChart = silverChartRes.status === "fulfilled" ? silverChartRes.value : null;
+      const strategies = stratRes.value;
 
       // Build stress test comparison
       function getReturnDuringPeriod(chart: any, startDate: string, endDate: string): number | null {
