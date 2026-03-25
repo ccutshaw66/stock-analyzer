@@ -2210,38 +2210,42 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
+      const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-      // Fetch all data in parallel
-      const [analysisRes, instRes, stratRes, tickerChartRes, spyChartRes, goldChartRes, silverChartRes] = await Promise.allSettled([
-        // Full analysis
+      // Batch 1: Core ticker data (analysis + institutional)
+      const [analysisRes, instRes] = await Promise.allSettled([
         (async () => {
           const summary = await getQuote(ticker);
           if (!summary) return null;
           const { quote, financials } = extractQuoteData(summary);
+          await delay(300);
           const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
           const { computedReturn: ret1Y } = extractChartData(chart1Y);
-          const chart3Y = await getChart(ticker, "3y", "1wk").catch(() => null);
-          const { computedReturn: ret3Y } = extractChartData(chart3Y);
-          const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: null };
+          const historicalReturns = { oneYear: ret1Y, threeYear: null, fiveYear: null };
           const fullData = { quote, financials, historicalReturns };
           const scoring = computeScoring(fullData);
           const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
           const { verdict, ruling } = computeVerdict(weightedScore);
           return { score: weightedScore, verdict, ruling, scoring, quote, financials };
         })(),
-        // Institutional data
         (async () => {
+          await delay(500);
           const raw = await getInstitutionalData(ticker);
           return parseInstitutionalData(raw, ticker);
         })(),
-        // Placeholder for strategy data (computed on trade-analysis page)
-        Promise.resolve(null),
-        // 25-year chart for stress comparison
-        getChart(ticker, "25y", "1mo").catch(() => null),
-        getChart("SPY", "25y", "1mo").catch(() => null),
-        getChart("GC=F", "25y", "1mo").catch(() => null),
-        getChart("SI=F", "25y", "1mo").catch(() => null),
       ]);
+
+      // Batch 2: Historical charts for stress test (sequentially with delays)
+      await delay(500);
+      const tickerChart = await getChart(ticker, "25y", "1mo").catch(() => null);
+      await delay(400);
+      const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
+      await delay(400);
+      const goldChart = await getChart("GC=F", "25y", "1mo").catch(() => null);
+      await delay(400);
+      const silverChart = await getChart("SI=F", "25y", "1mo").catch(() => null);
+
+      const stratRes = { status: "fulfilled" as const, value: null };
 
       const analysis = analysisRes.status === "fulfilled" ? analysisRes.value : null;
       const institutional = instRes.status === "fulfilled" ? instRes.value : null;
@@ -2280,15 +2284,17 @@ export async function registerRoutes(
       }));
 
       // Current metals data
-      const [goldQuoteRes, silverQuoteRes, spyQuoteRes] = await Promise.allSettled([
-        getQuote("GC=F").catch(() => null),
-        getQuote("SI=F").catch(() => null),
-        getQuote("SPY").catch(() => null),
-      ]);
+      // Metals quotes (sequential to avoid rate limits)
+      await delay(400);
+      const goldQuote = await getQuote("GC=F").catch(() => null);
+      await delay(400);
+      const silverQuote = await getQuote("SI=F").catch(() => null);
+      await delay(400);
+      const spyQuote = await getQuote("SPY").catch(() => null);
 
-      const goldPrice = goldQuoteRes.status === "fulfilled" ? goldQuoteRes.value?.price : null;
-      const silverPrice = silverQuoteRes.status === "fulfilled" ? silverQuoteRes.value?.price : null;
-      const spyPrice = spyQuoteRes.status === "fulfilled" ? spyQuoteRes.value?.price : null;
+      const goldPrice = goldQuote?.price || null;
+      const silverPrice = silverQuote?.price || null;
+      const spyPrice = spyQuote?.price || null;
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
