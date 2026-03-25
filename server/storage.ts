@@ -209,6 +209,10 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Trades (userId scoped) ────────────────────────────────────────────────
 
+  async getAllOpenTradesAllUsers(): Promise<Trade[]> {
+    return db.select().from(trades).where(sql`close_date IS NULL`);
+  }
+
   async getAllTrades(userId: number): Promise<Trade[]> {
     return db.select().from(trades).where(eq(trades.userId, userId)).orderBy(desc(trades.tradeDate));
   }

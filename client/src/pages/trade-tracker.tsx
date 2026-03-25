@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
@@ -545,20 +545,6 @@ export default function TradeTracker() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
   });
 
-  // Auto-refresh prices every 2 hours for MFE/MAE snapshots
-  const refreshRef = useRef(refreshMutation);
-  refreshRef.current = refreshMutation;
-  useEffect(() => {
-    const hasOpenTrades = trades.some(t => !t.closeDate);
-    if (!hasOpenTrades) return;
-    // Refresh immediately on first load
-    refreshRef.current.mutate();
-    // Then every 2 hours
-    const interval = setInterval(() => {
-      refreshRef.current.mutate();
-    }, 2 * 60 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [trades.length > 0 && trades.some(t => !t.closeDate)]);
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },

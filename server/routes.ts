@@ -3372,5 +3372,9 @@ export async function registerRoutes(
     }
   });
 
+  // Initialize background price snapshot cron job
+  const { initCron } = await import("./cron");
+  initCron(getQuote, ensureReady);
+
   return httpServer;
 }
