@@ -845,6 +845,117 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
+
+  function extractDividendData(ticker: string, quote: any) {
+    const sd = quote?.summaryDetail || {};
+    const pr = quote?.price || {};
+    const ks = quote?.defaultKeyStatistics || {};
+    const fd = quote?.financialData || {};
+
+    const dividendYield = sd.dividendYield?.raw != null ? Number((sd.dividendYield.raw * 100).toFixed(2)) : 0;
+    const dividendRate = sd.dividendRate?.raw ?? 0;
+    const payoutRatio = sd.payoutRatio?.raw != null ? Number((sd.payoutRatio.raw * 100).toFixed(2)) : 0;
+    const trailingYield = sd.trailingAnnualDividendYield?.raw != null ? Number((sd.trailingAnnualDividendYield.raw * 100).toFixed(2)) : 0;
+    const fiveYearAvgYield = sd.fiveYearAvgDividendYield?.raw ?? null;
+    const lastDividendValue = ks.lastDividendValue?.raw ?? null;
+    const lastDividendDate = ks.lastDividendDate?.fmt ?? null;
+    const exDividendDate = sd.exDividendDate?.fmt ?? null;
+    const price = pr.regularMarketPrice?.raw ?? fd.currentPrice?.raw ?? 0;
+    const companyName = pr.shortName ?? ticker;
+
+    // Estimate frequency
+    let frequency = "Quarterly";
+    if (lastDividendValue && lastDividendValue > 0 && dividendRate > 0) {
+      const ratio = dividendRate / lastDividendValue;
+      if (ratio >= 10) frequency = "Monthly";
+      else if (ratio >= 3) frequency = "Quarterly";
+      else if (ratio >= 1.5) frequency = "Semi-Annual";
+      else frequency = "Annual";
+    }
+
+    // Score calculation (0-100)
+    let score = 0;
+    if (dividendYield > 3) score += 20;
+    else if (dividendYield > 2) score += 15;
+    else if (dividendYield > 1) score += 10;
+
+    if (payoutRatio >= 20 && payoutRatio <= 60) score += 25;
+    else if (payoutRatio > 60 && payoutRatio <= 80) score += 15;
+    else if (payoutRatio > 80 && payoutRatio <= 100) score += 5;
+
+    if (fiveYearAvgYield != null && dividendYield > fiveYearAvgYield) score += 15;
+
+    if (dividendRate > 0) score += 10;
+
+    if (frequency === "Quarterly" || frequency === "Monthly") score += 15;
+    else if (frequency === "Semi-Annual") score += 10;
+    else if (frequency === "Annual") score += 5;
+
+    return {
+      ticker,
+      companyName,
+      price: Number(price.toFixed(2)),
+      dividendYield,
+      dividendRate: Number(dividendRate.toFixed(2)),
+      exDividendDate,
+      payoutRatio,
+      trailingYield,
+      fiveYearAvgYield: fiveYearAvgYield != null ? Number(fiveYearAvgYield.toFixed(2)) : null,
+      lastDividendValue: lastDividendValue != null ? Number(lastDividendValue.toFixed(4)) : null,
+      lastDividendDate,
+      frequency,
+      annualDividend: Number(dividendRate.toFixed(2)),
+      dividendGrowth: null as number | null,
+      score,
+    };
+  }
+
+  app.get("/api/dividends/scan", async (req, res) => {
+    try {
+      await ensureReady();
+      const defaultTickers = ["HD","JNJ","KO","PG","T","VZ","O","ABBV","XOM","MO","PEP","MMM","IBM","CVX","INTC","WBA","DOW","PM"];
+      const tickersParam = req.query.tickers as string | undefined;
+      const tickers = tickersParam
+        ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
+        : defaultTickers;
+
+      const results: any[] = [];
+      for (let i = 0; i < tickers.length; i++) {
+        try {
+          const quote = await getQuote(tickers[i]);
+          if (quote) {
+            results.push(extractDividendData(tickers[i], quote));
+          }
+        } catch (err: any) {
+          console.log(`[dividends] Failed to fetch ${tickers[i]}: ${err.message}`);
+        }
+        if (i < tickers.length - 1) {
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+
+      results.sort((a, b) => b.score - a.score);
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to scan dividends" });
+    }
+  });
+
+  app.get("/api/dividends/:ticker", async (req, res) => {
+    const ticker = req.params.ticker.toUpperCase();
+    try {
+      await ensureReady();
+      const quote = await getQuote(ticker);
+      if (!quote) {
+        return res.status(404).json({ error: `No data found for ${ticker}` });
+      }
+      res.json(extractDividendData(ticker, quote));
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to fetch dividend data" });
+    }
+  });
+
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
@@ -2732,6 +2843,12 @@ export async function registerRoutes(
           currentStreak: 0, longestWinStreak: 0, longestLossStreak: 0,
           byType: {}, byDayOfWeek: {}, monthlyPL: {},
           trades: [], exitEfficiency: [],
+          durationAnalysis: {
+            dayTrades: { count: 0, wins: 0, winRate: 0, totalPL: 0, avgPL: 0, avgDays: 0 },
+            shortTerm: { count: 0, wins: 0, winRate: 0, totalPL: 0, avgPL: 0, avgDays: 0 },
+            swingTrades: { count: 0, wins: 0, winRate: 0, totalPL: 0, avgPL: 0, avgDays: 0 },
+            longTerm: { count: 0, wins: 0, winRate: 0, totalPL: 0, avgPL: 0, avgDays: 0 },
+          },
         });
       }
 
@@ -2852,6 +2969,39 @@ export async function registerRoutes(
 
       const allProfits = tradeData.map(t => t.profit);
 
+      // Position Duration Analysis
+      const closedWithDates = tradeData.filter(t => t.tradeDate && t.closeDate);
+
+      const daysBetween = (d1: string, d2: string): number =>
+        Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / (1000 * 60 * 60 * 24));
+
+      const dayTradesGroup = closedWithDates.filter(t => daysBetween(t.tradeDate, t.closeDate) === 0);
+      const shortTermGroup = closedWithDates.filter(t => { const d = daysBetween(t.tradeDate, t.closeDate); return d >= 1 && d <= 7; });
+      const swingTradesGroup = closedWithDates.filter(t => { const d = daysBetween(t.tradeDate, t.closeDate); return d > 7 && d <= 45; });
+      const longTermGroup = closedWithDates.filter(t => daysBetween(t.tradeDate, t.closeDate) > 45);
+
+      const analyzeGroup = (groupTrades: typeof tradeData) => {
+        if (groupTrades.length === 0) return { count: 0, wins: 0, winRate: 0, totalPL: 0, avgPL: 0, avgDays: 0 };
+        const gWins = groupTrades.filter(t => t.isWin).length;
+        const totalPL = groupTrades.reduce((s, t) => s + t.profit, 0);
+        const avgDays = groupTrades.reduce((s, t) => s + daysBetween(t.tradeDate, t.closeDate), 0) / groupTrades.length;
+        return {
+          count: groupTrades.length,
+          wins: gWins,
+          winRate: groupTrades.length > 0 ? Number((gWins / groupTrades.length).toFixed(4)) : 0,
+          totalPL: Number(totalPL.toFixed(2)),
+          avgPL: Number((totalPL / groupTrades.length).toFixed(2)),
+          avgDays: Number(avgDays.toFixed(1)),
+        };
+      };
+
+      const durationAnalysis = {
+        dayTrades: analyzeGroup(dayTradesGroup),
+        shortTerm: analyzeGroup(shortTermGroup),
+        swingTrades: analyzeGroup(swingTradesGroup),
+        longTerm: analyzeGroup(longTermGroup),
+      };
+
       res.json({
         totalTrades: tradeData.length,
         wins: wins.length,
@@ -2873,6 +3023,7 @@ export async function registerRoutes(
         monthlyPL,
         trades: tradeData,
         exitEfficiency,
+        durationAnalysis,
       });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to compute analytics" });

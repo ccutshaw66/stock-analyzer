@@ -39,6 +39,7 @@ import {
   LogOut,
   UserCircle,
   Shield,
+  DollarSign,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -376,6 +377,7 @@ function Sidebar({
         { path: "/scanner", label: "Scanner", icon: Radar },
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
+        { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
       ],
     },
     {

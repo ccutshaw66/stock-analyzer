@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3, TrendingUp, Target, DollarSign,
   Activity, AlertTriangle, Percent, Award,
-  Crosshair, Info,
+  Crosshair, Info, Clock,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import {
@@ -36,6 +36,21 @@ interface AnalyticsData {
   monthlyPL: Record<string, number>;
   trades: any[];
   exitEfficiency: { symbol: string; tradeType: string; profit: number; mfe: number; efficiency: number }[];
+  durationAnalysis: {
+    dayTrades: DurationGroup;
+    shortTerm: DurationGroup;
+    swingTrades: DurationGroup;
+    longTerm: DurationGroup;
+  };
+}
+
+interface DurationGroup {
+  count: number;
+  wins: number;
+  winRate: number;
+  totalPL: number;
+  avgPL: number;
+  avgDays: number;
 }
 
 interface MFEMAEData {
@@ -419,6 +434,166 @@ export default function TradeAnalytics() {
           </div>
         </div>
       )}
+
+      {/* ================================================================ */}
+      {/* Position Duration Analysis */}
+      {/* ================================================================ */}
+      {analytics.durationAnalysis && (() => {
+        const da = analytics.durationAnalysis;
+        const categories = [
+          { key: "dayTrades" as const, label: "Day Trades", sublabel: "0 days", data: da.dayTrades },
+          { key: "shortTerm" as const, label: "Short-term", sublabel: "1-7 days", data: da.shortTerm },
+          { key: "swingTrades" as const, label: "Swing", sublabel: "8-45 days", data: da.swingTrades },
+          { key: "longTerm" as const, label: "Long-term", sublabel: "45+ days", data: da.longTerm },
+        ];
+        const hasData = categories.some(c => c.data.count > 0);
+        const chartData = categories
+          .filter(c => c.data.count > 0)
+          .map(c => ({
+            name: c.label,
+            winRate: Math.round(c.data.winRate * 10000) / 100,
+            avgPL: c.data.avgPL,
+          }));
+
+        const borderColor = (wr: number) =>
+          wr > 0.55 ? "border-green-500/40" : wr < 0.45 ? "border-red-500/40" : "border-yellow-500/40";
+
+        return (
+          <div className="bg-card border border-card-border rounded-lg p-4" data-testid="duration-analysis-section">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-bold text-foreground">Position Duration Analysis</h3>
+            </div>
+
+            <HelpBlock title="Understanding position duration">
+              <p><strong className="text-foreground">Day Trade:</strong> Opened and closed the same day. Fast, high frequency trading style.</p>
+              <p><strong className="text-foreground">Short-term (1-7 days):</strong> Quick swing trades or weekly options. Captures short momentum moves.</p>
+              <p><strong className="text-foreground">Swing (8-45 days):</strong> Standard swing trades, monthly options. Holds through a move or earnings cycle.</p>
+              <p><strong className="text-foreground">Long-term (45+ days):</strong> Position trades, LEAPs, or stock holds. Larger moves, less frequent.</p>
+              <Example type="good">
+                <strong className="text-green-400">Compare win rates across durations</strong> to find your optimal holding period.
+              </Example>
+              <Example type="neutral">
+                If your <strong className="text-yellow-400">day trades have a low win rate</strong> but your <strong className="text-green-400">swings are profitable</strong>, you might be better suited for swing trading.
+              </Example>
+            </HelpBlock>
+
+            {!hasData ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
+                <Info className="h-6 w-6 text-muted-foreground/40 mb-2" />
+                <p className="text-xs text-muted-foreground font-medium">No duration data available</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Close some trades with different holding periods to see analysis.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* 4 Category Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {categories.map(cat => {
+                    const wrPct = Math.round(cat.data.winRate * 10000) / 100;
+                    return (
+                      <div
+                        key={cat.key}
+                        className={`bg-muted/30 border-2 ${cat.data.count > 0 ? borderColor(cat.data.winRate) : "border-card-border/50"} rounded-lg p-3`}
+                        data-testid={`duration-card-${cat.key}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-xs font-bold text-foreground">{cat.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{cat.sublabel}</p>
+                          </div>
+                          {cat.data.count > 0 && (
+                            <span className={`text-lg font-bold tabular-nums font-mono ${
+                              wrPct > 55 ? "text-green-400" : wrPct < 45 ? "text-red-400" : "text-yellow-400"
+                            }`}>
+                              {wrPct}%
+                            </span>
+                          )}
+                        </div>
+                        {cat.data.count > 0 ? (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">Trades</span>
+                              <span className="font-mono text-foreground">{cat.data.count} ({cat.data.wins}W)</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">Total P/L</span>
+                              <span className={`font-mono font-semibold ${cat.data.totalPL >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                ${cat.data.totalPL.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">Avg P/L</span>
+                              <span className={`font-mono font-semibold ${cat.data.avgPL >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                ${cat.data.avgPL.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">Avg Days</span>
+                              <span className="font-mono text-foreground">{cat.data.avgDays}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground">No trades</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Comparison Bar Chart */}
+                {chartData.length > 0 && (
+                  <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3" data-testid="duration-bar-chart">
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Duration Comparison</h4>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={chartData} margin={{ top: 10, right: 30, bottom: 10, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.5} />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                          tickFormatter={(v: number) => `${v}%`}
+                          label={{ value: "Win Rate %", angle: -90, position: "insideLeft", style: { fontSize: 9, fill: "hsl(var(--muted-foreground))" } }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                          tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                          label={{ value: "Avg P/L $", angle: 90, position: "insideRight", style: { fontSize: 9, fill: "hsl(var(--muted-foreground))" } }}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--card-border))", borderRadius: 8, fontSize: 11 }}
+                          formatter={(value: number, name: string) => [
+                            name === "winRate" ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`,
+                            name === "winRate" ? "Win Rate" : "Avg P/L"
+                          ]}
+                        />
+                        <Legend
+                          formatter={(value: string) => value === "winRate" ? "Win Rate %" : "Avg P/L $"}
+                          wrapperStyle={{ fontSize: 10 }}
+                        />
+                        <Bar yAxisId="left" dataKey="winRate" radius={[4, 4, 0, 0]}>
+                          {chartData.map((entry, index) => (
+                            <Cell key={index} fill={entry.winRate >= 55 ? "#22c55e" : entry.winRate >= 45 ? "#eab308" : "#ef4444"} fillOpacity={0.8} />
+                          ))}
+                        </Bar>
+                        <Bar yAxisId="right" dataKey="avgPL" radius={[4, 4, 0, 0]}>
+                          {chartData.map((entry, index) => (
+                            <Cell key={index} fill={entry.avgPL >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.5} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ================================================================ */}
       {/* MFE / MAE Analysis Section */}
