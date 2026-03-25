@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import logoUrl from "@/assets/logo.png";
 import iconUrl from "@/assets/icon.png";
 import {
   BarChart3,
@@ -102,34 +101,7 @@ function StickyHeader({
       {/* Logo */}
       <Link href="/">
         <div className="flex items-center gap-2 shrink-0 cursor-pointer" data-testid="link-home-logo">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 32 32"
-            fill="none"
-            aria-label="Stock Analyzer Logo"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="28"
-              height="28"
-              rx="6"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-primary"
-            />
-            <polyline
-              points="6,22 12,14 18,18 26,8"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-green-500"
-              fill="none"
-            />
-            <circle cx="26" cy="8" r="2" fill="currentColor" className="text-green-500" />
-          </svg>
+          <img src={iconUrl} alt="Stock Otter" className="h-7 w-7 rounded" />
           <span className="text-sm font-bold text-foreground tracking-tight hidden md:inline">
             Stock Otter
           </span>
@@ -817,8 +789,12 @@ function SidebarContent({
     <>
       {/* Logo */}
       {expanded ? (
-        <div className="px-3 py-4 border-b border-card-border">
-          <img src={logoUrl} alt="Stock Otter" className="h-8 w-auto" />
+        <div className="px-3 py-4 border-b border-card-border flex items-center gap-2.5">
+          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded" />
+          <div className="leading-none">
+            <span className="text-sm font-bold text-foreground">Stock</span>
+            <span className="text-sm font-bold gradient-text ml-0.5">Otter</span>
+          </div>
         </div>
       ) : (
         <div className="px-2 py-4 border-b border-card-border flex justify-center">
