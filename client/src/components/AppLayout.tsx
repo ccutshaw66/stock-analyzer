@@ -535,8 +535,15 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
   const [spreadWidth, setSpreadWidth] = useState("");
   const [allocation, setAllocation] = useState("");
 
+  // CTV dual-vertical fields
+  const [ctvBuyStrikes, setCtvBuyStrikes] = useState("");
+  const [ctvBuyPrice, setCtvBuyPrice] = useState("");
+  const [ctvSellStrikes, setCtvSellStrikes] = useState("");
+  const [ctvSellPrice, setCtvSellPrice] = useState("");
+
   const typeDef = TRADE_TYPES[tradeType];
   const isCredit = typeDef?.isCredit ?? false;
+  const isDualVertical = (typeDef as any)?.isDualVertical ?? false;
   const numLegs = typeDef?.legs || 0;
   const filteredTypes = category === "Stock" ? STOCK_TYPES : OPTION_TYPES;
 
@@ -547,15 +554,32 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const rawPrice = parseFloat(openPrice) || 0;
-    const signedPrice = isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice);
+    let rawPrice = parseFloat(openPrice) || 0;
+    // CTV: calculate net from two legs
+    if (isDualVertical && ctvBuyPrice && ctvSellPrice) {
+      const buyP = parseFloat(ctvBuyPrice) || 0;
+      const sellP = parseFloat(ctvSellPrice) || 0;
+      rawPrice = sellP - buyP; // positive = net credit, negative = net debit
+    }
+    const signedPrice = isDualVertical
+      ? rawPrice
+      : (isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice));
     let commIn = category === "Option" ? contractsShares * numLegs * (settings.commPerOptionContract || 0.65) : (settings.commPerSharesTrade || 0);
+    const sw = parseFloat(spreadWidth) || null;
+
+    let maxProfit: number | null = null;
+    if (sw && numLegs >= 2) {
+      if (isCredit) maxProfit = rawPrice * contractsShares * 100;
+      else maxProfit = (sw - rawPrice) * contractsShares * 100;
+    }
 
     createMut.mutate({
       pilotOrAdd, tradeDate, expiration: expiration || null, contractsShares,
       symbol: symbol.toUpperCase(), tradeType, tradeCategory: category,
-      strikes: strikes || null, openPrice: signedPrice, commIn,
-      allocation: parseFloat(allocation) || null, spreadWidth: parseFloat(spreadWidth) || null,
+      strikes: isDualVertical ? `${ctvBuyStrikes}|${ctvSellStrikes}` : (strikes || null),
+      openPrice: signedPrice, commIn,
+      allocation: parseFloat(allocation) || null, spreadWidth: sw,
+      maxProfit,
       creditDebit: isCredit ? "CREDIT" : "DEBIT", tradePlanNotes: null, behaviorTag: null,
     });
   };
@@ -600,16 +624,58 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
               <input type="date" value={expiration} onChange={e => setExpiration(e.target.value)}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>}
           </div>
+
+          {/* CTV Dual Vertical Entry */}
+          {isDualVertical ? (
+            <div className="border border-primary/20 bg-primary/5 rounded-lg p-3 space-y-3">
+              <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
+                  <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
+                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
+                    <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
+                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
+                  <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
+                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
+                    <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
+                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                  </div>
+                </div>
+              </div>
+              {ctvBuyPrice && ctvSellPrice && (
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-muted-foreground">Net:</span>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                    {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
+                  </span>
+                  {ctvBuyStrikes && ctvSellStrikes && <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
+                  <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50" required
+                    className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-green-500/30" : "border-red-500/30"}`} /></div>
+                {category === "Option" && numLegs >= 1 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Strike(s)</label>
+                  <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)} placeholder={numLegs >= 2 ? "55/60" : "55"}
+                    className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>}
+              </div>
+            </>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
-              <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50" required
-                className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-green-500/30" : "border-red-500/30"}`} /></div>
-            {category === "Option" && numLegs >= 1 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Strike(s)</label>
-              <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)} placeholder={numLegs >= 2 ? "55/60" : "55"}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {numLegs >= 2 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
+            {numLegs >= 2 && !isDualVertical && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
               <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>}
             <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Allocation $</label>
