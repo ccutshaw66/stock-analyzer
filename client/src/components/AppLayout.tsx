@@ -36,6 +36,7 @@ import {
   Calendar,
   PieChart,
   Percent,
+  LogOut,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -43,6 +44,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker } from "@/components/ui/date-picker";
 
 interface FavoriteItem {
@@ -784,6 +786,7 @@ function SidebarContent({
   setShowAddTrade = () => {},
   setShowCloseTrade = () => {},
 }: any) {
+  const { user, logout } = useAuth();
   return (
     <>
       {/* Logo */}
@@ -858,6 +861,21 @@ function SidebarContent({
             {expanded && <span className="text-sm font-medium truncate">{helpItem.label}</span>}
           </div>
         </Link>
+
+        {/* Logout */}
+        <div
+          onClick={logout}
+          className="flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {expanded && (
+            <div className="flex items-center justify-between flex-1 min-w-0">
+              <span className="text-sm font-medium truncate">Sign Out</span>
+              {user && <span className="text-[10px] text-muted-foreground truncate ml-2">{user.email}</span>}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="border-t border-card-border mx-2" />

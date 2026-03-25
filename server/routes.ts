@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler } from "./auth";
 
 // ============================================================
 // Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
@@ -786,6 +787,15 @@ export async function registerRoutes(
     }
   }
 
+  // ─── Auth Routes (public) ─────────────────────────────────────────────────
+  app.post("/api/auth/register", registerHandler);
+  app.post("/api/auth/login", loginHandler);
+  app.post("/api/auth/logout", logoutHandler);
+  app.get("/api/auth/me", requireAuth, meHandler);
+
+  // ─── Protect all other API routes ─────────────────────────────────────────
+  app.use("/api", requireAuth);
+
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
@@ -941,7 +951,7 @@ export async function registerRoutes(
       if (listType !== "watchlist" && listType !== "portfolio") {
         return res.status(400).json({ error: "listType must be 'watchlist' or 'portfolio'" });
       }
-      const items = await storage.getFavorites(listType);
+      const items = await storage.getFavorites(req.user!.id, listType);
       res.json(items);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch favorites" });
@@ -956,11 +966,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "ticker and listType are required" });
       }
       // Check if already exists
-      const existing = await storage.getFavorite(ticker.toUpperCase(), listType);
+      const existing = await storage.getFavorite(req.user!.id, ticker.toUpperCase(), listType);
       if (existing) {
         return res.status(409).json({ error: "Already in list" });
       }
       const fav = await storage.addFavorite({
+        userId: req.user!.id,
         ticker: ticker.toUpperCase(),
         companyName: companyName || ticker.toUpperCase(),
         listType,
@@ -979,7 +990,7 @@ export async function registerRoutes(
   app.delete("/api/favorites/:listType/:ticker", async (req, res) => {
     try {
       const { listType, ticker } = req.params;
-      await storage.removeFavorite(ticker.toUpperCase(), listType);
+      await storage.removeFavorite(req.user!.id, ticker.toUpperCase(), listType);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to remove favorite" });
@@ -2156,7 +2167,7 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const listType = req.params.listType;
-      const items = await storage.getFavorites(listType);
+      const items = await storage.getFavorites(req.user!.id, listType);
       const results = [];
 
       for (const item of items) {
@@ -2174,7 +2185,7 @@ export async function registerRoutes(
             const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
             const { verdict } = computeVerdict(weightedScore);
             const score = Number(weightedScore.toFixed(2));
-            await storage.updateFavoriteScore(item.ticker, listType, score, verdict);
+            await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
             results.push({ ...item, score, verdict });
           } else {
             results.push(item);
@@ -2531,10 +2542,10 @@ export async function registerRoutes(
   // EARNINGS CALENDAR
   // ================================================================
 
-  app.get("/api/earnings-calendar", async (_req, res) => {
+  app.get("/api/earnings-calendar", async (req, res) => {
     try {
       await ensureReady();
-      const watchlistItems = await storage.getFavorites("watchlist");
+      const watchlistItems = await storage.getFavorites(req.user!.id, "watchlist");
       if (!watchlistItems.length) {
         return res.json([]);
       }
@@ -2604,9 +2615,9 @@ export async function registerRoutes(
   // TRADE ANALYTICS (MFE/MAE)
   // ================================================================
 
-  app.get("/api/trades/analytics", async (_req, res) => {
+  app.get("/api/trades/analytics", async (req, res) => {
     try {
-      const allTrades = await storage.getAllTrades();
+      const allTrades = await storage.getAllTrades(req.user!.id);
       const closedTrades = allTrades.filter(t => t.closeDate);
 
       if (closedTrades.length === 0) {
@@ -2772,11 +2783,11 @@ export async function registerRoutes(
   // IMPORTANT: Static routes MUST come before parameterized /:id routes
 
   // Get trade summary stats
-  app.get("/api/trades/summary", async (_req, res) => {
+  app.get("/api/trades/summary", async (req, res) => {
     try {
-      const allTrades = await storage.getAllTrades();
-      const settings = await storage.getAccountSettings();
-      const transactions = await storage.getAccountTransactions();
+      const allTrades = await storage.getAllTrades(req.user!.id);
+      const settings = await storage.getAccountSettings(req.user!.id);
+      const transactions = await storage.getAccountTransactions(req.user!.id);
 
       const closedTrades = allTrades.filter(t => t.closeDate);
       const openTrades = allTrades.filter(t => !t.closeDate);
@@ -2870,9 +2881,9 @@ export async function registerRoutes(
   });
 
   // Get all trades
-  app.get("/api/trades", async (_req, res) => {
+  app.get("/api/trades", async (req, res) => {
     try {
-      const allTrades = await storage.getAllTrades();
+      const allTrades = await storage.getAllTrades(req.user!.id);
       res.json(allTrades);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get trades" });
@@ -2880,10 +2891,10 @@ export async function registerRoutes(
   });
 
   // Refresh prices for all open trades (static route before :id)
-  app.post("/api/trades/refresh-prices", async (_req, res) => {
+  app.post("/api/trades/refresh-prices", async (req, res) => {
     try {
       await ensureReady();
-      const allTrades = await storage.getAllTrades();
+      const allTrades = await storage.getAllTrades(req.user!.id);
       const openTrades = allTrades.filter(t => !t.closeDate);
       const uniqueSymbols = [...new Set(openTrades.map(t => t.symbol))];
       const priceMap: Record<string, number> = {};
@@ -2908,11 +2919,11 @@ export async function registerRoutes(
 
       for (const trade of openTrades) {
         if (priceMap[trade.symbol] !== undefined) {
-          await storage.updateTradePrice(trade.id, priceMap[trade.symbol]);
+          await storage.updateTradePrice(req.user!.id, trade.id, priceMap[trade.symbol]);
         }
       }
 
-      const updated = await storage.getAllTrades();
+      const updated = await storage.getAllTrades(req.user!.id);
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to refresh prices" });
@@ -2924,6 +2935,7 @@ export async function registerRoutes(
     try {
       const trade = await storage.createTrade({
         ...req.body,
+        userId: req.user!.id,
         createdAt: new Date().toISOString(),
       });
       res.json(trade);
@@ -2936,7 +2948,7 @@ export async function registerRoutes(
   app.patch("/api/trades/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const trade = await storage.updateTrade(id, req.body);
+      const trade = await storage.updateTrade(req.user!.id, id, req.body);
       if (!trade) return res.status(404).json({ error: "Trade not found" });
       res.json(trade);
     } catch (error: any) {
@@ -2949,7 +2961,7 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const { closeDate, closePrice, commOut } = req.body;
-      const trade = await storage.updateTrade(id, { closeDate, closePrice, commOut });
+      const trade = await storage.updateTrade(req.user!.id, id, { closeDate, closePrice, commOut });
       if (!trade) return res.status(404).json({ error: "Trade not found" });
       res.json(trade);
     } catch (error: any) {
@@ -2961,7 +2973,7 @@ export async function registerRoutes(
   app.delete("/api/trades/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteTrade(id);
+      await storage.deleteTrade(req.user!.id, id);
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete trade" });
@@ -2969,9 +2981,9 @@ export async function registerRoutes(
   });
 
   // Account settings
-  app.get("/api/account/settings", async (_req, res) => {
+  app.get("/api/account/settings", async (req, res) => {
     try {
-      const settings = await storage.getAccountSettings();
+      const settings = await storage.getAccountSettings(req.user!.id);
       res.json(settings);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get settings" });
@@ -2980,7 +2992,7 @@ export async function registerRoutes(
 
   app.patch("/api/account/settings", async (req, res) => {
     try {
-      const settings = await storage.updateAccountSettings(req.body);
+      const settings = await storage.updateAccountSettings(req.user!.id, req.body);
       res.json(settings);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update settings" });
@@ -2988,9 +3000,9 @@ export async function registerRoutes(
   });
 
   // Account transactions
-  app.get("/api/account/transactions", async (_req, res) => {
+  app.get("/api/account/transactions", async (req, res) => {
     try {
-      const txs = await storage.getAccountTransactions();
+      const txs = await storage.getAccountTransactions(req.user!.id);
       res.json(txs);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get transactions" });
@@ -2999,7 +3011,7 @@ export async function registerRoutes(
 
   app.post("/api/account/transactions", async (req, res) => {
     try {
-      const tx = await storage.createAccountTransaction(req.body);
+      const tx = await storage.createAccountTransaction({ ...req.body, userId: req.user!.id });
       res.json(tx);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to create transaction" });
@@ -3009,7 +3021,7 @@ export async function registerRoutes(
   app.delete("/api/account/transactions/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      await storage.deleteAccountTransaction(id);
+      await storage.deleteAccountTransaction(req.user!.id, id);
       res.json({ ok: true });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to delete transaction" });

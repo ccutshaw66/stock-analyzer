@@ -19,45 +19,47 @@ export const db = drizzle(pool);
 export interface IStorage {
   // Users
   getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  // Favorites
-  getFavorites(listType: string): Promise<Favorite[]>;
+  // Favorites (scoped by userId)
+  getFavorites(userId: number, listType: string): Promise<Favorite[]>;
   addFavorite(fav: InsertFavorite): Promise<Favorite>;
-  removeFavorite(ticker: string, listType: string): Promise<void>;
-  getFavorite(ticker: string, listType: string): Promise<Favorite | undefined>;
-  updateFavoriteScore(ticker: string, listType: string, score: number, verdict: string): Promise<void>;
-  // Trades
-  getAllTrades(): Promise<Trade[]>;
-  getTrade(id: number): Promise<Trade | undefined>;
+  removeFavorite(userId: number, ticker: string, listType: string): Promise<void>;
+  getFavorite(userId: number, ticker: string, listType: string): Promise<Favorite | undefined>;
+  updateFavoriteScore(userId: number, ticker: string, listType: string, score: number, verdict: string): Promise<void>;
+  // Trades (scoped by userId)
+  getAllTrades(userId: number): Promise<Trade[]>;
+  getTrade(userId: number, id: number): Promise<Trade | undefined>;
   createTrade(trade: InsertTrade): Promise<Trade>;
-  updateTrade(id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined>;
-  deleteTrade(id: number): Promise<void>;
-  updateTradePrice(id: number, price: number): Promise<void>;
-  // Account Settings
-  getAccountSettings(): Promise<AccountSettings>;
-  updateAccountSettings(settings: Partial<InsertAccountSettings>): Promise<AccountSettings>;
-  // Account Transactions
-  getAccountTransactions(): Promise<AccountTransaction[]>;
+  updateTrade(userId: number, id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined>;
+  deleteTrade(userId: number, id: number): Promise<void>;
+  updateTradePrice(userId: number, id: number, price: number): Promise<void>;
+  // Account Settings (scoped by userId)
+  getAccountSettings(userId: number): Promise<AccountSettings>;
+  updateAccountSettings(userId: number, settings: Partial<InsertAccountSettings>): Promise<AccountSettings>;
+  // Account Transactions (scoped by userId)
+  getAccountTransactions(userId: number): Promise<AccountTransaction[]>;
   createAccountTransaction(tx: InsertAccountTransaction): Promise<AccountTransaction>;
-  deleteAccountTransaction(id: number): Promise<void>;
+  deleteAccountTransaction(userId: number, id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
   async initialize() {
-    // Create tables if they don't exist using raw SQL
     const client = await pool.connect();
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
-          username TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL
+          email TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          display_name TEXT,
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
         )
       `);
       await client.query(`
         CREATE TABLE IF NOT EXISTS favorites (
           id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
           ticker TEXT NOT NULL,
           company_name TEXT NOT NULL,
           list_type TEXT NOT NULL,
@@ -70,6 +72,7 @@ export class DatabaseStorage implements IStorage {
       await client.query(`
         CREATE TABLE IF NOT EXISTS trades (
           id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
           pilot_or_add TEXT NOT NULL DEFAULT 'Pilot',
           trade_date TEXT NOT NULL,
           expiration TEXT,
@@ -97,6 +100,7 @@ export class DatabaseStorage implements IStorage {
       await client.query(`
         CREATE TABLE IF NOT EXISTS account_settings (
           id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) UNIQUE,
           starting_account_value DOUBLE PRECISION NOT NULL DEFAULT 10000,
           comm_per_shares_trade DOUBLE PRECISION DEFAULT 0,
           comm_per_option_contract DOUBLE PRECISION DEFAULT 0.65,
@@ -107,24 +111,13 @@ export class DatabaseStorage implements IStorage {
       await client.query(`
         CREATE TABLE IF NOT EXISTS account_transactions (
           id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
           amount DOUBLE PRECISION NOT NULL,
           trans_type TEXT NOT NULL,
           date TEXT NOT NULL,
           note TEXT
         )
       `);
-
-      // Seed default account settings if empty
-      const result = await client.query('SELECT COUNT(*) FROM account_settings');
-      if (parseInt(result.rows[0].count) === 0) {
-        await db.insert(accountSettings).values({
-          startingAccountValue: 10000,
-          commPerSharesTrade: 0,
-          commPerOptionContract: 0.65,
-          maxAllocationPerTrade: 500,
-          totalAllocatedLimit: 0.30,
-        });
-      }
     } finally {
       client.release();
     }
@@ -137,8 +130,8 @@ export class DatabaseStorage implements IStorage {
     return rows[0];
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const rows = await db.select().from(users).where(eq(users.username, username));
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const rows = await db.select().from(users).where(eq(users.email, email));
     return rows[0];
   }
 
@@ -147,10 +140,10 @@ export class DatabaseStorage implements IStorage {
     return rows[0];
   }
 
-  // ─── Favorites ─────────────────────────────────────────────────────────────
+  // ─── Favorites (userId scoped) ─────────────────────────────────────────────
 
-  async getFavorites(listType: string): Promise<Favorite[]> {
-    return db.select().from(favorites).where(eq(favorites.listType, listType));
+  async getFavorites(userId: number, listType: string): Promise<Favorite[]> {
+    return db.select().from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.listType, listType)));
   }
 
   async addFavorite(fav: InsertFavorite): Promise<Favorite> {
@@ -158,31 +151,31 @@ export class DatabaseStorage implements IStorage {
     return rows[0];
   }
 
-  async removeFavorite(ticker: string, listType: string): Promise<void> {
+  async removeFavorite(userId: number, ticker: string, listType: string): Promise<void> {
     await db.delete(favorites)
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
+      .where(and(eq(favorites.userId, userId), eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
   }
 
-  async getFavorite(ticker: string, listType: string): Promise<Favorite | undefined> {
+  async getFavorite(userId: number, ticker: string, listType: string): Promise<Favorite | undefined> {
     const rows = await db.select().from(favorites)
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
+      .where(and(eq(favorites.userId, userId), eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
     return rows[0];
   }
 
-  async updateFavoriteScore(ticker: string, listType: string, score: number, verdict: string): Promise<void> {
+  async updateFavoriteScore(userId: number, ticker: string, listType: string, score: number, verdict: string): Promise<void> {
     await db.update(favorites)
       .set({ score, verdict })
-      .where(and(eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
+      .where(and(eq(favorites.userId, userId), eq(favorites.ticker, ticker), eq(favorites.listType, listType)));
   }
 
-  // ─── Trades ────────────────────────────────────────────────────────────────
+  // ─── Trades (userId scoped) ────────────────────────────────────────────────
 
-  async getAllTrades(): Promise<Trade[]> {
-    return db.select().from(trades).orderBy(desc(trades.tradeDate));
+  async getAllTrades(userId: number): Promise<Trade[]> {
+    return db.select().from(trades).where(eq(trades.userId, userId)).orderBy(desc(trades.tradeDate));
   }
 
-  async getTrade(id: number): Promise<Trade | undefined> {
-    const rows = await db.select().from(trades).where(eq(trades.id, id));
+  async getTrade(userId: number, id: number): Promise<Trade | undefined> {
+    const rows = await db.select().from(trades).where(and(eq(trades.id, id), eq(trades.userId, userId)));
     return rows[0];
   }
 
@@ -191,36 +184,48 @@ export class DatabaseStorage implements IStorage {
     return rows[0];
   }
 
-  async updateTrade(id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined> {
-    await db.update(trades).set(trade).where(eq(trades.id, id));
-    const rows = await db.select().from(trades).where(eq(trades.id, id));
+  async updateTrade(userId: number, id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined> {
+    await db.update(trades).set(trade).where(and(eq(trades.id, id), eq(trades.userId, userId)));
+    const rows = await db.select().from(trades).where(and(eq(trades.id, id), eq(trades.userId, userId)));
     return rows[0];
   }
 
-  async deleteTrade(id: number): Promise<void> {
-    await db.delete(trades).where(eq(trades.id, id));
+  async deleteTrade(userId: number, id: number): Promise<void> {
+    await db.delete(trades).where(and(eq(trades.id, id), eq(trades.userId, userId)));
   }
 
-  async updateTradePrice(id: number, price: number): Promise<void> {
-    await db.update(trades).set({ currentPrice: price }).where(eq(trades.id, id));
+  async updateTradePrice(userId: number, id: number, price: number): Promise<void> {
+    await db.update(trades).set({ currentPrice: price }).where(and(eq(trades.id, id), eq(trades.userId, userId)));
   }
 
-  // ─── Account Settings ──────────────────────────────────────────────────────
+  // ─── Account Settings (userId scoped) ──────────────────────────────────────
 
-  async getAccountSettings(): Promise<AccountSettings> {
-    const rows = await db.select().from(accountSettings);
-    return rows[0]!;
+  async getAccountSettings(userId: number): Promise<AccountSettings> {
+    const rows = await db.select().from(accountSettings).where(eq(accountSettings.userId, userId));
+    if (rows.length === 0) {
+      // Auto-create default settings for this user
+      const created = await db.insert(accountSettings).values({
+        userId,
+        startingAccountValue: 10000,
+        commPerSharesTrade: 0,
+        commPerOptionContract: 0.65,
+        maxAllocationPerTrade: 500,
+        totalAllocatedLimit: 0.30,
+      }).returning();
+      return created[0];
+    }
+    return rows[0];
   }
 
-  async updateAccountSettings(settings: Partial<InsertAccountSettings>): Promise<AccountSettings> {
-    await db.update(accountSettings).set(settings).where(eq(accountSettings.id, 1));
-    return (await this.getAccountSettings())!;
+  async updateAccountSettings(userId: number, settings: Partial<InsertAccountSettings>): Promise<AccountSettings> {
+    await db.update(accountSettings).set(settings).where(eq(accountSettings.userId, userId));
+    return this.getAccountSettings(userId);
   }
 
-  // ─── Account Transactions ──────────────────────────────────────────────────
+  // ─── Account Transactions (userId scoped) ──────────────────────────────────
 
-  async getAccountTransactions(): Promise<AccountTransaction[]> {
-    return db.select().from(accountTransactions).orderBy(desc(accountTransactions.date));
+  async getAccountTransactions(userId: number): Promise<AccountTransaction[]> {
+    return db.select().from(accountTransactions).where(eq(accountTransactions.userId, userId)).orderBy(desc(accountTransactions.date));
   }
 
   async createAccountTransaction(tx: InsertAccountTransaction): Promise<AccountTransaction> {
@@ -228,8 +233,8 @@ export class DatabaseStorage implements IStorage {
     return rows[0];
   }
 
-  async deleteAccountTransaction(id: number): Promise<void> {
-    await db.delete(accountTransactions).where(eq(accountTransactions.id, id));
+  async deleteAccountTransaction(userId: number, id: number): Promise<void> {
+    await db.delete(accountTransactions).where(and(eq(accountTransactions.id, id), eq(accountTransactions.userId, userId)));
   }
 }
 

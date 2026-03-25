@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TickerProvider } from "@/contexts/TickerContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
@@ -21,35 +22,62 @@ import GreeksCalculator from "@/pages/greeks-calculator";
 import SectorHeatmap from "@/pages/sector-heatmap";
 import EarningsCalendar from "@/pages/earnings-calendar";
 import TradeAnalytics from "@/pages/trade-analytics";
+import AuthPage from "@/pages/auth";
+import { Loader2 } from "lucide-react";
+
+function AuthenticatedApp() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#040d22' }}>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading Stock Otter...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  return (
+    <TickerProvider>
+      <Router hook={useHashLocation}>
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/trade" component={TradeAnalysis} />
+            <Route path="/scanner" component={Scanner} />
+            <Route path="/tracker" component={TradeTracker} />
+            <Route path="/calculator" component={OptionsCalculator} />
+            <Route path="/verdict" component={Verdict} />
+            <Route path="/institutional" component={Institutional} />
+            <Route path="/help" component={Help} />
+            <Route path="/payoff" component={PayoffDiagram} />
+            <Route path="/kelly" component={KellyCalculator} />
+            <Route path="/greeks" component={GreeksCalculator} />
+            <Route path="/sectors" component={SectorHeatmap} />
+            <Route path="/earnings" component={EarningsCalendar} />
+            <Route path="/analytics" component={TradeAnalytics} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Router>
+    </TickerProvider>
+  );
+}
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <TickerProvider>
-          <Router hook={useHashLocation}>
-            <AppLayout>
-              <Switch>
-                <Route path="/" component={Home} />
-                <Route path="/trade" component={TradeAnalysis} />
-                <Route path="/scanner" component={Scanner} />
-                <Route path="/tracker" component={TradeTracker} />
-                <Route path="/calculator" component={OptionsCalculator} />
-                <Route path="/verdict" component={Verdict} />
-                <Route path="/institutional" component={Institutional} />
-                <Route path="/help" component={Help} />
-                <Route path="/payoff" component={PayoffDiagram} />
-                <Route path="/kelly" component={KellyCalculator} />
-                <Route path="/greeks" component={GreeksCalculator} />
-                <Route path="/sectors" component={SectorHeatmap} />
-                <Route path="/earnings" component={EarningsCalendar} />
-                <Route path="/analytics" component={TradeAnalytics} />
-                <Route component={NotFound} />
-              </Switch>
-            </AppLayout>
-          </Router>
-        </TickerProvider>
+        <AuthProvider>
+          <AuthenticatedApp />
+        </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
