@@ -25,6 +25,8 @@ import EarningsCalendar from "@/pages/earnings-calendar";
 import TradeAnalytics from "@/pages/trade-analytics";
 import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
+import AccountPage from "@/pages/account";
+import AdminPage from "@/pages/admin";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedApp() {
@@ -75,6 +77,8 @@ function AuthenticatedApp() {
             <Route path="/sectors" component={SectorHeatmap} />
             <Route path="/earnings" component={EarningsCalendar} />
             <Route path="/analytics" component={TradeAnalytics} />
+            <Route path="/account" component={AccountPage} />
+            <Route path="/admin" component={AdminPage} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

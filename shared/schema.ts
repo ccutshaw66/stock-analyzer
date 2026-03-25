@@ -70,6 +70,14 @@ export const accountTransactions = pgTable("account_transactions", {
   note: text("note"),
 });
 
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Insert schemas ───────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -106,6 +114,7 @@ export type AccountSettings = typeof accountSettings.$inferSelect;
 export type InsertAccountSettings = z.infer<typeof insertAccountSettingsSchema>;
 export type AccountTransaction = typeof accountTransactions.$inferSelect;
 export type InsertAccountTransaction = z.infer<typeof insertAccountTransactionSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 

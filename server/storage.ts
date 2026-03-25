@@ -4,11 +4,12 @@ import {
   type Trade, type InsertTrade,
   type AccountSettings, type InsertAccountSettings,
   type AccountTransaction, type InsertAccountTransaction,
-  users, favorites, trades, accountSettings, accountTransactions,
+  type PasswordResetToken,
+  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql, count } from "drizzle-orm";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
@@ -41,6 +42,18 @@ export interface IStorage {
   getAccountTransactions(userId: number): Promise<AccountTransaction[]>;
   createAccountTransaction(tx: InsertAccountTransaction): Promise<AccountTransaction>;
   deleteAccountTransaction(userId: number, id: number): Promise<void>;
+  // User profile & password
+  updateUserProfile(userId: number, data: { email?: string; displayName?: string }): Promise<User>;
+  updateUserPassword(userId: number, hashedPassword: string): Promise<void>;
+  // Password reset tokens
+  createPasswordResetToken(userId: number, token: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  deletePasswordResetToken(token: string): Promise<void>;
+  // Admin
+  getAllUsers(): Promise<User[]>;
+  deleteUser(userId: number): Promise<void>;
+  getUserTradeCount(userId: number): Promise<number>;
+  getUserFavoriteCount(userId: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -116,6 +129,15 @@ export class DatabaseStorage implements IStorage {
           trans_type TEXT NOT NULL,
           date TEXT NOT NULL,
           note TEXT
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          token TEXT NOT NULL UNIQUE,
+          expires_at TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
         )
       `);
     } finally {
@@ -235,6 +257,65 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAccountTransaction(userId: number, id: number): Promise<void> {
     await db.delete(accountTransactions).where(and(eq(accountTransactions.id, id), eq(accountTransactions.userId, userId)));
+  }
+
+  // ─── User Profile & Password ──────────────────────────────────────────────
+
+  async updateUserProfile(userId: number, data: { email?: string; displayName?: string }): Promise<User> {
+    const updates: any = {};
+    if (data.email !== undefined) updates.email = data.email;
+    if (data.displayName !== undefined) updates.displayName = data.displayName;
+    await db.update(users).set(updates).where(eq(users.id, userId));
+    const rows = await db.select().from(users).where(eq(users.id, userId));
+    return rows[0];
+  }
+
+  async updateUserPassword(userId: number, hashedPassword: string): Promise<void> {
+    await db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId));
+  }
+
+  // ─── Password Reset Tokens ───────────────────────────────────────────────
+
+  async createPasswordResetToken(userId: number, token: string, expiresAt: Date): Promise<PasswordResetToken> {
+    // Delete any existing tokens for this user first
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+    const rows = await db.insert(passwordResetTokens).values({ userId, token, expiresAt }).returning();
+    return rows[0];
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const rows = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    return rows[0];
+  }
+
+  async deletePasswordResetToken(token: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+  }
+
+  // ─── Admin ────────────────────────────────────────────────────────────────
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async deleteUser(userId: number): Promise<void> {
+    // Delete user's data first (cascading)
+    await db.delete(accountTransactions).where(eq(accountTransactions.userId, userId));
+    await db.delete(accountSettings).where(eq(accountSettings.userId, userId));
+    await db.delete(trades).where(eq(trades.userId, userId));
+    await db.delete(favorites).where(eq(favorites.userId, userId));
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+    await db.delete(users).where(eq(users.id, userId));
+  }
+
+  async getUserTradeCount(userId: number): Promise<number> {
+    const rows = await db.select({ count: count() }).from(trades).where(eq(trades.userId, userId));
+    return rows[0]?.count ?? 0;
+  }
+
+  async getUserFavoriteCount(userId: number): Promise<number> {
+    const rows = await db.select({ count: count() }).from(favorites).where(eq(favorites.userId, userId));
+    return rows[0]?.count ?? 0;
   }
 }
 

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler } from "./auth";
+import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 
 // ============================================================
 // Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
@@ -791,10 +791,57 @@ export async function registerRoutes(
   app.post("/api/auth/register", registerHandler);
   app.post("/api/auth/login", loginHandler);
   app.post("/api/auth/logout", logoutHandler);
+  app.post("/api/auth/forgot-password", forgotPasswordHandler);
+  app.post("/api/auth/reset-password", resetPasswordHandler);
   app.get("/api/auth/me", requireAuth, meHandler);
 
   // ─── Protect all other API routes ─────────────────────────────────────────
   app.use("/api", requireAuth);
+
+  // ─── Protected Auth Routes ──────────────────────────────────────────────────
+  app.patch("/api/auth/profile", updateProfileHandler);
+  app.post("/api/auth/change-password", changePasswordHandler);
+
+  // ─── Admin Routes ───────────────────────────────────────────────────────────
+  const ADMIN_EMAIL = "awisper@me.com";
+
+  app.get("/api/admin/users", async (req, res) => {
+    if (req.user!.email !== ADMIN_EMAIL) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const allUsers = await storage.getAllUsers();
+      const usersWithCounts = await Promise.all(
+        allUsers.map(async (u) => ({
+          id: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          createdAt: u.createdAt,
+          tradeCount: await storage.getUserTradeCount(u.id),
+          favoriteCount: await storage.getUserFavoriteCount(u.id),
+        }))
+      );
+      res.json(usersWithCounts);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to fetch users" });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    if (req.user!.email !== ADMIN_EMAIL) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const userId = parseInt(req.params.id);
+      if (userId === req.user!.id) {
+        return res.status(400).json({ error: "Cannot delete your own account" });
+      }
+      await storage.deleteUser(userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to delete user" });
+    }
+  });
 
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();

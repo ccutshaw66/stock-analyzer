@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { storage } from "./storage";
 
 const JWT_SECRET = process.env.JWT_SECRET || "stockotter-jwt-secret-change-in-production-2026";
@@ -168,5 +169,121 @@ export async function logoutHandler(_req: Request, res: Response) {
 
 export async function meHandler(req: Request, res: Response) {
   // req.user is set by requireAuth middleware
-  res.json({ user: req.user });
+  const user = await storage.getUser(req.user!.id);
+  res.json({ user: user ? { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt } : req.user });
+}
+
+// ─── Profile & Password Handlers ──────────────────────────────────────────────
+
+export async function updateProfileHandler(req: Request, res: Response) {
+  try {
+    const { email, displayName } = req.body;
+    const updates: { email?: string; displayName?: string } = {};
+
+    if (email !== undefined) {
+      const normalized = email.toLowerCase().trim();
+      if (!normalized) return res.status(400).json({ error: "Email cannot be empty" });
+      // Check if email is taken by another user
+      const existing = await storage.getUserByEmail(normalized);
+      if (existing && existing.id !== req.user!.id) {
+        return res.status(409).json({ error: "Email already in use" });
+      }
+      updates.email = normalized;
+    }
+
+    if (displayName !== undefined) {
+      updates.displayName = displayName || null;
+    }
+
+    const user = await storage.updateUserProfile(req.user!.id, updates);
+    res.json({ user: { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt } });
+  } catch (error: any) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ error: "Failed to update profile" });
+  }
+}
+
+export async function changePasswordHandler(req: Request, res: Response) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+
+    const user = await storage.getUser(req.user!.id);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const valid = await verifyPassword(currentPassword, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const hashed = await hashPassword(newPassword);
+    await storage.updateUserPassword(user.id, hashed);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Change password error:", error);
+    res.status(500).json({ error: "Failed to change password" });
+  }
+}
+
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    const user = await storage.getUserByEmail(email.toLowerCase().trim());
+    // Always return success to prevent email enumeration
+    if (!user) return res.json({ success: true });
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await storage.createPasswordResetToken(user.id, token, expiresAt);
+
+    // In production, send email with reset link. For now, log the token.
+    console.log(`[auth] Password reset token for ${email}: ${token}`);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: "Failed to process request" });
+  }
+}
+
+export async function resetPasswordHandler(req: Request, res: Response) {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: "Token and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const resetToken = await storage.getPasswordResetToken(token);
+    if (!resetToken) {
+      return res.status(400).json({ error: "Invalid or expired reset token" });
+    }
+
+    if (new Date() > resetToken.expiresAt) {
+      await storage.deletePasswordResetToken(token);
+      return res.status(400).json({ error: "Reset token has expired" });
+    }
+
+    const hashed = await hashPassword(newPassword);
+    await storage.updateUserPassword(resetToken.userId, hashed);
+    await storage.deletePasswordResetToken(token);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
 }

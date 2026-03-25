@@ -37,6 +37,8 @@ import {
   PieChart,
   Percent,
   LogOut,
+  UserCircle,
+  Shield,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -852,30 +854,6 @@ function SidebarContent({
             </div>
           );
         })}
-        {/* Help / FAQ */}
-        <Link href={helpItem.path}>
-          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
-            location === helpItem.path ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}>
-            <helpItem.icon className="h-4 w-4 shrink-0" />
-            {expanded && <span className="text-sm font-medium truncate">{helpItem.label}</span>}
-          </div>
-        </Link>
-
-        {/* Logout */}
-        <div
-          onClick={logout}
-          className="flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
-          data-testid="button-logout"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {expanded && (
-            <div className="flex items-center justify-between flex-1 min-w-0">
-              <span className="text-sm font-medium truncate">Sign Out</span>
-              {user && <span className="text-[10px] text-muted-foreground truncate ml-2">{user.email}</span>}
-            </div>
-          )}
-        </div>
       </nav>
 
       <div className="border-t border-card-border mx-2" />
@@ -1078,6 +1056,57 @@ function SidebarContent({
           </button>
         </div>
       )}
+
+      {/* Bottom nav: Help, Account, Admin, Sign Out */}
+      <div className="border-t border-card-border mx-2" />
+      <nav className="p-2 space-y-0.5">
+        {/* Help / FAQ */}
+        <Link href={helpItem.path}>
+          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+            location === helpItem.path ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}>
+            <helpItem.icon className="h-4 w-4 shrink-0" />
+            {expanded && <span className="text-sm font-medium truncate">{helpItem.label}</span>}
+          </div>
+        </Link>
+
+        {/* Account */}
+        <Link href="/account">
+          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+            location === "/account" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}>
+            <UserCircle className="h-4 w-4 shrink-0" />
+            {expanded && <span className="text-sm font-medium truncate">Account</span>}
+          </div>
+        </Link>
+
+        {/* Admin (only for admin user) */}
+        {user && user.email === "awisper@me.com" && (
+          <Link href="/admin">
+            <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+              location === "/admin" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}>
+              <Shield className="h-4 w-4 shrink-0" />
+              {expanded && <span className="text-sm font-medium truncate">Admin</span>}
+            </div>
+          </Link>
+        )}
+
+        {/* Sign Out */}
+        <div
+          onClick={logout}
+          className="flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {expanded && (
+            <div className="flex items-center justify-between flex-1 min-w-0">
+              <span className="text-sm font-medium truncate">Sign Out</span>
+              {user && <span className="text-[10px] text-muted-foreground truncate ml-2">{user.displayName || user.email}</span>}
+            </div>
+          )}
+        </div>
+      </nav>
 
       {/* Attribution */}
       {expanded && (

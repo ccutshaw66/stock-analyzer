@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Mail, Lock, User, TrendingUp, ArrowLeft } from "lucide-react";
+import { Loader2, Mail, Lock, User, TrendingUp, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import iconUrl from "@/assets/icon.png";
 import logoTextUrl from "@/assets/logo-text.png";
 
@@ -12,6 +12,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +105,8 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
                     type="text"
                     value={displayName}
                     onChange={e => setDisplayName(e.target.value)}
-                    placeholder="Your name (optional)"
+                    placeholder="Your name"
+                    required
                     className="w-full h-10 pl-10 pr-3 text-sm bg-background border border-card-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     data-testid="input-display-name"
                   />
@@ -133,16 +135,33 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder={mode === "register" ? "At least 6 characters" : "Your password"}
                   required
                   minLength={mode === "register" ? 6 : undefined}
-                  className="w-full h-10 pl-10 pr-3 text-sm bg-background border border-card-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full h-10 pl-10 pr-10 text-sm bg-background border border-card-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   data-testid="input-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+              {mode === "login" && (
+                <button
+                  type="button"
+                  onClick={() => {/* Future: navigate to forgot password flow */}}
+                  className="text-[11px] text-primary hover:underline mt-1.5 block ml-auto"
+                >
+                  Forgot password?
+                </button>
+              )}
             </div>
 
             <button
