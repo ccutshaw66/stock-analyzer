@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import iconUrl from "@/assets/icon.png";
+import logoUrl from "@/assets/logo.png";
 import {
   BarChart3,
   Activity,
@@ -789,15 +790,11 @@ function SidebarContent({
     <>
       {/* Logo */}
       {expanded ? (
-        <div className="px-3 py-5 border-b border-card-border flex items-center gap-3">
-          <img src={iconUrl} alt="Stock Otter" className="h-10 w-10 rounded-lg" />
-          <div className="leading-none">
-            <span className="text-lg font-bold text-foreground">Stock</span>
-            <span className="text-lg font-bold gradient-text ml-1">Otter</span>
-          </div>
+        <div className="px-2 py-3 border-b border-card-border" style={{ backgroundColor: '#040d22' }}>
+          <img src={logoUrl} alt="Stock Otter" className="w-full h-auto" />
         </div>
       ) : (
-        <div className="px-2 py-5 border-b border-card-border flex justify-center">
+        <div className="px-2 py-3 border-b border-card-border flex justify-center">
           <img src={iconUrl} alt="Stock Otter" className="h-10 w-10 rounded-lg" />
         </div>
       )}
