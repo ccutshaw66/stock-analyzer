@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import logoUrl from "@/assets/logo.png";
+import iconUrl from "@/assets/icon.png";
 import {
   BarChart3,
   Activity,
@@ -129,7 +131,7 @@ function StickyHeader({
             <circle cx="26" cy="8" r="2" fill="currentColor" className="text-green-500" />
           </svg>
           <span className="text-sm font-bold text-foreground tracking-tight hidden md:inline">
-            Stock Analyzer
+            Stock Otter
           </span>
         </div>
       </Link>
@@ -813,6 +815,17 @@ function SidebarContent({
 }: any) {
   return (
     <>
+      {/* Logo */}
+      {expanded ? (
+        <div className="px-3 py-4 border-b border-card-border">
+          <img src={logoUrl} alt="Stock Otter" className="h-8 w-auto" />
+        </div>
+      ) : (
+        <div className="px-2 py-4 border-b border-card-border flex justify-center">
+          <img src={iconUrl} alt="Stock Otter" className="h-8 w-8 rounded" />
+        </div>
+      )}
+
       {/* Grouped Navigation */}
       <nav className="p-2 space-y-1">
         {navGroups.map((group: any) => {

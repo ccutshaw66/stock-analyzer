@@ -85,40 +85,40 @@
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 225 18% 7%;
-  --foreground: 210 20% 92%;
-  --border: 225 12% 16%;
-  --card: 225 16% 10%;
-  --card-foreground: 210 20% 92%;
-  --card-border: 225 12% 14%;
-  --sidebar: 225 16% 11%;
-  --sidebar-foreground: 210 20% 92%;
-  --sidebar-border: 225 12% 15%;
-  --sidebar-primary: 217 72% 58%;
+  --background: 228 25% 8%;
+  --foreground: 214 20% 92%;
+  --border: 228 18% 15%;
+  --card: 228 22% 11%;
+  --card-foreground: 214 20% 92%;
+  --card-border: 228 18% 16%;
+  --sidebar: 228 25% 9%;
+  --sidebar-foreground: 214 20% 92%;
+  --sidebar-border: 228 18% 14%;
+  --sidebar-primary: 239 84% 67%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 225 12% 16%;
-  --sidebar-accent-foreground: 210 20% 92%;
-  --sidebar-ring: 217 72% 58%;
-  --popover: 225 16% 12%;
-  --popover-foreground: 210 20% 92%;
-  --popover-border: 225 12% 18%;
-  --primary: 217 72% 58%;
+  --sidebar-accent: 228 18% 15%;
+  --sidebar-accent-foreground: 214 20% 92%;
+  --sidebar-ring: 239 84% 67%;
+  --popover: 228 22% 12%;
+  --popover-foreground: 214 20% 92%;
+  --popover-border: 228 18% 18%;
+  --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 225 12% 18%;
-  --secondary-foreground: 210 20% 92%;
-  --muted: 225 10% 20%;
-  --muted-foreground: 220 8% 56%;
-  --accent: 217 20% 18%;
-  --accent-foreground: 210 20% 92%;
-  --destructive: 0 72% 51%;
+  --secondary: 228 18% 16%;
+  --secondary-foreground: 214 20% 92%;
+  --muted: 228 15% 18%;
+  --muted-foreground: 228 10% 52%;
+  --accent: 239 30% 18%;
+  --accent-foreground: 214 20% 92%;
+  --destructive: 346 77% 57%;
   --destructive-foreground: 0 0% 100%;
-  --input: 225 10% 26%;
-  --ring: 217 72% 58%;
-  --chart-1: 217 72% 62%;
-  --chart-2: 142 52% 52%;
+  --input: 228 15% 22%;
+  --ring: 239 84% 67%;
+  --chart-1: 239 84% 67%;
+  --chart-2: 160 60% 45%;
   --chart-3: 38 92% 60%;
-  --chart-4: 0 72% 60%;
-  --chart-5: 262 60% 65%;
+  --chart-4: 346 77% 57%;
+  --chart-5: 270 70% 65%;
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.10);
   --shadow-xs: 0px 1px 3px 0px hsl(0 0% 0% / 0.15);
   --shadow-sm: 0px 2px 4px -1px hsl(0 0% 0% / 0.15), 0px 1px 2px -1px hsl(0 0% 0% / 0.10);
@@ -129,8 +129,8 @@
   --shadow-2xl: 0px 24px 48px -8px hsl(0 0% 0% / 0.35);
 
   /* Semantic colors */
-  --verdict-yes: 142 52% 52%;
-  --verdict-no: 0 72% 60%;
+  --verdict-yes: 160 60% 45%;
+  --verdict-no: 346 77% 57%;
   --verdict-watch: 38 92% 60%;
 
   /* Fallback for older browsers */
@@ -276,4 +276,67 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+/* Modern SaaS - Frosted glass effect */
+.glass-card {
+  background: hsl(228 22% 11% / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(228 18% 18% / 0.5);
+}
+
+/* Gradient accent line for hero cards */
+.gradient-accent-top {
+  position: relative;
+}
+.gradient-accent-top::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #6366F1, #8B5CF6, #6366F1);
+  border-radius: inherit;
+}
+
+/* Subtle mesh gradient background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, hsl(239 84% 67% / 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, hsl(270 70% 65% / 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Card hover elevation */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px -5px hsl(239 84% 67% / 0.1), 0 4px 10px -3px hsl(0 0% 0% / 0.2);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glowing primary button */
+.glow-button {
+  box-shadow: 0 0 20px hsl(239 84% 67% / 0.3);
+}
+.glow-button:hover {
+  box-shadow: 0 0 30px hsl(239 84% 67% / 0.4);
 }
