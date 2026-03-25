@@ -67,7 +67,7 @@ export default function EarningsCalendar() {
   }, [earnings]);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="earnings-calendar-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="earnings-calendar-page">
       <h1 className="text-lg font-bold text-foreground">Earnings Calendar</h1>
       <p className="text-xs text-muted-foreground -mt-4">Upcoming earnings dates and history for your watchlist stocks.</p>
 

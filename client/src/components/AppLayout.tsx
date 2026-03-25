@@ -106,7 +106,7 @@ function StickyHeader({
 
       {/* Logo */}
       <Link href="/">
-        <div className="flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: '#040d22' }}>
+        <div className="hidden sm:flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: '#040d22' }}>
           <img src={logoTextUrl} alt="Stock Otter" className="h-8 w-auto" />
         </div>
       </Link>
@@ -114,14 +114,14 @@ function StickyHeader({
       {/* Search */}
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 flex-1 max-w-xs ml-2"
+        className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 max-w-xs ml-1 sm:ml-2"
         data-testid="header-search-form"
       >
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Ticker symbol..."
+            placeholder="Ticker..."
             value={input}
             onChange={(e) => setInput(e.target.value.toUpperCase())}
             className="w-full h-8 pl-8 pr-3 text-sm bg-background border border-card-border rounded-md font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
@@ -132,7 +132,7 @@ function StickyHeader({
         <button
           type="submit"
           disabled={!input.trim() || isAnalysisLoading}
-          className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+          className="h-8 px-2 sm:px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
           data-testid="button-analyze"
         >
           {isAnalysisLoading ? (
@@ -140,7 +140,7 @@ function StickyHeader({
           ) : (
             <Search className="h-3 w-3" />
           )}
-          Analyze
+          <span className="hidden sm:inline">Analyze</span>
         </button>
       </form>
 
@@ -1139,7 +1139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           onClose={closeSidebar}
           isMobile={isMobile}
         />
-        <main className="flex-1 overflow-y-auto" data-testid="main-content">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="main-content">
           {children}
         </main>
       </div>

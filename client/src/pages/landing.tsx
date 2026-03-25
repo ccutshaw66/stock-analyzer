@@ -54,7 +54,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
         }`}
         data-testid="landing-nav"
       >
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img src={iconUrl} alt="" className="h-8 w-8 rounded-lg" />
             <img src={logoTextUrl} alt="Stock Otter" className="h-6 w-auto" />
@@ -122,7 +122,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           }}
         />
 
-        <div className="relative max-w-6xl mx-auto px-6 text-center">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 text-center">
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.1] mb-6">
             Trade Smarter,
             <br />
@@ -168,7 +168,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-[#141829] border border-[#1E2235] rounded-xl p-4 text-center">
                   <div className="text-[10px] font-semibold text-[#6b7084] uppercase tracking-wider mb-1">
                     Score
@@ -227,7 +227,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
 
       {/* ─── Features ────────────────────────────────────────────────── */}
       <section id="features" className="py-20 md:py-28 relative">
-        <div className="max-w-6xl mx-auto px-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Everything You Need to Trade with Confidence
@@ -282,7 +282,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
               "radial-gradient(ellipse 50% 40% at 30% 50%, rgba(99,102,241,0.06) 0%, transparent 70%)",
           }}
         />
-        <div className="relative max-w-6xl mx-auto px-6">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Get Started in 3 Steps
@@ -317,7 +317,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
 
       {/* ─── Pricing ─────────────────────────────────────────────────── */}
       <section id="pricing" className="py-20 md:py-28 relative">
-        <div className="max-w-6xl mx-auto px-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Simple, Transparent Pricing
@@ -386,7 +386,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
 
       {/* ─── Footer ──────────────────────────────────────────────────── */}
       <footer className="border-t border-[#1E2235] py-12">
-        <div className="max-w-6xl mx-auto px-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2.5">
               <img src={iconUrl} alt="" className="h-7 w-7 rounded-lg" />

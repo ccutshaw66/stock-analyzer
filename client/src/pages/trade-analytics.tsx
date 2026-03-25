@@ -86,7 +86,7 @@ export default function TradeAnalytics() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 max-w-[1200px] mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
         <h1 className="text-lg font-bold text-foreground mb-4">Trade Analytics</h1>
         <div className="flex items-center justify-center py-12">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -100,7 +100,7 @@ export default function TradeAnalytics() {
 
   if (error) {
     return (
-      <div className="p-4 md:p-6 max-w-[1200px] mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
         <h1 className="text-lg font-bold text-foreground mb-4">Trade Analytics</h1>
         <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
           <AlertTriangle className="h-4 w-4 text-red-400" />
@@ -112,7 +112,7 @@ export default function TradeAnalytics() {
 
   if (!analytics || analytics.totalTrades === 0) {
     return (
-      <div className="p-4 md:p-6 max-w-[1200px] mx-auto">
+      <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
         <h1 className="text-lg font-bold text-foreground mb-4">Trade Analytics</h1>
         <div className="flex flex-col items-center justify-center py-12 text-center bg-card border border-card-border rounded-lg">
           <BarChart3 className="h-8 w-8 text-muted-foreground/40 mb-2" />
@@ -124,7 +124,7 @@ export default function TradeAnalytics() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="trade-analytics-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="trade-analytics-page">
       <h1 className="text-lg font-bold text-foreground">Trade Analytics</h1>
       <p className="text-xs text-muted-foreground -mt-4">Comprehensive performance analysis of your closed trades.</p>
 
@@ -207,7 +207,7 @@ export default function TradeAnalytics() {
             <Activity className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-bold text-foreground">Streak Analysis</h3>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <MetricCard
               label="Current"
               value={`${analytics.currentStreak > 0 ? "+" : ""}${analytics.currentStreak}`}

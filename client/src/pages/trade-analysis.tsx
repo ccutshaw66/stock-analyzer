@@ -171,7 +171,7 @@ export default function TradeAnalysis() {
   const { activeTicker, tradeData: data, isTradeLoading: isLoading, tradeError: error } = useTicker();
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
       {/* Loading */}
       {isLoading && <LoadingState />}
 
@@ -266,7 +266,7 @@ export default function TradeAnalysis() {
           </div>
 
           {/* Strategy Cards — ordered by trade lifecycle: Reversal → Momentum → Trend */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-1 mb-2">
+          <div className="hidden md:grid grid-cols-3 gap-1 mb-2">
             <div className="text-center">
               <span className="text-[10px] font-bold uppercase tracking-widest text-red-400/70">1 — Reversal Signal</span>
             </div>

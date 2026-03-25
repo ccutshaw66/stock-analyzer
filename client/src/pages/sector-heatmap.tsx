@@ -67,7 +67,7 @@ export default function SectorHeatmap() {
   }, [sectors, timeframe]);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="sector-heatmap-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="sector-heatmap-page">
       <h1 className="text-lg font-bold text-foreground">Sector Rotation Heatmap</h1>
       <p className="text-xs text-muted-foreground -mt-4">Track money flow across market sectors. Green = outperforming, Red = underperforming.</p>
 

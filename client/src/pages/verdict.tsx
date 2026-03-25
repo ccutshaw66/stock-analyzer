@@ -258,7 +258,7 @@ function ScoreRing({ score, size = 220, strokeWidth = 14 }: { score: number; siz
 
 function VerdictSkeleton() {
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 animate-pulse">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6 animate-pulse">
       {/* Hero skeleton */}
       <div className="bg-card border border-card-border rounded-xl p-8">
         <div className="flex flex-col items-center gap-4">
@@ -327,7 +327,7 @@ export default function Verdict() {
   // ─── Empty state ──────────────────────────────────────────────────────────
   if (!activeTicker) {
     return (
-      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-4 py-6">
+      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <div className="text-center py-24 text-muted-foreground">
           <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker to generate a research verdict</p>
@@ -357,7 +357,7 @@ export default function Verdict() {
   // ─── Error ────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-4 py-6">
+      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center">
           <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-red-400" />
           <p className="text-red-400 font-medium">{(error as Error).message || "Failed to generate verdict. Please try again."}</p>
@@ -372,7 +372,7 @@ export default function Verdict() {
   const goldSilverRatio = data.metals.silver.price > 0 ? (data.metals.gold.price / data.metals.silver.price) : 0;
 
   return (
-    <div data-testid="verdict-page" className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
 
       {/* ━━━ FAQ / How It Works ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <HelpBlock title="How the Unified Verdict Score Works">

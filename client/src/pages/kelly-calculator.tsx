@@ -87,7 +87,7 @@ export default function KellyCalculator() {
   }, [winRate, avgWin, avgLoss, accountValue, kelly]);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="kelly-calculator-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="kelly-calculator-page">
       <h1 className="text-lg font-bold text-foreground">Kelly Criterion Calculator</h1>
       <p className="text-xs text-muted-foreground -mt-4">Optimal position sizing based on your edge. Click the blue info bars for instructions.</p>
 

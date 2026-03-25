@@ -51,14 +51,14 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
         <Shield className="h-5 w-5 text-primary" />
         <h1 className="text-xl font-bold text-foreground">Admin Panel</h1>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-card border border-card-border rounded-xl p-4 text-center">
           <Users className="h-5 w-5 text-primary mx-auto mb-1" />
           <div className="text-2xl font-bold text-foreground tabular-nums">{users.length}</div>

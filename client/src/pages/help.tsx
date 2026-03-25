@@ -26,7 +26,7 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 
 export default function Help() {
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-[900px] mx-auto" data-testid="help-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 max-w-[900px] mx-auto" data-testid="help-page">
       <div className="flex items-center gap-2 mb-2">
         <BookOpen className="h-5 w-5 text-primary" />
         <h1 className="text-lg font-bold text-foreground">Help & Instructions</h1>

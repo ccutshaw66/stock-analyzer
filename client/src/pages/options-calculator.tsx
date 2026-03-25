@@ -175,7 +175,7 @@ function VerticalExpectancy() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div>
           <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
             {mode === "short" ? "Credit Received ($)" : "Max Profit ($)"}
@@ -466,7 +466,7 @@ function LegSection({ label, legs, calcType, addLeg, removeLeg, updateLeg, total
 
 export default function OptionsCalculator() {
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="options-calculator-page">
+    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="options-calculator-page">
       <h1 className="text-lg font-bold text-foreground">Options Calculator</h1>
       <p className="text-xs text-muted-foreground -mt-4">Click the blue info bar on each section for instructions with credit and debit examples.</p>
       <RiskCalculator />
