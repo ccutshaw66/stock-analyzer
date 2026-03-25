@@ -2,24 +2,9 @@ import { useState, useMemo } from "react";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import {
   Calculator, TrendingUp, DollarSign,
-  AlertTriangle, Plus, Minus, RotateCcw, Info
+  AlertTriangle, Plus, Minus, RotateCcw
 } from "lucide-react";
-
-// ─── Collapsible Help Section ─────────────────────────────────────────────────
-
-function HelpBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-primary/20 bg-primary/5 rounded-lg mb-4">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:text-primary/80">
-        <Info className="h-3.5 w-3.5 shrink-0" />
-        <span>{title}</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">{open ? "Hide" : "Show"}</span>
-      </button>
-      {open && <div className="px-3 pb-3 text-xs text-muted-foreground leading-relaxed space-y-2">{children}</div>}
-    </div>
-  );
-}
+import { HelpBlock } from "@/components/HelpBlock";
 
 // ─── Risk Calculator ──────────────────────────────────────────────────────────
 

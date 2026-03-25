@@ -8,6 +8,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, Loader2,
   FlaskConical, Building2, UserCheck, LineChart
 } from "lucide-react";
+import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -372,6 +373,41 @@ export default function Verdict() {
 
   return (
     <div data-testid="verdict-page" className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
+      {/* ━━━ FAQ / How It Works ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <HelpBlock title="How the Unified Verdict Score Works">
+        <p>The verdict combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
+
+        <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
+        <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
+        <p><strong className="text-foreground">Institutional Flow (25%)</strong> — The flow score from the Institutions page (-100 to +100) converted to 0–100. Measures net smart money direction.</p>
+        <p><strong className="text-foreground">Stress Resilience (15%)</strong> — How well the stock performed vs. the S&P 500 during 7 major historical crises (2000–2025). Score = percentage of events where the stock beat the S&P.</p>
+        <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
+
+        <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
+        <ScoreRange label="STRONG BUY" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident." />
+        <ScoreRange label="BUY" range="55–69" color="green" description="Most factors positive with minor weaknesses. Good entry with some caveats." />
+        <ScoreRange label="HOLD" range="41–54" color="yellow" description="Mixed signals. Some strengths, some concerns. Monitor but don't rush." />
+        <ScoreRange label="CAUTIOUS" range="31–40" color="red" description="More negatives than positives. Proceed with caution if already in a position." />
+        <ScoreRange label="AVOID" range="0–30" color="red" description="Significant red flags across multiple factors. Not a good risk/reward." />
+
+        <p className="font-semibold text-foreground mt-2">Examples:</p>
+        <Example type="good">
+          <p><strong className="text-green-400">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
+        </Example>
+        <Example type="neutral">
+          <p><strong className="text-yellow-400">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
+        </Example>
+        <Example type="bad">
+          <p><strong className="text-red-400">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
+        </Example>
+
+        <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
+        <p>The stress test table compares the stock's performance against S&P 500, Gold, and Silver during: <strong className="text-foreground">Dot-com Crash, 9/11, Great Recession, Flash Crash, China/Oil Crisis, COVID Crash, and 2022 Rate Hikes</strong>. Rows highlighted green mean the stock outperformed the S&P during that crisis. "N/A" means the company wasn't publicly traded during that period.</p>
+
+        <p className="font-semibold text-foreground mt-2">Metals Dashboard:</p>
+        <p>Gold and silver are traditional safe-haven assets. The <strong className="text-foreground">Gold/Silver Ratio</strong> (typically 60–90) indicates relative value. A ratio above 80 historically suggests silver is undervalued relative to gold. The S&P 500 (SPY) benchmark lets you compare your stock's context against the broader market.</p>
+      </HelpBlock>
 
       {/* ━━━ 1. UNIFIED VERDICT RING (Hero) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="bg-card border border-card-border rounded-xl overflow-hidden">

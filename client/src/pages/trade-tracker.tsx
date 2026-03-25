@@ -9,6 +9,7 @@ import {
   CheckCircle2, Loader2, History, Clock
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
+import { HelpBlock } from "@/components/HelpBlock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -604,6 +605,31 @@ export default function TradeTracker() {
           </button>
         </div>
       </div>
+
+      {/* FAQ / How It Works */}
+      <HelpBlock title="How the Trade Tracker Works">
+        <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
+
+        <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
+        <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
+        <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-green-400 font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
+        <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
+
+        <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
+        <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
+        <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
+
+        <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
+        <p><strong className="text-foreground">Account Value</strong> — Starting balance + all closed P/L + deposits/withdrawals. Set your starting balance in Settings.</p>
+        <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
+        <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
+        <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-green-400">green 55%+</span>, <span className="text-yellow-400">yellow 45–54%</span>, <span className="text-red-400">red below 45%</span>.</p>
+        <p><strong className="text-foreground">Allocated</strong> — What percentage of your account is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
+
+        <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
+        <p>Track your trading psychology by tagging each closed trade:</p>
+        <p><span className="text-green-400 font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-red-400 font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-red-400 font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-yellow-400 font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-yellow-400 font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
+      </HelpBlock>
 
       {/* Summary Cards */}
       {summary && (

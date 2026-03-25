@@ -15,6 +15,7 @@ import {
   ArrowDownCircle,
   Zap,
 } from "lucide-react";
+import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -185,6 +186,43 @@ export default function TradeAnalysis() {
           </p>
         </div>
       )}
+
+      {/* FAQ / How It Works */}
+      <HelpBlock title="How Trade Analysis Scoring Works">
+        <p>Each stock is scored on <strong className="text-foreground">8 categories</strong> (1–10 scale), weighted and combined into a final 0–10 score that drives the YES / WATCH / NO verdict.</p>
+
+        <p className="font-semibold text-foreground mt-2">Scoring Categories & What Drives Them:</p>
+        <p><strong className="text-foreground">Income Strength (15%)</strong> — Dividend yield. <span className="text-green-400">9/10</span> = yield above 4%. <span className="text-yellow-400">5/10</span> = yield 1–2.5%. <span className="text-red-400">2/10</span> = no dividend.</p>
+        <p><strong className="text-foreground">Income Quality (15%)</strong> — Payout ratio (what % of earnings go to dividends). <span className="text-green-400">9/10</span> = under 50% (sustainable). <span className="text-yellow-400">5/10</span> = 75–100%. <span className="text-red-400">3/10</span> = over 100% (paying out more than they earn).</p>
+        <p><strong className="text-foreground">Business Quality (15%)</strong> — Revenue growth + gross margins. <span className="text-green-400">High</span> = 10%+ revenue growth with 40%+ margins. <span className="text-red-400">Low</span> = shrinking revenue or thin margins.</p>
+        <p><strong className="text-foreground">Balance Sheet Quality (15%)</strong> — Debt-to-equity + current ratio. <span className="text-green-400">High</span> = low debt (D/E under 30), strong liquidity (current ratio 2+). <span className="text-red-400">Low</span> = D/E above 150 or current ratio below 1.</p>
+        <p><strong className="text-foreground">Performance Quality (15%)</strong> — 1-year and 3-year stock returns. <span className="text-green-400">High</span> = 20%+ annual return. <span className="text-red-400">Low</span> = negative returns.</p>
+        <p><strong className="text-foreground">Valuation Sanity (10%)</strong> — P/E ratio check. <span className="text-green-400">9/10</span> = P/E under 12 (bargain). <span className="text-yellow-400">5/10</span> = P/E 20–30 (fairly valued). <span className="text-red-400">2/10</span> = P/E above 50 (expensive). Bonus +1 if forward P/E is lower (earnings growing).</p>
+        <p><strong className="text-foreground">Liquidity & Scale (5%)</strong> — Market cap + trading volume. Large-cap ($100B+) with high volume = safest. Micro-cap ($300M) with thin volume = risky.</p>
+        <p><strong className="text-foreground">Thesis Durability (10%)</strong> — Combination of low beta (less volatile), steady revenue growth, low debt, and dividend yield. Stocks that check all boxes hold up in any environment.</p>
+
+        <p className="font-semibold text-foreground mt-2">Final Verdict:</p>
+        <ScoreRange label="YES" range="7.0–10.0" color="green" description="Strong conviction buy. Fundamentals, income, and performance all align." />
+        <ScoreRange label="WATCH" range="4.0–6.9" color="yellow" description="Hold or watchlist. Mixed signals, needs improvement in key areas before committing." />
+        <ScoreRange label="NO" range="0–3.9" color="red" description="Avoid for now. Significant concerns across multiple scoring categories." />
+
+        <p className="font-semibold text-foreground mt-2">Examples:</p>
+        <Example type="good">
+          <p><strong className="text-green-400">JNJ (Score 8.1, YES):</strong> 2.9% dividend yield (7/10 income), 42% payout (9/10 quality), 67% gross margin (8/10 business), D/E 45 (7/10 balance), P/E 16 (7/10 valuation). Consistent across the board.</p>
+        </Example>
+        <Example type="neutral">
+          <p><strong className="text-yellow-400">INTC (Score 5.4, WATCH):</strong> 1.4% yield (3/10 income), decent margins but revenue declining (4/10 business), P/E 28 (5/10 valuation), poor 1-year return (3/10 performance). Some strengths but too many weak spots.</p>
+        </Example>
+        <Example type="bad">
+          <p><strong className="text-red-400">RIVN (Score 2.8, NO):</strong> No dividend (2/10), negative margins and cash burn (2/10 business), no profitability (2/10 balance), P/E negative (3/10 valuation). Early-stage company without investment-grade fundamentals yet.</p>
+        </Example>
+
+        <p className="font-semibold text-foreground mt-2">Strategy Signals (BBTC / DTS / AMC):</p>
+        <p><strong className="text-foreground">BBTC EMA Pyramid</strong> — Trend-following using EMA 9/21/50 crossovers with ATR-based stops. Best for momentum stocks in clear uptrends.</p>
+        <p><strong className="text-foreground">DTS Reversal Swing</strong> — Looks for RSI below 40 near the 200-day SMA. Best for catching reversals on beaten-down stocks.</p>
+        <p><strong className="text-foreground">AMC Adaptive Momentum</strong> — Combines MACD histogram divergence, Bollinger squeeze, volume confirmation, and ADX strength. Backtested over 528 trades.</p>
+        <p><span className="text-green-400 font-semibold">BUY</span> = active buy signal. <span className="text-red-400 font-semibold">SELL</span> = active sell signal. <span className="text-yellow-400 font-semibold">NEUTRAL</span> = no clear setup. When 2–3 strategies agree, confidence is "Strong". When they disagree, it's "Weak" or "Mixed".</p>
+      </HelpBlock>
 
       {/* Data */}
       {data && !isLoading && (
