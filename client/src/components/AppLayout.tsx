@@ -29,6 +29,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
+import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
@@ -284,6 +285,12 @@ function Sidebar({
   });
   const openTrades = allTrades.filter(t => !t.closeDate);
 
+  // Account settings for trade modals
+  const { data: accountSettings } = useQuery<any>({
+    queryKey: ["/api/account/settings"],
+    queryFn: async () => { const res = await apiRequest("GET", "/api/account/settings"); return res.json(); },
+  });
+
   const { data: watchlistItems = [] } = useQuery<FavoriteItem[]>({
     queryKey: ["/api/favorites", "watchlist"],
     queryFn: async () => {
@@ -449,11 +456,22 @@ function Sidebar({
             setShowCloseTrade={setShowCloseTrade}
           />
         </aside>
+
+        {/* Add Trade Modal (mobile) */}
+        {showAddTrade && accountSettings && (
+          <SidebarAddTradeModal settings={accountSettings} onClose={() => setShowAddTrade(false)} />
+        )}
+
+        {/* Close Trade Modal (mobile) */}
+        {showCloseTrade && (
+          <SidebarCloseTradeModal openTrades={openTrades} settings={accountSettings} onClose={() => setShowCloseTrade(false)} />
+        )}
       </>
     );
   }
 
   return (
+    <>
     <aside
       className={`${sidebarWidth} bg-card border-r border-card-border flex flex-col shrink-0 transition-all duration-200 overflow-hidden`}
       data-testid="sidebar"
@@ -485,6 +503,204 @@ function Sidebar({
         setShowCloseTrade={setShowCloseTrade}
       />
     </aside>
+
+    {/* Add Trade Modal */}
+    {showAddTrade && accountSettings && (
+      <SidebarAddTradeModal settings={accountSettings} onClose={() => setShowAddTrade(false)} />
+    )}
+
+    {/* Close Trade Modal */}
+    {showCloseTrade && (
+      <SidebarCloseTradeModal openTrades={openTrades} settings={accountSettings} onClose={() => setShowCloseTrade(false)} />
+    )}
+    </>
+  );
+}
+
+// ─── Sidebar Trade Modals ───────────────────────────────────────────────────────
+
+const STOCK_TYPES: TradeTypeCode[] = ["LONG", "SHORT", "DTS"];
+const OPTION_TYPES = Object.keys(TRADE_TYPES).filter(k => !STOCK_TYPES.includes(k as TradeTypeCode)) as TradeTypeCode[];
+
+function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: () => void }) {
+  const [category, setCategory] = useState<"Stock" | "Option">("Option");
+  const [tradeType, setTradeType] = useState<TradeTypeCode>("C");
+  const [pilotOrAdd, setPilotOrAdd] = useState("Pilot");
+  const [symbol, setSymbol] = useState("");
+  const [tradeDate, setTradeDate] = useState(new Date().toISOString().split("T")[0]);
+  const [expiration, setExpiration] = useState("");
+  const [contractsShares, setContractsShares] = useState(1);
+  const [openPrice, setOpenPrice] = useState("");
+  const [strikes, setStrikes] = useState("");
+  const [spreadWidth, setSpreadWidth] = useState("");
+  const [allocation, setAllocation] = useState("");
+
+  const typeDef = TRADE_TYPES[tradeType];
+  const isCredit = typeDef?.isCredit ?? false;
+  const numLegs = typeDef?.legs || 0;
+  const filteredTypes = category === "Stock" ? STOCK_TYPES : OPTION_TYPES;
+
+  const createMut = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/trades", data); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawPrice = parseFloat(openPrice) || 0;
+    const signedPrice = isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice);
+    let commIn = category === "Option" ? contractsShares * numLegs * (settings.commPerOptionContract || 0.65) : (settings.commPerSharesTrade || 0);
+
+    createMut.mutate({
+      pilotOrAdd, tradeDate, expiration: expiration || null, contractsShares,
+      symbol: symbol.toUpperCase(), tradeType, tradeCategory: category,
+      strikes: strikes || null, openPrice: signedPrice, commIn,
+      allocation: parseFloat(allocation) || null, spreadWidth: parseFloat(spreadWidth) || null,
+      creditDebit: isCredit ? "CREDIT" : "DEBIT", tradePlanNotes: null, behaviorTag: null,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-card-border rounded-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-card-border">
+          <h2 className="text-base font-bold text-foreground">Add Trade</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-3">
+          <div className="flex gap-2">
+            {(["Stock", "Option"] as const).map(cat => (
+              <button key={cat} type="button" onClick={() => { setCategory(cat); setTradeType(cat === "Stock" ? "LONG" : "C"); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold ${category === cat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{cat}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
+              <select value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)} className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
+                {filteredTypes.map(c => <option key={c} value={c}>{c} - {TRADE_TYPES[c].label}</option>)}
+              </select></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
+              <select value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)} className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
+                <option value="Pilot">Pilot</option><option value="Add">Add</option>
+              </select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
+              <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL" required
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
+              <input type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
+              <input type="date" value={tradeDate} onChange={e => setTradeDate(e.target.value)} required
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+            {category === "Option" && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
+              <input type="date" value={expiration} onChange={e => setExpiration(e.target.value)}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
+              <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50" required
+                className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-green-500/30" : "border-red-500/30"}`} /></div>
+            {category === "Option" && numLegs >= 1 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Strike(s)</label>
+              <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)} placeholder={numLegs >= 2 ? "55/60" : "55"}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {numLegs >= 2 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
+              <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>}
+            <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Allocation $</label>
+              <input type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+          </div>
+          <button type="submit" disabled={createMut.isPending || !symbol}
+            className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">
+            {createMut.isPending ? "Adding..." : "Add Trade"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades: any[]; settings: any; onClose: () => void }) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
+  const [closePrice, setClosePrice] = useState("");
+
+  const selected = openTrades.find(t => t.id === selectedId);
+  const typeDef = selected ? TRADE_TYPES[selected.tradeType as TradeTypeCode] : null;
+  const isCredit = typeDef?.isCredit ?? false;
+
+  const closeMut = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trades/${selectedId}/close`, data); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+  });
+
+  const handleClose = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedId || !selected) return;
+    const rawClose = parseFloat(closePrice) || 0;
+    const signedClose = isCredit ? -Math.abs(rawClose) : Math.abs(rawClose);
+    const numLegs = typeDef?.legs || 0;
+    let commOut = selected.tradeCategory === "Option" ? selected.contractsShares * numLegs * (settings?.commPerOptionContract || 0.65) : (settings?.commPerSharesTrade || 0);
+    closeMut.mutate({ closeDate, closePrice: signedClose, commOut });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-card-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-card-border">
+          <h2 className="text-base font-bold text-foreground">Close Trade</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={handleClose} className="p-4 space-y-4">
+          {openTrades.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No open trades to close.</p>
+          ) : (
+            <>
+              <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Select Position</label>
+                <select value={selectedId || ""} onChange={e => setSelectedId(parseInt(e.target.value) || null)}
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
+                  <option value="">Choose a trade...</option>
+                  {openTrades.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.symbol} {t.tradeType} — {t.contractsShares}{t.tradeCategory === "Option" ? "ct" : "sh"} @ {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)} ({t.tradeDate})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selected && (
+                <>
+                  <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-foreground">{selected.symbol}</span>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{selected.tradeType}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
+                  </div>
+                  <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+                    <input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)} required
+                      className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+                  <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+                    {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"}</label>
+                    <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50" required
+                      className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
+                    <p className="text-[10px] text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
+                  <button type="submit" disabled={closeMut.isPending}
+                    className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50">
+                    {closeMut.isPending ? "Closing..." : "Close Trade"}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </form>
+      </div>
+    </div>
   );
 }
 
