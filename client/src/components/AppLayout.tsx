@@ -24,6 +24,7 @@ import {
   TrendingUp,
   TrendingDown,
   Building2,
+  Award,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -371,6 +372,7 @@ function Sidebar({
     { path: "/scanner", label: "Scanner", icon: Radar },
     { path: "/tracker", label: "Trade Tracker", icon: ClipboardList },
     { path: "/calculator", label: "Options Calc", icon: Calculator },
+    { path: "/verdict", label: "Verdict", icon: Award },
     { path: "/institutional", label: "Institutional", icon: Building2 },
     { path: "/help", label: "Help / FAQ", icon: BookOpen },
   ];

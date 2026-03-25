@@ -2191,6 +2191,221 @@ export async function registerRoutes(
   });
 
   // ================================================================
+  // UNIFIED VERDICT / RESEARCH REPORT
+  // ================================================================
+
+  // Define historical stress events with date ranges
+  const STRESS_EVENTS = [
+    { name: "Dot-Com Crash", start: "2000-03-10", end: "2002-10-09", desc: "Tech bubble burst" },
+    { name: "9/11 Attacks", start: "2001-09-10", end: "2001-10-11", desc: "Terrorist attacks & market shutdown" },
+    { name: "2008 Financial Crisis", start: "2007-10-09", end: "2009-03-09", desc: "Subprime mortgage collapse" },
+    { name: "2011 Debt Crisis", start: "2011-05-02", end: "2011-10-03", desc: "US debt ceiling & EU sovereign debt" },
+    { name: "COVID Crash", start: "2020-02-19", end: "2020-03-23", desc: "Global pandemic selloff" },
+    { name: "2022 Rate Hikes", start: "2022-01-03", end: "2022-10-12", desc: "Fed aggressive rate increases" },
+    { name: "2025 Tariff Crash", start: "2025-02-19", end: "2025-04-07", desc: "Trump tariffs & global retaliation" },
+  ];
+
+  // Stress test: compare ticker vs SPY vs Gold vs Silver during each event
+  app.get("/api/verdict/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = req.params.ticker.toUpperCase();
+
+      // Fetch all data in parallel
+      const [analysisRes, instRes, stratRes, tickerChartRes, spyChartRes, goldChartRes, silverChartRes] = await Promise.allSettled([
+        // Full analysis
+        (async () => {
+          const summary = await getQuote(ticker);
+          if (!summary) return null;
+          const { quote, financials } = extractQuoteData(summary);
+          const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
+          const { computedReturn: ret1Y } = extractChartData(chart1Y);
+          const chart3Y = await getChart(ticker, "3y", "1wk").catch(() => null);
+          const { computedReturn: ret3Y } = extractChartData(chart3Y);
+          const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: null };
+          const fullData = { quote, financials, historicalReturns };
+          const scoring = computeScoring(fullData);
+          const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+          const { verdict, ruling } = computeVerdict(weightedScore);
+          return { score: weightedScore, verdict, ruling, scoring, quote, financials };
+        })(),
+        // Institutional data
+        (async () => {
+          const raw = await getInstitutionalData(ticker);
+          return parseInstitutionalData(raw, ticker);
+        })(),
+        // Placeholder for strategy data (computed on trade-analysis page)
+        Promise.resolve(null),
+        // 25-year chart for stress comparison
+        getChart(ticker, "25y", "1mo").catch(() => null),
+        getChart("SPY", "25y", "1mo").catch(() => null),
+        getChart("GC=F", "25y", "1mo").catch(() => null),
+        getChart("SI=F", "25y", "1mo").catch(() => null),
+      ]);
+
+      const analysis = analysisRes.status === "fulfilled" ? analysisRes.value : null;
+      const institutional = instRes.status === "fulfilled" ? instRes.value : null;
+      const strategies = stratRes.status === "fulfilled" ? stratRes.value : null;
+      const tickerChart = tickerChartRes.status === "fulfilled" ? tickerChartRes.value : null;
+      const spyChart = spyChartRes.status === "fulfilled" ? spyChartRes.value : null;
+      const goldChart = goldChartRes.status === "fulfilled" ? goldChartRes.value : null;
+      const silverChart = silverChartRes.status === "fulfilled" ? silverChartRes.value : null;
+
+      // Build stress test comparison
+      function getReturnDuringPeriod(chart: any, startDate: string, endDate: string): number | null {
+        if (!chart?.timestamp || !chart?.indicators?.quote?.[0]?.close) return null;
+        const closes = chart.indicators.quote[0].close;
+        const timestamps = chart.timestamp;
+        const startTs = new Date(startDate).getTime() / 1000;
+        const endTs = new Date(endDate).getTime() / 1000;
+
+        let startPrice: number | null = null;
+        let endPrice: number | null = null;
+        for (let i = 0; i < timestamps.length; i++) {
+          if (timestamps[i] >= startTs && startPrice === null && closes[i]) startPrice = closes[i];
+          if (timestamps[i] <= endTs && closes[i]) endPrice = closes[i];
+        }
+        if (!startPrice || !endPrice) return null;
+        return ((endPrice - startPrice) / startPrice) * 100;
+      }
+
+      const stressTests = STRESS_EVENTS.map(event => ({
+        name: event.name,
+        desc: event.desc,
+        period: `${event.start.substring(0, 7)} to ${event.end.substring(0, 7)}`,
+        ticker: getReturnDuringPeriod(tickerChart, event.start, event.end),
+        spy: getReturnDuringPeriod(spyChart, event.start, event.end),
+        gold: getReturnDuringPeriod(goldChart, event.start, event.end),
+        silver: getReturnDuringPeriod(silverChart, event.start, event.end),
+      }));
+
+      // Current metals data
+      const [goldQuoteRes, silverQuoteRes, spyQuoteRes] = await Promise.allSettled([
+        getQuote("GC=F").catch(() => null),
+        getQuote("SI=F").catch(() => null),
+        getQuote("SPY").catch(() => null),
+      ]);
+
+      const goldPrice = goldQuoteRes.status === "fulfilled" ? goldQuoteRes.value?.price : null;
+      const silverPrice = silverQuoteRes.status === "fulfilled" ? silverQuoteRes.value?.price : null;
+      const spyPrice = spyQuoteRes.status === "fulfilled" ? spyQuoteRes.value?.price : null;
+
+      // Compute unified verdict score (0-100)
+      // Weighted combination of: analysis score, institutional flow, strategy alignment
+      let unifiedScore = 50; // neutral baseline
+      const factors: { name: string; score: number; weight: number; signal: string; color: string }[] = [];
+
+      if (analysis) {
+        const s = Math.round(analysis.score * 10); // 0-100
+        factors.push({ name: "Fundamental Analysis", score: s, weight: 0.30, signal: analysis.verdict, color: analysis.verdict === "YES" ? "green" : analysis.verdict === "NO" ? "red" : "yellow" });
+      }
+
+      if (institutional) {
+        const s = Math.round((institutional.flowScore + 100) / 2); // -100..100 → 0..100
+        factors.push({ name: "Institutional Flow", score: s, weight: 0.25, signal: institutional.signal, color: institutional.flowScore >= 15 ? "green" : institutional.flowScore <= -15 ? "red" : "yellow" });
+      }
+
+      if (strategies) {
+        // Count bullish vs bearish strategy signals
+        let bullish = 0, bearish = 0;
+        for (const strat of Object.values(strategies) as any[]) {
+          if (strat?.signal?.includes("BUY") || strat?.signal?.includes("ENTER")) bullish++;
+          if (strat?.signal?.includes("SELL")) bearish++;
+        }
+        const total = bullish + bearish;
+        const s = total > 0 ? Math.round((bullish / total) * 100) : 50;
+        const sig = bullish > bearish ? "BULLISH" : bearish > bullish ? "BEARISH" : "MIXED";
+        factors.push({ name: "Strategy Signals", score: s, weight: 0.20, signal: sig, color: sig === "BULLISH" ? "green" : sig === "BEARISH" ? "red" : "yellow" });
+      }
+
+      // Stress resilience score based on historical performance
+      const validStress = stressTests.filter(s => s.ticker !== null && s.spy !== null);
+      if (validStress.length > 0) {
+        const beatCount = validStress.filter(s => (s.ticker || 0) > (s.spy || 0)).length;
+        const s = Math.round((beatCount / validStress.length) * 100);
+        factors.push({ name: "Stress Resilience", score: s, weight: 0.15, signal: s >= 60 ? "RESILIENT" : s <= 30 ? "FRAGILE" : "AVERAGE", color: s >= 60 ? "green" : s <= 30 ? "red" : "yellow" });
+      }
+
+      // Insider confidence
+      if (institutional) {
+        const netBuy = institutional.insiderBuyCount - institutional.insiderSellCount;
+        const s = Math.max(0, Math.min(100, 50 + netBuy * 10));
+        factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
+      }
+
+      // Calculate unified score
+      const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
+      if (totalWeight > 0) {
+        unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
+      }
+
+      // Final verdict
+      let finalVerdict = "HOLD";
+      let verdictColor = "yellow";
+      if (unifiedScore >= 70) { finalVerdict = "STRONG BUY"; verdictColor = "green"; }
+      else if (unifiedScore >= 55) { finalVerdict = "BUY"; verdictColor = "green"; }
+      else if (unifiedScore <= 30) { finalVerdict = "AVOID"; verdictColor = "red"; }
+      else if (unifiedScore <= 40) { finalVerdict = "CAUTIOUS"; verdictColor = "red"; }
+
+      res.json({
+        ticker,
+        companyName: analysis?.quote?.companyName || institutional?.companyName || ticker,
+        price: analysis?.quote?.price || institutional?.currentPrice || 0,
+        marketCap: analysis?.quote?.marketCap || institutional?.marketCap || 0,
+
+        // Unified verdict
+        unifiedScore,
+        finalVerdict,
+        verdictColor,
+        factors,
+
+        // Component data
+        analysis: analysis ? {
+          score: analysis.score,
+          verdict: analysis.verdict,
+          scoring: analysis.scoring,
+        } : null,
+        institutional: institutional ? {
+          flowScore: institutional.flowScore,
+          signal: institutional.signal,
+          institutionPct: institutional.institutionPct,
+          insiderPct: institutional.insiderPct,
+          instIncreased: institutional.instIncreased,
+          instDecreased: institutional.instDecreased,
+          insiderBuyCount: institutional.insiderBuyCount,
+          insiderSellCount: institutional.insiderSellCount,
+        } : null,
+        strategies,
+
+        // Stress tests
+        stressTests,
+
+        // Metals comparison
+        metals: {
+          gold: {
+            price: goldPrice?.regularMarketPrice?.raw || 0,
+            change: goldPrice?.regularMarketChangePercent?.raw || 0,
+            name: "Gold",
+          },
+          silver: {
+            price: silverPrice?.regularMarketPrice?.raw || 0,
+            change: silverPrice?.regularMarketChangePercent?.raw || 0,
+            name: "Silver",
+          },
+          spy: {
+            price: spyPrice?.regularMarketPrice?.raw || 0,
+            change: spyPrice?.regularMarketChangePercent?.raw || 0,
+            name: "S&P 500",
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Verdict error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Failed to generate verdict" });
+    }
+  });
+
+  // ================================================================
   // INSTITUTIONAL / MONEY FLOW API ROUTES
   // ================================================================
 
