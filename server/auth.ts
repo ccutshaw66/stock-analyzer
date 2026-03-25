@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { storage } from "./storage";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "./email";
 
 const JWT_SECRET = process.env.JWT_SECRET || "stockotter-jwt-secret-change-in-production-2026";
 const JWT_EXPIRES_IN = "7d";
@@ -119,6 +120,9 @@ export async function registerHandler(req: Request, res: Response) {
     res.json({
       user: { id: user.id, email: user.email, displayName: user.displayName },
     });
+
+    // Send welcome email (non-blocking)
+    sendWelcomeEmail(user.email, user.displayName).catch(() => {});
   } catch (error: any) {
     console.error("Register error:", error);
     res.status(500).json({ error: "Failed to create account" });
@@ -245,8 +249,11 @@ export async function forgotPasswordHandler(req: Request, res: Response) {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await storage.createPasswordResetToken(user.id, token, expiresAt);
 
-    // In production, send email with reset link. For now, log the token.
-    console.log(`[auth] Password reset token for ${email}: ${token}`);
+    // Send reset email
+    const sent = await sendPasswordResetEmail(user.email, token, user.displayName);
+    if (!sent) {
+      console.log(`[auth] Email failed, reset token for ${email}: ${token}`);
+    }
 
     res.json({ success: true });
   } catch (error: any) {

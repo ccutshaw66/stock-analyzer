@@ -66,6 +66,10 @@ app.use((req, res, next) => {
   const { storage } = await import("./storage");
   await storage.initialize();
 
+  // Verify SMTP connection
+  const { verifyEmailConnection } = await import("./email");
+  await verifyEmailConnection();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

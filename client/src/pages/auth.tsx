@@ -6,8 +6,9 @@ import logoTextUrl from "@/assets/logo-text.png";
 
 export default function AuthPage({ initialMode = "login", onBack }: { initialMode?: "login" | "register"; onBack?: () => void }) {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">(initialMode);
+  const [mode, setMode] = useState<"login" | "register" | "forgot">(initialMode);
   const [email, setEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -19,7 +20,11 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
     setError("");
     setLoading(true);
     try {
-      if (mode === "login") {
+      if (mode === "forgot") {
+        const res = await (await import("@/lib/queryClient")).apiRequest("POST", "/api/auth/forgot-password", { email });
+        if (res.ok) setForgotSent(true);
+        else { const err = await res.json(); throw new Error(err.error); }
+      } else if (mode === "login") {
         await login(email, password);
       } else {
         await register(email, password, displayName || undefined);
@@ -81,10 +86,12 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
           )}
 
           <h1 className="text-xl font-bold text-foreground mb-1">
-            {mode === "login" ? "Welcome back" : "Create your account"}
+            {mode === "forgot" ? "Reset your password" : mode === "login" ? "Welcome back" : "Create your account"}
           </h1>
           <p className="text-sm text-muted-foreground mb-6">
-            {mode === "login"
+            {mode === "forgot"
+              ? "Enter your email and we'll send you a reset link"
+              : mode === "login"
               ? "Sign in to access your trading dashboard"
               : "Start analyzing stocks in under a minute"}
           </p>
@@ -95,6 +102,13 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
             </div>
           )}
 
+          {forgotSent && mode === "forgot" ? (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 text-center">
+              <p className="text-sm text-green-400 font-semibold mb-1">Check your email</p>
+              <p className="text-xs text-muted-foreground">If an account exists for {email}, we sent a password reset link. It expires in 1 hour.</p>
+              <button onClick={() => { setMode("login"); setForgotSent(false); setError(""); }} className="text-xs text-primary hover:underline mt-3" data-testid="button-back-to-login">Back to sign in</button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "register" && (
               <div>
@@ -130,6 +144,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
               </div>
             </div>
 
+            {mode !== "forgot" && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Password</label>
               <div className="relative">
@@ -156,13 +171,14 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
               {mode === "login" && (
                 <button
                   type="button"
-                  onClick={() => {/* Future: navigate to forgot password flow */}}
+                  onClick={() => { setMode("forgot"); setError(""); setForgotSent(false); }}
                   className="text-[11px] text-primary hover:underline mt-1.5 block ml-auto"
                 >
                   Forgot password?
                 </button>
               )}
             </div>
+            )}
 
             <button
               type="submit"
@@ -171,19 +187,20 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
               data-testid="button-submit-auth"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "login" ? "Sign In" : "Create Account"}
+              {mode === "forgot" ? "Send Reset Link" : mode === "login" ? "Sign In" : "Create Account"}
             </button>
           </form>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-xs text-muted-foreground">
-              {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
+              {mode === "forgot" ? "Remember your password?" : mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
               <button
-                onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
+                onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setForgotSent(false); }}
                 className="text-primary font-semibold hover:underline"
                 data-testid="button-toggle-auth-mode"
               >
-                {mode === "login" ? "Sign up" : "Sign in"}
+                {mode === "forgot" ? "Sign in" : mode === "login" ? "Sign up" : "Sign in"}
               </button>
             </p>
           </div>

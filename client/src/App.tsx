@@ -27,6 +27,7 @@ import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
 import AccountPage from "@/pages/account";
 import AdminPage from "@/pages/admin";
+import ResetPassword from "@/pages/reset-password";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedApp() {
@@ -44,8 +45,19 @@ function AuthenticatedApp() {
     );
   }
 
-  // Not logged in — show landing or auth
+  // Not logged in — show landing, auth, or reset password
   if (!user) {
+    // Check if we're on the reset-password route
+    const hash = window.location.hash || "";
+    if (hash.includes("/reset-password")) {
+      return (
+        <Router hook={useHashLocation}>
+          <Switch>
+            <Route path="/reset-password" component={ResetPassword} />
+          </Switch>
+        </Router>
+      );
+    }
     if (showAuth) {
       return <AuthPage initialMode={showAuth} onBack={() => setShowAuth(null)} />;
     }
