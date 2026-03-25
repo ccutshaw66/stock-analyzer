@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Mail, Lock, User, TrendingUp } from "lucide-react";
+import { Loader2, Mail, Lock, User, TrendingUp, ArrowLeft } from "lucide-react";
 import iconUrl from "@/assets/icon.png";
 import logoTextUrl from "@/assets/logo-text.png";
 
-export default function AuthPage() {
+export default function AuthPage({ initialMode = "login", onBack }: { initialMode?: "login" | "register"; onBack?: () => void }) {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -72,6 +72,12 @@ export default function AuthPage() {
             <img src={iconUrl} alt="Stock Otter" className="h-12 w-12 rounded-xl" />
             <img src={logoTextUrl} alt="Stock Otter" className="h-8" style={{ filter: 'brightness(1.1)' }} />
           </div>
+
+          {onBack && (
+            <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4" data-testid="button-back-to-landing">
+              <ArrowLeft className="h-3.5 w-3.5" /> Back to Stock Otter
+            </button>
+          )}
 
           <h1 className="text-xl font-bold text-foreground mb-1">
             {mode === "login" ? "Welcome back" : "Create your account"}

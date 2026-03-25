@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -23,10 +24,12 @@ import SectorHeatmap from "@/pages/sector-heatmap";
 import EarningsCalendar from "@/pages/earnings-calendar";
 import TradeAnalytics from "@/pages/trade-analytics";
 import AuthPage from "@/pages/auth";
+import LandingPage from "@/pages/landing";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
+  const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
 
   if (isLoading) {
     return (
@@ -39,10 +42,20 @@ function AuthenticatedApp() {
     );
   }
 
+  // Not logged in — show landing or auth
   if (!user) {
-    return <AuthPage />;
+    if (showAuth) {
+      return <AuthPage initialMode={showAuth} onBack={() => setShowAuth(null)} />;
+    }
+    return (
+      <LandingPage
+        onLogin={() => setShowAuth("login")}
+        onRegister={() => setShowAuth("register")}
+      />
+    );
   }
 
+  // Logged in — show the app
   return (
     <TickerProvider>
       <Router hook={useHashLocation}>
