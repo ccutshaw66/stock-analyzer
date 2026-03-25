@@ -48,15 +48,8 @@ function AuthenticatedApp() {
   // Not logged in — show landing, auth, or reset password
   if (!user) {
     // Check if we're on the reset-password route
-    const hash = window.location.hash || "";
-    if (hash.includes("/reset-password")) {
-      return (
-        <Router hook={useHashLocation}>
-          <Switch>
-            <Route path="/reset-password" component={ResetPassword} />
-          </Switch>
-        </Router>
-      );
+    if (window.location.hash.includes("reset-password")) {
+      return <ResetPassword />;
     }
     if (showAuth) {
       return <AuthPage initialMode={showAuth} onBack={() => setShowAuth(null)} />;
