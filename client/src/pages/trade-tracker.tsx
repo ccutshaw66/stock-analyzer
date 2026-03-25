@@ -8,6 +8,7 @@ import {
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
   CheckCircle2, Loader2, History, Clock
 } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -252,14 +253,12 @@ function TradeForm({ mode, initial, settings, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
-              <input type="date" value={tradeDate} onChange={e => setTradeDate(e.target.value)}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
+              <DatePicker value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required />
             </div>
             {category === "Option" && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
-                <input type="date" value={expiration} onChange={e => setExpiration(e.target.value)}
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
+                <DatePicker value={expiration} onChange={setExpiration} placeholder="Expiration" />
               </div>
             )}
           </div>
@@ -352,8 +351,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-                  <input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)}
-                    className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
+                  <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
                 </div>
                 <div>
                   <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
@@ -453,8 +451,7 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
         <form onSubmit={handleClose} className="p-4 space-y-4">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-            <input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)}
-              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" required />
+            <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
           </div>
           <div>
             <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>

@@ -34,6 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface FavoriteItem {
   id: number;
@@ -618,11 +619,9 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
-              <input type="date" value={tradeDate} onChange={e => setTradeDate(e.target.value)} required
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+              <DatePicker value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required /></div>
             {category === "Option" && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
-              <input type="date" value={expiration} onChange={e => setExpiration(e.target.value)}
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>}
+              <DatePicker value={expiration} onChange={setExpiration} placeholder="Expiration" /></div>}
           </div>
 
           {/* CTV Dual Vertical Entry */}
@@ -749,8 +748,7 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
                     <p className="text-[11px] text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
                   </div>
                   <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-                    <input type="date" value={closeDate} onChange={e => setCloseDate(e.target.value)} required
-                      className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" /></div>
+                    <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required /></div>
                   <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"}</label>
                     <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50" required
