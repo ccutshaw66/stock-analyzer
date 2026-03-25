@@ -65,7 +65,7 @@ export default function Help() {
       <Section title="Trade Analysis Page" icon={Activity}>
         <Q q="What are the three strategy cards?">
           <p><strong className="text-foreground">BBTC EMA Pyramid:</strong> Uses EMA 9/21/50 crossovers with ATR-based stops. Best for trend-following entries on momentum stocks.</p>
-          <p><strong className="text-foreground">DTS Reversal Swing:</strong> Looks for RSI below 40 near SMA 200 with 15-bar breakouts. Best for catching reversals on beaten-down stocks.</p>
+          <p><strong className="text-foreground">VER (Volume Exhaustion Reversal):</strong> Catches trend reversals using three-way confirmation — RSI divergence (momentum weakening), volume exhaustion spikes (2x+ average), and Bollinger Band extremes (price at statistical limits). Best for catching overbought/oversold snaps.</p>
           <p><strong className="text-foreground">AMC (Adaptive Momentum Confluence):</strong> Custom strategy combining MACD histogram divergence, Bollinger squeeze breakouts, volume confirmation, and ADX trend strength. This was backtested over 528 trades with a 1.27 profit factor.</p>
         </Q>
         <Q q="What do the signals mean?">
@@ -77,7 +77,7 @@ export default function Help() {
       <Section title="Scanner Page" icon={Radar}>
         <Q q="How does the scanner work?">
           <p>Click "Scan Now" to search the market for stocks that match strategy criteria. It scans Yahoo Finance's stock screener and applies technical analysis to each result.</p>
-          <p><strong className="text-foreground">3-Strategy Scanner:</strong> Finds stocks where BBTC, DTS, and AMC all agree on a signal. Higher confluence = stronger setup.</p>
+          <p><strong className="text-foreground">3-Strategy Scanner:</strong> Finds stocks where BBTC, VER, and AMC all agree on a signal. Higher confluence = stronger setup.</p>
           <p><strong className="text-foreground">AMC Scanner:</strong> Specifically looks for stocks matching the AMC strategy criteria (MACD divergence + Bollinger + volume + ADX).</p>
         </Q>
         <Q q="Why do I only see 10 results?">

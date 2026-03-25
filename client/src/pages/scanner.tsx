@@ -100,15 +100,15 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
             <div className="flex items-center gap-1 mt-0.5">
               {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
               <span className="text-[10px] text-muted-foreground">{result.bbtc.trend} · {result.bbtc.bias}</span>
-              {result.dts.rsi !== null && <span className={`text-[10px] ml-1 ${result.dts.rsi < 30 ? "text-green-400" : result.dts.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.dts.rsi}</span>}
+              {result.ver.rsi !== null && <span className={`text-[10px] ml-1 ${result.ver.rsi < 30 ? "text-green-400" : result.ver.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
             </div>
           </div>
         </div>
         <span className={`${labelColor} px-3 py-1 text-xs font-bold rounded-md uppercase`}>{label}</span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.ver.signal} /><span className="text-[9px] text-muted-foreground">VER</span></div>
         <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.bbtc.signal} /><span className="text-[9px] text-muted-foreground">BBTC</span></div>
-        <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.dts.signal} /><span className="text-[9px] text-muted-foreground">DTS</span></div>
         <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.confirmation.signal} /><span className="text-[9px] text-muted-foreground">Confirm</span></div>
         <div className="ml-auto"><ScoreBar score={result.score} max={7} /></div>
       </div>
@@ -269,7 +269,7 @@ export default function Scanner() {
         {/* Description */}
         <div className="text-center py-2">
           {scanMode === "3strategy" ? (
-            <p className="text-xs text-muted-foreground">Scans across BBTC + DTS + Triple Confluence. Finds stocks where multiple strategies agree.</p>
+            <p className="text-xs text-muted-foreground">Scans across BBTC + VER + Triple Confluence. Finds stocks where multiple strategies agree.</p>
           ) : (
             <p className="text-xs text-muted-foreground">Scores stocks 0-5 using AMC indicators: MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, trend strength.</p>
           )}

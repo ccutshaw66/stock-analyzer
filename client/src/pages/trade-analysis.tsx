@@ -152,8 +152,8 @@ function LoadingState() {
 function SignalDot(props: any) {
   const { cx, cy, payload } = props;
   if (!payload) return null;
-  const hasBuy = payload.bbtcSignal === "BUY" || payload.bbtcSignal === "ADD_LONG" || payload.dtsSignal === "BUY";
-  const hasSell = payload.bbtcSignal === "SELL" || payload.bbtcSignal === "STOP_HIT" || payload.bbtcSignal === "REDUCE" || payload.dtsSignal === "SELL";
+  const hasBuy = payload.bbtcSignal === "BUY" || payload.bbtcSignal === "ADD_LONG" || payload.verSignal === "BUY";
+  const hasSell = payload.bbtcSignal === "SELL" || payload.bbtcSignal === "STOP_HIT" || payload.bbtcSignal === "REDUCE" || payload.verSignal === "SELL";
   if (!hasBuy && !hasSell) return null;
   return (
     <circle
@@ -217,10 +217,11 @@ export default function TradeAnalysis() {
           <p><strong className="text-red-400">RIVN (Score 2.8, NO):</strong> No dividend (2/10), negative margins and cash burn (2/10 business), no profitability (2/10 balance), P/E negative (3/10 valuation). Early-stage company without investment-grade fundamentals yet.</p>
         </Example>
 
-        <p className="font-semibold text-foreground mt-2">Strategy Signals (BBTC / DTS / AMC):</p>
-        <p><strong className="text-foreground">BBTC EMA Pyramid</strong> — Trend-following using EMA 9/21/50 crossovers with ATR-based stops. Best for momentum stocks in clear uptrends.</p>
-        <p><strong className="text-foreground">DTS Reversal Swing</strong> — Looks for RSI below 40 near the 200-day SMA. Best for catching reversals on beaten-down stocks.</p>
-        <p><strong className="text-foreground">AMC Adaptive Momentum</strong> — Combines MACD histogram divergence, Bollinger squeeze, volume confirmation, and ADX strength. Backtested over 528 trades.</p>
+        <p className="font-semibold text-foreground mt-2">Strategy Signals (BBTC / VER / AMC):</p>
+        <p className="font-semibold text-foreground mt-2">Trade Lifecycle — 3 Phases:</p>
+        <p><strong className="text-red-400">Phase 1 — VER (Reversal Signal):</strong> Catches exhaustion reversals using RSI divergence + volume spike (2x avg) + Bollinger Band extreme. This fires first when a trend has gone too far and is snapping back.</p>
+        <p><strong className="text-yellow-400">Phase 2 — AMC (Momentum Confirms):</strong> Validates that momentum is actually shifting. Uses MACD histogram divergence, Bollinger squeeze, volume confirmation, and ADX strength. When AMC confirms after VER, the reversal has real legs.</p>
+        <p><strong className="text-green-400">Phase 3 — BBTC (Trend Rides):</strong> EMA 9/21/50 crossovers confirm the new trend is established. ATR-based stops and trailing exits. This is where you ride the move with defined risk.</p>
         <p><span className="text-green-400 font-semibold">BUY</span> = active buy signal. <span className="text-red-400 font-semibold">SELL</span> = active sell signal. <span className="text-yellow-400 font-semibold">NEUTRAL</span> = no clear setup. When 2–3 strategies agree, confidence is "Strong". When they disagree, it's "Weak" or "Mixed".</p>
       </HelpBlock>
 
@@ -264,9 +265,169 @@ export default function TradeAnalysis() {
             </div>
           </div>
 
-          {/* Strategy Cards */}
+          {/* Strategy Cards — ordered by trade lifecycle: Reversal → Momentum → Trend */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-1 mb-2">
+            <div className="text-center">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-red-400/70">1 — Reversal Signal</span>
+            </div>
+            <div className="text-center">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70">2 — Momentum Confirms</span>
+            </div>
+            <div className="text-center">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-green-400/70">3 — Trend Rides</span>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* BBTC EMA Pyramid Card */}
+            {/* VER — Phase 1: Reversal Signal */}
+            <Card data-testid="card-ver">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Target className="h-4 w-4 text-primary" />
+                    VER Volume Exhaustion Reversal
+                  </CardTitle>
+                  <SignalBadge signal={data.ver.signal} />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">{data.ver.signalDetail}</p>
+
+                {/* RSI Gauge */}
+                <div className="bg-muted/50 rounded-md p-3">
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+                    RSI (14)
+                  </div>
+                  <RSIGauge value={data.ver.rsi} />
+                </div>
+
+                {/* Bollinger Bands + Volume Ratio */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/30 rounded-md p-2.5">
+                    <div className="text-[10px] text-muted-foreground uppercase">BB Upper</div>
+                    <div className="text-sm font-semibold tabular-nums text-red-400">
+                      {data.ver.bbUpper !== null ? formatCurrency(data.ver.bbUpper) : "N/A"}
+                    </div>
+                  </div>
+                  <div className="bg-muted/30 rounded-md p-2.5">
+                    <div className="text-[10px] text-muted-foreground uppercase">BB Lower</div>
+                    <div className="text-sm font-semibold tabular-nums text-green-400">
+                      {data.ver.bbLower !== null ? formatCurrency(data.ver.bbLower) : "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/30 rounded-md p-2.5">
+                    <div className="text-[10px] text-muted-foreground uppercase">BB Middle</div>
+                    <div className="text-sm font-semibold tabular-nums text-purple-500">
+                      {data.ver.bbMiddle !== null ? formatCurrency(data.ver.bbMiddle) : "N/A"}
+                    </div>
+                  </div>
+                  <div className="bg-muted/30 rounded-md p-2.5">
+                    <div className="text-[10px] text-muted-foreground uppercase">Vol Ratio</div>
+                    <div className="text-sm font-semibold tabular-nums text-foreground">
+                      {data.ver.volumeRatio !== null ? `${data.ver.volumeRatio}x avg` : "N/A"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Price vs Bollinger Band relationship */}
+                <div className="flex items-center gap-2 text-xs">
+                  <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Band Position:</span>
+                  {data.ver.bbUpper !== null && data.ver.bbLower !== null ? (
+                    data.currentPrice >= data.ver.bbUpper ? (
+                      <span className="font-semibold text-red-500">At Upper Band</span>
+                    ) : data.currentPrice <= data.ver.bbLower ? (
+                      <span className="font-semibold text-green-500">At Lower Band</span>
+                    ) : (
+                      <span className="font-semibold text-yellow-500">Inside Bands</span>
+                    )
+                  ) : (
+                    <span className="font-semibold text-muted-foreground">N/A</span>
+                  )}
+                </div>
+
+                {/* Recent Signals */}
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Recent Signals
+                  </div>
+                  <RecentSignalsList signals={data.ver.recentSignals} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* AMC — Phase 2: Momentum Confirms */}
+            <Card data-testid="card-amc">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-purple-400" />
+                    <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${data.amc?.signal === "ENTER" ? "bg-green-500/80 text-white" : data.amc?.signal === "SELL" ? "bg-red-500/80 text-white" : "bg-yellow-500/20 text-yellow-400"}`}>
+                    {data.amc?.signal || "HOLD"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{data.amc?.signalDetail || "Adaptive Momentum Confluence"}</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Score + Mode */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Score</p>
+                    <p className={`text-lg font-bold tabular-nums ${(data.amc?.score || 0) >= 4 ? "text-green-400" : (data.amc?.score || 0) >= 3 ? "text-yellow-400" : "text-muted-foreground"}`}>
+                      {data.amc?.score || 0}<span className="text-xs text-muted-foreground">/5</span>
+                    </p>
+                  </div>
+                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase">Mode</p>
+                    <p className={`text-sm font-bold ${data.amc?.mode === "momentum" ? "text-green-400" : data.amc?.mode === "reversion" ? "text-cyan-400" : "text-muted-foreground"}`}>
+                      {data.amc?.mode === "momentum" ? "Momentum" : data.amc?.mode === "reversion" ? "Reversion" : "Flat"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* VAMI Value */}
+                <div className="bg-muted/30 rounded-md p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-muted-foreground uppercase">VAMI (Custom)</p>
+                    <span className={`text-xs ${(data.amc?.vami || 0) > 0 ? "text-green-400" : (data.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                      {(data.amc?.vami || 0) > 0 ? "Bullish" : (data.amc?.vami || 0) < 0 ? "Bearish" : "Neutral"}
+                    </span>
+                  </div>
+                  <p className={`text-xl font-bold tabular-nums ${(data.amc?.vami || 0) > 0 ? "text-green-400" : (data.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                    {(data.amc?.vami || 0).toFixed(2)}
+                  </p>
+                  {/* VAMI bar */}
+                  <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${(data.amc?.vami || 0) > 0 ? "bg-green-500" : "bg-red-500"}`}
+                      style={{ width: `${Math.min(100, Math.abs(data.amc?.vami || 0) * 2)}%`, marginLeft: (data.amc?.vami || 0) >= 0 ? "50%" : `${50 - Math.min(50, Math.abs(data.amc?.vami || 0) * 2)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Recent Signals */}
+                {data.amc?.recentSignals?.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Signals</h4>
+                    <div className="space-y-1">
+                      {data.amc.recentSignals.slice(-5).map((s: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground font-mono">{s.date}</span>
+                          <span className={s.signal.includes("BUY") ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>{s.signal}</span>
+                          <span className="tabular-nums text-muted-foreground">${s.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* BBTC — Phase 3: Trend Rides */}
             <Card data-testid="card-bbtc">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -354,136 +515,6 @@ export default function TradeAnalysis() {
                   </div>
                   <RecentSignalsList signals={data.bbtc.recentSignals} />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* DTS Reversal Swing Card */}
-            <Card data-testid="card-dts">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Target className="h-4 w-4 text-primary" />
-                    DTS Reversal Swing
-                  </CardTitle>
-                  <SignalBadge signal={data.dts.signal} />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">{data.dts.signalDetail}</p>
-
-                {/* RSI Gauge */}
-                <div className="bg-muted/50 rounded-md p-3">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-                    RSI (14)
-                  </div>
-                  <RSIGauge value={data.dts.rsi} />
-                </div>
-
-                {/* SMA200 + Highest High */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">SMA 200</div>
-                    <div className="text-sm font-semibold tabular-nums text-purple-500">
-                      {data.dts.sma200 !== null ? formatCurrency(data.dts.sma200) : "N/A"}
-                    </div>
-                  </div>
-                  <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">High (15 bar)</div>
-                    <div className="text-sm font-semibold tabular-nums text-foreground">
-                      {data.dts.highestHigh15 !== null ? formatCurrency(data.dts.highestHigh15) : "N/A"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Price vs SMA200 relationship */}
-                <div className="flex items-center gap-2 text-xs">
-                  <ShieldAlert className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Price vs SMA200:</span>
-                  {data.dts.sma200 !== null && data.currentPrice > data.dts.sma200 ? (
-                    <span className="font-semibold text-green-500">Above</span>
-                  ) : data.dts.sma200 !== null ? (
-                    <span className="font-semibold text-red-500">Below</span>
-                  ) : (
-                    <span className="font-semibold text-muted-foreground">N/A</span>
-                  )}
-                </div>
-
-                {/* Recent Signals */}
-                <div>
-                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Recent Signals
-                  </div>
-                  <RecentSignalsList signals={data.dts.recentSignals} />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* AMC Strategy Card */}
-            <Card data-testid="card-amc">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-purple-400" />
-                    <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
-                  </div>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${data.amc?.signal === "ENTER" ? "bg-green-500/80 text-white" : data.amc?.signal === "SELL" ? "bg-red-500/80 text-white" : "bg-yellow-500/20 text-yellow-400"}`}>
-                    {data.amc?.signal || "HOLD"}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{data.amc?.signalDetail || "Adaptive Momentum Confluence"}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Score + Mode */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Score</p>
-                    <p className={`text-lg font-bold tabular-nums ${(data.amc?.score || 0) >= 4 ? "text-green-400" : (data.amc?.score || 0) >= 3 ? "text-yellow-400" : "text-muted-foreground"}`}>
-                      {data.amc?.score || 0}<span className="text-xs text-muted-foreground">/5</span>
-                    </p>
-                  </div>
-                  <div className="bg-muted/30 rounded-md p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Mode</p>
-                    <p className={`text-sm font-bold ${data.amc?.mode === "momentum" ? "text-green-400" : data.amc?.mode === "reversion" ? "text-cyan-400" : "text-muted-foreground"}`}>
-                      {data.amc?.mode === "momentum" ? "Momentum" : data.amc?.mode === "reversion" ? "Reversion" : "Flat"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* VAMI Value */}
-                <div className="bg-muted/30 rounded-md p-2.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-muted-foreground uppercase">VAMI (Custom)</p>
-                    <span className={`text-xs ${(data.amc?.vami || 0) > 0 ? "text-green-400" : (data.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                      {(data.amc?.vami || 0) > 0 ? "Bullish" : (data.amc?.vami || 0) < 0 ? "Bearish" : "Neutral"}
-                    </span>
-                  </div>
-                  <p className={`text-xl font-bold tabular-nums ${(data.amc?.vami || 0) > 0 ? "text-green-400" : (data.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                    {(data.amc?.vami || 0).toFixed(2)}
-                  </p>
-                  {/* VAMI bar */}
-                  <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${(data.amc?.vami || 0) > 0 ? "bg-green-500" : "bg-red-500"}`}
-                      style={{ width: `${Math.min(100, Math.abs(data.amc?.vami || 0) * 2)}%`, marginLeft: (data.amc?.vami || 0) >= 0 ? "50%" : `${50 - Math.min(50, Math.abs(data.amc?.vami || 0) * 2)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Recent Signals */}
-                {data.amc?.recentSignals?.length > 0 && (
-                  <div>
-                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Signals</h4>
-                    <div className="space-y-1">
-                      {data.amc.recentSignals.slice(-5).map((s: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground font-mono">{s.date}</span>
-                          <span className={s.signal.includes("BUY") ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>{s.signal}</span>
-                          <span className="tabular-nums text-muted-foreground">${s.price}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>
@@ -651,7 +682,7 @@ export default function TradeAnalysis() {
         <div className="text-center py-16 text-muted-foreground" data-testid="empty-state">
           <Activity className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Enter a ticker symbol to analyze trading signals</p>
-          <p className="text-sm mt-1">Combines BBTC EMA Pyramid and DTS Reversal Swing strategies</p>
+          <p className="text-sm mt-1">3-phase confirmation: VER catches the reversal, AMC confirms momentum, BBTC rides the trend</p>
         </div>
       )}
     </div>

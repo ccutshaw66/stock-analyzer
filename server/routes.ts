@@ -1159,40 +1159,35 @@ export async function registerRoutes(
       const ema50 = computeEMA(closes, 50);
       const atr14 = computeATR(highs, lows, closes, 14);
 
-      // Compute DTS indicators
-      // Use 2-year weekly data for SMA200 if available, otherwise compute on daily
-      let sma200Daily: number[] = new Array(closes.length).fill(NaN);
-      if (chart2Y && chart2Y.timestamp) {
-        const weeklyCloses: number[] = chart2Y.indicators?.quote?.[0]?.close || [];
-        // Clean nulls
-        for (let i = 0; i < weeklyCloses.length; i++) {
-          if (weeklyCloses[i] == null && i > 0) weeklyCloses[i] = weeklyCloses[i - 1];
-        }
-        // Compute SMA200 on the combined weekly data as a proxy
-        // But the spec says SMA(200) on close prices — this should be 200-period SMA
-        // We have ~104 weekly bars for 2 years which isn't enough for 200-week SMA.
-        // So compute SMA(200) on daily data. We need more daily data.
-        // Actually, let's just compute it on the daily closes we have (252 trading days ~ 1 year)
-        // If we don't have 200 bars, we'll have partial data.
-        sma200Daily = computeSMA(closes, 200);
+      // Compute VER indicators
+      const rsi14 = computeRSI(closes, 14);
 
-        // If daily doesn't have enough bars, approximate from weekly:
-        // Use a 40-week SMA as a rough proxy for 200-day SMA
-        if (isNaN(sma200Daily[closes.length - 1])) {
-          const weeklySma40 = computeSMA(weeklyCloses, 40);
-          const lastWeeklySma = weeklySma40[weeklyCloses.length - 1];
-          if (!isNaN(lastWeeklySma)) {
-            // Fill sma200Daily with the weekly proxy value for all bars
-            for (let i = 0; i < closes.length; i++) {
-              sma200Daily[i] = lastWeeklySma;
-            }
-          }
+      // Compute Bollinger Bands for VER
+      const bbPeriod = 20;
+      const bbStdDev = 2;
+      const bbSma = computeSMA(closes, bbPeriod);
+      const bbUpper: number[] = new Array(closes.length).fill(NaN);
+      const bbLower: number[] = new Array(closes.length).fill(NaN);
+      for (let i = bbPeriod - 1; i < closes.length; i++) {
+        let sum = 0;
+        for (let j = i - bbPeriod + 1; j <= i; j++) {
+          sum += (closes[j] - bbSma[i]) ** 2;
         }
-      } else {
-        sma200Daily = computeSMA(closes, 200);
+        const stdDev = Math.sqrt(sum / bbPeriod);
+        bbUpper[i] = bbSma[i] + bbStdDev * stdDev;
+        bbLower[i] = bbSma[i] - bbStdDev * stdDev;
       }
 
-      const rsi14 = computeRSI(closes, 14);
+      // Compute volume average for VER
+      const volAvg20: number[] = new Array(closes.length).fill(NaN);
+      for (let i = 19; i < closes.length; i++) {
+        let sum = 0;
+        for (let j = i - 19; j <= i; j++) sum += volumes[j] || 0;
+        volAvg20[i] = sum / 20;
+      }
+
+      // SMA200 (used by AMC reversion entry and chart data)
+      const sma200Daily = computeSMA(closes, 200);
 
       // ---- Strategy 1: BBTC EMA Pyramid Risk ----
       type BBTCSignal = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
@@ -1253,25 +1248,53 @@ export async function registerRoutes(
         }
       }
 
-      // ---- Strategy 2: DTS Reversal Swing ----
-      type DTSSignal = "BUY" | "SELL" | null;
-      const dtsSignals: DTSSignal[] = new Array(closes.length).fill(null);
+      // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
+      type VERSignal = "BUY" | "SELL" | null;
+      const verSignals: VERSignal[] = new Array(closes.length).fill(null);
 
-      for (let i = 15; i < closes.length; i++) {
-        if (isNaN(rsi14[i]) || isNaN(sma200Daily[i])) continue;
+      for (let i = 2; i < closes.length; i++) {
+        if (isNaN(rsi14[i]) || isNaN(rsi14[i-1]) || isNaN(bbUpper[i]) || isNaN(bbLower[i]) || isNaN(volAvg20[i])) continue;
 
-        // Buy: RSI < 40 AND low > SMA200
-        if (rsi14[i] < 40 && lows[i] > sma200Daily[i]) {
-          dtsSignals[i] = "BUY";
+        const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 2;
+
+        // Bullish Reversal: RSI divergence (price lower low, RSI higher low) + volume spike + BB lower band touch
+        if (i >= 5) {
+          let hasBullishDiv = false;
+          for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
+            const prevIdx = i - lookback;
+            if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
+            if (closes[i] < closes[prevIdx] && rsi14[i] > rsi14[prevIdx] && rsi14[i] < 40) {
+              hasBullishDiv = true;
+              break;
+            }
+          }
+
+          const touchedLowerBB = lows[i] <= bbLower[i] || closes[i-1] <= bbLower[i-1];
+          const closedBackInside = closes[i] > bbLower[i];
+
+          if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) {
+            verSignals[i] = "BUY";
+          }
         }
 
-        // Sell: high > highest(high, 15 bars back) AND close > SMA200
-        let highest15 = -Infinity;
-        for (let j = i - 15; j < i; j++) {
-          if (j >= 0) highest15 = Math.max(highest15, highs[j]);
-        }
-        if (highs[i] > highest15 && closes[i] > sma200Daily[i]) {
-          dtsSignals[i] = "SELL";
+        // Bearish Reversal: RSI divergence (price higher high, RSI lower high) + volume spike + BB upper band touch
+        if (i >= 5) {
+          let hasBearishDiv = false;
+          for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
+            const prevIdx = i - lookback;
+            if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
+            if (closes[i] > closes[prevIdx] && rsi14[i] < rsi14[prevIdx] && rsi14[i] > 60) {
+              hasBearishDiv = true;
+              break;
+            }
+          }
+
+          const touchedUpperBB = highs[i] >= bbUpper[i] || closes[i-1] >= bbUpper[i-1];
+          const closedBackInsideUpper = closes[i] < bbUpper[i];
+
+          if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
+            verSignals[i] = "SELL";
+          }
         }
       }
 
@@ -1327,34 +1350,33 @@ export async function registerRoutes(
         }
       }
 
-      // DTS current state
-      const lastDtsSignal = (() => {
+      // VER current state
+      const lastVerSignal = (() => {
         for (let i = lastIdx; i >= 0; i--) {
-          if (dtsSignals[i]) return dtsSignals[i];
+          if (verSignals[i]) return verSignals[i];
         }
         return null;
       })();
 
-      let dtsTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-      if (lastDtsSignal === "BUY") dtsTopSignal = "ENTER";
-      else if (lastDtsSignal === "SELL") dtsTopSignal = "SELL";
+      let verTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+      if (lastVerSignal === "BUY") verTopSignal = "ENTER";
+      else if (lastVerSignal === "SELL") verTopSignal = "SELL";
 
-      let highest15 = -Infinity;
-      for (let j = lastIdx - 15; j < lastIdx; j++) {
-        if (j >= 0) highest15 = Math.max(highest15, highs[j]);
-      }
+      const currentVol = volumes[lastIdx] || 0;
+      const avgVol = !isNaN(volAvg20[lastIdx]) ? volAvg20[lastIdx] : 0;
+      const volRatio = avgVol > 0 ? (currentVol / avgVol) : 0;
 
-      let dtsSignalDetail = "";
-      if (dtsTopSignal === "ENTER") dtsSignalDetail = `RSI at ${rsi14[lastIdx]?.toFixed(1)}, below 40 threshold with price above SMA200`;
-      else if (dtsTopSignal === "SELL") dtsSignalDetail = `Price breaking above 15-bar high with close above SMA200`;
-      else dtsSignalDetail = `RSI at ${rsi14[lastIdx]?.toFixed(1) ?? "N/A"}, no active signal`;
+      let verSignalDetail = "";
+      if (verTopSignal === "ENTER") verSignalDetail = `Bullish reversal: RSI divergence at ${rsi14[lastIdx]?.toFixed(1)}, volume ${volRatio.toFixed(1)}x avg, price bouncing off lower Bollinger Band`;
+      else if (verTopSignal === "SELL") verSignalDetail = `Bearish reversal: RSI divergence at ${rsi14[lastIdx]?.toFixed(1)}, volume ${volRatio.toFixed(1)}x avg, price rejected at upper Bollinger Band`;
+      else verSignalDetail = `RSI ${rsi14[lastIdx]?.toFixed(1) ?? "N/A"}, Vol ${volRatio.toFixed(1)}x avg — no exhaustion reversal detected`;
 
-      const dtsRecent: {date: string; signal: string; price: number}[] = [];
-      for (let i = lastIdx; i >= 0 && dtsRecent.length < 10; i--) {
-        if (dtsSignals[i]) {
-          dtsRecent.unshift({
+      const verRecent: {date: string; signal: string; price: number}[] = [];
+      for (let i = lastIdx; i >= 0 && verRecent.length < 10; i--) {
+        if (verSignals[i]) {
+          verRecent.unshift({
             date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
-            signal: dtsSignals[i]!,
+            signal: verSignals[i]!,
             price: Number(closes[i].toFixed(2)),
           });
         }
@@ -1363,8 +1385,8 @@ export async function registerRoutes(
       // Combined signal
       const bbtcIsBuy = bbtcTopSignal === "ENTER";
       const bbtcIsSell = bbtcTopSignal === "SELL";
-      const dtsIsBuy = dtsTopSignal === "ENTER";
-      const dtsIsSell = dtsTopSignal === "SELL";
+      const verIsBuy = verTopSignal === "ENTER";
+      const verIsSell = verTopSignal === "SELL";
 
       // ---- Strategy 3: AMC (Adaptive Momentum Confluence) ----
       // Compute MACD histogram for AMC
@@ -1441,8 +1463,8 @@ export async function registerRoutes(
       // Combined signal (now includes AMC)
       const amcIsBuy = amcSignal === "ENTER";
       const amcIsSell = amcSignal === "SELL";
-      let buyVotes = (bbtcIsBuy ? 1 : 0) + (dtsIsBuy ? 1 : 0) + (amcIsBuy ? 1 : 0);
-      let sellVotes = (bbtcIsSell ? 1 : 0) + (dtsIsSell ? 1 : 0) + (amcIsSell ? 1 : 0);
+      let buyVotes = (bbtcIsBuy ? 1 : 0) + (verIsBuy ? 1 : 0) + (amcIsBuy ? 1 : 0);
+      let sellVotes = (bbtcIsSell ? 1 : 0) + (verIsSell ? 1 : 0) + (amcIsSell ? 1 : 0);
 
       let combinedSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
       let confidence: "Strong" | "Moderate" | "Weak" = "Moderate";
@@ -1453,13 +1475,13 @@ export async function registerRoutes(
       } else if (sellVotes >= 3) {
         combinedSignal = "SELL"; confidence = "Strong"; reasoning = "All three strategies agree on exit";
       } else if (buyVotes === 2 && sellVotes === 0) {
-        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = `${[bbtcIsBuy&&"BBTC",dtsIsBuy&&"DTS",amcIsBuy&&"AMC"].filter(Boolean).join(" + ")} signal entry`;
+        combinedSignal = "ENTER"; confidence = "Moderate"; reasoning = `${[bbtcIsBuy&&"BBTC",verIsBuy&&"VER",amcIsBuy&&"AMC"].filter(Boolean).join(" + ")} signal entry`;
       } else if (sellVotes === 2 && buyVotes === 0) {
-        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = `${[bbtcIsSell&&"BBTC",dtsIsSell&&"DTS",amcIsSell&&"AMC"].filter(Boolean).join(" + ")} signal exit`;
+        combinedSignal = "SELL"; confidence = "Moderate"; reasoning = `${[bbtcIsSell&&"BBTC",verIsSell&&"VER",amcIsSell&&"AMC"].filter(Boolean).join(" + ")} signal exit`;
       } else if (buyVotes === 1 && sellVotes === 0) {
-        combinedSignal = "ENTER"; confidence = "Weak"; reasoning = `Only ${[bbtcIsBuy&&"BBTC",dtsIsBuy&&"DTS",amcIsBuy&&"AMC"].filter(Boolean)[0]} signals entry`;
+        combinedSignal = "ENTER"; confidence = "Weak"; reasoning = `Only ${[bbtcIsBuy&&"BBTC",verIsBuy&&"VER",amcIsBuy&&"AMC"].filter(Boolean)[0]} signals entry`;
       } else if (sellVotes === 1 && buyVotes === 0) {
-        combinedSignal = "SELL"; confidence = "Weak"; reasoning = `Only ${[bbtcIsSell&&"BBTC",dtsIsSell&&"DTS",amcIsSell&&"AMC"].filter(Boolean)[0]} signals exit`;
+        combinedSignal = "SELL"; confidence = "Weak"; reasoning = `Only ${[bbtcIsSell&&"BBTC",verIsSell&&"VER",amcIsSell&&"AMC"].filter(Boolean)[0]} signals exit`;
       } else if (buyVotes > 0 && sellVotes > 0) {
         combinedSignal = "HOLD"; confidence = "Weak"; reasoning = "Strategies conflict — wait for alignment";
       } else {
@@ -1479,7 +1501,7 @@ export async function registerRoutes(
           sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
           rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
           bbtcSignal: bbtcSignals[i] || null,
-          dtsSignal: dtsSignals[i] || null,
+          verSignal: verSignals[i] || null,
         });
       }
       // Always include the last bar
@@ -1493,7 +1515,7 @@ export async function registerRoutes(
           sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
           rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
           bbtcSignal: bbtcSignals[lastIdx] || null,
-          dtsSignal: dtsSignals[lastIdx] || null,
+          verSignal: verSignals[lastIdx] || null,
         });
       }
 
@@ -1514,13 +1536,15 @@ export async function registerRoutes(
           trailStop,
           recentSignals: bbtcRecent,
         },
-        dts: {
-          signal: dtsTopSignal,
-          signalDetail: dtsSignalDetail,
+        ver: {
+          signal: verTopSignal,
+          signalDetail: verSignalDetail,
           rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
-          sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
-          highestHigh15: Number(highest15.toFixed(2)),
-          recentSignals: dtsRecent,
+          bbUpper: isNaN(bbUpper[lastIdx]) ? null : Number(bbUpper[lastIdx].toFixed(2)),
+          bbLower: isNaN(bbLower[lastIdx]) ? null : Number(bbLower[lastIdx].toFixed(2)),
+          bbMiddle: isNaN(bbSma[lastIdx]) ? null : Number(bbSma[lastIdx].toFixed(2)),
+          volumeRatio: Number(volRatio.toFixed(2)),
+          recentSignals: verRecent,
         },
         amc: {
           signal: amcSignal,
@@ -1882,29 +1906,59 @@ export async function registerRoutes(
                    : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "SHORT" : "FLAT")
                 : "FLAT";
 
-            // ---- Strategy 2: DTS ----
-            const sma200 = computeSMA(closes, 200);
+            // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
             const rsi14 = computeRSI(closes, 14);
 
-            type DTSSig = "BUY" | "SELL" | null;
-            const dtsSignals: DTSSig[] = new Array(closes.length).fill(null);
-            for (let i = 15; i < closes.length; i++) {
-              if (isNaN(rsi14[i]) || isNaN(sma200[i])) continue;
-              if (rsi14[i] < 40 && lows[i] > sma200[i]) dtsSignals[i] = "BUY";
-              let highest15 = -Infinity;
-              for (let j = i - 15; j < i; j++) {
-                if (j >= 0) highest15 = Math.max(highest15, highs[j]);
-              }
-              if (highs[i] > highest15 && closes[i] > sma200[i]) dtsSignals[i] = "SELL";
+            const bbPeriodS = 20;
+            const bbStdDevS = 2;
+            const bbSmaS = computeSMA(closes, bbPeriodS);
+            const bbUpperS: number[] = new Array(closes.length).fill(NaN);
+            const bbLowerS: number[] = new Array(closes.length).fill(NaN);
+            for (let i = bbPeriodS - 1; i < closes.length; i++) {
+              let sum = 0;
+              for (let j = i - bbPeriodS + 1; j <= i; j++) sum += (closes[j] - bbSmaS[i]) ** 2;
+              const sd = Math.sqrt(sum / bbPeriodS);
+              bbUpperS[i] = bbSmaS[i] + bbStdDevS * sd;
+              bbLowerS[i] = bbSmaS[i] - bbStdDevS * sd;
+            }
+            const volAvg20S: number[] = new Array(closes.length).fill(NaN);
+            for (let i = 19; i < closes.length; i++) {
+              let sum = 0;
+              for (let j = i - 19; j <= i; j++) sum += volumes[j] || 0;
+              volAvg20S[i] = sum / 20;
             }
 
-            let lastDts: DTSSig = null;
-            for (let i = lastIdx; i >= 0; i--) {
-              if (dtsSignals[i]) { lastDts = dtsSignals[i]; break; }
+            type VERSig = "BUY" | "SELL" | null;
+            const verSignals: VERSig[] = new Array(closes.length).fill(null);
+            for (let i = 2; i < closes.length; i++) {
+              if (isNaN(rsi14[i]) || isNaN(rsi14[i-1]) || isNaN(bbUpperS[i]) || isNaN(bbLowerS[i]) || isNaN(volAvg20S[i])) continue;
+              const volumeSpike = (volumes[i] || 0) >= volAvg20S[i] * 2;
+              if (i >= 5) {
+                let bullDiv = false;
+                for (let lb = 5; lb <= Math.min(20, i); lb++) {
+                  const pi = i - lb;
+                  if (pi < 0 || isNaN(rsi14[pi])) continue;
+                  if (closes[i] < closes[pi] && rsi14[i] > rsi14[pi] && rsi14[i] < 40) { bullDiv = true; break; }
+                }
+                if (bullDiv && volumeSpike && (lows[i] <= bbLowerS[i] || closes[i-1] <= bbLowerS[i-1]) && closes[i] > bbLowerS[i]) verSignals[i] = "BUY";
+
+                let bearDiv = false;
+                for (let lb = 5; lb <= Math.min(20, i); lb++) {
+                  const pi = i - lb;
+                  if (pi < 0 || isNaN(rsi14[pi])) continue;
+                  if (closes[i] > closes[pi] && rsi14[i] < rsi14[pi] && rsi14[i] > 60) { bearDiv = true; break; }
+                }
+                if (bearDiv && volumeSpike && (highs[i] >= bbUpperS[i] || closes[i-1] >= bbUpperS[i-1]) && closes[i] < bbUpperS[i]) verSignals[i] = "SELL";
+              }
             }
-            let dtsTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-            if (lastDts === "BUY") dtsTopSignal = "ENTER";
-            else if (lastDts === "SELL") dtsTopSignal = "SELL";
+
+            let lastVer: VERSig = null;
+            for (let i = lastIdx; i >= 0; i--) {
+              if (verSignals[i]) { lastVer = verSignals[i]; break; }
+            }
+            let verTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+            if (lastVer === "BUY") verTopSignal = "ENTER";
+            else if (lastVer === "SELL") verTopSignal = "SELL";
 
             const lastRsi = isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(1));
 
@@ -1988,9 +2042,9 @@ export async function registerRoutes(
             // BBTC: ENTER +2, HOLD 0, SELL -2
             if (bbtcTopSignal === "ENTER") score += 2;
             else if (bbtcTopSignal === "SELL") score -= 2;
-            // DTS: ENTER +2, HOLD 0, SELL -2
-            if (dtsTopSignal === "ENTER") score += 2;
-            else if (dtsTopSignal === "SELL") score -= 2;
+            // VER: ENTER +2, HOLD 0, SELL -2
+            if (verTopSignal === "ENTER") score += 2;
+            else if (verTopSignal === "SELL") score -= 2;
             // Confirmation: CONFIRMED_BUY +3, LEAN_BUY +1, NEUTRAL 0, LEAN_SELL -1, CONFIRMED_SELL -3
             if (confirmationSignal === "CONFIRMED_BUY") score += 3;
             else if (confirmationSignal === "LEAN_BUY") score += 1;
@@ -2004,7 +2058,7 @@ export async function registerRoutes(
               price: Number(currentPrice.toFixed(2)),
               score,
               bbtc: { signal: bbtcTopSignal, trend: bbtcTrend, bias: bbtcBias },
-              dts: { signal: dtsTopSignal, rsi: lastRsi },
+              ver: { signal: verTopSignal, rsi: lastRsi },
               confirmation: {
                 signal: confirmationSignal,
                 macd: macdStatus,

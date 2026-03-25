@@ -267,7 +267,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             <FeatureCard
               icon={Zap}
               title="Strategy Signals"
-              description="Three proven strategies (BBTC, DTS, AMC) scan for entry signals with confluence-based confidence scoring."
+              description="Three proven strategies (BBTC, VER, AMC) scan for entry signals with confluence-based confidence scoring."
             />
           </div>
         </div>
