@@ -1009,109 +1009,78 @@ export async function registerRoutes(
     }
   });
 
-  // ─── Dividend Portfolio CRUD (BEFORE parameterized :ticker route) ──────────
+  // ─── Dividend Portfolio (auto from open LONG trades) ──────────────────────
 
   app.get("/api/dividend-portfolio", async (req, res) => {
     try {
-      const items = await storage.getDividendPortfolio(req.user!.id);
-      res.json(items);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to fetch dividend portfolio" });
-    }
-  });
+      // Get all open LONG stock trades — these are the positions that could pay dividends
+      const allTrades = await storage.getAllTrades(req.user!.id);
+      const openLongs = allTrades.filter(t => !t.closeDate && t.tradeType === "LONG");
 
-  app.get("/api/dividend-portfolio/enriched", async (req, res) => {
-    try {
-      const items = await storage.getDividendPortfolio(req.user!.id);
-      if (items.length === 0) return res.json([]);
+      if (openLongs.length === 0) return res.json([]);
+
+      // Group by symbol (user might have multiple LONG entries for same stock)
+      const grouped: Record<string, { shares: number; totalCost: number; tradeIds: number[]; tradeDate: string }> = {};
+      for (const t of openLongs) {
+        if (!grouped[t.symbol]) {
+          grouped[t.symbol] = { shares: 0, totalCost: 0, tradeIds: [], tradeDate: t.tradeDate };
+        }
+        grouped[t.symbol].shares += t.contractsShares;
+        grouped[t.symbol].totalCost += Math.abs(t.openPrice) * t.contractsShares;
+        grouped[t.symbol].tradeIds.push(t.id);
+        // Keep earliest trade date
+        if (t.tradeDate < grouped[t.symbol].tradeDate) grouped[t.symbol].tradeDate = t.tradeDate;
+      }
+
       await ensureReady();
-      const enriched = [];
-      for (const item of items) {
+      const results = [];
+
+      for (const [symbol, pos] of Object.entries(grouped)) {
+        const avgCost = pos.totalCost / pos.shares;
         try {
-          const quote = await getQuote(item.ticker);
-          const divData = quote ? extractDividendData(item.ticker, quote) : null;
-          enriched.push({
-            ...item,
-            currentPrice: divData?.price ?? null,
-            dividendYield: divData?.dividendYield ?? 0,
-            dividendRate: divData?.dividendRate ?? 0,
-            exDividendDate: divData?.exDividendDate ?? null,
-            distributionDate: divData?.distributionDate ?? null,
-            frequency: divData?.frequency ?? item.frequency ?? "Unknown",
-            payoutRatio: divData?.payoutRatio ?? 0,
-            fiveYearAvgYield: divData?.fiveYearAvgYield ?? null,
-            lastDividendValue: divData?.lastDividendValue ?? null,
-            lastDividendDate: divData?.lastDividendDate ?? null,
-            annualDividend: divData?.annualDividend ?? 0,
-            score: divData?.score ?? 0,
-            // Calculated fields
-            marketValue: divData ? divData.price * item.shares : null,
-            costBasis: item.avgCost * item.shares,
-            unrealizedPL: divData ? (divData.price - item.avgCost) * item.shares : null,
-            annualIncome: divData ? divData.dividendRate * item.shares : 0,
-            yieldOnCost: item.avgCost > 0 && divData ? (divData.dividendRate / item.avgCost) * 100 : 0,
+          const quote = await getQuote(symbol);
+          const divData = quote ? extractDividendData(symbol, quote) : null;
+
+          // Only include if the stock actually pays a dividend
+          if (!divData || divData.dividendRate <= 0) continue;
+
+          results.push({
+            symbol,
+            companyName: divData.companyName,
+            shares: pos.shares,
+            avgCost: Number(avgCost.toFixed(2)),
+            tradeDate: pos.tradeDate,
+            tradeIds: pos.tradeIds,
+            // Live dividend data
+            currentPrice: divData.price,
+            dividendYield: divData.dividendYield,
+            dividendRate: divData.dividendRate,
+            exDividendDate: divData.exDividendDate,
+            distributionDate: divData.distributionDate,
+            frequency: divData.frequency,
+            payoutRatio: divData.payoutRatio,
+            fiveYearAvgYield: divData.fiveYearAvgYield,
+            lastDividendValue: divData.lastDividendValue,
+            lastDividendDate: divData.lastDividendDate,
+            annualDividend: divData.annualDividend,
+            score: divData.score,
+            // Calculated
+            marketValue: divData.price * pos.shares,
+            costBasis: pos.totalCost,
+            unrealizedPL: (divData.price - avgCost) * pos.shares,
+            annualIncome: divData.dividendRate * pos.shares,
+            yieldOnCost: avgCost > 0 ? (divData.dividendRate / avgCost) * 100 : 0,
           });
         } catch (err: any) {
-          console.log(`[div-portfolio] Failed to enrich ${item.ticker}: ${err.message}`);
-          enriched.push({
-            ...item,
-            currentPrice: null, dividendYield: 0, dividendRate: 0,
-            exDividendDate: null, distributionDate: null,
-            frequency: item.frequency ?? "Unknown",
-            payoutRatio: 0, fiveYearAvgYield: null,
-            lastDividendValue: null, lastDividendDate: null,
-            annualDividend: 0, score: 0,
-            marketValue: null, costBasis: item.avgCost * item.shares,
-            unrealizedPL: null, annualIncome: 0, yieldOnCost: 0,
-          });
+          console.log(`[div-portfolio] Failed to check ${symbol}: ${err.message}`);
         }
       }
-      res.json(enriched);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to enrich dividend portfolio" });
-    }
-  });
 
-  app.post("/api/dividend-portfolio", async (req, res) => {
-    try {
-      const { ticker, companyName, shares, avgCost, frequency, notes } = req.body;
-      if (!ticker || !shares || !avgCost) {
-        return res.status(400).json({ error: "Ticker, shares, and avgCost are required" });
-      }
-      const item = await storage.addDividendPosition({
-        userId: req.user!.id,
-        ticker: ticker.toUpperCase(),
-        companyName: companyName || ticker.toUpperCase(),
-        shares: Number(shares),
-        avgCost: Number(avgCost),
-        frequency: frequency || null,
-        notes: notes || null,
-        addedAt: new Date().toISOString().split("T")[0],
-      });
-      res.json(item);
+      // Sort by annual income descending
+      results.sort((a, b) => b.annualIncome - a.annualIncome);
+      res.json(results);
     } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to add dividend position" });
-    }
-  });
-
-  app.put("/api/dividend-portfolio/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updated = await storage.updateDividendPosition(req.user!.id, id, req.body);
-      if (!updated) return res.status(404).json({ error: "Position not found" });
-      res.json(updated);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to update position" });
-    }
-  });
-
-  app.delete("/api/dividend-portfolio/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.removeDividendPosition(req.user!.id, id);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to delete position" });
+      res.status(500).json({ error: error?.message || "Failed to build dividend portfolio" });
     }
   });
 
