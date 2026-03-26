@@ -11,10 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  Briefcase,
   Trash2,
   RefreshCw,
-  Star,
   Search,
   Loader2,
   Menu,
@@ -45,7 +43,6 @@ import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
-import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -72,7 +69,10 @@ function StickyHeader({
 }) {
   const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
     useTicker();
+  const { user, logout } = useAuth();
   const [input, setInput] = useState("");
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [, navigate] = useLocation();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,6 +199,64 @@ function StickyHeader({
           </span>
         </div>
       )}
+
+      {/* User dropdown menu */}
+      {user && (
+        <div className={`relative shrink-0 ${!analysisData && !isAnalysisLoading ? "ml-auto" : "ml-2"}`}>
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors"
+            data-testid="button-user-menu"
+          >
+            <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center">
+              <span className="text-xs font-bold text-primary">
+                {(user.displayName || user.email || "U")[0].toUpperCase()}
+              </span>
+            </div>
+            <span className="hidden lg:inline text-xs font-medium text-foreground truncate max-w-[100px]">
+              {user.displayName || "Account"}
+            </span>
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          </button>
+
+          {userMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+              <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-card-border rounded-xl shadow-lg z-50 py-2">
+                <div className="px-3 py-2 border-b border-card-border">
+                  <p className="text-sm font-semibold text-foreground truncate">{user.displayName || "User"}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                </div>
+                <div className="py-1">
+                  <div
+                    onClick={() => { navigate("/account"); setUserMenuOpen(false); }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                  >
+                    <UserCircle className="h-4 w-4" /> Account
+                  </div>
+                  {user.email === "awisper@me.com" && (
+                    <div
+                      onClick={() => { navigate("/admin"); setUserMenuOpen(false); }}
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                    >
+                      <Shield className="h-4 w-4" /> Admin
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-card-border pt-1">
+                  <div
+                    onClick={() => { logout(); setUserMenuOpen(false); }}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="h-4 w-4" /> Sign Out
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </header>
   );
 }
@@ -244,10 +302,6 @@ function Sidebar({
   const [location] = useLocation();
   const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
     useTicker();
-  const [watchlistOpen, setWatchlistOpen] = useState(true);
-  const [portfolioOpen, setPortfolioOpen] = useState(true);
-  const [tradesOpen, setTradesOpen] = useState(true);
-
   // Fetch open trades for sidebar
   interface TradeItem {
     id: number;
@@ -407,7 +461,7 @@ function Sidebar({
   // Add/Close trade modal states
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [showCloseTrade, setShowCloseTrade] = useState(false);
-  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Calculators": true, "Trade Tracker": true });
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Calculators": true, "Trade Tracker": true, "Watchlist": true, "Active Options": true, "Active Stocks": true });
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 
@@ -423,7 +477,7 @@ function Sidebar({
         />
         {/* Drawer */}
         <aside
-          className="fixed top-14 left-0 bottom-0 w-72 bg-card border-r border-card-border z-50 flex flex-col overflow-hidden"
+          className="fixed top-14 left-0 bottom-0 w-72 bg-card border-r border-card-border z-50 flex flex-col sidebar-scroll overflow-y-auto"
           data-testid="sidebar"
         >
           <SidebarContent
@@ -431,8 +485,6 @@ function Sidebar({
             location={location}
             navGroups={navGroups}
             helpItem={helpItem}
-            watchlistOpen={watchlistOpen}
-            setWatchlistOpen={setWatchlistOpen}
             sortedWatchlist={sortedWatchlist}
             removeMutation={removeMutation}
             refreshMutation={refreshMutation}
@@ -443,10 +495,7 @@ function Sidebar({
             isInList={isInList}
             handleAddCurrent={handleAddCurrent}
             addMutation={addMutation}
-            onClose={onClose}
             openTrades={openTrades}
-            tradesOpen={tradesOpen}
-            setTradesOpen={setTradesOpen}
             groupOpen={groupOpen}
             setGroupOpen={setGroupOpen}
             setShowAddTrade={setShowAddTrade}
@@ -470,7 +519,7 @@ function Sidebar({
   return (
     <>
     <aside
-      className={`${sidebarWidth} bg-card border-r border-card-border flex flex-col shrink-0 transition-all duration-200 overflow-hidden`}
+      className={`${sidebarWidth} bg-card border-r border-card-border flex flex-col shrink-0 transition-all duration-200 sidebar-scroll overflow-y-auto`}
       data-testid="sidebar"
     >
       <SidebarContent
@@ -478,8 +527,6 @@ function Sidebar({
         location={location}
         navGroups={navGroups}
         helpItem={helpItem}
-        watchlistOpen={watchlistOpen}
-        setWatchlistOpen={setWatchlistOpen}
         sortedWatchlist={sortedWatchlist}
         removeMutation={removeMutation}
         refreshMutation={refreshMutation}
@@ -490,10 +537,7 @@ function Sidebar({
         isInList={isInList}
         handleAddCurrent={handleAddCurrent}
         addMutation={addMutation}
-        onClose={onClose}
         openTrades={openTrades}
-        tradesOpen={tradesOpen}
-        setTradesOpen={setTradesOpen}
         groupOpen={groupOpen}
         setGroupOpen={setGroupOpen}
         setShowAddTrade={setShowAddTrade}
@@ -764,13 +808,52 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
   );
 }
 
+function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker: (ticker: string) => void }) {
+  let pl = 0;
+  if (t.currentPrice && t.tradeCategory === 'Stock') {
+    const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
+    pl = isShort
+      ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
+      : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
+  }
+  const isUp = pl >= 0;
+  return (
+    <div onClick={() => handleSelectTicker(t.symbol)}
+      className="flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
+          <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        {t.currentPrice ? (
+          t.tradeCategory === 'Stock' ? (
+            <>
+              <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                {isUp ? '+' : ''}{pl.toFixed(0)}
+              </div>
+              <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+            </>
+          ) : (
+            <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+          )
+        ) : (
+          <span className="text-[10px] text-muted-foreground">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SidebarContent({
   expanded,
   location,
   navGroups,
   helpItem,
-  watchlistOpen,
-  setWatchlistOpen,
   sortedWatchlist,
   removeMutation,
   refreshMutation,
@@ -781,16 +864,12 @@ function SidebarContent({
   isInList,
   handleAddCurrent,
   addMutation,
-  onClose,
   openTrades = [],
-  tradesOpen = true,
-  setTradesOpen = () => {},
   groupOpen = {} as any,
   setGroupOpen = (_: any) => {},
   setShowAddTrade = () => {},
   setShowCloseTrade = () => {},
 }: any) {
-  const { user, logout } = useAuth();
   return (
     <>
       {/* Logo */}
@@ -856,266 +935,194 @@ function SidebarContent({
             </div>
           );
         })}
-      </nav>
 
-      <div className="border-t border-card-border mx-2" />
-
-      {/* Scrollable favorites area */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {/* Watchlist */}
-        <div className="px-2 pt-2">
-          <button
-            onClick={() => setWatchlistOpen(!watchlistOpen)}
-            className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="toggle-watchlist"
-          >
-            {expanded ? (
-              <>
-                <span className="flex items-center gap-2">
-                  <Eye className="h-3.5 w-3.5" />
-                  Watchlist
-                  {sortedWatchlist.length > 0 && (
-                    <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
-                      {sortedWatchlist.length}
-                    </span>
-                  )}
-                </span>
-                {watchlistOpen ? (
-                  <ChevronUp className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </>
-            ) : (
-              <Eye className="h-4 w-4 mx-auto" />
-            )}
-          </button>
-          {watchlistOpen && expanded && (
-            <div className="space-y-0.5 mt-1">
-              {sortedWatchlist.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-3">
-                  No stocks on watchlist
-                </p>
-              ) : (
-                sortedWatchlist.map((item: FavoriteItem) => (
-                  <div
-                    key={item.id}
-                    onClick={() => handleSelectTicker(item.ticker)}
-                    className={`flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer transition-colors group ${
-                      activeTicker === item.ticker
-                        ? "bg-primary/10"
-                        : "hover:bg-muted/50"
-                    }`}
-                    data-testid={`watchlist-${item.ticker}`}
-                  >
-                    <div className="min-w-0">
-                      <span className="font-mono font-bold text-xs text-foreground">
-                        {item.ticker}
-                      </span>
-                      <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">
-                        {item.companyName}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <ScoreBadge score={item.score} verdict={item.verdict} />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeMutation.mutate({
-                            ticker: item.ticker,
-                            listType: "watchlist",
-                          });
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-0.5"
-                        data-testid={`button-remove-watchlist-${item.ticker}`}
-                        aria-label={`Remove ${item.ticker} from watchlist`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-              {sortedWatchlist.length > 0 && (
+        {/* Watchlist (collapsible group) */}
+        {(() => {
+          const isWatchlistOpen = groupOpen["Watchlist"] !== false;
+          return (
+            <div>
+              {expanded ? (
                 <button
-                  onClick={() => refreshMutation.mutate("watchlist")}
-                  disabled={refreshMutation.isPending}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-                  data-testid="button-refresh-watchlist"
+                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, Watchlist: !isWatchlistOpen }))}
+                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  data-testid="toggle-watchlist"
                 >
-                  <RefreshCw
-                    className={`h-2.5 w-2.5 ${
-                      refreshMutation.isPending ? "animate-spin" : ""
-                    }`}
-                  />
-                  Refresh scores
+                  <span className="flex items-center gap-2">
+                    Watchlist
+                    {sortedWatchlist.length > 0 && (
+                      <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
+                        {sortedWatchlist.length}
+                      </span>
+                    )}
+                  </span>
+                  {isWatchlistOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
                 </button>
+              ) : (
+                <div className="flex justify-center py-1.5 px-3" title="Watchlist">
+                  <Eye className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              {isWatchlistOpen && expanded && (
+                <div className="space-y-0.5 mt-1">
+                  {sortedWatchlist.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground text-center py-3">
+                      No stocks on watchlist
+                    </p>
+                  ) : (
+                    sortedWatchlist.map((item: FavoriteItem) => (
+                      <div
+                        key={item.id}
+                        onClick={() => handleSelectTicker(item.ticker)}
+                        className={`flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer transition-colors group ${
+                          activeTicker === item.ticker
+                            ? "bg-primary/10"
+                            : "hover:bg-muted/50"
+                        }`}
+                        data-testid={`watchlist-${item.ticker}`}
+                      >
+                        <div className="min-w-0">
+                          <span className="font-mono font-bold text-xs text-foreground">
+                            {item.ticker}
+                          </span>
+                          <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">
+                            {item.companyName}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <ScoreBadge score={item.score} verdict={item.verdict} />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeMutation.mutate({
+                                ticker: item.ticker,
+                                listType: "watchlist",
+                              });
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-0.5"
+                            data-testid={`button-remove-watchlist-${item.ticker}`}
+                            aria-label={`Remove ${item.ticker} from watchlist`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {sortedWatchlist.length > 0 && (
+                    <button
+                      onClick={() => refreshMutation.mutate("watchlist")}
+                      disabled={refreshMutation.isPending}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                      data-testid="button-refresh-watchlist"
+                    >
+                      <RefreshCw
+                        className={`h-2.5 w-2.5 ${
+                          refreshMutation.isPending ? "animate-spin" : ""
+                        }`}
+                      />
+                      Refresh scores
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
-
-        {/* Active Trades (Options + Stocks) */}
-        {(() => {
-          const optionTrades = openTrades.filter((t: any) => t.tradeCategory === 'Option');
-          const stockTrades = openTrades.filter((t: any) => t.tradeCategory === 'Stock');
-          const renderTrade = (t: any) => {
-            let pl = 0;
-            if (t.currentPrice && t.tradeCategory === 'Stock') {
-              const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
-              pl = isShort
-                ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
-                : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
-            }
-            const isUp = pl >= 0;
-            return (
-              <div key={t.id} onClick={() => handleSelectTicker(t.symbol)}
-                className="flex items-center justify-between py-1.5 px-3 rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
-                    <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  {t.currentPrice ? (
-                    t.tradeCategory === 'Stock' ? (
-                      <>
-                        <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                          {isUp ? '+' : ''}{pl.toFixed(0)}
-                        </div>
-                        <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
-                      </>
-                    ) : (
-                      <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
-                    )
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground">—</span>
-                  )}
-                </div>
-              </div>
-            );
-          };
-          return (
-            <>
-              <div className="px-2 pt-1">
-                <button onClick={() => setTradesOpen(!tradesOpen)}
-                  className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors" data-testid="toggle-trades">
-                  {expanded ? (
-                    <><span className="flex items-center gap-2">
-                      <ClipboardList className="h-3.5 w-3.5" />Active Options
-                      {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
-                    </span>{tradesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</>
-                  ) : (<ClipboardList className="h-4 w-4 mx-auto" />)}
-                </button>
-                {tradesOpen && expanded && (
-                  <div className="space-y-0.5 mt-1">
-                    {optionTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open options</p>
-                    : optionTrades.slice(0, 10).map(renderTrade)}
-                  </div>
-                )}
-              </div>
-              <div className="px-2 pt-1">
-                <button onClick={() => setTradesOpen(!tradesOpen)}
-                  className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
-                  {expanded ? (
-                    <><span className="flex items-center gap-2">
-                      <TrendingUp className="h-3.5 w-3.5" />Active Stocks
-                      {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
-                    </span>{tradesOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</>
-                  ) : (<TrendingUp className="h-4 w-4 mx-auto" />)}
-                </button>
-                {tradesOpen && expanded && (
-                  <div className="space-y-0.5 mt-1">
-                    {stockTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open stocks</p>
-                    : stockTrades.slice(0, 10).map(renderTrade)}
-                  </div>
-                )}
-              </div>
-            </>
           );
         })()}
-      </div>
 
-      {/* Add to watchlist (bottom) */}
-      {expanded && analysisData && !isAnalysisLoading && (
-        <div className="p-2 border-t border-card-border">
-          <button
-            onClick={() => handleAddCurrent("watchlist")}
-            disabled={isInList("watchlist") || addMutation.isPending}
-            className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
-              isInList("watchlist")
-                ? "bg-primary/10 text-primary cursor-default"
-                : "bg-primary/80 hover:bg-primary text-white"
-            }`}
-            data-testid="button-add-watchlist"
-          >
-            <Eye className="h-3 w-3" />
-            {isInList("watchlist") ? "On Watchlist" : "+ Watchlist"}
-          </button>
-        </div>
-      )}
+        {/* Active Options (collapsible group) */}
+        {(() => {
+          const optionTrades = openTrades.filter((t: any) => t.tradeCategory === 'Option');
+          const isOptionsOpen = groupOpen["Active Options"] !== false;
+          return (
+            <div>
+              {expanded ? (
+                <button
+                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Options": !isOptionsOpen }))}
+                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  data-testid="toggle-trades"
+                >
+                  <span className="flex items-center gap-2">
+                    Active Options
+                    {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
+                  </span>
+                  {isOptionsOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                </button>
+              ) : (
+                <div className="flex justify-center py-1.5 px-3" title="Active Options">
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              {isOptionsOpen && expanded && (
+                <div className="space-y-0.5 mt-1">
+                  {optionTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open options</p>
+                  : optionTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
-      {/* Bottom nav: Help, Account, Admin, Sign Out */}
-      <div className="border-t border-card-border mx-2" />
-      <nav className="p-2 space-y-0.5">
-        {/* Help / FAQ */}
+        {/* Active Stocks (collapsible group) */}
+        {(() => {
+          const stockTrades = openTrades.filter((t: any) => t.tradeCategory === 'Stock');
+          const isStocksOpen = groupOpen["Active Stocks"] !== false;
+          return (
+            <div>
+              {expanded ? (
+                <button
+                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Stocks": !isStocksOpen }))}
+                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                >
+                  <span className="flex items-center gap-2">
+                    Active Stocks
+                    {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
+                  </span>
+                  {isStocksOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                </button>
+              ) : (
+                <div className="flex justify-center py-1.5 px-3" title="Active Stocks">
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              {isStocksOpen && expanded && (
+                <div className="space-y-0.5 mt-1">
+                  {stockTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open stocks</p>
+                  : stockTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </nav>
+
+      {/* Pinned bottom */}
+      <div className="mt-auto border-t border-card-border">
+        {expanded && analysisData && !isAnalysisLoading && (
+          <div className="p-2">
+            <button
+              onClick={() => handleAddCurrent("watchlist")}
+              disabled={isInList("watchlist") || addMutation.isPending}
+              className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
+                isInList("watchlist")
+                  ? "bg-primary/10 text-primary cursor-default"
+                  : "bg-primary/80 hover:bg-primary text-white"
+              }`}
+              data-testid="button-add-watchlist"
+            >
+              <Eye className="h-3 w-3" />
+              {isInList("watchlist") ? "On Watchlist" : "+ Watchlist"}
+            </button>
+          </div>
+        )}
         <Link href={helpItem.path}>
-          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
+          <div className={`flex items-center gap-3 py-1.5 px-3 mx-2 mb-2 rounded-md cursor-pointer transition-colors ${
             location === helpItem.path ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}>
             <helpItem.icon className="h-4 w-4 shrink-0" />
             {expanded && <span className="text-sm font-medium truncate">{helpItem.label}</span>}
           </div>
         </Link>
-
-        {/* Account */}
-        <Link href="/account">
-          <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
-            location === "/account" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}>
-            <UserCircle className="h-4 w-4 shrink-0" />
-            {expanded && <span className="text-sm font-medium truncate">Account</span>}
-          </div>
-        </Link>
-
-        {/* Admin (only for admin user) */}
-        {user && user.email === "awisper@me.com" && (
-          <Link href="/admin">
-            <div className={`flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors ${
-              location === "/admin" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}>
-              <Shield className="h-4 w-4 shrink-0" />
-              {expanded && <span className="text-sm font-medium truncate">Admin</span>}
-            </div>
-          </Link>
-        )}
-
-        {/* Sign Out */}
-        <div
-          onClick={logout}
-          className="flex items-center gap-3 py-1.5 px-3 rounded-md cursor-pointer transition-colors text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
-          data-testid="button-logout"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {expanded && (
-            <div className="flex items-center justify-between flex-1 min-w-0">
-              <span className="text-sm font-medium truncate">Sign Out</span>
-              {user && <span className="text-[10px] text-muted-foreground truncate ml-2">{user.displayName || user.email}</span>}
-            </div>
-          )}
-        </div>
-      </nav>
-
-      {/* Attribution */}
-      {expanded && (
-        <div className="p-2 border-t border-card-border">
-          <PerplexityAttribution />
-        </div>
-      )}
+      </div>
     </>
   );
 }
