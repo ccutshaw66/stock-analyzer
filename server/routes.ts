@@ -1084,6 +1084,325 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Market Maker Exposure ─────────────────────────────────────────────────
+
+  async function getOptionsChain(ticker: string, expDate?: number): Promise<any> {
+    const url = expDate
+      ? `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}?date=${expDate}`
+      : `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}`;
+    const data = await yahooFetch(url);
+    return data?.optionChain?.result?.[0] || null;
+  }
+
+  // Black-Scholes gamma calculation
+  function bsGamma(S: number, K: number, T: number, r: number, sigma: number): number {
+    if (T <= 0 || sigma <= 0 || S <= 0) return 0;
+    const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    const pdf = Math.exp(-0.5 * d1 * d1) / Math.sqrt(2 * Math.PI);
+    return pdf / (S * sigma * Math.sqrt(T));
+  }
+
+  app.get("/api/mm-exposure/:ticker", async (req, res) => {
+    const ticker = req.params.ticker.toUpperCase();
+    try {
+      await ensureReady();
+
+      // Get first page (default expiry + list of all expirations)
+      const firstPage = await getOptionsChain(ticker);
+      if (!firstPage || !firstPage.options?.length) {
+        return res.status(404).json({ error: `No options data for ${ticker}` });
+      }
+
+      const spot = firstPage.quote?.regularMarketPrice || 0;
+      if (!spot) return res.status(404).json({ error: `No price data for ${ticker}` });
+
+      const companyName = firstPage.quote?.shortName || firstPage.quote?.longName || ticker;
+      const expirationDates: number[] = firstPage.expirationDates || [];
+
+      // Fetch up to 4 nearest expirations for GEX calculation
+      const maxExpiries = Math.min(4, expirationDates.length);
+      const allCalls: any[] = [];
+      const allPuts: any[] = [];
+
+      // First page already has the nearest expiration
+      const firstOpts = firstPage.options[0];
+      if (firstOpts.calls) allCalls.push(...firstOpts.calls.map((c: any) => ({ ...c, expDate: expirationDates[0] })));
+      if (firstOpts.puts) allPuts.push(...firstOpts.puts.map((p: any) => ({ ...p, expDate: expirationDates[0] })));
+
+      // Fetch additional expirations
+      for (let i = 1; i < maxExpiries; i++) {
+        try {
+          const page = await getOptionsChain(ticker, expirationDates[i]);
+          if (page?.options?.[0]) {
+            if (page.options[0].calls) allCalls.push(...page.options[0].calls.map((c: any) => ({ ...c, expDate: expirationDates[i] })));
+            if (page.options[0].puts) allPuts.push(...page.options[0].puts.map((p: any) => ({ ...p, expDate: expirationDates[i] })));
+          }
+        } catch { /* skip failed expiration fetches */ }
+      }
+
+      const now = Date.now() / 1000;
+      const r = 0.05; // risk-free rate approximation
+
+      // ── GEX by strike ──
+      // Strike range: focus on +/- 15% from spot
+      const lowerBound = spot * 0.85;
+      const upperBound = spot * 1.15;
+
+      interface StrikeData {
+        strike: number;
+        callOI: number;
+        putOI: number;
+        callVolume: number;
+        putVolume: number;
+        callGEX: number;
+        putGEX: number;
+        netGEX: number;
+        callIV: number;
+        putIV: number;
+      }
+
+      const strikeMap: Record<number, StrikeData> = {};
+
+      function getOrCreate(strike: number): StrikeData {
+        if (!strikeMap[strike]) {
+          strikeMap[strike] = { strike, callOI: 0, putOI: 0, callVolume: 0, putVolume: 0, callGEX: 0, putGEX: 0, netGEX: 0, callIV: 0, putIV: 0 };
+        }
+        return strikeMap[strike];
+      }
+
+      // Process calls
+      for (const c of allCalls) {
+        const K = c.strike;
+        if (K < lowerBound || K > upperBound) continue;
+        const oi = c.openInterest || 0;
+        const vol = c.volume || 0;
+        const iv = c.impliedVolatility || 0;
+        const T = Math.max((c.expDate - now) / (365.25 * 24 * 3600), 1 / 365); // years to expiry
+        const gamma = bsGamma(spot, K, T, r, iv);
+        // GEX = gamma * OI * 100 * spot^2 * 0.01  ($ per 1% move)
+        const gex = gamma * oi * 100 * spot * spot * 0.01;
+        const sd = getOrCreate(K);
+        sd.callOI += oi;
+        sd.callVolume += vol;
+        sd.callGEX += gex;
+        if (iv > sd.callIV) sd.callIV = iv;
+      }
+
+      // Process puts (dealers assumed short puts → multiply by -1)
+      for (const p of allPuts) {
+        const K = p.strike;
+        if (K < lowerBound || K > upperBound) continue;
+        const oi = p.openInterest || 0;
+        const vol = p.volume || 0;
+        const iv = p.impliedVolatility || 0;
+        const T = Math.max((p.expDate - now) / (365.25 * 24 * 3600), 1 / 365);
+        const gamma = bsGamma(spot, K, T, r, iv);
+        const gex = gamma * oi * 100 * spot * spot * 0.01 * -1; // negative for puts
+        const sd = getOrCreate(K);
+        sd.putOI += oi;
+        sd.putVolume += vol;
+        sd.putGEX += gex;
+        if (iv > sd.putIV) sd.putIV = iv;
+      }
+
+      // Compute netGEX and build sorted array
+      const strikes = Object.values(strikeMap)
+        .map(s => { s.netGEX = s.callGEX + s.putGEX; return s; })
+        .sort((a, b) => a.strike - b.strike);
+
+      // ── Key Levels ──
+      const totalGEX = strikes.reduce((s, d) => s + d.netGEX, 0);
+
+      // Call Wall = strike with highest call GEX (resistance)
+      const callWall = strikes.reduce((max, s) => s.callGEX > max.callGEX ? s : max, strikes[0]);
+      // Put Wall = strike with most negative put GEX (support)
+      const putWall = strikes.reduce((min, s) => s.putGEX < min.putGEX ? s : min, strikes[0]);
+
+      // Gamma Flip = where netGEX crosses zero
+      let gammaFlip: number | null = null;
+      for (let i = 0; i < strikes.length - 1; i++) {
+        if ((strikes[i].netGEX <= 0 && strikes[i + 1].netGEX > 0) ||
+            (strikes[i].netGEX >= 0 && strikes[i + 1].netGEX < 0)) {
+          // Linear interpolation
+          const s1 = strikes[i].strike, g1 = strikes[i].netGEX;
+          const s2 = strikes[i + 1].strike, g2 = strikes[i + 1].netGEX;
+          gammaFlip = s1 + (0 - g1) * (s2 - s1) / (g2 - g1);
+          break;
+        }
+      }
+
+      // Max Pain = strike where total $ value of expired options is minimized
+      // (price where most options expire worthless)
+      let maxPainStrike = spot;
+      let minPain = Infinity;
+      for (const s of strikes) {
+        let pain = 0;
+        // For each strike, calc total intrinsic value of all options if underlying = this strike
+        for (const other of strikes) {
+          // Call pain: max(0, strike_s - other_call_strike) * callOI
+          if (s.strike > other.strike) pain += (s.strike - other.strike) * other.callOI * 100;
+          // Put pain: max(0, other_put_strike - strike_s) * putOI
+          if (other.strike > s.strike) pain += (other.strike - s.strike) * other.putOI * 100;
+        }
+        if (pain < minPain) { minPain = pain; maxPainStrike = s.strike; }
+      }
+
+      // ── Put/Call Ratio ──
+      const totalCallOI = strikes.reduce((s, d) => s + d.callOI, 0);
+      const totalPutOI = strikes.reduce((s, d) => s + d.putOI, 0);
+      const totalCallVol = strikes.reduce((s, d) => s + d.callVolume, 0);
+      const totalPutVol = strikes.reduce((s, d) => s + d.putVolume, 0);
+      const pcRatioOI = totalCallOI > 0 ? totalPutOI / totalCallOI : 0;
+      const pcRatioVol = totalCallVol > 0 ? totalPutVol / totalCallVol : 0;
+
+      // ── Unusual Activity (high volume/OI ratio) ──
+      const unusual: any[] = [];
+      for (const c of allCalls) {
+        const K = c.strike;
+        if (K < lowerBound || K > upperBound) continue;
+        const oi = c.openInterest || 0;
+        const vol = c.volume || 0;
+        if (oi > 100 && vol > 100 && vol / oi > 2.0) {
+          unusual.push({
+            type: "CALL", strike: K, volume: vol, openInterest: oi,
+            ratio: Number((vol / oi).toFixed(1)),
+            iv: Number(((c.impliedVolatility || 0) * 100).toFixed(1)),
+            expiry: new Date(c.expDate * 1000).toISOString().split("T")[0],
+            bid: c.bid || 0, ask: c.ask || 0,
+          });
+        }
+      }
+      for (const p of allPuts) {
+        const K = p.strike;
+        if (K < lowerBound || K > upperBound) continue;
+        const oi = p.openInterest || 0;
+        const vol = p.volume || 0;
+        if (oi > 100 && vol > 100 && vol / oi > 2.0) {
+          unusual.push({
+            type: "PUT", strike: K, volume: vol, openInterest: oi,
+            ratio: Number((vol / oi).toFixed(1)),
+            iv: Number(((p.impliedVolatility || 0) * 100).toFixed(1)),
+            expiry: new Date(p.expDate * 1000).toISOString().split("T")[0],
+            bid: p.bid || 0, ask: p.ask || 0,
+          });
+        }
+      }
+      unusual.sort((a, b) => b.ratio - a.ratio);
+
+      // ── Regime Detection ──
+      const isPositiveGamma = totalGEX > 0;
+      const regime = isPositiveGamma ? "POSITIVE_GAMMA" : "NEGATIVE_GAMMA";
+      const regimeLabel = isPositiveGamma ? "Dealer Long Gamma (Dampening)" : "Dealer Short Gamma (Amplifying)";
+      const regimeDesc = isPositiveGamma
+        ? "Market makers are hedged — they BUY dips and SELL rallies. Expect mean-reversion, tighter ranges, and pinning near high-GEX strikes. Sell premium strategies work well here."
+        : "Market makers are exposed — they SELL into dips and BUY into rallies, amplifying moves. Expect breakouts, wider ranges, and trend-following behavior. Directional plays and bought options can outperform.";
+
+      // ── Where to Hide (trade ideas based on MM positioning) ──
+      const spotVsFlip = gammaFlip ? (spot > gammaFlip ? "above" : "below") : null;
+      const spotVsMaxPain = spot > maxPainStrike ? "above" : spot < maxPainStrike ? "below" : "at";
+
+      const tradeIdeas: { strategy: string; reasoning: string; level: string; sentiment: string }[] = [];
+
+      // PCS near put wall (support)
+      if (putWall) {
+        tradeIdeas.push({
+          strategy: `Put Credit Spread near $${putWall.strike.toFixed(0)}`,
+          reasoning: `Put wall at $${putWall.strike.toFixed(0)} — massive put OI (${putWall.putOI.toLocaleString()}) creates dealer buying pressure here. MMs defend this level.`,
+          level: `$${putWall.strike.toFixed(0)}`,
+          sentiment: "Bullish",
+        });
+      }
+
+      // CCS near call wall (resistance)
+      if (callWall) {
+        tradeIdeas.push({
+          strategy: `Call Credit Spread near $${callWall.strike.toFixed(0)}`,
+          reasoning: `Call wall at $${callWall.strike.toFixed(0)} — highest call OI (${callWall.callOI.toLocaleString()}) acts as a ceiling. MMs sell into rallies here.`,
+          level: `$${callWall.strike.toFixed(0)}`,
+          sentiment: "Bearish",
+        });
+      }
+
+      // Butterfly at max pain
+      if (maxPainStrike) {
+        tradeIdeas.push({
+          strategy: `Butterfly centered at $${maxPainStrike.toFixed(0)}`,
+          reasoning: `Max pain at $${maxPainStrike.toFixed(0)} — price tends to gravitate here into expiration. MMs profit most when options expire worthless at this level.`,
+          level: `$${maxPainStrike.toFixed(0)}`,
+          sentiment: "Neutral",
+        });
+      }
+
+      // Gamma regime play
+      if (isPositiveGamma) {
+        tradeIdeas.push({
+          strategy: "Sell premium (credit spreads, iron condors)",
+          reasoning: "Positive gamma regime = MMs dampening moves. Range-bound, mean-reverting. Premium selling thrives.",
+          level: `$${putWall?.strike.toFixed(0) || '?'} - $${callWall?.strike.toFixed(0) || '?'}`,
+          sentiment: "Neutral",
+        });
+      } else {
+        tradeIdeas.push({
+          strategy: "Buy directional options (calls or puts with trend)",
+          reasoning: "Negative gamma regime = MMs amplifying moves. Trends accelerate. Bought options can run.",
+          level: gammaFlip ? `Flip at $${gammaFlip.toFixed(0)}` : "Watch for breakout",
+          sentiment: spotVsFlip === "above" ? "Bullish" : "Bearish",
+        });
+      }
+
+      // Unusual activity suggestion
+      if (unusual.length > 0) {
+        const top = unusual[0];
+        tradeIdeas.push({
+          strategy: `Follow unusual ${top.type} flow at $${top.strike}`,
+          reasoning: `${top.volume.toLocaleString()} volume vs ${top.openInterest.toLocaleString()} OI (${top.ratio}x ratio) on ${top.expiry} ${top.type}s at $${top.strike}. Fresh institutional positioning.`,
+          level: `$${top.strike}`,
+          sentiment: top.type === "CALL" ? "Bullish" : "Bearish",
+        });
+      }
+
+      res.json({
+        ticker,
+        companyName,
+        spot,
+        // Key levels
+        callWall: callWall ? { strike: callWall.strike, callOI: callWall.callOI, callGEX: Number(callWall.callGEX.toFixed(0)) } : null,
+        putWall: putWall ? { strike: putWall.strike, putOI: putWall.putOI, putGEX: Number(putWall.putGEX.toFixed(0)) } : null,
+        gammaFlip: gammaFlip ? Number(gammaFlip.toFixed(2)) : null,
+        maxPain: maxPainStrike,
+        totalGEX: Number(totalGEX.toFixed(0)),
+        // Regime
+        regime,
+        regimeLabel,
+        regimeDesc,
+        // Ratios
+        putCallRatioOI: Number(pcRatioOI.toFixed(2)),
+        putCallRatioVol: Number(pcRatioVol.toFixed(2)),
+        totalCallOI, totalPutOI, totalCallVol, totalPutVol,
+        // GEX chart data
+        gexByStrike: strikes.map(s => ({
+          strike: s.strike,
+          callGEX: Number(s.callGEX.toFixed(0)),
+          putGEX: Number(s.putGEX.toFixed(0)),
+          netGEX: Number(s.netGEX.toFixed(0)),
+          callOI: s.callOI,
+          putOI: s.putOI,
+          callVolume: s.callVolume,
+          putVolume: s.putVolume,
+        })),
+        // Unusual activity
+        unusualActivity: unusual.slice(0, 15),
+        // Trade ideas
+        tradeIdeas,
+        // Expiration dates for reference
+        expirations: expirationDates.slice(0, maxExpiries).map(d => new Date(d * 1000).toISOString().split("T")[0]),
+      });
+    } catch (error: any) {
+      console.error(`[mm-exposure] Error for ${ticker}:`, error.message);
+      res.status(500).json({ error: error?.message || "Failed to fetch MM exposure data" });
+    }
+  });
+
   app.get("/api/dividends/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
     try {
