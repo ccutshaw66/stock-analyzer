@@ -19,13 +19,20 @@ export default function KellyCalculator() {
   const [avgLoss, setAvgLoss] = useState(150);
   const [accountValue, setAccountValue] = useState(10000);
 
-  // Fetch trade summary for auto-populate
+  const [populatedTradeCount, setPopulatedTradeCount] = useState<number | null>(null);
+
+  // Fetch trade analytics for auto-populate
   const { data: tradeSummary, refetch, isFetching } = useQuery<{
     winRate: number;
     avgWin: number;
     avgLoss: number;
+    totalTrades: number;
   }>({
-    queryKey: ["/api/trades/summary"],
+    queryKey: ["/api/trades/analytics"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/trades/analytics");
+      return res.json();
+    },
     enabled: false,
   });
 
@@ -35,6 +42,7 @@ export default function KellyCalculator() {
       setWinRate(Math.round(result.data.winRate * 100) / 100);
       setAvgWin(Math.round(result.data.avgWin * 100) / 100);
       setAvgLoss(Math.round(Math.abs(result.data.avgLoss) * 100) / 100);
+      setPopulatedTradeCount(result.data.totalTrades ?? null);
     }
   };
 
@@ -149,7 +157,7 @@ export default function KellyCalculator() {
               data-testid="kelly-account-value"
             />
           </div>
-          <div className="flex items-end">
+          <div className="flex flex-col items-stretch justify-end gap-1">
             <button
               onClick={autoPopulate}
               disabled={isFetching}
@@ -158,6 +166,11 @@ export default function KellyCalculator() {
             >
               {isFetching ? "Loading…" : "Auto from Trades"}
             </button>
+            {populatedTradeCount !== null && (
+              <span className="text-[10px] text-muted-foreground text-center" data-testid="kelly-trade-count">
+                Populated from {populatedTradeCount} closed trade{populatedTradeCount !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { storage, db } from "./storage";
 import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
+import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 
 // ============================================================
 // Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
@@ -216,21 +217,37 @@ async function yahooFetch(url: string, retries = 3): Promise<any> {
 const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
 
 async function getQuote(ticker: string): Promise<any> {
+  const cacheKey = `quote:${ticker.toUpperCase()}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log(`[yahoo] Cache hit: ${ticker}`);
+    return cached;
+  }
   const modules = [
     "price", "summaryDetail", "defaultKeyStatistics",
-    "financialData", "summaryProfile", "recommendationTrend", "earningsTrend"
+    "financialData", "summaryProfile", "recommendationTrend", "earningsTrend", "calendarEvents"
   ].join("%2C");
   const data = await yahooFetch(
     `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
   );
-  return data?.quoteSummary?.result?.[0] || null;
+  const result = data?.quoteSummary?.result?.[0] || null;
+  if (result) setCache(cacheKey, result, TTL.quote);
+  return result;
 }
 
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
+  const cacheKey = `chart:${ticker.toUpperCase()}:${range}:${interval}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    console.log(`[yahoo] Cache hit chart: ${ticker} ${range}`);
+    return cached;
+  }
   const data = await yahooFetch(
     `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
   );
-  return data?.chart?.result?.[0] || null;
+  const result = data?.chart?.result?.[0] || null;
+  if (result) setCache(cacheKey, result, TTL.chart);
+  return result;
 }
 
 // ============================================================
@@ -845,6 +862,12 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/cache", async (req, res) => {
+    if (req.user!.email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+    if (req.query.clear === "true") { clearCache(); return res.json({ cleared: true }); }
+    res.json(getCacheStats());
+  });
+
   // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
 
   function extractDividendData(ticker: string, quote: any) {
@@ -852,6 +875,7 @@ export async function registerRoutes(
     const pr = quote?.price || {};
     const ks = quote?.defaultKeyStatistics || {};
     const fd = quote?.financialData || {};
+    const ce = quote?.calendarEvents || {};
 
     const dividendYield = sd.dividendYield?.raw != null ? Number((sd.dividendYield.raw * 100).toFixed(2)) : 0;
     const dividendRate = sd.dividendRate?.raw ?? 0;
@@ -860,7 +884,8 @@ export async function registerRoutes(
     const fiveYearAvgYield = sd.fiveYearAvgDividendYield?.raw ?? null;
     const lastDividendValue = ks.lastDividendValue?.raw ?? null;
     const lastDividendDate = ks.lastDividendDate?.fmt ?? null;
-    const exDividendDate = sd.exDividendDate?.fmt ?? null;
+    const exDividendDate = ce.exDividendDate?.fmt ?? sd.exDividendDate?.fmt ?? null;
+    const dividendDate = ce.dividendDate?.fmt ?? sd.exDividendDate?.fmt ?? null; // next payment date
     const price = pr.regularMarketPrice?.raw ?? fd.currentPrice?.raw ?? 0;
     const companyName = pr.shortName ?? ticker;
 
@@ -899,6 +924,7 @@ export async function registerRoutes(
       dividendYield,
       dividendRate: Number(dividendRate.toFixed(2)),
       exDividendDate,
+      distributionDate: dividendDate,  // when you get paid
       payoutRatio,
       trailingYield,
       fiveYearAvgYield: fiveYearAvgYield != null ? Number(fiveYearAvgYield.toFixed(2)) : null,
@@ -914,7 +940,14 @@ export async function registerRoutes(
   app.get("/api/dividends/scan", async (req, res) => {
     try {
       await ensureReady();
-      const defaultTickers = ["HD","JNJ","KO","PG","T","VZ","O","ABBV","XOM","MO","PEP","MMM","IBM","CVX","INTC","WBA","DOW","PM"];
+      const defaultTickers = [
+        // Monthly dividend payers
+        "O", "MAIN", "STAG", "AGNC", "SLG", "JEPI", "JEPQ", "DIVO", "QYLD", "RYLD", "XYLD",
+        // Quarterly blue chips
+        "HD", "JNJ", "KO", "PG", "T", "VZ", "ABBV", "XOM", "MO", "PEP", "CVX", "IBM", "PM",
+        // High yield
+        "BTI", "EPD", "ET", "MMP", "MPLX",
+      ];
       const tickersParam = req.query.tickers as string | undefined;
       const tickers = tickersParam
         ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
@@ -935,8 +968,18 @@ export async function registerRoutes(
         }
       }
 
-      results.sort((a, b) => b.score - a.score);
-      res.json(results);
+      // Apply filters from query params
+      let filtered = results;
+      const minYield = parseFloat(req.query.minYield as string) || 0;
+      const freqFilter = (req.query.frequency as string) || "All";
+      const maxPayout = parseFloat(req.query.maxPayout as string) || 100;
+
+      if (minYield > 0) filtered = filtered.filter(d => d.dividendYield >= minYield);
+      if (freqFilter !== "All") filtered = filtered.filter(d => d.frequency === freqFilter);
+      if (maxPayout < 100) filtered = filtered.filter(d => d.payoutRatio <= maxPayout || d.payoutRatio === 0);
+
+      filtered.sort((a, b) => b.score - a.score);
+      res.json(filtered);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to scan dividends" });
     }

@@ -1,9 +1,11 @@
 import { useState, useMemo } from "react";
 import {
   BarChart3, TrendingUp, DollarSign, Target,
-  AlertTriangle,
+  AlertTriangle, Download,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -65,6 +67,18 @@ const FIELD_DEFAULTS: Record<string, number> = {
   putCredit: 1.5, callCredit: 1.5,
   lowStrike: 95, midStrike: 100, highStrike: 105,
   totalPremium: 5, callStrike: 105, putStrike: 95,
+};
+
+// Trade type → payoff diagram strategy mapping
+const TRADE_TYPE_MAP: Record<string, Strategy> = {
+  "PCS": "bull-put-spread",
+  "CCS": "bear-call-spread",
+  "CDS": "bull-call-spread",
+  "PDS": "bear-put-spread",
+  "C": "long-call",
+  "P": "long-put",
+  "SC": "short-call",
+  "SP": "short-put",
 };
 
 // ─── P/L Calculation ─────────────────────────────────────────────────────────
@@ -129,11 +143,69 @@ function getStrikesCenter(strategy: Strategy, vals: Record<string, number>): num
 export default function PayoffDiagram() {
   const [strategy, setStrategy] = useState<Strategy>("long-call");
   const [fieldValues, setFieldValues] = useState<Record<string, number>>({ ...FIELD_DEFAULTS });
+  const [showImport, setShowImport] = useState(false);
+  const [selectedTradeId, setSelectedTradeId] = useState<string>("");
 
   const def = STRATEGIES[strategy];
 
   const setField = (key: string, val: number) => {
     setFieldValues(prev => ({ ...prev, [key]: val }));
+  };
+
+  // Fetch open trades when import is toggled on
+  const { data: trades } = useQuery<any[]>({
+    queryKey: ["/api/trades"],
+    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    enabled: showImport,
+  });
+
+  const openOptions = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Option");
+
+  const handleImportTrade = (tradeId: string) => {
+    setSelectedTradeId(tradeId);
+    const trade = openOptions.find((t: any) => String(t.id) === tradeId);
+    if (!trade) return;
+
+    // Map trade type to strategy
+    const mappedStrategy = TRADE_TYPE_MAP[trade.tradeType];
+    if (!mappedStrategy) return;
+
+    setStrategy(mappedStrategy);
+
+    const premium = Math.abs(trade.openPrice);
+    const contracts = trade.contractsShares || 1;
+
+    // Parse strikes from "55/60" format
+    const strikeParts = trade.strikes ? String(trade.strikes).split("/").map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n)) : [];
+
+    const newVals: Record<string, number> = { ...FIELD_DEFAULTS };
+    newVals.contracts = contracts;
+
+    if (mappedStrategy === "bull-put-spread" || mappedStrategy === "bear-call-spread") {
+      // Credit spreads: sellStrike/buyStrike
+      if (strikeParts.length >= 2) {
+        // For PCS: first strike is sell (higher), second is buy (lower)
+        // For CCS: first strike is sell (lower), second is buy (higher)
+        newVals.sellStrike = strikeParts[0];
+        newVals.buyStrike = strikeParts[1];
+      }
+      newVals.netCredit = premium;
+    } else if (mappedStrategy === "bull-call-spread" || mappedStrategy === "bear-put-spread") {
+      // Debit spreads: buyStrike/sellStrike
+      if (strikeParts.length >= 2) {
+        newVals.buyStrike = strikeParts[0];
+        newVals.sellStrike = strikeParts[1];
+      }
+      newVals.netDebit = premium;
+    } else {
+      // Single leg options
+      if (strikeParts.length >= 1) {
+        newVals.strike = strikeParts[0];
+      }
+      newVals.premium = premium;
+    }
+
+    setFieldValues(newVals);
   };
 
   const data = useMemo(() => {
@@ -206,6 +278,45 @@ export default function PayoffDiagram() {
           <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
           <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
         </HelpBlock>
+
+        {/* Import from Open Trades */}
+        <div className="mb-4" data-testid="payoff-import-section">
+          <button
+            onClick={() => setShowImport(!showImport)}
+            className="h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors flex items-center gap-1.5"
+            data-testid="payoff-import-toggle"
+          >
+            <Download className="h-3 w-3" />
+            {showImport ? "Hide Import" : "Import Open Position"}
+          </button>
+
+          {showImport && (
+            <div className="mt-2 p-3 bg-muted/20 border border-card-border/50 rounded-lg">
+              {openOptions.length > 0 ? (
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Select an open option position</label>
+                  <select
+                    value={selectedTradeId}
+                    onChange={e => handleImportTrade(e.target.value)}
+                    className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground"
+                    data-testid="payoff-import-select"
+                  >
+                    <option value="">— Select a trade —</option>
+                    {openOptions.map((t: any) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {t.symbol} {t.tradeType} {t.strikes || ""} @ {Math.abs(t.openPrice).toFixed(2)} × {t.contractsShares}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {trades === undefined ? "Loading trades..." : "No open option positions found. Add option trades in the Trade Tracker to import them here."}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="col-span-2 md:col-span-1">
