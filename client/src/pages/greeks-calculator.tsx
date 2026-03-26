@@ -1,9 +1,11 @@
 import { useState, useMemo } from "react";
 import {
   Activity, TrendingUp, DollarSign, Percent,
-  AlertTriangle, Calculator, Target,
+  AlertTriangle, Calculator, Target, Download,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Black-Scholes Math ──────────────────────────────────────────────────────
 
@@ -136,6 +138,50 @@ function vegaColor(vega: number): string {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const { data: trades } = useQuery<any[]>({
+    queryKey: ["/api/trades"],
+    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    enabled: open,
+  });
+  const openOptions = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Option");
+  const openStocks = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Stock");
+  const allOpen = [...openOptions, ...openStocks];
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} 
+        className="text-[11px] text-primary hover:underline flex items-center gap-1 mb-3"
+        data-testid="button-import-position">
+        <Download className="h-3 w-3" /> Import Open Position
+      </button>
+    );
+  }
+
+  return (
+    <div className="mb-3">
+      <select 
+        onChange={(e) => {
+          const trade = allOpen.find(t => t.id === parseInt(e.target.value));
+          if (trade) { onImport(trade); setOpen(false); }
+        }}
+        defaultValue=""
+        className="w-full h-8 px-2 text-xs bg-background border border-primary/30 rounded-md text-foreground"
+        data-testid="select-import-position"
+      >
+        <option value="" disabled>Select an open position...</option>
+        {allOpen.map(t => (
+          <option key={t.id} value={t.id}>
+            {t.symbol} — {t.tradeType} {t.strikes || ''} @ ${Math.abs(t.openPrice).toFixed(2)} ({t.contractsShares} {t.tradeCategory === 'Option' ? 'contracts' : 'shares'})
+          </option>
+        ))}
+      </select>
+      <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground mt-1">Cancel</button>
+    </div>
+  );
+}
+
 export default function GreeksCalculator() {
   const [stockPrice, setStockPrice] = useState(100);
   const [strikePrice, setStrikePrice] = useState(100);
@@ -181,6 +227,17 @@ export default function GreeksCalculator() {
           <ScoreRange label="At the Money" range="|Δ| ≈ 0.50" color="yellow" description="Highest gamma and time value — maximum uncertainty" />
           <ScoreRange label="Low Delta" range="|Δ| < 0.30" color="red" description="OTM — low probability, but cheap. Lottery ticket territory" />
         </HelpBlock>
+
+        <ImportPositionButton onImport={(trade) => {
+          if (trade.currentPrice) setStockPrice(trade.currentPrice);
+          if (trade.strikes) {
+            const firstStrike = parseFloat(trade.strikes.split('/')[0] || trade.strikes.split('|')[0]);
+            if (!isNaN(firstStrike)) setStrikePrice(firstStrike);
+          }
+          const tt = trade.tradeType as string;
+          if (['C', 'SC', 'CCS', 'CDS', 'CBFLY', 'CCTV'].includes(tt)) setOptionType('call');
+          else if (['P', 'SP', 'PCS', 'PDS', 'PBFLY', 'PCTV'].includes(tt)) setOptionType('put');
+        }} />
 
         {/* Inputs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">

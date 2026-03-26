@@ -2,9 +2,57 @@ import { useState, useMemo } from "react";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import {
   Calculator, TrendingUp, DollarSign,
-  AlertTriangle, Plus, Minus, RotateCcw
+  AlertTriangle, Plus, Minus, RotateCcw, Download
 } from "lucide-react";
 import { HelpBlock } from "@/components/HelpBlock";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+
+// ─── Import Position Button ──────────────────────────────────────────────────
+
+function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const { data: trades } = useQuery<any[]>({
+    queryKey: ["/api/trades"],
+    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    enabled: open,
+  });
+  const openOptions = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Option");
+  const openStocks = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Stock");
+  const allOpen = [...openOptions, ...openStocks];
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} 
+        className="text-[11px] text-primary hover:underline flex items-center gap-1 mb-3"
+        data-testid="button-import-position">
+        <Download className="h-3 w-3" /> Import Open Position
+      </button>
+    );
+  }
+
+  return (
+    <div className="mb-3">
+      <select 
+        onChange={(e) => {
+          const trade = allOpen.find(t => t.id === parseInt(e.target.value));
+          if (trade) { onImport(trade); setOpen(false); }
+        }}
+        defaultValue=""
+        className="w-full h-8 px-2 text-xs bg-background border border-primary/30 rounded-md text-foreground"
+        data-testid="select-import-position"
+      >
+        <option value="" disabled>Select an open position...</option>
+        {allOpen.map(t => (
+          <option key={t.id} value={t.id}>
+            {t.symbol} — {t.tradeType} {t.strikes || ''} @ ${Math.abs(t.openPrice).toFixed(2)} ({t.contractsShares} {t.tradeCategory === 'Option' ? 'contracts' : 'shares'})
+          </option>
+        ))}
+      </select>
+      <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground mt-1">Cancel</button>
+    </div>
+  );
+}
 
 // ─── Risk Calculator ──────────────────────────────────────────────────────────
 
@@ -67,6 +115,13 @@ function RiskCalculator() {
         <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Debit Example (CDS):</strong> You buy a $5-wide call debit spread for $2.00. Enter: Trade Type = CDS, Open Price = -2.00, Spread Width = 5. Risk = $2.00 × 100 = $200 per contract. Max Profit = ($5 - $2) × 100 = $300 per contract.</p>
         <p>The <strong className="text-foreground">Max Contracts</strong> box tells you the most contracts you can trade at your risk % limit.</p>
       </HelpBlock>
+
+      <ImportPositionButton onImport={(trade) => {
+        setTradeType(trade.tradeType as TradeTypeCode);
+        setContracts(trade.contractsShares);
+        setOpenPrice(Math.abs(trade.openPrice));
+        if (trade.spreadWidth) setSpreadWidth(trade.spreadWidth);
+      }} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
         <div>
@@ -163,6 +218,12 @@ function VerticalExpectancy() {
         <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Debit Example:</strong> Switch to Long Vertical. Max Profit = $75, Prob OTM = 40%. Theo Gain = $75 × 0.60 × 10 = $450. Theo Loss = $75 × 0.40 × 10 = $300. Net = +$150 (positive edge for your debit trade).</p>
         <p><strong className="text-foreground">Stop Loss to B/E:</strong> The dollar amount at which you'd set your stop loss so wins and losses break even over time.</p>
       </HelpBlock>
+
+      <ImportPositionButton onImport={(trade) => {
+        const isCredit = trade.openPrice > 0;
+        setMode(isCredit ? "short" : "long");
+        setCredit(Math.abs(trade.openPrice) * 100);
+      }} />
 
       <div className="flex gap-2 mb-4">
         {(["short", "long"] as const).map(m => (
@@ -265,6 +326,14 @@ function DefinedRiskReward() {
         <p><strong className="text-foreground">Target exits:</strong> Shows what dollar amount to close at for 50%, 65%, or 75% of max profit/loss. Most traders close credit spreads at 50% of max profit.</p>
         <p><strong className="text-foreground">If 100-Trade Expectancy is red:</strong> The trade has a negative edge. Try a higher POP, wider strikes, or more credit. Not every setup works — that's why you check before you trade.</p>
       </HelpBlock>
+
+      <ImportPositionButton onImport={(trade) => {
+        setOpenPrice(trade.openPrice > 0 ? Math.abs(trade.openPrice) : -Math.abs(trade.openPrice));
+        setContracts(trade.contractsShares);
+        if (trade.spreadWidth) setStrikeWidth(trade.spreadWidth);
+        const legs = TRADE_TYPES[trade.tradeType as TradeTypeCode]?.legs || 0;
+        setCommission(trade.commIn || legs * 0.65 * trade.contractsShares);
+      }} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <div>
@@ -403,6 +472,12 @@ function WeightedPriceCalculator() {
 
         <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Credit Example (selling puts):</strong> You sell 3 puts at $2.00 then 2 more at $1.50, and later buy them all back at $0.50. For credit trades, <strong className="text-foreground">swap the sides</strong> — enter the buy-to-close as Legs In (your cost) and the original credit as Legs Out (your proceeds).<br/>Legs In: 5 contracts at $0.50 (cost to close = 5 × $0.50 × 100 = $250).<br/>Legs Out: 3 contracts at $2.00 + 2 at $1.50 (credit received = (3×$2.00 + 2×$1.50) × 100 = $900).<br/>Profit = $900 - $250 = <strong className="text-green-400">$650</strong>. ROI = $650 ÷ $250 = 260%.</p>
       </HelpBlock>
+
+      <ImportPositionButton onImport={(trade) => {
+        setCalcType(trade.tradeCategory === "Option" ? "OPTIONS" : "STOCKS");
+        setLegsIn([{ id: 1, contracts: trade.contractsShares, price: Math.abs(trade.openPrice) }]);
+        setLegsOut([{ id: 1, contracts: 0, price: 0 }]);
+      }} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <LegSection label="Legs In (Cost)" legs={legsIn} calcType={calcType}
