@@ -5,6 +5,24 @@ import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
+import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
+import pg from "pg";
+
+// ─── Demo Account Activity Tracking ──────────────────────────────────────────
+let demoLastActivity: number = 0; // timestamp of last API request from demo user
+let demoUserId: number | null = null; // cached demo user ID
+let demoResetInProgress = false;
+
+function isDemoUser(req: any): boolean {
+  return req.user?.email === DEMO_EMAIL;
+}
+
+function touchDemoActivity(req: any) {
+  if (isDemoUser(req)) {
+    demoLastActivity = Date.now();
+    if (!demoUserId) demoUserId = req.user!.id;
+  }
+}
 
 // ============================================================
 // Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
@@ -816,6 +834,12 @@ export async function registerRoutes(
 
   // ─── Protect all other API routes ─────────────────────────────────────────
   app.use("/api", requireAuth);
+
+  // ─── Track demo user activity ──────────────────────────────────────────────
+  app.use("/api", (req, _res, next) => {
+    touchDemoActivity(req);
+    next();
+  });
 
   // ─── Protected Auth Routes ──────────────────────────────────────────────────
   app.patch("/api/auth/profile", updateProfileHandler);
@@ -3462,9 +3486,12 @@ export async function registerRoutes(
     }
   });
 
-  // Delete a trade
+  // Delete a trade (blocked for demo account)
   app.delete("/api/trades/:id", async (req, res) => {
     try {
+      if (isDemoUser(req)) {
+        return res.status(403).json({ error: "Demo account trades cannot be deleted. You can close trades instead. The account resets after 60 minutes of inactivity." });
+      }
       const id = parseInt(req.params.id);
       await storage.deleteTrade(req.user!.id, id);
       res.json({ ok: true });
@@ -3524,6 +3551,32 @@ export async function registerRoutes(
   // Initialize background price snapshot cron job
   const { initCron } = await import("./cron");
   initCron(getQuote, ensureReady);
+
+  // ─── Demo Account Idle Reset Timer ────────────────────────────────────────
+  // Check every 5 minutes. If demo was active and is now idle for 60 min, reset.
+  const demoPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
+    max: 2,
+  });
+
+  setInterval(async () => {
+    try {
+      // Only reset if the demo user was active at some point
+      if (demoLastActivity === 0) return;
+      const elapsed = Date.now() - demoLastActivity;
+      if (elapsed >= DEMO_IDLE_TIMEOUT_MS && !demoResetInProgress) {
+        demoResetInProgress = true;
+        console.log(`[demo] Idle for ${Math.round(elapsed / 60000)}m — resetting account...`);
+        await seedDemoAccount(demoPool);
+        demoLastActivity = 0; // reset tracker so it doesn't keep firing
+        demoResetInProgress = false;
+        console.log(`[demo] Account reset complete.`);
+      }
+    } catch (err: any) {
+      demoResetInProgress = false;
+      console.error(`[demo] Reset failed:`, err.message);
+    }
+  }, 5 * 60 * 1000); // check every 5 minutes
 
   return httpServer;
 }

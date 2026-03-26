@@ -548,6 +548,11 @@ export default function TradeTracker() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onError: (err: any) => {
+      const msg = err.message || "";
+      // Extract readable message from "403: {"error":"..."}"
+      try { const parsed = JSON.parse(msg.replace(/^\d+:\s*/, "")); alert(parsed.error); } catch { alert(msg); }
+    },
   });
 
   const filtered = useMemo(() => {
