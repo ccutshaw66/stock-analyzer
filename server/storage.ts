@@ -6,7 +6,8 @@ import {
   type AccountTransaction, type InsertAccountTransaction,
   type PasswordResetToken,
   type TradePriceHistory, type InsertTradePriceHistory,
-  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory,
+  type DividendPortfolioItem, type InsertDividendPortfolioItem,
+  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -56,6 +57,11 @@ export interface IStorage {
   getPriceHistory(tradeId: number): Promise<TradePriceHistory[]>;
   getPriceHistoryForUser(userId: number): Promise<TradePriceHistory[]>;
   getTradesMFEMAE(userId: number): Promise<{tradeId: number; mfe: number; mae: number; exitEfficiency: number}[]>;
+  // Dividend Portfolio
+  getDividendPortfolio(userId: number): Promise<DividendPortfolioItem[]>;
+  addDividendPosition(item: InsertDividendPortfolioItem): Promise<DividendPortfolioItem>;
+  updateDividendPosition(userId: number, id: number, data: Partial<InsertDividendPortfolioItem>): Promise<DividendPortfolioItem | undefined>;
+  removeDividendPosition(userId: number, id: number): Promise<void>;
   // Admin
   getAllUsers(): Promise<User[]>;
   deleteUser(userId: number): Promise<void>;
@@ -155,6 +161,19 @@ export class DatabaseStorage implements IStorage {
           token TEXT NOT NULL UNIQUE,
           expires_at TIMESTAMP NOT NULL,
           created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS dividend_portfolio (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id),
+          ticker TEXT NOT NULL,
+          company_name TEXT NOT NULL,
+          shares DOUBLE PRECISION NOT NULL,
+          avg_cost DOUBLE PRECISION NOT NULL,
+          frequency TEXT,
+          notes TEXT,
+          added_at TEXT NOT NULL
         )
       `);
     } finally {
@@ -358,6 +377,29 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
+  // ─── Dividend Portfolio ──────────────────────────────────────────────────
+
+  async getDividendPortfolio(userId: number): Promise<DividendPortfolioItem[]> {
+    return db.select().from(dividendPortfolio).where(eq(dividendPortfolio.userId, userId));
+  }
+
+  async addDividendPosition(item: InsertDividendPortfolioItem): Promise<DividendPortfolioItem> {
+    const rows = await db.insert(dividendPortfolio).values(item).returning();
+    return rows[0];
+  }
+
+  async updateDividendPosition(userId: number, id: number, data: Partial<InsertDividendPortfolioItem>): Promise<DividendPortfolioItem | undefined> {
+    const rows = await db.update(dividendPortfolio)
+      .set(data)
+      .where(and(eq(dividendPortfolio.id, id), eq(dividendPortfolio.userId, userId)))
+      .returning();
+    return rows[0];
+  }
+
+  async removeDividendPosition(userId: number, id: number): Promise<void> {
+    await db.delete(dividendPortfolio).where(and(eq(dividendPortfolio.id, id), eq(dividendPortfolio.userId, userId)));
+  }
+
   // ─── Admin ────────────────────────────────────────────────────────────────
 
   async getAllUsers(): Promise<User[]> {
@@ -371,6 +413,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(accountSettings).where(eq(accountSettings.userId, userId));
     await db.delete(trades).where(eq(trades.userId, userId));
     await db.delete(favorites).where(eq(favorites.userId, userId));
+    await db.delete(dividendPortfolio).where(eq(dividendPortfolio.userId, userId));
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
     await db.delete(users).where(eq(users.id, userId));
   }

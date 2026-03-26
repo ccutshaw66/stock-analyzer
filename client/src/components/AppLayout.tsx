@@ -38,6 +38,7 @@ import {
   UserCircle,
   Shield,
   DollarSign,
+  Landmark,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -432,6 +433,7 @@ function Sidebar({
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
         { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
+        { path: "/dividend-portfolio", label: "Dividend Portfolio", icon: Landmark },
       ],
     },
     {

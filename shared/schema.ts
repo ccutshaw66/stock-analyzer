@@ -79,6 +79,18 @@ export const tradePriceHistory = pgTable("trade_price_history", {
   unrealizedPL: doublePrecision("unrealized_pl"),
 });
 
+export const dividendPortfolio = pgTable("dividend_portfolio", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  ticker: text("ticker").notNull(),
+  companyName: text("company_name").notNull(),
+  shares: doublePrecision("shares").notNull(),
+  avgCost: doublePrecision("avg_cost").notNull(),
+  frequency: text("frequency"), // Monthly, Quarterly, Semi-Annual, Annual
+  notes: text("notes"),
+  addedAt: text("added_at").notNull(),
+});
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -112,6 +124,7 @@ export const insertAccountTransactionSchema = createInsertSchema(accountTransact
 });
 
 export const insertTradePriceHistorySchema = createInsertSchema(tradePriceHistory).omit({ id: true });
+export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfolio).omit({ id: true });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +140,8 @@ export type AccountTransaction = typeof accountTransactions.$inferSelect;
 export type InsertAccountTransaction = z.infer<typeof insertAccountTransactionSchema>;
 export type TradePriceHistory = typeof tradePriceHistory.$inferSelect;
 export type InsertTradePriceHistory = z.infer<typeof insertTradePriceHistorySchema>;
+export type DividendPortfolioItem = typeof dividendPortfolio.$inferSelect;
+export type InsertDividendPortfolioItem = z.infer<typeof insertDividendPortfolioSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
