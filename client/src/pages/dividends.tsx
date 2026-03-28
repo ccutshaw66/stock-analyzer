@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   DollarSign, TrendingUp, Calendar, Percent, Award,
   Activity, AlertTriangle, Search, Loader2, Clock,
+  CalendarDays, PiggyBank, Zap,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
@@ -436,6 +437,189 @@ export default function Dividends() {
           </div>
         )}
       </div>
+
+      {/* Weekly Dividend Strategy (Bowtie Nation) */}
+      <WeeklyStrategy setActiveTicker={setActiveTicker} />
+    </div>
+  );
+}
+
+// ─── Weekly Strategy Component ────────────────────────────────────────────
+
+interface WeeklyItem {
+  ticker: string;
+  week: number;
+  months: string;
+  role: string;
+  note: string;
+  companyName: string;
+  price: number;
+  dividendYield: number;
+  dividendRate: number;
+  annualDividend: number;
+  exDividendDate: string | null;
+  distributionDate: string | null;
+  frequency: string;
+  payoutRatio: number;
+  score: number;
+}
+
+interface WeeklyData {
+  strategy: string;
+  description: string;
+  weeklyPlan: WeeklyItem[];
+  stats: { totalStocks: number; quarterlyPayers: number; monthlyPayers: number; avgYield: number; avgScore: number };
+}
+
+function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => void }) {
+  const [showStrategy, setShowStrategy] = useState(false);
+
+  const { data, isLoading } = useQuery<WeeklyData>({
+    queryKey: ["/api/dividends/weekly-strategy"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/dividends/weekly-strategy");
+      return res.json();
+    },
+    enabled: showStrategy,
+  });
+
+  const yieldColor = (y: number) =>
+    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+  const scoreColor = (s: number) =>
+    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+
+  const quarterlyStocks = data?.weeklyPlan.filter(s => s.months !== "Monthly") || [];
+  const monthlyStocks = data?.weeklyPlan.filter(s => s.months === "Monthly") || [];
+
+  // Group quarterly by month schedule
+  const q1 = quarterlyStocks.filter(s => s.months.startsWith("Jan"));
+  const q2 = quarterlyStocks.filter(s => s.months.startsWith("Feb"));
+  const q3 = quarterlyStocks.filter(s => s.months.startsWith("Mar"));
+
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-4" data-testid="weekly-strategy">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-bold text-foreground">Weekly Dividend Strategy</h3>
+          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Bowtie Nation</span>
+        </div>
+        <button
+          onClick={() => setShowStrategy(!showStrategy)}
+          className="h-7 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5"
+          data-testid="button-load-weekly"
+        >
+          {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+          {showStrategy ? "Refresh" : "Load Strategy"}
+        </button>
+      </div>
+
+      {!showStrategy && (
+        <p className="text-xs text-muted-foreground">
+          12 quarterly payers staggered across weeks + 4 monthly payers = dividends hitting your account every single week. Click "Load Strategy" to see the full plan with live data.
+        </p>
+      )}
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-6">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading 16 stocks with live dividend data...</span>
+          </div>
+        </div>
+      )}
+
+      {data && !isLoading && (
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">{data.description}</p>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Stocks</span>
+              <span className="text-sm font-bold text-foreground">{data.stats.totalStocks}</span>
+              <span className="text-[9px] text-muted-foreground block">{data.stats.quarterlyPayers}Q + {data.stats.monthlyPayers}M</span>
+            </div>
+            <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Avg Yield</span>
+              <span className={`text-sm font-bold ${yieldColor(data.stats.avgYield)}`}>{data.stats.avgYield}%</span>
+            </div>
+            <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Avg Score</span>
+              <span className={`text-sm font-bold ${scoreColor(data.stats.avgScore)}`}>{data.stats.avgScore}</span>
+            </div>
+            <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Coverage</span>
+              <span className="text-sm font-bold text-green-400">52 weeks</span>
+              <span className="text-[9px] text-muted-foreground block">Every week paid</span>
+            </div>
+          </div>
+
+          {/* Monthly Payers */}
+          <div>
+            <h4 className="text-xs font-bold text-primary mb-2 flex items-center gap-1.5">
+              <PiggyBank className="h-3.5 w-3.5" /> Monthly Payers (double up every week)
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {monthlyStocks.map(s => (
+                <div key={s.ticker} className="bg-primary/5 border border-primary/20 rounded-lg p-2 cursor-pointer hover:bg-primary/10 transition-colors" onClick={() => setActiveTicker(s.ticker)}>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-mono font-bold text-xs text-foreground">{s.ticker}</span>
+                    <span className={`text-[10px] font-bold ${yieldColor(s.dividendYield)}`}>{s.dividendYield.toFixed(1)}%</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground truncate">{s.companyName}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">${s.price.toFixed(2)} · ${s.dividendRate.toFixed(2)}/sh</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Quarterly Calendar */}
+          {[["Jan / Apr / Jul / Oct", q1, "#22c55e"], ["Feb / May / Aug / Nov", q2, "#6366f1"], ["Mar / Jun / Sep / Dec", q3, "#f97316"]] .map(([label, stocks, color]) => (
+            <div key={label as string}>
+              <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" style={{ color: color as string }} /> {label as string}
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-card-border text-muted-foreground">
+                      <th className="text-left py-1.5 px-2 font-semibold">Week</th>
+                      <th className="text-left py-1.5 px-2 font-semibold">Ticker</th>
+                      <th className="text-left py-1.5 px-2 font-semibold hidden sm:table-cell">Company</th>
+                      <th className="text-right py-1.5 px-2 font-semibold">Price</th>
+                      <th className="text-right py-1.5 px-2 font-semibold">Yield</th>
+                      <th className="text-right py-1.5 px-2 font-semibold hidden md:table-cell">Div Rate</th>
+                      <th className="text-center py-1.5 px-2 font-semibold hidden md:table-cell">Ex-Div</th>
+                      <th className="text-right py-1.5 px-2 font-semibold hidden lg:table-cell">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(stocks as WeeklyItem[]).sort((a, b) => a.week - b.week).map(s => (
+                      <tr key={s.ticker} className="border-b border-card-border/30 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setActiveTicker(s.ticker)}>
+                        <td className="py-1.5 px-2">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${color as string}15`, color: color as string }}>Wk {s.week}</span>
+                        </td>
+                        <td className="py-1.5 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
+                        <td className="py-1.5 px-2 text-muted-foreground truncate max-w-[120px] hidden sm:table-cell">{s.companyName}</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-foreground">${s.price.toFixed(2)}</td>
+                        <td className={`py-1.5 px-2 text-right font-mono font-bold ${yieldColor(s.dividendYield)}`}>{s.dividendYield.toFixed(2)}%</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-foreground hidden md:table-cell">${s.dividendRate.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-center font-mono text-muted-foreground hidden md:table-cell">{s.exDividendDate || "—"}</td>
+                        <td className={`py-1.5 px-2 text-right font-mono font-bold hidden lg:table-cell ${scoreColor(s.score)}`}>{s.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+
+          <p className="text-[10px] text-muted-foreground italic px-1">
+            Strategy note: Buy equal dollar amounts of each. The 4 monthly payers ensure you get double payments every week. Quarterly payers fill the weeks between monthly payouts. Reinvest dividends (DRIP) to compound over time.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

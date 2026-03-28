@@ -60,6 +60,118 @@ function computeStockPL(t: Trade): number {
   return (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
 }
 
+// Estimate open option P/L using underlying stock price
+// For spreads: compare stock vs short strike to estimate if winning or losing
+// For naked options: estimate based on intrinsic value approximation
+function computeOptionPL(t: Trade): number {
+  if (!t.currentPrice || t.closeDate) return 0;
+  if (t.tradeCategory !== "Option") return 0;
+
+  const stock = t.currentPrice; // current stock price
+  const contracts = t.contractsShares;
+  const premium = Math.abs(t.openPrice); // what was paid/received
+  const isCredit = t.creditDebit === "CREDIT";
+  const sw = t.spreadWidth || 0;
+
+  // Parse strikes
+  const strikeParts = (t.strikes || "").replace(/\|/g, "/").split("/").map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+  if (strikeParts.length === 0) return 0;
+
+  const shortStrike = strikeParts[0]; // first strike is typically the short leg
+  const type = t.tradeType;
+
+  // --- Credit Spreads (PCS, CCS, SP, SC) ---
+  // Max profit = premium received. Max loss = (spread width - premium) * 100 * contracts
+  // Estimate: if OTM (winning), approach max profit. If ITM (losing), estimate loss.
+  if (type === "PCS" || type === "SP") {
+    // Bullish: profit if stock stays ABOVE short strike
+    if (stock >= shortStrike) {
+      // Winning — estimate near max profit (closer to expiry = closer to max)
+      return premium * contracts * 100 * 0.8 - (t.commIn || 0);
+    } else {
+      // Losing — estimate based on how far ITM
+      const itm = shortStrike - stock;
+      const loss = Math.min(itm, sw || itm) * contracts * 100;
+      return premium * contracts * 100 - loss - (t.commIn || 0);
+    }
+  }
+
+  if (type === "CCS" || type === "SC") {
+    // Bearish: profit if stock stays BELOW short strike
+    if (stock <= shortStrike) {
+      return premium * contracts * 100 * 0.8 - (t.commIn || 0);
+    } else {
+      const itm = stock - shortStrike;
+      const loss = Math.min(itm, sw || itm) * contracts * 100;
+      return premium * contracts * 100 - loss - (t.commIn || 0);
+    }
+  }
+
+  // --- Debit Spreads (CDS, PDS) ---
+  if (type === "CDS") {
+    // Bullish: profit if stock moves ABOVE long strike
+    const longStrike = shortStrike; // first strike for CDS is the bought strike
+    if (stock > longStrike) {
+      const intrinsic = Math.min(stock - longStrike, sw || (stock - longStrike));
+      return (intrinsic - premium) * contracts * 100 - (t.commIn || 0);
+    } else {
+      return -premium * contracts * 100 * 0.8 - (t.commIn || 0);
+    }
+  }
+
+  if (type === "PDS") {
+    const longStrike = shortStrike;
+    if (stock < longStrike) {
+      const intrinsic = Math.min(longStrike - stock, sw || (longStrike - stock));
+      return (intrinsic - premium) * contracts * 100 - (t.commIn || 0);
+    } else {
+      return -premium * contracts * 100 * 0.8 - (t.commIn || 0);
+    }
+  }
+
+  // --- Naked Calls (C, DTC) ---
+  if (type === "C" || type === "DTC") {
+    const strike = shortStrike;
+    if (stock > strike) {
+      const intrinsic = stock - strike;
+      return (intrinsic - premium) * contracts * 100 - (t.commIn || 0);
+    } else {
+      // OTM — losing time value
+      return -premium * contracts * 100 * 0.5 - (t.commIn || 0);
+    }
+  }
+
+  // --- Naked Puts (P, DTP) ---
+  if (type === "P" || type === "DTP") {
+    const strike = shortStrike;
+    if (stock < strike) {
+      const intrinsic = strike - stock;
+      return (intrinsic - premium) * contracts * 100 - (t.commIn || 0);
+    } else {
+      return -premium * contracts * 100 * 0.5 - (t.commIn || 0);
+    }
+  }
+
+  // --- Butterflies & CTVs: rough estimate based on proximity to center ---
+  if (type.includes("BFLY") || type.includes("CTV")) {
+    // For butterflies, best at center strike. Rough: if near center, positive; if far, losing.
+    if (strikeParts.length >= 2) {
+      const center = (strikeParts[0] + strikeParts[strikeParts.length - 1]) / 2;
+      const dist = Math.abs(stock - center);
+      const halfWidth = sw ? sw / 2 : Math.abs(strikeParts[strikeParts.length - 1] - strikeParts[0]) / 2;
+      if (dist < halfWidth) {
+        // Near center — winning
+        const pctToCenter = 1 - (dist / halfWidth);
+        return (isCredit ? premium : (sw - premium)) * pctToCenter * contracts * 100 * 0.5 - (t.commIn || 0);
+      } else {
+        return isCredit ? premium * contracts * 100 * 0.3 - (t.commIn || 0) : -premium * contracts * 100 * 0.7 - (t.commIn || 0);
+      }
+    }
+  }
+
+  return 0;
+}
+
 function daysInTrade(t: Trade): number {
   const start = new Date(t.tradeDate);
   const end = t.closeDate ? new Date(t.closeDate) : new Date();
@@ -721,7 +833,7 @@ export default function TradeTracker() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={13} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
               ) : filtered.map(t => {
-                const profit = t.closeDate ? computeTradeProfit(t) : (t.tradeCategory === "Stock" ? computeStockPL(t) : 0);
+                const profit = t.closeDate ? computeTradeProfit(t) : (t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t));
                 const isOpen = !t.closeDate;
                 const days = daysInTrade(t);
                 const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
@@ -752,6 +864,7 @@ export default function TradeTracker() {
                     <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
                       {profit !== 0 ? formatCurrency(profit) : "—"}
                       {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                      {isOpen && t.tradeCategory === "Option" && profit !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
                     </td>
                     <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
                     <td className="py-2 px-3 text-center">

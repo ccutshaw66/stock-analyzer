@@ -6,6 +6,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useTicker } from "@/contexts/TickerContext";
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -141,10 +142,12 @@ function getStrikesCenter(strategy: Strategy, vals: Record<string, number>): num
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function PayoffDiagram() {
+  const { analysisData } = useTicker();
   const [strategy, setStrategy] = useState<Strategy>("long-call");
   const [fieldValues, setFieldValues] = useState<Record<string, number>>({ ...FIELD_DEFAULTS });
   const [showImport, setShowImport] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<string>("");
+  const [importedSymbol, setImportedSymbol] = useState<string>("");
 
   const def = STRATEGIES[strategy];
 
@@ -206,6 +209,7 @@ export default function PayoffDiagram() {
     }
 
     setFieldValues(newVals);
+    setImportedSymbol(trade.symbol);
   };
 
   const data = useMemo(() => {
@@ -227,6 +231,24 @@ export default function PayoffDiagram() {
     }
     return points;
   }, [strategy, fieldValues]);
+
+  // Current stock price from imported trade or active ticker
+  const currentStockPrice = useMemo(() => {
+    // If we imported a trade, try to get its current price from the trade data
+    if (selectedTradeId && openOptions.length > 0) {
+      const trade = openOptions.find((t: any) => String(t.id) === selectedTradeId);
+      if (trade?.currentPrice) return trade.currentPrice;
+    }
+    // Fall back to active ticker analysis data
+    if (analysisData?.quote?.price) return analysisData.quote.price;
+    return null;
+  }, [selectedTradeId, openOptions, analysisData]);
+
+  // P/L at current stock price
+  const currentPricePL = useMemo(() => {
+    if (currentStockPrice == null) return null;
+    return calcPL(strategy, fieldValues, currentStockPrice);
+  }, [currentStockPrice, strategy, fieldValues]);
 
   const summary = useMemo(() => {
     const pls = data.map(d => d.pl);
@@ -371,6 +393,20 @@ export default function PayoffDiagram() {
           {summary.breakevens.length === 0 && (
             <ResultCard label="Breakeven" value="N/A" color="text-muted-foreground" />
           )}
+          {currentStockPrice != null && currentPricePL != null && (
+            <ResultCard
+              label={`P/L @ $${currentStockPrice.toFixed(2)}`}
+              value={`${currentPricePL >= 0 ? "+" : ""}$${currentPricePL.toFixed(2)}`}
+              color={currentPricePL >= 0 ? "text-green-400" : "text-red-400"}
+            />
+          )}
+          {currentStockPrice != null && (
+            <ResultCard
+              label="Current Price"
+              value={`$${currentStockPrice.toFixed(2)}${importedSymbol ? ` (${importedSymbol})` : ""}`}
+              color="text-primary"
+            />
+          )}
         </div>
 
         {/* Chart */}
@@ -395,6 +431,21 @@ export default function PayoffDiagram() {
                 labelFormatter={(label: number) => `Stock: $${label.toFixed(2)}`}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeOpacity={0.7} />
+              {currentStockPrice != null && (
+                <ReferenceLine
+                  x={Math.round(currentStockPrice * 100) / 100}
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                  label={{
+                    value: `Current $${currentStockPrice.toFixed(2)}`,
+                    fill: "#6366f1",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    position: "top",
+                  }}
+                />
+              )}
               <Area
                 type="monotone"
                 dataKey="gain"

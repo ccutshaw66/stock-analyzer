@@ -965,12 +965,27 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const defaultTickers = [
-        // Monthly dividend payers
+        // Monthly dividend payers (REITs, BDCs, CEFs, covered-call ETFs)
         "O", "MAIN", "STAG", "AGNC", "SLG", "JEPI", "JEPQ", "DIVO", "QYLD", "RYLD", "XYLD",
-        // Quarterly blue chips
-        "HD", "JNJ", "KO", "PG", "T", "VZ", "ABBV", "XOM", "MO", "PEP", "CVX", "IBM", "PM",
-        // High yield
-        "BTI", "EPD", "ET", "MMP", "MPLX",
+        "GLAD", "GAIN", "PSEC", "LTC", "SPHD", "PBA", "WDIV",
+        // Dividend Kings (50+ years of increases)
+        "KO", "JNJ", "PG", "MMM", "EMR", "CL", "SWK", "LOW", "DOV", "GPC", "PH",
+        "ABT", "BDX", "HRL", "SJM", "TGT", "FRT", "AWR", "NWN",
+        // Dividend Aristocrats (25+ years)
+        "HD", "ABBV", "PEP", "CVX", "XOM", "IBM", "MCD", "WMT", "CAT", "ADP",
+        "AFL", "APD", "BEN", "CTAS", "ECL", "ED", "GD", "ITW", "KMB", "LEG",
+        "LIN", "MDT", "NEE", "NUE", "PPG", "SHW", "SPGI", "WBA",
+        // High yield favorites
+        "T", "VZ", "MO", "PM", "BTI", "EPD", "ET", "MPLX", "KMI", "OKE",
+        "ENB", "WPC", "NNN", "STORE", "ARCC", "HTGC", "TPVG", "NEWT",
+        // REITs
+        "SPG", "AVB", "AMT", "DLR", "PSA", "VICI", "MPW", "ARE",
+        // Utilities
+        "DUK", "SO", "D", "AEP", "XEL", "WEC", "DTE", "ES",
+        // Regional banks
+        "RF", "CFG", "HBAN", "KEY", "USB", "TFC",
+        // Bowtie Nation picks
+        "CSCO", "EOG", "F", "MDT", "BX",
       ];
       const tickersParam = req.query.tickers as string | undefined;
       const tickers = tickersParam
@@ -1006,6 +1021,83 @@ export async function registerRoutes(
       res.json(filtered);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to scan dividends" });
+    }
+  });
+
+  // ─── Weekly Dividend Strategy (Bowtie Nation-inspired) ──────────────────
+
+  app.get("/api/dividends/weekly-strategy", async (req, res) => {
+    try {
+      await ensureReady();
+
+      // Bowtie Nation strategy: 12 stocks (3 per quarter offset), staggered across weeks
+      // Plus 4 monthly payers for double coverage = dividends every week
+      // Organized by payment schedule: Jan/Apr/Jul/Oct, Feb/May/Aug/Nov, Mar/Jun/Sep/Dec
+      const weeklyPlan = [
+        // ── Q1 Schedule: Jan, Apr, Jul, Oct ──
+        { ticker: "CSCO", week: 1, months: "Jan/Apr/Jul/Oct", role: "Week 1 Quarterly", note: "Tech dividend grower, 2.4% yield, AI data center exposure" },
+        { ticker: "EOG", week: 2, months: "Jan/Apr/Jul/Oct", role: "Week 2 Quarterly", note: "Natural gas leader, 3.4% yield, 20% annual dividend growth" },
+        { ticker: "ABBV", week: 3, months: "Jan/Apr/Jul/Oct", role: "Week 3 Quarterly", note: "Pharma powerhouse, 3.5% yield, strong pipeline" },
+        { ticker: "F", week: 4, months: "Jan/Apr/Jul/Oct", role: "Week 4 Quarterly", note: "High yield value play, 6.9% yield, F-150 dominance" },
+        // ── Q2 Schedule: Feb, May, Aug, Nov ──
+        { ticker: "KMI", week: 1, months: "Feb/May/Aug/Nov", role: "Week 1 Quarterly", note: "Pipeline giant, 4% yield, 80K miles of infrastructure" },
+        { ticker: "DUK", week: 2, months: "Feb/May/Aug/Nov", role: "Week 2 Quarterly", note: "Utility stable income, 3.5% yield, 9M+ customers" },
+        { ticker: "NEE", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly", note: "Clean energy + utility combo, 3.3% yield, 10% div growth" },
+        { ticker: "AAPL", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Cash machine, modest yield but massive buybacks + growth" },
+        // ── Q3 Schedule: Mar, Jun, Sep, Dec ──
+        { ticker: "RF", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Regional bank, 4.2% yield, 10% annual dividend growth" },
+        { ticker: "BX", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Alternative asset manager, 3.5% yield, PE/RE exposure" },
+        { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly", note: "Highest yield in group, 7% yield, 50+ year payer" },
+        { ticker: "MDT", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly", note: "MedTech leader, 3.2% yield, AI-enabled devices" },
+        // ── Monthly Payers (double up every week) ──
+        { ticker: "O", week: 0, months: "Monthly", role: "Monthly Payer", note: "The Monthly Dividend Company. REIT, 5%+ yield, 50+ year track record" },
+        { ticker: "JEPI", week: 0, months: "Monthly", role: "Monthly Payer", note: "JP Morgan covered call ETF, ~8% yield, lower volatility" },
+        { ticker: "MAIN", week: 0, months: "Monthly", role: "Monthly Payer", note: "BDC king, ~6% yield + special dividends, internally managed" },
+        { ticker: "EPD", week: 0, months: "Monthly", role: "Monthly Payer", note: "MLP pipeline, 6.4% yield, 25 consecutive years of increases" },
+      ];
+
+      // Enrich each with live data
+      const results = [];
+      for (const item of weeklyPlan) {
+        try {
+          const quote = await getQuote(item.ticker);
+          const divData = quote ? extractDividendData(item.ticker, quote) : null;
+          results.push({
+            ...item,
+            companyName: divData?.companyName || item.ticker,
+            price: divData?.price || 0,
+            dividendYield: divData?.dividendYield || 0,
+            dividendRate: divData?.dividendRate || 0,
+            annualDividend: divData?.annualDividend || 0,
+            exDividendDate: divData?.exDividendDate || null,
+            distributionDate: divData?.distributionDate || null,
+            frequency: divData?.frequency || (item.months === "Monthly" ? "Monthly" : "Quarterly"),
+            payoutRatio: divData?.payoutRatio || 0,
+            score: divData?.score || 0,
+          });
+        } catch (err: any) {
+          results.push({ ...item, companyName: item.ticker, price: 0, dividendYield: 0, dividendRate: 0, annualDividend: 0, exDividendDate: null, distributionDate: null, frequency: item.months === "Monthly" ? "Monthly" : "Quarterly", payoutRatio: 0, score: 0 });
+        }
+      }
+
+      // Calculate portfolio stats
+      const totalYield = results.reduce((s, r) => s + r.dividendYield, 0) / results.length;
+      const totalAnnualPerShare = results.reduce((s, r) => s + r.annualDividend, 0);
+
+      res.json({
+        strategy: "Weekly Dividend Calendar",
+        description: "Inspired by Bowtie Nation (Joseph Hogue). 12 quarterly payers staggered across weeks + 4 monthly payers = dividends hitting your account every single week. Buy equal dollar amounts of each.",
+        weeklyPlan: results,
+        stats: {
+          totalStocks: results.length,
+          quarterlyPayers: results.filter(r => r.months !== "Monthly").length,
+          monthlyPayers: results.filter(r => r.months === "Monthly").length,
+          avgYield: Number(totalYield.toFixed(2)),
+          avgScore: Math.round(results.reduce((s, r) => s + r.score, 0) / results.length),
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build weekly strategy" });
     }
   });
 
@@ -1447,9 +1539,23 @@ export async function registerRoutes(
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
-      const { chartData, computedReturn: ret1Y } = extractChartData(chart1Y);
+      const { chartData: rawChartData, computedReturn: ret1Y } = extractChartData(chart1Y);
       const { computedReturn: ret3Y } = extractChartData(chart3Y);
       const { computedReturn: ret5Y } = extractChartData(chart5Y);
+
+      // Add EMA 9/21/50 + SMA 200 overlays to chart data
+      const chartCloses = rawChartData.map((d: any) => d.close);
+      const ema9Arr = computeEMA(chartCloses, 9);
+      const ema21Arr = computeEMA(chartCloses, 21);
+      const ema50Arr = computeEMA(chartCloses, 50);
+      const sma200Arr = computeSMA(chartCloses, 200);
+      const chartData = rawChartData.map((d: any, i: number) => ({
+        ...d,
+        ema9: !isNaN(ema9Arr[i]) ? Number(ema9Arr[i].toFixed(2)) : null,
+        ema21: !isNaN(ema21Arr[i]) ? Number(ema21Arr[i].toFixed(2)) : null,
+        ema50: !isNaN(ema50Arr[i]) ? Number(ema50Arr[i].toFixed(2)) : null,
+        sma200: !isNaN(sma200Arr[i]) ? Number(sma200Arr[i].toFixed(2)) : null,
+      }));
 
       const historicalReturns = {
         oneYear: ret1Y,
