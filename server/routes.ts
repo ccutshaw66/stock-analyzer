@@ -997,46 +997,46 @@ export async function registerRoutes(
     if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
+      // Curated 40 best dividend stocks — manageable for Yahoo rate limits
+      // Mix of: monthly payers, Dividend Kings/Aristocrats, high yield, REITs, utilities
       const defaultTickers = [
-        // Monthly dividend payers (REITs, BDCs, CEFs, covered-call ETFs)
-        "O", "MAIN", "STAG", "AGNC", "SLG", "JEPI", "JEPQ", "DIVO", "QYLD", "RYLD", "XYLD",
-        "GLAD", "GAIN", "PSEC", "LTC", "SPHD", "PBA", "WDIV",
-        // Dividend Kings (50+ years of increases)
-        "KO", "JNJ", "PG", "MMM", "EMR", "CL", "SWK", "LOW", "DOV", "GPC", "PH",
-        "ABT", "BDX", "HRL", "SJM", "TGT", "FRT", "AWR", "NWN",
-        // Dividend Aristocrats (25+ years)
-        "HD", "ABBV", "PEP", "CVX", "XOM", "IBM", "MCD", "WMT", "CAT", "ADP",
-        "AFL", "APD", "BEN", "CTAS", "ECL", "ED", "GD", "ITW", "KMB", "LEG",
-        "LIN", "MDT", "NEE", "NUE", "PPG", "SHW", "SPGI", "WBA",
-        // High yield favorites
-        "T", "VZ", "MO", "PM", "BTI", "EPD", "ET", "MPLX", "KMI", "OKE",
-        "ENB", "WPC", "NNN", "STORE", "ARCC", "HTGC", "TPVG", "NEWT",
+        // Monthly payers
+        "O", "MAIN", "JEPI", "JEPQ", "EPD", "STAG", "AGNC",
+        // High yield (5%+)
+        "MO", "T", "VZ", "PFE", "ET", "KMI", "BTI",
+        // Dividend Aristocrats / Kings
+        "KO", "JNJ", "PG", "ABBV", "XOM", "CVX", "HD", "PEP", "KMB", "IBM",
         // REITs
-        "SPG", "AVB", "AMT", "DLR", "PSA", "VICI", "MPW", "ARE",
+        "SPG", "PSA", "VICI", "WPC", "DLR",
         // Utilities
-        "DUK", "SO", "D", "AEP", "XEL", "WEC", "DTE", "ES",
-        // Regional banks
-        "RF", "CFG", "HBAN", "KEY", "USB", "TFC",
-        // Bowtie Nation picks
-        "CSCO", "EOG", "F", "MDT", "BX",
+        "DUK", "SO", "NEE", "D",
+        // Solid mid-yield
+        "MCD", "TGT", "AFL", "EOG", "ARCC", "HTGC",
       ];
       const tickersParam = req.query.tickers as string | undefined;
       const tickers = tickersParam
         ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
         : defaultTickers;
+      // Deduplicate
+      const uniqueTickers = [...new Set(tickers)];
 
+      // Fetch in batches of 5 — the global queue handles rate limiting
       const results: any[] = [];
-      for (let i = 0; i < tickers.length; i++) {
-        try {
-          const quote = await getQuote(tickers[i]);
-          if (quote) {
-            results.push(extractDividendData(tickers[i], quote));
-          }
-        } catch (err: any) {
-          console.log(`[dividends] Failed to fetch ${tickers[i]}: ${err.message}`);
-        }
-        if (i < tickers.length - 1) {
-          await new Promise(r => setTimeout(r, 400));
+      for (let i = 0; i < uniqueTickers.length; i += 5) {
+        const batch = uniqueTickers.slice(i, i + 5);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (ticker) => {
+            try {
+              const quote = await getQuote(ticker);
+              if (quote) return extractDividendData(ticker, quote);
+            } catch (err: any) {
+              console.log(`[dividends] Failed: ${ticker}: ${err.message}`);
+            }
+            return null;
+          })
+        );
+        for (const r of batchResults) {
+          if (r.status === "fulfilled" && r.value) results.push(r.value);
         }
       }
 
