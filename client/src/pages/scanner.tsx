@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { useTicker } from "@/contexts/TickerContext";
 import {
@@ -212,30 +212,32 @@ export default function Scanner() {
     marketCap, count: String(scanCount), showAll: String(showAll),
   }).toString();
 
-  // Separate queries so tab switching doesn't lose results
-  const { data: threeStratData, isFetching: threeStratFetching, refetch: threeStratRefetch } = useQuery<any>({
-    queryKey: ["/api/scanner", queryParams],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/scanner?${queryParams}`);
-      return res.json();
-    },
-    enabled: false,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const { data: amcData, isFetching: amcFetching, refetch: amcRefetch } = useQuery<any>({
-    queryKey: ["/api/scanner/amc", queryParams],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/scanner/amc?${queryParams}`);
-      return res.json();
-    },
-    enabled: false,
-    staleTime: 10 * 60 * 1000,
-  });
+  // Scan results persisted via queryClient cache so they survive page navigation
+  const [threeStratData, setThreeStratData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/3strat"]) || null);
+  const [amcData, setAmcData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/amc"]) || null);
+  const [isFetching, setIsFetching] = useState(false);
 
   const data = scanMode === "amc" ? amcData : threeStratData;
-  const isFetching = scanMode === "amc" ? amcFetching : threeStratFetching;
-  const refetch = scanMode === "amc" ? amcRefetch : threeStratRefetch;
+
+  const refetch = async () => {
+    setIsFetching(true);
+    try {
+      const endpoint = scanMode === "amc" ? `/api/scanner/amc?${queryParams}` : `/api/scanner?${queryParams}`;
+      const res = await apiRequest("GET", endpoint);
+      const result = await res.json();
+      if (scanMode === "amc") {
+        setAmcData(result);
+        queryClient.setQueryData(["/api/scanner/amc"], result);
+      } else {
+        setThreeStratData(result);
+        queryClient.setQueryData(["/api/scanner/3strat"], result);
+      }
+    } catch (err: any) {
+      console.error("Scanner fetch failed:", err);
+    } finally {
+      setIsFetching(false);
+    }
+  };
 
   const handleTickerClick = (ticker: string) => {
     setActiveTicker(ticker);
@@ -319,7 +321,7 @@ export default function Scanner() {
                   {showAll ? "Showing all results" : scanMode === "amc" ? "Score 3+ only" : "Score 2+ only"}
                 </button>
                 <button onClick={() => refetch()} disabled={isFetching} className={`inline-flex items-center gap-2 ${scanMode === "amc" ? "bg-purple-600 hover:bg-purple-500" : "bg-primary hover:bg-primary/90"} text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50`} data-testid="button-scan">
-                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />Scan {scanCount} Stocks</>)}
+                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />{data ? "New Scan" : `Scan ${scanCount} Stocks`}</>)}
                 </button>
               </div>
             </div>

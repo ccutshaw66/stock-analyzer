@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,21 +35,11 @@ interface DividendData {
 export default function Dividends() {
   const { activeTicker, setActiveTicker } = useTicker();
   const [customTickers, setCustomTickers] = useState("");
-  const [scanTickers, setScanTickers] = useState<string | undefined>(undefined);
 
   // Filter state
   const [minYield, setMinYield] = useState<string>("");
   const [frequency, setFrequency] = useState("All");
   const [maxPayout, setMaxPayout] = useState<string>("");
-
-  // Build query params string for scan
-  const filterParams = useMemo(() => {
-    const parts: string[] = [];
-    if (minYield && parseFloat(minYield) > 0) parts.push(`minYield=${minYield}`);
-    if (frequency !== "All") parts.push(`frequency=${encodeURIComponent(frequency)}`);
-    if (maxPayout && parseFloat(maxPayout) < 100) parts.push(`maxPayout=${maxPayout}`);
-    return parts.length > 0 ? parts.join("&") : "";
-  }, [minYield, frequency, maxPayout]);
 
   // Fetch single ticker dividend data when active ticker is set
   const { data: tickerDividend, isLoading: isTickerLoading } = useQuery<DividendData>({
@@ -61,27 +51,39 @@ export default function Dividends() {
     enabled: !!activeTicker,
   });
 
-  // Scan query — uses enabled:false + manual refetch so data persists across page navigations
-  const { data: scanResults, isLoading: isScanLoading, refetch: runScan } = useQuery<DividendData[]>({
-    queryKey: ["/api/dividends/scan", scanTickers || "default", filterParams],
-    queryFn: async () => {
-      let url = scanTickers
-        ? `/api/dividends/scan?tickers=${scanTickers}`
-        : "/api/dividends/scan";
-      if (filterParams) {
-        url += url.includes("?") ? `&${filterParams}` : `?${filterParams}`;
-      }
-      const res = await apiRequest("GET", url);
-      return res.json();
-    },
-    enabled: false,
+  // Scan results — persisted in state so they survive page navigation
+  // We use queryClient.fetchQuery to do the actual fetch, then store in local state
+  const [scanResults, setScanResults] = useState<DividendData[] | null>(() => {
+    // Restore from query cache on mount if available
+    return queryClient.getQueryData<DividendData[]>(["/api/dividends/scan"]) || null;
   });
+  const [isScanLoading, setIsScanLoading] = useState(false);
 
-  const handleScanDefault = () => {
-    setScanTickers(undefined);
-    // Small delay to let state update before refetch builds the URL
-    setTimeout(() => runScan(), 0);
+  const doScan = async (tickers?: string) => {
+    setIsScanLoading(true);
+    try {
+      let url = tickers
+        ? `/api/dividends/scan?tickers=${tickers}`
+        : "/api/dividends/scan";
+      const parts: string[] = [];
+      if (minYield && parseFloat(minYield) > 0) parts.push(`minYield=${minYield}`);
+      if (frequency !== "All") parts.push(`frequency=${encodeURIComponent(frequency)}`);
+      if (maxPayout && parseFloat(maxPayout) < 100) parts.push(`maxPayout=${maxPayout}`);
+      if (parts.length > 0) url += url.includes("?") ? `&${parts.join("&")}` : `?${parts.join("&")}`;
+
+      const res = await apiRequest("GET", url);
+      const data = await res.json();
+      setScanResults(data);
+      // Also store in query cache so it persists across navigations
+      queryClient.setQueryData(["/api/dividends/scan"], data);
+    } catch (err: any) {
+      console.error("Scan failed:", err);
+    } finally {
+      setIsScanLoading(false);
+    }
   };
+
+  const handleScanDefault = () => doScan();
 
   const handleScanCustom = () => {
     const cleaned = customTickers
@@ -89,10 +91,7 @@ export default function Dividends() {
       .map(t => t.trim().toUpperCase())
       .filter(Boolean)
       .join(",");
-    if (cleaned) {
-      setScanTickers(cleaned);
-      setTimeout(() => runScan(), 0);
-    }
+    if (cleaned) doScan(cleaned);
   };
 
   const yieldColor = (y: number) =>

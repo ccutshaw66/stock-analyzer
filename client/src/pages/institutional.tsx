@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
 import {
@@ -380,19 +380,26 @@ export default function Institutional() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Batch scan
-  const { data: scanData, isFetching: scanFetching, refetch: scanRefetch } = useQuery<ScanResult>({
-    queryKey: ["/api/institutional-scan", scanMode === "custom" ? customTickers : "default"],
-    queryFn: async () => {
+  // Batch scan — persisted via queryClient cache
+  const [scanData, setScanData] = useState<ScanResult | null>(() => queryClient.getQueryData(["/api/institutional-scan"]) || null);
+  const [scanFetching, setScanFetching] = useState(false);
+
+  const scanRefetch = async () => {
+    setScanFetching(true);
+    try {
       const params = scanMode === "custom" && customTickers.trim()
         ? `?tickers=${encodeURIComponent(customTickers.trim())}`
         : "";
       const res = await apiRequest("GET", `/api/institutional-scan${params}`);
-      return res.json();
-    },
-    enabled: false,
-    staleTime: 10 * 60 * 1000,
-  });
+      const result = await res.json();
+      setScanData(result);
+      queryClient.setQueryData(["/api/institutional-scan"], result);
+    } catch (err: any) {
+      console.error("Institutional scan failed:", err);
+    } finally {
+      setScanFetching(false);
+    }
+  };
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="institutional-page">
@@ -513,7 +520,7 @@ export default function Institutional() {
           {scanFetching ? (
             <><Loader2 className="h-4 w-4 animate-spin" />Scanning...</>
           ) : (
-            <><Search className="h-4 w-4" />Scan Institutional Flow</>
+            <><Search className="h-4 w-4" />{scanData ? "New Scan" : "Scan Institutional Flow"}</>
           )}
         </button>
       </div>
