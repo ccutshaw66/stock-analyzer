@@ -315,7 +315,7 @@ export default function Dividends() {
               className="w-full h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
               data-testid="button-scan-default"
             >
-              {isScanLoading && !scanTickers ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {isScanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
               {scanResults ? "New Scan" : "Scan"}
             </button>
           </div>
@@ -337,7 +337,7 @@ export default function Dividends() {
               className="h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
               data-testid="button-scan-custom"
             >
-              {isScanLoading && scanTickers ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {isScanLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
               Scan Custom
             </button>
           </div>
