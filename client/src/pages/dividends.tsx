@@ -462,22 +462,31 @@ interface WeeklyData {
   strategy: string;
   description: string;
   weeklyPlan: WeeklyItem[];
+  refreshed: boolean;
   stats: { totalStocks: number; quarterlyPayers: number; monthlyPayers: number; avgYield: number; avgScore: number };
 }
 
 function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => void }) {
-  // Initialize from cache — if we loaded it before, show it immediately
-  const cachedData = queryClient.getQueryData<WeeklyData>(["/api/dividends/weekly-strategy"]);
-  const [showStrategy, setShowStrategy] = useState(!!cachedData);
+  // Load static strategy immediately (no Yahoo calls), refresh prices on demand
+  const [data, setData] = useState<WeeklyData | null>(() => queryClient.getQueryData(["/api/dividends/weekly-strategy"]) || null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showStrategy, setShowStrategy] = useState(!!data);
 
-  const { data, isLoading } = useQuery<WeeklyData>({
-    queryKey: ["/api/dividends/weekly-strategy"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/dividends/weekly-strategy");
-      return res.json();
-    },
-    enabled: showStrategy,
-  });
+  const loadStrategy = async (refresh = false) => {
+    setShowStrategy(true);
+    setIsLoading(true);
+    try {
+      const url = refresh ? "/api/dividends/weekly-strategy?refresh=true" : "/api/dividends/weekly-strategy";
+      const res = await apiRequest("GET", url);
+      const result = await res.json();
+      setData(result);
+      queryClient.setQueryData(["/api/dividends/weekly-strategy"], result);
+    } catch (err: any) {
+      console.error("Weekly strategy load failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const yieldColor = (y: number) =>
     y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
@@ -487,7 +496,6 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
   const quarterlyStocks = data?.weeklyPlan.filter(s => s.months !== "Monthly") || [];
   const monthlyStocks = data?.weeklyPlan.filter(s => s.months === "Monthly") || [];
 
-  // Group quarterly by month schedule
   const q1 = quarterlyStocks.filter(s => s.months.startsWith("Jan"));
   const q2 = quarterlyStocks.filter(s => s.months.startsWith("Feb"));
   const q3 = quarterlyStocks.filter(s => s.months.startsWith("Mar"));
@@ -500,19 +508,33 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
           <h3 className="text-sm font-bold text-foreground">Weekly Dividend Strategy</h3>
           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Bowtie Nation</span>
         </div>
-        <button
-          onClick={() => setShowStrategy(!showStrategy)}
-          className="h-7 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5"
-          data-testid="button-load-weekly"
-        >
-          {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
-          {showStrategy ? "Refresh" : "Load Strategy"}
-        </button>
+        <div className="flex items-center gap-2">
+          {showStrategy && data && (
+            <button
+              onClick={() => loadStrategy(true)}
+              disabled={isLoading}
+              className="h-7 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              data-testid="button-refresh-weekly"
+            >
+              {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              Refresh Prices
+            </button>
+          )}
+          {!showStrategy && (
+            <button
+              onClick={() => loadStrategy(false)}
+              className="h-7 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5"
+              data-testid="button-load-weekly"
+            >
+              <Zap className="h-3 w-3" /> Show Strategy
+            </button>
+          )}
+        </div>
       </div>
 
       {!showStrategy && (
         <p className="text-xs text-muted-foreground">
-          12 quarterly payers staggered across weeks + 4 monthly payers = dividends hitting your account every single week. Click "Load Strategy" to see the full plan with live data.
+          12 quarterly payers staggered across weeks + 4 monthly payers = dividends hitting your account every single week. All picks target 70+ dividend score.
         </p>
       )}
 
@@ -520,7 +542,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
         <div className="flex items-center justify-center py-6">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Loading 16 stocks with live dividend data...</span>
+            <span>{data?.refreshed ? "Refreshing prices from Yahoo..." : "Loading strategy..."}</span>
           </div>
         </div>
       )}

@@ -421,7 +421,7 @@ function Sidebar({
     {
       label: "Company Information",
       items: [
-        { path: "/", label: "Profile", icon: BarChart3 },
+        { path: "/profile", label: "Profile", icon: BarChart3 },
         { path: "/institutional", label: "Institutions", icon: Building2 },
         { path: "/trade", label: "Trade Analysis", icon: Activity },
         { path: "/verdict", label: "Verdict", icon: Award },
@@ -434,7 +434,6 @@ function Sidebar({
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
         { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
-        { path: "/dividend-portfolio", label: "Dividend Portfolio", icon: Landmark },
         { path: "/mm-exposure", label: "MM Exposure", icon: Crosshair },
       ],
     },
@@ -451,6 +450,7 @@ function Sidebar({
       label: "Trade Tracker",
       items: [
         { path: "/tracker", label: "Current Positions", icon: ClipboardList },
+        { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
         { path: "#add-trade", label: "Add Trade", icon: Plus },
         { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
         { path: "/analytics", label: "Performance Analytics", icon: PieChart },

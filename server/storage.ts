@@ -15,6 +15,10 @@ import { eq, and, desc, sql, count } from "drizzle-orm";
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
+  max: 20,                    // max connections (default was 10)
+  min: 2,                     // keep 2 idle connections warm
+  idleTimeoutMillis: 30000,   // close idle connections after 30s
+  connectionTimeoutMillis: 5000, // fail fast if can't connect in 5s
 });
 
 export const db = drizzle(pool);

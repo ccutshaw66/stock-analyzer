@@ -853,6 +853,26 @@ export async function registerRoutes(
     next();
   });
 
+  // ─── Per-user API rate limiter (scan endpoints) ───────────────────────
+  const userScanTimestamps = new Map<number, number[]>();
+  const MAX_SCANS_PER_MINUTE = 3;
+
+  function checkScanRateLimit(req: any, res: any): boolean {
+    const userId = req.user?.id;
+    if (!userId) return false;
+    const now = Date.now();
+    const timestamps = userScanTimestamps.get(userId) || [];
+    // Remove entries older than 60 seconds
+    const recent = timestamps.filter(t => now - t < 60000);
+    if (recent.length >= MAX_SCANS_PER_MINUTE) {
+      res.status(429).json({ error: `Rate limited — max ${MAX_SCANS_PER_MINUTE} scans per minute. Results are cached, try again in a moment.` });
+      return true;
+    }
+    recent.push(now);
+    userScanTimestamps.set(userId, recent);
+    return false;
+  }
+
   // ─── Protected Auth Routes ──────────────────────────────────────────────────
   app.patch("/api/auth/profile", updateProfileHandler);
   app.post("/api/auth/change-password", changePasswordHandler);
@@ -974,6 +994,7 @@ export async function registerRoutes(
   }
 
   app.get("/api/dividends/scan", async (req, res) => {
+    if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
       const defaultTickers = [
@@ -1040,74 +1061,88 @@ export async function registerRoutes(
 
   app.get("/api/dividends/weekly-strategy", async (req, res) => {
     try {
-      await ensureReady();
-
-      // Bowtie Nation strategy: 12 stocks (3 per quarter offset), staggered across weeks
-      // Plus 4 monthly payers for double coverage = dividends every week
-      // Organized by payment schedule: Jan/Apr/Jul/Oct, Feb/May/Aug/Nov, Mar/Jun/Sep/Dec
+      // Static strategy data — no Yahoo calls unless ?refresh=true
+      // All picks target dividend score 70+ (3%+ yield, sustainable payout, consistent growth)
       const weeklyPlan = [
         // ── Q1 Schedule: Jan, Apr, Jul, Oct ──
-        { ticker: "CSCO", week: 1, months: "Jan/Apr/Jul/Oct", role: "Week 1 Quarterly", note: "Tech dividend grower, 2.4% yield, AI data center exposure" },
+        { ticker: "XOM", week: 1, months: "Jan/Apr/Jul/Oct", role: "Week 1 Quarterly", note: "Oil supermajor, 3.4% yield, 40+ years of increases, massive cash flow" },
         { ticker: "EOG", week: 2, months: "Jan/Apr/Jul/Oct", role: "Week 2 Quarterly", note: "Natural gas leader, 3.4% yield, 20% annual dividend growth" },
-        { ticker: "ABBV", week: 3, months: "Jan/Apr/Jul/Oct", role: "Week 3 Quarterly", note: "Pharma powerhouse, 3.5% yield, strong pipeline" },
-        { ticker: "F", week: 4, months: "Jan/Apr/Jul/Oct", role: "Week 4 Quarterly", note: "High yield value play, 6.9% yield, F-150 dominance" },
+        { ticker: "ABBV", week: 3, months: "Jan/Apr/Jul/Oct", role: "Week 3 Quarterly", note: "Pharma powerhouse, 3.5% yield, 50+ year dividend streak" },
+        { ticker: "T", week: 4, months: "Jan/Apr/Jul/Oct", role: "Week 4 Quarterly", note: "Telecom giant, 4%+ yield, stabilized after restructuring" },
         // ── Q2 Schedule: Feb, May, Aug, Nov ──
         { ticker: "KMI", week: 1, months: "Feb/May/Aug/Nov", role: "Week 1 Quarterly", note: "Pipeline giant, 4% yield, 80K miles of infrastructure" },
         { ticker: "DUK", week: 2, months: "Feb/May/Aug/Nov", role: "Week 2 Quarterly", note: "Utility stable income, 3.5% yield, 9M+ customers" },
-        { ticker: "NEE", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly", note: "Clean energy + utility combo, 3.3% yield, 10% div growth" },
-        { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Pharma giant, 6%+ yield, massive pipeline, ex-div late Jan cycle" },
+        { ticker: "VZ", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly", note: "Telecom, 5.5%+ yield, 19 consecutive years of increases" },
+        { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Pharma giant, 6%+ yield, massive pipeline" },
         // ── Q3 Schedule: Mar, Jun, Sep, Dec ──
-        { ticker: "RF", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Regional bank, 4.2% yield, 10% annual dividend growth" },
-        { ticker: "BX", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Alternative asset manager, 3.5% yield, PE/RE exposure" },
-        { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly", note: "Highest yield in group, 7% yield, 50+ year payer" },
-        { ticker: "MDT", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly", note: "MedTech leader, 3.2% yield, AI-enabled devices" },
+        { ticker: "CVX", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Energy, 3.9% yield, Very Safe payout, 37 years of increases" },
+        { ticker: "IBM", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Tech, 2.8% yield, AI pivot, 28 years of consecutive increases" },
+        { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly", note: "Highest yield in group, 7%+ yield, 50+ year payer" },
+        { ticker: "KMB", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly", note: "Consumer staples, 4.9% yield, Kleenex/Huggies, 52 year streak" },
         // ── Monthly Payers (double up every week) ──
-        { ticker: "O", week: 0, months: "Monthly", role: "Monthly Payer", note: "The Monthly Dividend Company. REIT, 5%+ yield, 50+ year track record" },
+        { ticker: "O", week: 0, months: "Monthly", role: "Monthly Payer", note: "The Monthly Dividend Company. REIT, 5%+ yield, Dividend Aristocrat" },
         { ticker: "JEPI", week: 0, months: "Monthly", role: "Monthly Payer", note: "JP Morgan covered call ETF, ~8% yield, lower volatility" },
         { ticker: "MAIN", week: 0, months: "Monthly", role: "Monthly Payer", note: "BDC king, ~6% yield + special dividends, internally managed" },
         { ticker: "EPD", week: 0, months: "Monthly", role: "Monthly Payer", note: "MLP pipeline, 6.4% yield, 25 consecutive years of increases" },
       ];
 
-      // Enrich each with live data
-      const results = [];
-      for (const item of weeklyPlan) {
-        try {
-          const quote = await getQuote(item.ticker);
-          const divData = quote ? extractDividendData(item.ticker, quote) : null;
-          results.push({
-            ...item,
-            companyName: divData?.companyName || item.ticker,
-            price: divData?.price || 0,
-            dividendYield: divData?.dividendYield || 0,
-            dividendRate: divData?.dividendRate || 0,
-            annualDividend: divData?.annualDividend || 0,
-            exDividendDate: divData?.exDividendDate || null,
-            distributionDate: divData?.distributionDate || null,
-            frequency: divData?.frequency || (item.months === "Monthly" ? "Monthly" : "Quarterly"),
-            payoutRatio: divData?.payoutRatio || 0,
-            score: divData?.score || 0,
-          });
-        } catch (err: any) {
-          results.push({ ...item, companyName: item.ticker, price: 0, dividendYield: 0, dividendRate: 0, annualDividend: 0, exDividendDate: null, distributionDate: null, frequency: item.months === "Monthly" ? "Monthly" : "Quarterly", payoutRatio: 0, score: 0 });
+      const refreshPrices = req.query.refresh === "true";
+
+      if (refreshPrices) {
+        // Enrich with live Yahoo data (only when explicitly requested)
+        await ensureReady();
+        const results = [];
+        for (const item of weeklyPlan) {
+          try {
+            const quote = await getQuote(item.ticker);
+            const divData = quote ? extractDividendData(item.ticker, quote) : null;
+            results.push({
+              ...item,
+              companyName: divData?.companyName || item.ticker,
+              price: divData?.price || 0,
+              dividendYield: divData?.dividendYield || 0,
+              dividendRate: divData?.dividendRate || 0,
+              annualDividend: divData?.annualDividend || 0,
+              exDividendDate: divData?.exDividendDate || null,
+              distributionDate: divData?.distributionDate || null,
+              frequency: divData?.frequency || (item.months === "Monthly" ? "Monthly" : "Quarterly"),
+              payoutRatio: divData?.payoutRatio || 0,
+              score: divData?.score || 0,
+            });
+          } catch (err: any) {
+            results.push({ ...item, companyName: item.ticker, price: 0, dividendYield: 0, dividendRate: 0, annualDividend: 0, exDividendDate: null, distributionDate: null, frequency: item.months === "Monthly" ? "Monthly" : "Quarterly", payoutRatio: 0, score: 0 });
+          }
         }
+        const totalYield = results.reduce((s, r) => s + r.dividendYield, 0) / results.length;
+        res.json({
+          strategy: "Weekly Dividend Calendar",
+          description: "12 quarterly payers staggered across weeks + 4 monthly payers = dividends every single week. All picks target 70+ dividend quality score. Buy equal dollar amounts of each.",
+          weeklyPlan: results,
+          refreshed: true,
+          stats: { totalStocks: results.length, quarterlyPayers: results.filter(r => r.months !== "Monthly").length, monthlyPayers: results.filter(r => r.months === "Monthly").length, avgYield: Number(totalYield.toFixed(2)), avgScore: Math.round(results.reduce((s, r) => s + r.score, 0) / results.length) },
+        });
+      } else {
+        // Static response — no Yahoo calls, instant load
+        res.json({
+          strategy: "Weekly Dividend Calendar",
+          description: "12 quarterly payers staggered across weeks + 4 monthly payers = dividends every single week. All picks target 70+ dividend quality score. Buy equal dollar amounts of each.",
+          weeklyPlan: weeklyPlan.map(item => ({
+            ...item,
+            companyName: item.ticker,
+            price: 0,
+            dividendYield: 0,
+            dividendRate: 0,
+            annualDividend: 0,
+            exDividendDate: null,
+            distributionDate: null,
+            frequency: item.months === "Monthly" ? "Monthly" : "Quarterly",
+            payoutRatio: 0,
+            score: 0,
+          })),
+          refreshed: false,
+          stats: { totalStocks: weeklyPlan.length, quarterlyPayers: weeklyPlan.filter(r => r.months !== "Monthly").length, monthlyPayers: weeklyPlan.filter(r => r.months === "Monthly").length, avgYield: 0, avgScore: 0 },
+        });
       }
-
-      // Calculate portfolio stats
-      const totalYield = results.reduce((s, r) => s + r.dividendYield, 0) / results.length;
-      const totalAnnualPerShare = results.reduce((s, r) => s + r.annualDividend, 0);
-
-      res.json({
-        strategy: "Weekly Dividend Calendar",
-        description: "Inspired by Bowtie Nation (Joseph Hogue). 12 quarterly payers staggered across weeks + 4 monthly payers = dividends hitting your account every single week. Buy equal dollar amounts of each.",
-        weeklyPlan: results,
-        stats: {
-          totalStocks: results.length,
-          quarterlyPayers: results.filter(r => r.months !== "Monthly").length,
-          monthlyPayers: results.filter(r => r.months === "Monthly").length,
-          avgYield: Number(totalYield.toFixed(2)),
-          avgScore: Math.round(results.reduce((s, r) => s + r.score, 0) / results.length),
-        },
-      });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to build weekly strategy" });
     }
@@ -2463,6 +2498,7 @@ export async function registerRoutes(
   // ============================================================
 
   app.get("/api/scanner", async (req, res) => {
+    if (checkScanRateLimit(req, res)) return;
     // Parse filter params from query string
     const minPrice = Number(req.query.minPrice) || 5;
     const maxPrice = Number(req.query.maxPrice) || 10000;
@@ -2802,6 +2838,7 @@ export async function registerRoutes(
   // ============================================================
 
   app.get("/api/scanner/amc", async (req, res) => {
+    if (checkScanRateLimit(req, res)) return;
     const minPrice = Number(req.query.minPrice) || 5;
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
@@ -3237,6 +3274,7 @@ export async function registerRoutes(
 
   // Scan multiple tickers for institutional money flow (batch)
   app.get("/api/institutional-scan", async (req, res) => {
+    if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
       // Default watchlist of popular/active stocks to scan

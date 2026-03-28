@@ -71,7 +71,8 @@ function AuthenticatedApp() {
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
-            <Route path="/" component={Home} />
+            <Route path="/" component={TradeTracker} />
+            <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
             <Route path="/scanner" component={Scanner} />
             <Route path="/tracker" component={TradeTracker} />
