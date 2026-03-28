@@ -260,6 +260,22 @@ async function getQuote(ticker: string): Promise<any> {
   return result;
 }
 
+// Lightweight quote — only price + dividend essentials (for refresh operations)
+async function getQuoteLight(ticker: string): Promise<any> {
+  const cacheKey = `quote:${ticker.toUpperCase()}`;
+  const cached = getCached(cacheKey);
+  if (cached) { recordCacheHit(); return cached; }
+  // Fetch only the 4 modules needed for price + dividend scoring
+  const modules = ["price", "summaryDetail", "defaultKeyStatistics", "calendarEvents"].join("%2C");
+  const data = await yahooFetch(
+    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
+  );
+  const result = data?.quoteSummary?.result?.[0] || null;
+  // Cache with same key as full quote — a full getQuote will overwrite with richer data later
+  if (result) setCache(cacheKey, result, TTL.quote);
+  return result;
+}
+
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
   const cacheKey = `chart:${ticker.toUpperCase()}:${range}:${interval}`;
   const cached = getCached(cacheKey);
@@ -1020,14 +1036,14 @@ export async function registerRoutes(
       // Deduplicate
       const uniqueTickers = [...new Set(tickers)];
 
-      // Fetch in batches of 5 — the global queue handles rate limiting
+      // Fetch in batches of 5 using lightweight query (price + dividend essentials only)
       const results: any[] = [];
       for (let i = 0; i < uniqueTickers.length; i += 5) {
         const batch = uniqueTickers.slice(i, i + 5);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             try {
-              const quote = await getQuote(ticker);
+              const quote = await getQuoteLight(ticker);
               if (quote) return extractDividendData(ticker, quote);
             } catch (err: any) {
               console.log(`[dividends] Failed: ${ticker}: ${err.message}`);
@@ -1094,7 +1110,7 @@ export async function registerRoutes(
         const results = [];
         for (const item of weeklyPlan) {
           try {
-            const quote = await getQuote(item.ticker);
+            const quote = await getQuoteLight(item.ticker);
             const divData = quote ? extractDividendData(item.ticker, quote) : null;
             results.push({
               ...item,
@@ -1177,7 +1193,7 @@ export async function registerRoutes(
       for (const [symbol, pos] of Object.entries(grouped)) {
         const avgCost = pos.totalCost / pos.shares;
         try {
-          const quote = await getQuote(symbol);
+          const quote = await getQuoteLight(symbol);
           const divData = quote ? extractDividendData(symbol, quote) : null;
 
           // Only include if the stock actually pays a dividend
@@ -1551,7 +1567,7 @@ export async function registerRoutes(
     const ticker = req.params.ticker.toUpperCase();
     try {
       await ensureReady();
-      const quote = await getQuote(ticker);
+      const quote = await getQuoteLight(ticker);
       if (!quote) {
         return res.status(404).json({ error: `No data found for ${ticker}` });
       }
