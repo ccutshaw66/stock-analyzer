@@ -3224,15 +3224,27 @@ export async function registerRoutes(
       await ensureReady();
       // Default watchlist of popular/active stocks to scan
       const defaultTickers = [
+        // Mega cap tech
         "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "CRM",
-        "AVGO", "ORCL", "COST", "JPM", "V", "UNH", "MA", "HD", "PG", "JNJ",
-        "BAC", "XOM", "ABBV", "KO", "PEP", "MRK", "LLY", "TMO", "ADBE", "PLTR",
+        "AVGO", "ORCL", "ADBE", "INTC", "QCOM", "MU", "PLTR", "SNOW", "PANW", "SHOP",
+        // Finance
+        "JPM", "BAC", "GS", "MS", "V", "MA", "BLK", "SCHW", "C", "WFC",
+        // Healthcare
+        "UNH", "JNJ", "ABBV", "MRK", "LLY", "PFE", "TMO", "ABT", "BMY", "GILD",
+        // Consumer
+        "HD", "COST", "WMT", "PG", "KO", "PEP", "MCD", "NKE", "SBUX", "TGT",
+        // Energy & Industrial
+        "XOM", "CVX", "COP", "CAT", "DE", "BA", "GE", "RTX", "LMT", "UPS",
+        // Popular retail trader stocks
+        "SOFI", "RIVN", "COIN", "ROKU", "SNAP", "DIS", "PYPL", "SQ", "UBER", "ABNB",
+        // ETFs
+        "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "ARKK",
       ];
       const tickerParam = req.query.tickers as string | undefined;
       const tickers = tickerParam ? tickerParam.split(",").map(t => t.trim().toUpperCase()) : defaultTickers;
       const results: any[] = [];
 
-      for (const ticker of tickers.slice(0, 30)) {
+      for (const ticker of tickers.slice(0, 80)) {
         try {
           const raw = await getInstitutionalData(ticker);
           const parsed = parseInstitutionalData(raw, ticker);
