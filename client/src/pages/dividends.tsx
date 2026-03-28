@@ -36,7 +36,6 @@ export default function Dividends() {
   const { activeTicker, setActiveTicker } = useTicker();
   const [customTickers, setCustomTickers] = useState("");
   const [scanTickers, setScanTickers] = useState<string | undefined>(undefined);
-  const [scanTriggered, setScanTriggered] = useState(false);
 
   // Filter state
   const [minYield, setMinYield] = useState<string>("");
@@ -62,12 +61,9 @@ export default function Dividends() {
     enabled: !!activeTicker,
   });
 
-  // Scan key includes filter params so re-triggering with new filters works
-  const [scanKey, setScanKey] = useState(0);
-
-  // Scan for multiple tickers
-  const { data: scanResults, isLoading: isScanLoading } = useQuery<DividendData[]>({
-    queryKey: ["/api/dividends/scan", scanTickers, filterParams, scanKey],
+  // Scan query — uses enabled:false + manual refetch so data persists across page navigations
+  const { data: scanResults, isLoading: isScanLoading, refetch: runScan } = useQuery<DividendData[]>({
+    queryKey: ["/api/dividends/scan", scanTickers || "default", filterParams],
     queryFn: async () => {
       let url = scanTickers
         ? `/api/dividends/scan?tickers=${scanTickers}`
@@ -78,13 +74,13 @@ export default function Dividends() {
       const res = await apiRequest("GET", url);
       return res.json();
     },
-    enabled: scanTriggered,
+    enabled: false,
   });
 
   const handleScanDefault = () => {
     setScanTickers(undefined);
-    setScanTriggered(true);
-    setScanKey(k => k + 1);
+    // Small delay to let state update before refetch builds the URL
+    setTimeout(() => runScan(), 0);
   };
 
   const handleScanCustom = () => {
@@ -95,8 +91,7 @@ export default function Dividends() {
       .join(",");
     if (cleaned) {
       setScanTickers(cleaned);
-      setScanTriggered(true);
-      setScanKey(k => k + 1);
+      setTimeout(() => runScan(), 0);
     }
   };
 
@@ -322,7 +317,7 @@ export default function Dividends() {
               data-testid="button-scan-default"
             >
               {isScanLoading && !scanTickers ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-              Scan
+              {scanResults ? "New Scan" : "Scan"}
             </button>
           </div>
         </div>
@@ -427,7 +422,7 @@ export default function Dividends() {
           </div>
         )}
 
-        {!scanTriggered && (
+        {!scanResults && !isScanLoading && (
           <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
             <Award className="h-6 w-6 text-muted-foreground/40 mb-2" />
             <p className="text-xs text-muted-foreground font-medium">Click "Scan" to get started</p>
