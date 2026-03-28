@@ -10,13 +10,14 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-// Default TTLs by data type
+// Default TTLs by data type — longer = fewer Yahoo requests = fewer 429s
 const TTL = {
-  quote: 5 * 60 * 1000,         // 5 minutes for quotes (price changes)
-  chart: 15 * 60 * 1000,        // 15 minutes for chart data
-  dividend: 60 * 60 * 1000,     // 1 hour for dividend data (changes rarely)
-  sector: 30 * 60 * 1000,       // 30 minutes for sector data
-  institutional: 60 * 60 * 1000, // 1 hour for institutional data
+  quote: 15 * 60 * 1000,        // 15 minutes for quotes (was 5min — prices don't change that fast for scans)
+  chart: 30 * 60 * 1000,        // 30 minutes for chart data
+  dividend: 2 * 60 * 60 * 1000, // 2 hours for dividend data (changes rarely)
+  sector: 60 * 60 * 1000,       // 1 hour for sector data
+  institutional: 2 * 60 * 60 * 1000, // 2 hours for institutional data
+  options: 15 * 60 * 1000,      // 15 minutes for options chain data
 };
 
 export function getCached(key: string): any | null {

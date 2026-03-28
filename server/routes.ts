@@ -5,6 +5,7 @@ import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
+import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import pg from "pg";
 
@@ -171,7 +172,8 @@ async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
   return { crumb, cookie };
 }
 
-async function yahooFetch(url: string, retries = 3): Promise<any> {
+// Direct fetch (used by the queue internally)
+async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const { crumb, cookie } = await getYahooCrumb();
@@ -231,6 +233,11 @@ async function yahooFetch(url: string, retries = 3): Promise<any> {
   }
 }
 
+// Queued Yahoo fetch — all requests go through the global rate limiter
+async function yahooFetch(url: string, retries = 3): Promise<any> {
+  return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
+}
+
 // Use query1 as primary (better compatibility with cloud server IPs)
 const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
 
@@ -238,7 +245,7 @@ async function getQuote(ticker: string): Promise<any> {
   const cacheKey = `quote:${ticker.toUpperCase()}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    console.log(`[yahoo] Cache hit: ${ticker}`);
+    recordCacheHit();
     return cached;
   }
   const modules = [
@@ -273,6 +280,9 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // ============================================================
 
 async function getInstitutionalData(ticker: string): Promise<any> {
+  const cacheKey = `inst:${ticker.toUpperCase()}`;
+  const cached = getCached(cacheKey);
+  if (cached) { recordCacheHit(); return cached; }
   const modules = [
     "institutionOwnership", "insiderHolders", "insiderTransactions",
     "majorHoldersBreakdown", "netSharePurchaseActivity", "fundOwnership",
@@ -281,7 +291,9 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   const data = await yahooFetch(
     `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
   );
-  return data?.quoteSummary?.result?.[0] || null;
+  const result = data?.quoteSummary?.result?.[0] || null;
+  if (result) setCache(cacheKey, result, TTL.institutional);
+  return result;
 }
 
 function parseInstitutionalData(raw: any, ticker: string) {
@@ -889,7 +901,7 @@ export async function registerRoutes(
   app.get("/api/admin/cache", async (req, res) => {
     if (req.user!.email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
     if (req.query.clear === "true") { clearCache(); return res.json({ cleared: true }); }
-    res.json(getCacheStats());
+    res.json({ ...getCacheStats(), queue: getQueueStats() });
   });
 
   // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
@@ -1179,11 +1191,16 @@ export async function registerRoutes(
   // ─── Market Maker Exposure ─────────────────────────────────────────────────
 
   async function getOptionsChain(ticker: string, expDate?: number): Promise<any> {
+    const cacheKey = `options:${ticker.toUpperCase()}:${expDate || 'default'}`;
+    const cached = getCached(cacheKey);
+    if (cached) { recordCacheHit(); return cached; }
     const url = expDate
       ? `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}?date=${expDate}`
       : `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}`;
     const data = await yahooFetch(url);
-    return data?.optionChain?.result?.[0] || null;
+    const result = data?.optionChain?.result?.[0] || null;
+    if (result) setCache(cacheKey, result, TTL.options);
+    return result;
   }
 
   // Black-Scholes gamma calculation
