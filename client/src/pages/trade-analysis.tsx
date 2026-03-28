@@ -19,6 +19,7 @@ import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import {
   ResponsiveContainer,
   AreaChart,
+  ComposedChart,
   Area,
   LineChart,
   Line,
@@ -527,7 +528,7 @@ export default function TradeAnalysis() {
             <CardContent>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+                  <ComposedChart data={data.chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                     <defs>
                       <linearGradient id="closeGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
@@ -586,7 +587,7 @@ export default function TradeAnalysis() {
                       name="SMA 200"
                       connectNulls
                     />
-                  </AreaChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap gap-4 mt-3 justify-center text-xs text-muted-foreground">
