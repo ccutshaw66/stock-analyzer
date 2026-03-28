@@ -1043,7 +1043,7 @@ export async function registerRoutes(
         { ticker: "KMI", week: 1, months: "Feb/May/Aug/Nov", role: "Week 1 Quarterly", note: "Pipeline giant, 4% yield, 80K miles of infrastructure" },
         { ticker: "DUK", week: 2, months: "Feb/May/Aug/Nov", role: "Week 2 Quarterly", note: "Utility stable income, 3.5% yield, 9M+ customers" },
         { ticker: "NEE", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly", note: "Clean energy + utility combo, 3.3% yield, 10% div growth" },
-        { ticker: "AAPL", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Cash machine, modest yield but massive buybacks + growth" },
+        { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Pharma giant, 6%+ yield, massive pipeline, ex-div late Jan cycle" },
         // ── Q3 Schedule: Mar, Jun, Sep, Dec ──
         { ticker: "RF", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Regional bank, 4.2% yield, 10% annual dividend growth" },
         { ticker: "BX", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Alternative asset manager, 3.5% yield, PE/RE exposure" },
