@@ -466,7 +466,9 @@ interface WeeklyData {
 }
 
 function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => void }) {
-  const [showStrategy, setShowStrategy] = useState(false);
+  // Initialize from cache — if we loaded it before, show it immediately
+  const cachedData = queryClient.getQueryData<WeeklyData>(["/api/dividends/weekly-strategy"]);
+  const [showStrategy, setShowStrategy] = useState(!!cachedData);
 
   const { data, isLoading } = useQuery<WeeklyData>({
     queryKey: ["/api/dividends/weekly-strategy"],
