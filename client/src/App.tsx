@@ -91,6 +91,7 @@ function AuthenticatedApp() {
             <Route path="/mm-exposure" component={MMExposure} />
             <Route path="/account" component={AccountPage} />
             <Route path="/admin" component={AdminPage} />
+            <Route path="/reset-password" component={ResetPassword} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

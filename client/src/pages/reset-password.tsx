@@ -11,7 +11,16 @@ export default function ResetPassword() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const token = new URLSearchParams(window.location.hash.split("?")[1] || "").get("token");
+  // Parse token from hash URL: /#/reset-password?token=xxx
+  const token = (() => {
+    const hash = window.location.hash || "";
+    const qIdx = hash.indexOf("?");
+    if (qIdx >= 0) {
+      return new URLSearchParams(hash.substring(qIdx)).get("token");
+    }
+    // Fallback: check regular query string
+    return new URLSearchParams(window.location.search).get("token");
+  })();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
