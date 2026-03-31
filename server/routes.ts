@@ -1577,6 +1577,33 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Ticker Search / Autocomplete ─────────────────────────────────────
+
+  app.get("/api/search", async (req, res) => {
+    const q = (req.query.q as string || "").trim();
+    if (!q || q.length < 1) return res.json([]);
+    try {
+      // Yahoo search/autocomplete endpoint (no auth needed)
+      const resp = await fetch(
+        `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`,
+        { headers: YF_BASE_HEADERS }
+      );
+      if (!resp.ok) return res.json([]);
+      const data = await resp.json();
+      const quotes = (data?.quotes || []).filter((q: any) =>
+        q.quoteType === "EQUITY" || q.quoteType === "ETF"
+      ).map((q: any) => ({
+        symbol: q.symbol,
+        name: q.shortname || q.longname || q.symbol,
+        type: q.quoteType,
+        exchange: q.exchDisp || q.exchange,
+      }));
+      res.json(quotes);
+    } catch {
+      res.json([]);
+    }
+  });
+
   app.get("/api/analyze/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
@@ -2489,22 +2516,26 @@ export async function registerRoutes(
       query: { operator: "AND", operands },
     });
 
-    const { crumb, cookie } = await getYahooCrumb();
-    const resp = await fetch(
-      `https://query1.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
-      {
-        method: "POST",
-        headers: { ...YF_BASE_HEADERS, "Content-Type": "application/json", Cookie: cookie },
-        body,
+    // Use enqueue to respect global rate limiting
+    const data = await enqueue(async () => {
+      const { crumb, cookie } = await getYahooCrumb();
+      const resp = await fetch(
+        `https://query1.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
+        {
+          method: "POST",
+          headers: { ...YF_BASE_HEADERS, "Content-Type": "application/json", Cookie: cookie },
+          body,
+        }
+      );
+      if (resp.status === 429) throw new Error("Yahoo Finance rate limited (429)");
+      if (!resp.ok) {
+        console.log(`[screener] Error: ${resp.status}`);
+        return null;
       }
-    );
+      return resp.json();
+    }, "screener");
 
-    if (!resp.ok) {
-      console.log(`[screener] Error: ${resp.status}`);
-      return [];
-    }
-
-    const data = await resp.json();
+    if (!data) return [];
     const quotes = data?.finance?.result?.[0]?.quotes || [];
     return quotes.map((q: any) => q.symbol as string).filter(Boolean);
   }

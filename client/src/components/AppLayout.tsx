@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import iconUrl from "@/assets/icon.png";
@@ -74,14 +74,45 @@ function StickyHeader({
   const { user, logout } = useAuth();
   const [input, setInput] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<{ symbol: string; name: string; type: string }[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
   const [, navigate] = useLocation();
+
+  // Debounced search — triggers when user types 2+ chars that look like a name (not a pure ticker)
+  const searchTimerRef = useRef<any>(null);
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    // If it looks like a company name (has lowercase, or 5+ chars), search
+    const isName = val.length >= 2 && (/[a-z]/.test(val) || val.length >= 4);
+    if (isName) {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await apiRequest("GET", `/api/search?q=${encodeURIComponent(val)}`);
+          const data = await res.json();
+          setSearchResults(data);
+          setShowSearch(data.length > 0);
+        } catch { setSearchResults([]); setShowSearch(false); }
+      }, 300);
+    } else {
+      setShowSearch(false);
+    }
+  };
+
+  const selectResult = (symbol: string) => {
+    setActiveTicker(symbol);
+    setInput("");
+    setShowSearch(false);
+    setSearchResults([]);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = input.trim();
+    const trimmed = input.trim().toUpperCase();
     if (trimmed) {
       setActiveTicker(trimmed);
       setInput("");
+      setShowSearch(false);
     }
   };
 
@@ -124,13 +155,32 @@ function StickyHeader({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Ticker..."
+            placeholder="Ticker or name..."
             value={input}
-            onChange={(e) => setInput(e.target.value.toUpperCase())}
-            className="w-full h-8 pl-8 pr-3 text-sm bg-background border border-card-border rounded-md font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
+            onChange={(e) => handleInputChange(e.target.value)}
+            onFocus={() => { if (searchResults.length > 0) setShowSearch(true); }}
+            onBlur={() => setTimeout(() => setShowSearch(false), 200)}
+            className="w-full h-8 pl-8 pr-3 text-sm bg-background border border-card-border rounded-md tracking-wider focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
             data-testid="input-ticker"
             disabled={isAnalysisLoading}
           />
+          {showSearch && searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-card-border rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+              {searchResults.map((r) => (
+                <div
+                  key={r.symbol}
+                  className="flex items-center justify-between px-3 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
+                  onMouseDown={(e) => { e.preventDefault(); selectResult(r.symbol); }}
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono font-bold text-xs text-foreground">{r.symbol}</span>
+                    <span className="text-[10px] text-muted-foreground ml-2 truncate">{r.name}</span>
+                  </div>
+                  <span className="text-[9px] text-muted-foreground shrink-0 ml-2">{r.type}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <button
           type="submit"
