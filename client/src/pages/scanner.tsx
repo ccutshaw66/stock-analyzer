@@ -8,6 +8,7 @@ import {
   Activity, BarChart3, Volume2, Zap, ChevronDown, ChevronUp,
   SlidersHorizontal, Eye, EyeOff
 } from "lucide-react";
+import { Disclaimer } from "@/components/Disclaimer";
 
 const SECTORS = [
   "All Sectors", "Technology", "Healthcare", "Financial Services",
@@ -247,6 +248,7 @@ export default function Scanner() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        <Disclaimer />
 
         {/* Scan Mode Tabs */}
         <div className="flex border-b border-card-border">

@@ -66,6 +66,14 @@ export interface IStorage {
   addDividendPosition(item: InsertDividendPortfolioItem): Promise<DividendPortfolioItem>;
   updateDividendPosition(userId: number, id: number, data: Partial<InsertDividendPortfolioItem>): Promise<DividendPortfolioItem | undefined>;
   removeDividendPosition(userId: number, id: number): Promise<void>;
+  // Subscription
+  updateUserSubscription(userId: number, data: {
+    subscriptionTier?: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    subscriptionExpiresAt?: Date | null;
+  }): Promise<User>;
+  getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
   // Admin
   getAllUsers(): Promise<User[]>;
   deleteUser(userId: number): Promise<void>;
@@ -180,6 +188,11 @@ export class DatabaseStorage implements IStorage {
           added_at TEXT NOT NULL
         )
       `);
+      // ─── Subscription columns (idempotent) ────────────────────────────────
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier TEXT DEFAULT 'free'`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`);
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP`);
     } finally {
       client.release();
     }
@@ -402,6 +415,29 @@ export class DatabaseStorage implements IStorage {
 
   async removeDividendPosition(userId: number, id: number): Promise<void> {
     await db.delete(dividendPortfolio).where(and(eq(dividendPortfolio.id, id), eq(dividendPortfolio.userId, userId)));
+  }
+
+  // ─── Subscription ─────────────────────────────────────────────────────────
+
+  async updateUserSubscription(userId: number, data: {
+    subscriptionTier?: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    subscriptionExpiresAt?: Date | null;
+  }): Promise<User> {
+    const updates: Record<string, any> = {};
+    if (data.subscriptionTier !== undefined) updates.subscriptionTier = data.subscriptionTier;
+    if (data.stripeCustomerId !== undefined) updates.stripeCustomerId = data.stripeCustomerId;
+    if (data.stripeSubscriptionId !== undefined) updates.stripeSubscriptionId = data.stripeSubscriptionId;
+    if (data.subscriptionExpiresAt !== undefined) updates.subscriptionExpiresAt = data.subscriptionExpiresAt;
+    await db.update(users).set(updates).where(eq(users.id, userId));
+    const rows = await db.select().from(users).where(eq(users.id, userId));
+    return rows[0];
+  }
+
+  async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined> {
+    const rows = await db.select().from(users).where(eq(users.stripeCustomerId, stripeCustomerId));
+    return rows[0];
   }
 
   // ─── Admin ────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Kelly Criterion Calculator ──────────────────────────────────────────────
 

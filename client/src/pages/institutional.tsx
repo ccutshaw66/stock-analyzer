@@ -9,6 +9,7 @@ import {
   BarChart3, Activity, UserCheck, Briefcase, AlertTriangle, Zap, RefreshCw
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -410,6 +411,7 @@ export default function Institutional() {
             Institutional Money Flow
           </h1>
           <p className="text-xs text-muted-foreground">Track institutional buying/selling, insider moves, and smart money flow signals.</p>
+      <Disclaimer />
         </div>
       </div>
 

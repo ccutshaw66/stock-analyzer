@@ -331,6 +331,7 @@ export default function Verdict() {
         <div className="text-center py-24 text-muted-foreground">
           <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker to generate a research verdict</p>
+      <Disclaimer />
           <p className="text-sm mt-1 opacity-60">Unified analysis combining fundamentals, flow, stress tests &amp; more</p>
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ export default function Dividends() {
       <p className="text-xs text-muted-foreground -mt-4">
         Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality.
       </p>
+      <Disclaimer />
 
       {/* Help Block */}
       <HelpBlock title="Understanding Dividends">

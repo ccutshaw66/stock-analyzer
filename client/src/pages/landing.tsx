@@ -346,7 +346,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
               highlighted={false}
             />
             <PricingCard
-              name="Basic"
+              name="Pro"
               price="$15"
               period="/month"
               description="For active traders who want more"
@@ -358,13 +358,13 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
                 { text: "Sector heatmap (all timeframes)", included: true },
                 { text: "Earnings calendar", included: true },
               ]}
-              cta="Start Basic Trial"
+              cta="Start Pro Trial"
               onCta={onRegister}
               highlighted={true}
               badge="Most Popular"
             />
             <PricingCard
-              name="Pro"
+              name="Elite"
               price="$39"
               period="/month"
               description="For serious traders who want it all"
@@ -376,7 +376,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
                 { text: "Priority data speed", included: true },
                 { text: "Export reports (CSV + PDF)", included: true },
               ]}
-              cta="Start Pro Trial"
+              cta="Start Elite Trial"
               onCta={onRegister}
               highlighted={false}
             />
@@ -410,8 +410,8 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
                 Pricing
               </button>
               <span className="text-[#2a2f45]">|</span>
-              <span>Terms</span>
-              <span>Privacy</span>
+              <a href="/#/terms" className="hover:text-white transition-colors">Terms</a>
+              <a href="/#/privacy" className="hover:text-white transition-colors">Privacy</a>
             </div>
 
             <div className="text-xs text-[#4a4f65]">

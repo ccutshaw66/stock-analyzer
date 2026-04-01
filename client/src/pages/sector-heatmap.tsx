@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ export default function SectorHeatmap() {
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="sector-heatmap-page">
       <h1 className="text-lg font-bold text-foreground">Sector Rotation Heatmap</h1>
       <p className="text-xs text-muted-foreground -mt-4">Track money flow across market sectors. Green = outperforming, Red = underperforming.</p>
+      <Disclaimer />
 
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">

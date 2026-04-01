@@ -12,6 +12,7 @@ import {
   ScatterChart, Scatter, ZAxis,
   LineChart, Line, ReferenceLine, Legend,
 } from "recharts";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -201,6 +202,7 @@ export default function TradeAnalytics() {
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="trade-analytics-page">
       <h1 className="text-lg font-bold text-foreground">Trade Analytics</h1>
       <p className="text-xs text-muted-foreground -mt-4">Comprehensive performance analysis of your closed trades.</p>
+      <Disclaimer />
 
       {/* Key Metrics */}
       <div className="bg-card border border-card-border rounded-lg p-4">

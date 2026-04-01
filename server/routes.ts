@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, db } from "./storage";
 import { tradePriceHistory } from "@shared/schema";
@@ -7,6 +7,7 @@ import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, u
 import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
+import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
 import pg from "pg";
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
@@ -869,6 +870,153 @@ export async function registerRoutes(
     next();
   });
 
+  // ─── Feature Gating ─────────────────────────────────────────────────────────────
+
+  // Daily usage counters: Map<userId, { date: string, scans: number, analysis: number }>
+  const dailyUsage = new Map<number, { date: string; scans: number; analysis: number }>();
+
+  function getDailyUsage(userId: number) {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const existing = dailyUsage.get(userId);
+    if (!existing || existing.date !== today) {
+      const fresh = { date: today, scans: 0, analysis: 0 };
+      dailyUsage.set(userId, fresh);
+      return fresh;
+    }
+    return existing;
+  }
+
+  /**
+   * Feature gating middleware factory.
+   * feature: 'mmExposure' | 'scansPerDay' | 'analysisPerDay' | 'tradeLimit'
+   */
+  function checkFeatureAccess(feature: 'mmExposure' | 'scansPerDay' | 'analysisPerDay' | 'tradeLimit') {
+    return async (req: any, res: any, next: NextFunction) => {
+      try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+        const tier = await getUserTier(userId);
+        const limits = TIER_LIMITS[tier];
+
+        if (feature === 'mmExposure') {
+          if (!limits.mmExposure) {
+            return res.status(403).json({
+              error: 'Upgrade to Pro to access MM Exposure',
+              tier,
+              upgradeUrl: '/api/subscription/checkout',
+            });
+          }
+          return next();
+        }
+
+        const usage = getDailyUsage(userId);
+
+        if (feature === 'scansPerDay') {
+          if (usage.scans >= limits.scansPerDay) {
+            return res.status(403).json({
+              error: `Daily scan limit reached (${limits.scansPerDay} scans/day on ${tier} plan). Upgrade for more.`,
+              tier,
+              upgradeUrl: '/api/subscription/checkout',
+              limit: limits.scansPerDay,
+              used: usage.scans,
+            });
+          }
+          usage.scans++;
+          return next();
+        }
+
+        if (feature === 'analysisPerDay') {
+          if (usage.analysis >= limits.analysisPerDay) {
+            return res.status(403).json({
+              error: `Daily analysis limit reached (${limits.analysisPerDay} analyses/day on ${tier} plan). Upgrade for more.`,
+              tier,
+              upgradeUrl: '/api/subscription/checkout',
+              limit: limits.analysisPerDay,
+              used: usage.analysis,
+            });
+          }
+          usage.analysis++;
+          return next();
+        }
+
+        if (feature === 'tradeLimit') {
+          // For trade limit, check total trade count in DB
+          const tradeCount = await storage.getUserTradeCount(userId);
+          if (tradeCount >= limits.tradeLimit) {
+            return res.status(403).json({
+              error: `Trade limit reached (${limits.tradeLimit} trades on ${tier} plan). Upgrade to add more.`,
+              tier,
+              upgradeUrl: '/api/subscription/checkout',
+              limit: limits.tradeLimit,
+              used: tradeCount,
+            });
+          }
+          return next();
+        }
+
+        next();
+      } catch (err: any) {
+        console.error('[featureGate] Error:', err.message);
+        // On error, allow through to avoid blocking legitimate users
+        next();
+      }
+    };
+  }
+
+  // ─── Subscription Routes ───────────────────────────────────────────────────
+
+  // POST /api/subscription/checkout — create Stripe Checkout session
+  app.post("/api/subscription/checkout", async (req, res) => {
+    try {
+      const { tier } = req.body as { tier: 'pro' | 'elite' };
+      if (!tier || !['pro', 'elite'].includes(tier)) {
+        return res.status(400).json({ error: 'Invalid tier. Must be "pro" or "elite".' });
+      }
+      const user = (req as any).user;
+      const url = await createCheckoutSession(user.id, user.email, tier);
+      res.json({ url });
+    } catch (err: any) {
+      console.error('[subscription] checkout error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create checkout session' });
+    }
+  });
+
+  // POST /api/subscription/portal — create Stripe billing portal session
+  app.post("/api/subscription/portal", async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const dbUser = await storage.getUser(user.id);
+      if (!dbUser?.stripeCustomerId) {
+        return res.status(400).json({ error: 'No Stripe customer found. Please subscribe first.' });
+      }
+      const url = await createPortalSession(dbUser.stripeCustomerId);
+      res.json({ url });
+    } catch (err: any) {
+      console.error('[subscription] portal error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create portal session' });
+    }
+  });
+
+  // GET /api/subscription/status — return current tier, expiry, limits
+  app.get("/api/subscription/status", async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const dbUser = await storage.getUser(user.id);
+      const tier = await getUserTier(user.id);
+      const limits = TIER_LIMITS[tier];
+      res.json({
+        tier,
+        subscriptionExpiresAt: dbUser?.subscriptionExpiresAt || null,
+        stripeCustomerId: dbUser?.stripeCustomerId || null,
+        limits,
+      });
+    } catch (err: any) {
+      console.error('[subscription] status error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to get subscription status' });
+    }
+  });
+
   // ─── Per-user API rate limiter (scan endpoints) ───────────────────────
   const userScanTimestamps = new Map<number, number[]>();
   const MAX_SCANS_PER_MINUTE = 3;
@@ -1009,7 +1157,7 @@ export async function registerRoutes(
     };
   }
 
-  app.get("/api/dividends/scan", async (req, res) => {
+  app.get("/api/dividends/scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
@@ -1262,7 +1410,7 @@ export async function registerRoutes(
     return pdf / (S * sigma * Math.sqrt(T));
   }
 
-  app.get("/api/mm-exposure/:ticker", async (req, res) => {
+  app.get("/api/mm-exposure/:ticker", checkFeatureAccess('mmExposure'), async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
     try {
       await ensureReady();
@@ -1604,7 +1752,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/analyze/:ticker", async (req, res) => {
+  app.get("/api/analyze/:ticker", checkFeatureAccess('analysisPerDay'), async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
 
     try {
@@ -2544,7 +2692,7 @@ export async function registerRoutes(
   // Scanner Route (dynamic)
   // ============================================================
 
-  app.get("/api/scanner", async (req, res) => {
+  app.get("/api/scanner", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     // Parse filter params from query string
     const minPrice = Number(req.query.minPrice) || 5;
@@ -2884,7 +3032,7 @@ export async function registerRoutes(
   // AMC Scanner Route — scores stocks using AMC strategy only
   // ============================================================
 
-  app.get("/api/scanner/amc", async (req, res) => {
+  app.get("/api/scanner/amc", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     const minPrice = Number(req.query.minPrice) || 5;
     const maxPrice = Number(req.query.maxPrice) || 10000;
@@ -3320,7 +3468,7 @@ export async function registerRoutes(
   });
 
   // Scan multiple tickers for institutional money flow (batch)
-  app.get("/api/institutional-scan", async (req, res) => {
+  app.get("/api/institutional-scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
@@ -3956,7 +4104,7 @@ export async function registerRoutes(
   });
 
   // Create a trade
-  app.post("/api/trades", async (req, res) => {
+  app.post("/api/trades", checkFeatureAccess('tradeLimit'), async (req, res) => {
     try {
       const trade = await storage.createTrade({
         ...req.body,

@@ -11,6 +11,7 @@ import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from "recharts";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

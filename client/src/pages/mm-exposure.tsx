@@ -12,6 +12,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest } from "@/lib/queryClient";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ export default function MMExposure() {
         <p className="text-xs text-muted-foreground">
           Where they're hiding, where they're hedging, and how to trade alongside them.
         </p>
+      <Disclaimer />
       </div>
 
       {/* Search */}

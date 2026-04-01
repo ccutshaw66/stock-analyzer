@@ -6,6 +6,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Black-Scholes Math ──────────────────────────────────────────────────────
 

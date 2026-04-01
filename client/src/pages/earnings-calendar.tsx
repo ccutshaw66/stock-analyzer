@@ -5,6 +5,7 @@ import {
   Clock, AlertTriangle, DollarSign,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ export default function EarningsCalendar() {
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="earnings-calendar-page">
       <h1 className="text-lg font-bold text-foreground">Earnings Calendar</h1>
       <p className="text-xs text-muted-foreground -mt-4">Upcoming earnings dates and history for your watchlist stocks.</p>
+      <Disclaimer />
 
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">

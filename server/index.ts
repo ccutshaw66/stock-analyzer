@@ -8,6 +8,21 @@ import { createServer } from "http";
 
 const app = express();
 app.use(cookieParser());
+
+// ─── Stripe Webhook (MUST be before express.json()) ──────────────────────────
+// Stripe requires the raw body buffer for signature verification
+app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+  const signature = req.headers['stripe-signature'] as string;
+  try {
+    const { handleWebhook } = await import('./stripe');
+    await handleWebhook(req.body as Buffer, signature);
+    res.json({ received: true });
+  } catch (err: any) {
+    console.error('[stripe] Webhook error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 const httpServer = createServer(app);
 
 declare module "http" {
