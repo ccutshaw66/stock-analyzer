@@ -1,4 +1,4 @@
-import { pgTable, text, integer, serial, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, doublePrecision, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
+  hasSeenTour: boolean("has_seen_tour").default(false),
 });
 
 export const favorites = pgTable("favorites", {

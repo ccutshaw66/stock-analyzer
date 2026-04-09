@@ -19,7 +19,7 @@ export async function seedDemoAccount(pool: pg.Pool): Promise<number> {
     // Create demo user
     const hashedPassword = await bcrypt.hash(DEMO_PASSWORD, 12);
     const userResult = await client.query(
-      `INSERT INTO users (email, password, display_name) VALUES ($1, $2, $3) ON CONFLICT (email) DO UPDATE SET display_name = $3 RETURNING id`,
+      `INSERT INTO users (email, password, display_name, has_seen_tour) VALUES ($1, $2, $3, true) ON CONFLICT (email) DO UPDATE SET display_name = $3, has_seen_tour = true RETURNING id`,
       [DEMO_EMAIL, hashedPassword, DEMO_DISPLAY_NAME]
     );
     const userId = userResult.rows[0].id;

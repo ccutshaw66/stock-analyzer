@@ -6,6 +6,8 @@ interface AuthUser {
   email: string;
   displayName: string | null;
   createdAt?: string;
+  hasSeenTour?: boolean;
+  subscriptionTier?: string;
 }
 
 interface AuthContextType {

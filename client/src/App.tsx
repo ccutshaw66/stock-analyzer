@@ -33,10 +33,12 @@ import AdminPage from "@/pages/admin";
 import ResetPassword from "@/pages/reset-password";
 import LegalPage from "@/pages/legal";
 import { Loader2 } from "lucide-react";
+import OnboardingTour from "@/components/OnboardingTour";
 
 function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
+  const [showTour, setShowTour] = useState(false);
 
   if (isLoading) {
     return (
@@ -69,9 +71,16 @@ function AuthenticatedApp() {
     );
   }
 
+  // Show onboarding tour for new users
+  if (!showTour && user && user.hasSeenTour === false) {
+    // Small delay so the app renders first
+    setTimeout(() => setShowTour(true), 500);
+  }
+
   // Logged in — show the app
   return (
     <TickerProvider>
+      {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>

@@ -174,7 +174,7 @@ export async function logoutHandler(_req: Request, res: Response) {
 export async function meHandler(req: Request, res: Response) {
   // req.user is set by requireAuth middleware
   const user = await storage.getUser(req.user!.id);
-  res.json({ user: user ? { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt } : req.user });
+  res.json({ user: user ? { id: user.id, email: user.email, displayName: user.displayName, createdAt: user.createdAt, hasSeenTour: user.hasSeenTour ?? false, subscriptionTier: user.subscriptionTier ?? "free" } : req.user });
 }
 
 // ─── Profile & Password Handlers ──────────────────────────────────────────────

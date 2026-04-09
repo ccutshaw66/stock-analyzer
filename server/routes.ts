@@ -1041,6 +1041,16 @@ export async function registerRoutes(
   app.patch("/api/auth/profile", updateProfileHandler);
   app.post("/api/auth/change-password", changePasswordHandler);
 
+  app.post("/api/auth/complete-tour", async (req, res) => {
+    try {
+      const { users } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const { db } = await import("./storage");
+      await db.update(users).set({ hasSeenTour: true }).where(eq(users.id, req.user!.id));
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed" }); }
+  });
+
   // ─── Admin Routes ───────────────────────────────────────────────────────────
   const ADMIN_EMAIL = "awisper@me.com";
 

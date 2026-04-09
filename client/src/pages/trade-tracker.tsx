@@ -825,20 +825,26 @@ export default function TradeTracker() {
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Close</th>
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Price</th>
               <th className="text-right py-2.5 px-3"><SortBtn field="profit" label="P/L" /></th>
+              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Total</th>
+              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Exp</th>
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Days</th>
               <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Status</th>
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={13} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
-              ) : filtered.map(t => {
+                <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
+              ) : (() => {
+                let runningTotal = 0;
+                return filtered.map(t => {
                 const profit = t.closeDate ? computeTradeProfit(t) : (t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t));
+                runningTotal += profit;
                 const isOpen = !t.closeDate;
                 const days = daysInTrade(t);
                 const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
                 const isWin = profit >= 0;
                 const typeDef = TRADE_TYPES[t.tradeType as TradeTypeCode];
+                const daysToExp = t.expiration && !t.closeDate ? Math.ceil((new Date(t.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
 
                 return (
                   <tr key={t.id} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
@@ -865,6 +871,21 @@ export default function TradeTracker() {
                       {profit !== 0 ? formatCurrency(profit) : "—"}
                       {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
                       {isOpen && t.tradeCategory === "Option" && profit !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
+                    </td>
+                    <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                      {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
+                    </td>
+                    <td className="py-2 px-3 text-center">
+                      {t.expiration ? (
+                        <span className={`text-[10px] font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-yellow-400 font-bold" : daysToExp !== null && daysToExp < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          {t.expiration.substring(5)}
+                          {daysToExp !== null && isOpen && (
+                            <span className="text-[8px] block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
                     <td className="py-2 px-3 text-center">
@@ -893,7 +914,7 @@ export default function TradeTracker() {
                     </td>
                   </tr>
                 );
-              })}
+              }); })()}
             </tbody>
           </table>
         </div>
