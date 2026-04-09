@@ -203,7 +203,8 @@ export default function Scanner() {
   const [priceRange, setPriceRange] = useState("all");
   const [marketCap, setMarketCap] = useState("all");
   const [showAll, setShowAll] = useState(true);
-  const [scanCount, setScanCount] = useState(75);
+  const [scanCount, setScanCount] = useState(25);
+  const [signalFilter, setSignalFilter] = useState<"both" | "buy" | "sell">("both");
   const [filtersOpen, setFiltersOpen] = useState(true);
 
   const priceConfig = PRICE_RANGES.find(p => p.value === priceRange) || PRICE_RANGES[0];
@@ -311,8 +312,16 @@ export default function Scanner() {
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
                   <div className="flex gap-2">
-                    {[50, 75, 100, 150].map(n => (
+                    {[15, 25, 50, 75].map(n => (
                       <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
+                  <div className="flex gap-2">
+                    {(["both", "buy", "sell"] as const).map(sf => (
+                      <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-green-600 text-white" : sf === "sell" ? "bg-red-600 text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
                     ))}
                   </div>
                 </div>
@@ -356,32 +365,38 @@ export default function Scanner() {
         )}
 
         {/* Results */}
-        {data && !isFetching && data.results.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                {data.results.length} Results
-              </h3>
-              <span className="text-xs text-muted-foreground">
-                {scanMode === "amc" ? "Ranked by AMC score + VAMI" : "Ranked by strategy alignment"}
-              </span>
+        {data && !isFetching && (() => {
+          const filtered = data.results.filter((r: any) => {
+            if (signalFilter === "both") return true;
+            if (signalFilter === "buy") return r.score > 0;
+            if (signalFilter === "sell") return r.score < 0;
+            return true;
+          });
+          return filtered.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  {filtered.length} Results {signalFilter !== "both" && `(${signalFilter} signals)`}
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  {scanMode === "amc" ? "Ranked by AMC score + VAMI" : "Ranked by strategy alignment"}
+                </span>
+              </div>
+              {filtered.map((result: any, idx: number) => (
+                scanMode === "amc" ? (
+                  <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
+                ) : (
+                  <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
+                )
+              ))}
             </div>
-            {data.results.map((result: any, idx: number) => (
-              scanMode === "amc" ? (
-                <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
-              ) : (
-                <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
-              )
-            ))}
-          </div>
-        )}
-
-        {data && !isFetching && data.results.length === 0 && (
-          <div className="bg-card border border-card-border rounded-lg p-8 text-center">
-            <p className="text-muted-foreground">No stocks matched the current criteria.</p>
-            <p className="text-sm text-muted-foreground mt-1">Try widening your filters or enabling "Show All".</p>
-          </div>
-        )}
+          ) : (
+            <div className="bg-card border border-card-border rounded-lg p-8 text-center">
+              <p className="text-muted-foreground">No stocks matched the current criteria.</p>
+              <p className="text-sm text-muted-foreground mt-1">Try widening your filters, changing the signal direction, or enabling "Show All".</p>
+            </div>
+          );
+        })()}
 
         {!data && !isFetching && (
           <div className="text-center py-8 text-muted-foreground">
