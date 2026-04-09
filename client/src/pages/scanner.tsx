@@ -312,7 +312,7 @@ export default function Scanner() {
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
                   <div className="flex gap-2">
-                    {[15, 25, 50, 75].map(n => (
+                    {[10, 15, 25].map(n => (
                       <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
                     ))}
                   </div>
