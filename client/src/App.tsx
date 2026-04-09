@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
@@ -39,6 +39,14 @@ function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
   const [showTour, setShowTour] = useState(false);
+  const [tourDismissed, setTourDismissed] = useState(false);
+
+  useEffect(() => {
+    if (user && user.hasSeenTour === false && !tourDismissed) {
+      const t = setTimeout(() => setShowTour(true), 800);
+      return () => clearTimeout(t);
+    }
+  }, [user, tourDismissed]);
 
   if (isLoading) {
     return (
@@ -71,16 +79,10 @@ function AuthenticatedApp() {
     );
   }
 
-  // Show onboarding tour for new users
-  if (!showTour && user && user.hasSeenTour === false) {
-    // Small delay so the app renders first
-    setTimeout(() => setShowTour(true), 500);
-  }
-
   // Logged in — show the app
   return (
     <TickerProvider>
-      {showTour && <OnboardingTour onComplete={() => setShowTour(false)} />}
+      {showTour && <OnboardingTour onComplete={() => { setShowTour(false); setTourDismissed(true); }} />}
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
