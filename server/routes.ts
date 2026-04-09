@@ -1131,21 +1131,35 @@ export async function registerRoutes(
 
     // Score calculation (0-100)
     let score = 0;
-    if (dividendYield > 3) score += 20;
+    // Yield scoring (max 25)
+    if (dividendYield > 5) score += 25;
+    else if (dividendYield > 3) score += 20;
     else if (dividendYield > 2) score += 15;
     else if (dividendYield > 1) score += 10;
 
-    if (payoutRatio >= 20 && payoutRatio <= 60) score += 25;
-    else if (payoutRatio > 60 && payoutRatio <= 80) score += 15;
-    else if (payoutRatio > 80 && payoutRatio <= 100) score += 5;
+    // Payout ratio — REITs and MLPs often have 80%+, that's normal for them (max 20)
+    if (payoutRatio > 0 && payoutRatio <= 80) score += 20;
+    else if (payoutRatio > 80 && payoutRatio <= 100) score += 15;
+    else if (payoutRatio > 100) score += 5;
+    else if (payoutRatio === 0) score += 10; // no data — give benefit of doubt
 
+    // Current yield vs 5-year average — paying above average is bullish (max 15)
     if (fiveYearAvgYield != null && dividendYield > fiveYearAvgYield) score += 15;
+    else if (fiveYearAvgYield != null) score += 5; // at least has a 5-year track record
 
+    // Active dividend (max 10)
     if (dividendRate > 0) score += 10;
 
-    if (frequency === "Quarterly" || frequency === "Monthly") score += 15;
+    // Frequency bonus (max 15)
+    if (frequency === "Monthly") score += 15;
+    else if (frequency === "Quarterly") score += 15;
     else if (frequency === "Semi-Annual") score += 10;
     else if (frequency === "Annual") score += 5;
+
+    // Yield above 3% bonus (max 5) — rewards solid income stocks
+    if (dividendYield >= 3 && payoutRatio > 0 && payoutRatio < 100) score += 5;
+    // Extra bump for high yield + sustainable (max 5)
+    if (dividendYield >= 4 && payoutRatio > 0 && payoutRatio <= 80) score += 5;
 
     return {
       ticker,
@@ -1175,7 +1189,7 @@ export async function registerRoutes(
       // Mix of: monthly payers, Dividend Kings/Aristocrats, high yield, REITs, utilities
       const defaultTickers = [
         // Monthly payers
-        "O", "MAIN", "JEPI", "JEPQ", "EPD", "STAG", "AGNC",
+        "O", "MAIN", "JEPI", "JEPQ", "EPD", "STAG", "DIVO",
         // High yield (5%+)
         "MO", "T", "VZ", "PFE", "ET", "KMI", "BTI",
         // Dividend Aristocrats / Kings
@@ -1250,7 +1264,7 @@ export async function registerRoutes(
         { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Pharma giant, 6%+ yield, massive pipeline" },
         // ── Q3 Schedule: Mar, Jun, Sep, Dec ──
         { ticker: "CVX", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Energy, 3.9% yield, Very Safe payout, 37 years of increases" },
-        { ticker: "IBM", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Tech, 2.8% yield, AI pivot, 28 years of consecutive increases" },
+        { ticker: "OKE", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Pipeline, 4.3% yield, 26 years of increases, 90K miles of infrastructure" },
         { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly", note: "Highest yield in group, 7%+ yield, 50+ year payer" },
         { ticker: "KMB", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly", note: "Consumer staples, 4.9% yield, Kleenex/Huggies, 52 year streak" },
         // ── Monthly Payers (double up every week) ──
