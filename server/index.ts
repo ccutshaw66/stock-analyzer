@@ -95,7 +95,7 @@ app.post("/api/deploy", express.raw({ type: '*/*' }), (req, res) => {
   console.log("[deploy] Webhook received, starting deploy...");
   res.json({ status: "deploying" });
 
-  const cmd = `cd /opt/stock-analyzer && git pull origin main 2>&1 && npm install 2>&1 && npm run build 2>&1 && pm2 restart stock-analyzer 2>&1`;
+  const cmd = `cd /opt/stock-analyzer && git pull origin main 2>&1 && NODE_ENV=development npm install 2>&1 && npm run build 2>&1 && pm2 restart stock-analyzer 2>&1`;
   exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
     deployInProgress = false;
     lastDeployTime = new Date().toISOString();
