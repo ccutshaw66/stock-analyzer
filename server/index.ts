@@ -32,30 +32,47 @@ import { exec } from "child_process";
 const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "LJ.QfHwAcRXiJ6Vdq_-tHRMXn";
 let deployInProgress = false;
 
-app.post("/api/deploy", express.raw({ type: ["application/json", "text/plain", "application/x-www-form-urlencoded"] }), (req, res) => {
+// Deploy health check (no auth needed)
+app.get("/api/deploy/health", (_req, res) => {
+  res.json({ status: "ok", secret_configured: !!DEPLOY_SECRET, deploy_in_progress: deployInProgress });
+});
+
+app.post("/api/deploy", (req, res) => {
+  console.log("[deploy] Request received. Headers:", JSON.stringify({
+    'x-hub-signature-256': req.headers['x-hub-signature-256'] || 'none',
+    'x-deploy-token': req.headers['x-deploy-token'] ? 'present' : 'none',
+    'content-type': req.headers['content-type'] || 'none',
+  }));
+
   // Method 1: GitHub webhook signature verification
   const signature = req.headers["x-hub-signature-256"] as string;
   if (signature) {
-    const body = req.body ? Buffer.from(req.body) : Buffer.from("");
+    const rawBody = (req as any).rawBody ? Buffer.from((req as any).rawBody) : Buffer.from(JSON.stringify(req.body || ""));
     const hmac = crypto.createHmac("sha256", DEPLOY_SECRET);
-    hmac.update(body);
+    hmac.update(rawBody);
     const expected = `sha256=${hmac.digest("hex")}`;
     try {
       if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
         console.log("[deploy] Invalid webhook signature");
         return res.status(403).json({ error: "Invalid signature" });
       }
-    } catch {
-      console.log("[deploy] Signature verification failed");
+    } catch (e: any) {
+      console.log("[deploy] Signature verification error:", e.message);
       return res.status(403).json({ error: "Invalid signature" });
     }
+    console.log("[deploy] GitHub signature verified");
   } else {
-    // Method 2: Simple token in header (for manual curl triggers)
-    const token = (req.headers["x-deploy-token"] as string || "").trim();
+    // Method 2: Token in header OR query param (for manual curl triggers)
+    const token = (
+      req.headers["x-deploy-token"] as string ||
+      req.query.token as string ||
+      ""
+    ).trim();
     if (token !== DEPLOY_SECRET) {
-      console.log(`[deploy] Token mismatch. Got: '${token}', Expected: '${DEPLOY_SECRET}'`);
+      console.log(`[deploy] Token mismatch. Got: '${token}' (${token.length} chars), Expected: '${DEPLOY_SECRET}' (${DEPLOY_SECRET.length} chars)`);
       return res.status(403).json({ error: "Unauthorized" });
     }
+    console.log("[deploy] Token verified");
   }
 
   if (deployInProgress) {
