@@ -356,6 +356,7 @@ function Sidebar({
   const [location] = useLocation();
   const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
     useTicker();
+  const { tier } = useSubscription();
   // Fetch open trades for sidebar
   interface TradeItem {
     id: number;
