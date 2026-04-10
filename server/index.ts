@@ -27,24 +27,33 @@ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async
 import crypto from "crypto";
 import { exec } from "child_process";
 
-const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "stockotter-deploy-secret-change-me";
+// Deploy secret — checked against GitHub webhook signature or x-deploy-token header
+// Must match what's configured in GitHub webhook settings
+const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "LJ.QfHwAcRXiJ6Vdq_-tHRMXn";
 let deployInProgress = false;
 
-app.post("/api/deploy", express.raw({ type: "application/json" }), (req, res) => {
-  // Verify GitHub signature
+app.post("/api/deploy", express.raw({ type: ["application/json", "text/plain", "application/x-www-form-urlencoded"] }), (req, res) => {
+  // Method 1: GitHub webhook signature verification
   const signature = req.headers["x-hub-signature-256"] as string;
   if (signature) {
+    const body = req.body ? Buffer.from(req.body) : Buffer.from("");
     const hmac = crypto.createHmac("sha256", DEPLOY_SECRET);
-    hmac.update(req.body as Buffer);
+    hmac.update(body);
     const expected = `sha256=${hmac.digest("hex")}`;
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      console.log("[deploy] Invalid webhook signature");
+    try {
+      if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+        console.log("[deploy] Invalid webhook signature");
+        return res.status(403).json({ error: "Invalid signature" });
+      }
+    } catch {
+      console.log("[deploy] Signature verification failed");
       return res.status(403).json({ error: "Invalid signature" });
     }
   } else {
-    // Also allow simple secret token in header for manual triggers
-    const token = req.headers["x-deploy-token"] as string;
+    // Method 2: Simple token in header (for manual curl triggers)
+    const token = (req.headers["x-deploy-token"] as string || "").trim();
     if (token !== DEPLOY_SECRET) {
+      console.log(`[deploy] Token mismatch. Got: '${token}', Expected: '${DEPLOY_SECRET}'`);
       return res.status(403).json({ error: "Unauthorized" });
     }
   }
