@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
+import { LimitReached } from "@/components/LimitReached";
+import { useSubscription } from "@/hooks/useSubscription";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
   Zap, AlertTriangle, Gem, DollarSign, Target,
@@ -312,6 +314,7 @@ function VerdictSkeleton() {
 
 export default function Verdict() {
   const { activeTicker } = useTicker();
+  const { isAnalysisExhausted } = useSubscription();
 
   const { data, isLoading, error } = useQuery<VerdictData>({
     queryKey: ["/api/verdict", activeTicker],
