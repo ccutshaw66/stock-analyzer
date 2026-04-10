@@ -12,6 +12,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest } from "@/lib/queryClient";
+import mascotUrl from "@/assets/mascot.jpg";
 import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -143,18 +144,26 @@ export default function MMExposure() {
       {/* Error / Upgrade Prompt */}
       {error && !isLoading && (() => {
         const msg = (error as any).message || "";
-        const isUpgrade = msg.includes("403") || msg.includes("Upgrade") || msg.includes("upgrade");
+        const isUpgrade = msg.includes("403") || msg.includes("Upgrade") || msg.includes("upgrade") || msg.includes("Pro");
         if (isUpgrade) {
           return (
-            <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-primary/30 rounded-lg">
-              <Shield className="h-12 w-12 text-primary/40 mb-4" />
-              <h3 className="text-base font-bold text-foreground mb-2">Pro Feature</h3>
-              <p className="text-sm text-muted-foreground max-w-md mb-4">
-                Market Maker Exposure shows where dealers are positioned, their gamma levels, call/put walls, and trade ideas based on options flow. Available on Pro and Elite plans.
+            <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-primary/20 rounded-xl">
+              <img src={mascotUrl} alt="Stock Otter" className="h-40 w-auto mb-4 drop-shadow-lg" />
+              <h3 className="text-lg font-bold text-foreground mb-2">Market Maker Exposure</h3>
+              <p className="text-sm text-muted-foreground max-w-md mb-1">
+                See where dealers are hiding — gamma exposure by strike, call/put walls, gamma flip level, max pain, and trade ideas based on real options flow.
               </p>
-              <a href="/#/account" className="h-9 px-5 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5">
-                Upgrade to Pro — $15/mo
-              </a>
+              <p className="text-xs text-muted-foreground/60 mb-5">
+                Available on Pro and Elite plans.
+              </p>
+              <div className="flex items-center gap-3">
+                <a href="/#/account" className="h-10 px-6 text-sm font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-2">
+                  Upgrade to Pro — $15/mo
+                </a>
+                <a href="/#/account" className="h-10 px-6 text-sm font-bold rounded-lg bg-muted text-foreground hover:bg-muted/80 transition-colors inline-flex items-center gap-2">
+                  Go Elite — $39/mo
+                </a>
+              </div>
             </div>
           );
         }

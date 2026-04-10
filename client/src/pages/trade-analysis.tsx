@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import mascotUrl from "@/assets/mascot.jpg";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -177,16 +178,42 @@ export default function TradeAnalysis() {
       {isLoading && <LoadingState />}
 
       {/* Error */}
-      {error && !isLoading && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center" data-testid="error-message">
-          <p className="text-red-400 font-medium mb-2">Trade analysis unavailable</p>
-          <p className="text-sm text-muted-foreground">
-            {error.message?.includes("No chart data") || error.message?.includes("404")
-              ? "Chart data is temporarily unavailable. This can happen outside market hours or for tickers with limited history. Try again during market hours."
-              : error.message || "Failed to load trade analysis. Please try again."}
-          </p>
-        </div>
-      )}
+      {error && !isLoading && (() => {
+        const msg = error.message || "";
+        const isUpgrade = msg.includes("403") || msg.includes("limit reached") || msg.includes("Upgrade");
+        if (isUpgrade) {
+          return (
+            <div className="flex flex-col items-center justify-center py-10 text-center bg-card border border-primary/20 rounded-xl" data-testid="upgrade-prompt">
+              <img src={mascotUrl} alt="Stock Otter" className="h-40 w-auto mb-4 drop-shadow-lg" />
+              <h3 className="text-lg font-bold text-foreground mb-2">You've Hit Your Daily Limit</h3>
+              <p className="text-sm text-muted-foreground max-w-md mb-1">
+                Free accounts get 1 stock analysis per day. Upgrade to Pro for 25 per day, or go Elite for unlimited.
+              </p>
+              <p className="text-xs text-muted-foreground/60 mb-5">
+                Your limit resets at midnight. Or unlock everything right now.
+              </p>
+              <div className="flex items-center gap-3">
+                <a href="/#/account" className="h-10 px-6 text-sm font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-2">
+                  Upgrade to Pro — $15/mo
+                </a>
+                <a href="/#/account" className="h-10 px-6 text-sm font-bold rounded-lg bg-muted text-foreground hover:bg-muted/80 transition-colors inline-flex items-center gap-2">
+                  Go Elite — $39/mo
+                </a>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center" data-testid="error-message">
+            <p className="text-red-400 font-medium mb-2">Trade analysis unavailable</p>
+            <p className="text-sm text-muted-foreground">
+              {msg.includes("No chart data") || msg.includes("404")
+                ? "Chart data is temporarily unavailable. This can happen outside market hours or for tickers with limited history. Try again during market hours."
+                : msg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to load trade analysis. Please try again."}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* FAQ / How It Works */}
       <HelpBlock title="How Trade Analysis Scoring Works">
