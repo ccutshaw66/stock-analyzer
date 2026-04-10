@@ -26,7 +26,7 @@ export type SubscriptionTier = keyof typeof TIER_LIMITS;
 
 // ─── Admin Email ──────────────────────────────────────────────────────────
 
-const ADMIN_EMAIL = 'awisper@me.com';
+const ADMIN_EMAILS = ['awisper@me.com', 'christopher.cutshaw@gmail.com'];
 
 // ─── Get User Tier ────────────────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ export async function getUserTier(userId: number): Promise<SubscriptionTier> {
   if (!user) return 'free';
 
   // Admin always gets elite
-  if (user.email === ADMIN_EMAIL) return 'elite';
+  if (ADMIN_EMAILS.includes(user.email)) return 'elite';
 
   const tier = (user.subscriptionTier || 'free') as SubscriptionTier;
 

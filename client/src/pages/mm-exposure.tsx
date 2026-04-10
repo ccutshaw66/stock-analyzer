@@ -140,13 +140,31 @@ export default function MMExposure() {
         </div>
       )}
 
-      {/* Error */}
-      {error && !isLoading && (
-        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-          <AlertTriangle className="h-4 w-4 text-red-400" />
-          <span className="text-xs text-red-400">{(error as any).message || "Failed to load MM exposure data"}</span>
-        </div>
-      )}
+      {/* Error / Upgrade Prompt */}
+      {error && !isLoading && (() => {
+        const msg = (error as any).message || "";
+        const isUpgrade = msg.includes("403") || msg.includes("Upgrade") || msg.includes("upgrade");
+        if (isUpgrade) {
+          return (
+            <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-primary/30 rounded-lg">
+              <Shield className="h-12 w-12 text-primary/40 mb-4" />
+              <h3 className="text-base font-bold text-foreground mb-2">Pro Feature</h3>
+              <p className="text-sm text-muted-foreground max-w-md mb-4">
+                Market Maker Exposure shows where dealers are positioned, their gamma levels, call/put walls, and trade ideas based on options flow. Available on Pro and Elite plans.
+              </p>
+              <a href="/#/account" className="h-9 px-5 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5">
+                Upgrade to Pro — $15/mo
+              </a>
+            </div>
+          );
+        }
+        return (
+          <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <span className="text-xs text-red-400">{msg.replace(/^\d+:\s*/, "").replace(/[{}"]*/g, "").replace(/error:/i, "").trim() || "Failed to load MM exposure data"}</span>
+          </div>
+        );
+      })()}
 
       {/* No ticker */}
       {!ticker && !isLoading && (
