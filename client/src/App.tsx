@@ -34,6 +34,7 @@ import ResetPassword from "@/pages/reset-password";
 import LegalPage from "@/pages/legal";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
@@ -119,14 +120,16 @@ function AuthenticatedApp() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <AuthProvider>
-          <AuthenticatedApp />
-        </AuthProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <AuthProvider>
+            <AuthenticatedApp />
+          </AuthProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

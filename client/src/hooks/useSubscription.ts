@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 
 interface SubscriptionStatus {
   tier: "free" | "pro" | "elite";
@@ -18,24 +17,40 @@ interface SubscriptionStatus {
   };
 }
 
+const SAFE_DEFAULTS: SubscriptionStatus = {
+  tier: "free",
+  limits: { scansPerDay: 10, analysisPerDay: 10, mmExposure: false, tradeLimit: 20, exports: false },
+  usage: { scansUsed: 0, scansRemaining: 10, analysisUsed: 0, analysisRemaining: 10 },
+};
+
 export function useSubscription() {
-  const { data, isLoading } = useQuery<SubscriptionStatus>({
+  const { data } = useQuery<SubscriptionStatus>({
     queryKey: ["/api/subscription/status"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/subscription/status");
-      return res.json();
+      try {
+        const res = await fetch("/api/subscription/status", { credentials: "include" });
+        if (!res.ok) return SAFE_DEFAULTS;
+        return await res.json();
+      } catch {
+        return SAFE_DEFAULTS;
+      }
     },
-    staleTime: 60 * 1000, // refresh every minute
-    refetchInterval: 60 * 1000,
+    staleTime: 60 * 1000,
+    refetchInterval: 2 * 60 * 1000, // every 2 min, not every 1 min
+    retry: false,
+    // CRITICAL: never throw — return defaults on any error
+    placeholderData: SAFE_DEFAULTS,
   });
 
+  const d = data || SAFE_DEFAULTS;
+
   return {
-    tier: data?.tier || "free",
-    limits: data?.limits,
-    usage: data?.usage,
-    isLoading,
-    isAnalysisExhausted: data ? data.usage.analysisRemaining <= 0 && data.tier === "free" : false,
-    isScanExhausted: data ? data.usage.scansRemaining <= 0 && data.tier === "free" : false,
-    canAccessMM: data ? data.limits.mmExposure : false,
+    tier: d.tier || "free",
+    limits: d.limits || SAFE_DEFAULTS.limits,
+    usage: d.usage || SAFE_DEFAULTS.usage,
+    isLoading: false,
+    isAnalysisExhausted: d.usage ? d.usage.analysisRemaining <= 0 && d.tier === "free" : false,
+    isScanExhausted: d.usage ? d.usage.scansRemaining <= 0 && d.tier === "free" : false,
+    canAccessMM: d.limits ? d.limits.mmExposure : false,
   };
 }
