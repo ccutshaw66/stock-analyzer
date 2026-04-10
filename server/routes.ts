@@ -1052,10 +1052,10 @@ export async function registerRoutes(
   });
 
   // ─── Admin Routes ───────────────────────────────────────────────────────────
-  const ADMIN_EMAIL = "awisper@me.com";
+  const ADMIN_EMAILS_LIST = ["awisper@me.com", "christopher.cutshaw@gmail.com", "admin@stockotter.ai"];
 
   app.get("/api/admin/users", async (req, res) => {
-    if (req.user!.email !== ADMIN_EMAIL) {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     try {
@@ -1077,7 +1077,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/admin/users/:id", async (req, res) => {
-    if (req.user!.email !== ADMIN_EMAIL) {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     try {
@@ -1093,7 +1093,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/admin/cache", async (req, res) => {
-    if (req.user!.email !== ADMIN_EMAIL) return res.status(403).json({ error: "Admin only" });
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
     if (req.query.clear === "true") { clearCache(); return res.json({ cleared: true }); }
     res.json({ ...getCacheStats(), queue: getQueueStats() });
   });

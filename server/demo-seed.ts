@@ -249,6 +249,25 @@ export async function seedDemoAccount(pool: pg.Pool): Promise<number> {
     await client.query(`INSERT INTO account_transactions (user_id, amount, trans_type, date, note) VALUES ($1, 5000, 'Deposit', $2, 'Monthly add')`, [userId, daysAgo(60)]);
 
     console.log(`[demo] Account seeded successfully — ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+
+    // ─── Create tier test accounts ────────────────────────────────────────
+    const testPassword = await bcrypt.hash("test123", 12);
+    const testAccounts = [
+      { email: "admin@stockotter.ai", name: "Admin User", tier: "elite" },
+      { email: "free@stockotter.ai", name: "Free Tier Test", tier: "free" },
+      { email: "pro@stockotter.ai", name: "Pro Tier Test", tier: "pro" },
+      { email: "elite@stockotter.ai", name: "Elite Tier Test", tier: "elite" },
+    ];
+    for (const acct of testAccounts) {
+      await client.query(
+        `INSERT INTO users (email, password, display_name, has_seen_tour, subscription_tier)
+         VALUES ($1, $2, $3, true, $4)
+         ON CONFLICT (email) DO UPDATE SET display_name = $3, subscription_tier = $4, has_seen_tour = true`,
+        [acct.email, testPassword, acct.name, acct.tier]
+      );
+      console.log(`[demo] Test account: ${acct.email} (${acct.tier})`);
+    }
+
     return userId;
   } finally {
     client.release();

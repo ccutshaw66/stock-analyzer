@@ -26,7 +26,7 @@ export type SubscriptionTier = keyof typeof TIER_LIMITS;
 
 // ─── Admin Email ──────────────────────────────────────────────────────────
 
-const ADMIN_EMAILS = ['awisper@me.com', 'christopher.cutshaw@gmail.com'];
+const ADMIN_EMAILS = ['awisper@me.com', 'christopher.cutshaw@gmail.com', 'admin@stockotter.ai'];
 
 // ─── Get User Tier ────────────────────────────────────────────────────────
 
