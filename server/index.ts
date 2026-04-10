@@ -23,6 +23,52 @@ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async
   }
 });
 
+// ─── GitHub Deploy Webhook ─────────────────────────────────────────────────
+import crypto from "crypto";
+import { exec } from "child_process";
+
+const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "stockotter-deploy-secret-change-me";
+let deployInProgress = false;
+
+app.post("/api/deploy", express.raw({ type: "application/json" }), (req, res) => {
+  // Verify GitHub signature
+  const signature = req.headers["x-hub-signature-256"] as string;
+  if (signature) {
+    const hmac = crypto.createHmac("sha256", DEPLOY_SECRET);
+    hmac.update(req.body as Buffer);
+    const expected = `sha256=${hmac.digest("hex")}`;
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      console.log("[deploy] Invalid webhook signature");
+      return res.status(403).json({ error: "Invalid signature" });
+    }
+  } else {
+    // Also allow simple secret token in header for manual triggers
+    const token = req.headers["x-deploy-token"] as string;
+    if (token !== DEPLOY_SECRET) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+  }
+
+  if (deployInProgress) {
+    return res.status(409).json({ error: "Deploy already in progress" });
+  }
+
+  deployInProgress = true;
+  console.log("[deploy] Webhook received, starting deploy...");
+  res.json({ status: "deploying" });
+
+  const cmd = `cd /opt/stock-analyzer && git pull origin main 2>&1 && npm install --production 2>&1 && npm run build 2>&1 && pm2 restart stock-analyzer 2>&1`;
+  exec(cmd, { timeout: 120000 }, (error, stdout, stderr) => {
+    deployInProgress = false;
+    if (error) {
+      console.error(`[deploy] FAILED:`, error.message);
+      console.error(stderr);
+    } else {
+      console.log(`[deploy] SUCCESS:\n${stdout}`);
+    }
+  });
+});
+
 const httpServer = createServer(app);
 
 declare module "http" {
