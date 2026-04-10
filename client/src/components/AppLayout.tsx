@@ -47,6 +47,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/hooks/useSubscription";
 import { DatePicker } from "@/components/ui/date-picker";
 
 interface FavoriteItem {
@@ -72,6 +73,7 @@ function StickyHeader({
   const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
     useTicker();
   const { user, logout } = useAuth();
+  const { tier } = useSubscription();
   const [input, setInput] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<{ symbol: string; name: string; type: string }[]>([]);
@@ -484,7 +486,7 @@ function Sidebar({
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
         { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
-        { path: "/mm-exposure", label: "MM Exposure", icon: Crosshair },
+        ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
       ],
     },
     {

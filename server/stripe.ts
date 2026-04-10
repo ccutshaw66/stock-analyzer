@@ -17,8 +17,8 @@ export const PRICE_IDS = {
 // ─── Tier Limits ──────────────────────────────────────────────────────────
 
 export const TIER_LIMITS = {
-  free: { scansPerDay: 5, analysisPerDay: 1, mmExposure: false, tradeLimit: 10, exports: false },
-  pro: { scansPerDay: 25, analysisPerDay: 999, mmExposure: true, tradeLimit: 999, exports: false },
+  free: { scansPerDay: 10, analysisPerDay: 10, mmExposure: false, tradeLimit: 20, exports: false },
+  pro: { scansPerDay: 30, analysisPerDay: 30, mmExposure: true, tradeLimit: 999, exports: false },
   elite: { scansPerDay: 999, analysisPerDay: 999, mmExposure: true, tradeLimit: 999, exports: true },
 };
 
