@@ -356,6 +356,15 @@ export default function Verdict() {
   }
 
   // ─── Error ────────────────────────────────────────────────────────────────
+  // Limit reached — show otter instead of stale data
+  if (isAnalysisExhausted && !isLoading) {
+    return (
+      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        <LimitReached feature="Verdict Analysis" />
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">

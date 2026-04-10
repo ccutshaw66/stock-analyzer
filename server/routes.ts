@@ -1005,11 +1005,18 @@ export async function registerRoutes(
       const dbUser = await storage.getUser(user.id);
       const tier = await getUserTier(user.id);
       const limits = TIER_LIMITS[tier];
+      const usage = getDailyUsage(user.id);
       res.json({
         tier,
         subscriptionExpiresAt: dbUser?.subscriptionExpiresAt || null,
         stripeCustomerId: dbUser?.stripeCustomerId || null,
         limits,
+        usage: {
+          scansUsed: usage.scans,
+          scansRemaining: Math.max(0, limits.scansPerDay - usage.scans),
+          analysisUsed: usage.analysis,
+          analysisRemaining: Math.max(0, limits.analysisPerDay - usage.analysis),
+        },
       });
     } catch (err: any) {
       console.error('[subscription] status error:', err.message);

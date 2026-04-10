@@ -11,6 +11,7 @@ interface TickerContextType {
   isTradeLoading: boolean;
   analysisError: Error | null;
   tradeError: Error | null;
+  dataUpdatedAt: number;
 }
 
 const TickerContext = createContext<TickerContextType | null>(null);
@@ -22,10 +23,13 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
     setActiveTickerRaw(ticker.toUpperCase());
   }, []);
 
+  const DATA_STALE_TIME = 30 * 60 * 1000; // 30 minutes
+
   const {
     data: analysisData,
     isLoading: isAnalysisLoading,
     error: analysisError,
+    dataUpdatedAt: analysisUpdatedAt,
   } = useQuery({
     queryKey: ["/api/analyze", activeTicker],
     queryFn: async () => {
@@ -34,12 +38,14 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
       return res.json();
     },
     enabled: !!activeTicker,
+    staleTime: DATA_STALE_TIME,
   });
 
   const {
     data: tradeData,
     isLoading: isTradeLoading,
     error: tradeError,
+    dataUpdatedAt: tradeUpdatedAt,
   } = useQuery({
     queryKey: ["/api/trade-analysis", activeTicker],
     queryFn: async () => {
@@ -49,8 +55,10 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
     },
     enabled: !!activeTicker,
     retry: 1,
-    staleTime: 5 * 60 * 1000,
+    staleTime: DATA_STALE_TIME,
   });
+
+  const dataUpdatedAt = Math.max(analysisUpdatedAt || 0, tradeUpdatedAt || 0);
 
   return (
     <TickerContext.Provider
@@ -63,6 +71,7 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
         isTradeLoading,
         analysisError: analysisError as Error | null,
         tradeError: tradeError as Error | null,
+        dataUpdatedAt,
       }}
     >
       {children}

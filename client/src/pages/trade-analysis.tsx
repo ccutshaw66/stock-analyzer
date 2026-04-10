@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import mascotUrl from "@/assets/mascot.jpg";
+import { LimitReached } from "@/components/LimitReached";
+import { useSubscription } from "@/hooks/useSubscription";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -171,14 +173,18 @@ function SignalDot(props: any) {
 
 export default function TradeAnalysis() {
   const { activeTicker, tradeData: data, isTradeLoading: isLoading, tradeError: error } = useTicker();
+  const { isAnalysisExhausted } = useSubscription();
 
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      {/* Limit reached */}
+      {isAnalysisExhausted && !isLoading && <LimitReached feature="Trade Analysis" />}
+
       {/* Loading */}
-      {isLoading && <LoadingState />}
+      {!isAnalysisExhausted && isLoading && <LoadingState />}
 
       {/* Error */}
-      {error && !isLoading && (() => {
+      {error && !isLoading && !isAnalysisExhausted && (() => {
         const msg = error.message || "";
         const isUpgrade = msg.includes("403") || msg.includes("limit reached") || msg.includes("Upgrade");
         if (isUpgrade) {
@@ -254,7 +260,7 @@ export default function TradeAnalysis() {
       </HelpBlock>
 
       {/* Data */}
-      {data && !isLoading && (
+      {data && !isLoading && !isAnalysisExhausted && (
         <div className="space-y-6">
           {/* Combined Signal Banner */}
           <div
@@ -706,7 +712,7 @@ export default function TradeAnalysis() {
       )}
 
       {/* Empty State */}
-      {!data && !isLoading && !error && (
+      {!data && !isLoading && !error && !isAnalysisExhausted && (
         <div className="text-center py-16 text-muted-foreground" data-testid="empty-state">
           <Activity className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Enter a ticker symbol to analyze trading signals</p>

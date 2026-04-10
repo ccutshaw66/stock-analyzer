@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { LimitReached } from "@/components/LimitReached";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
 import {
@@ -366,6 +368,7 @@ function ResultCard({ data, rank, onClick }: { data: InstitutionalData; rank: nu
 
 export default function Institutional() {
   const { activeTicker, setActiveTicker } = useTicker();
+  const { isAnalysisExhausted } = useSubscription();
   const [customTickers, setCustomTickers] = useState("");
   const [selectedData, setSelectedData] = useState<InstitutionalData | null>(null);
   const [scanMode, setScanMode] = useState<"default" | "custom">("default");
@@ -401,6 +404,14 @@ export default function Institutional() {
       setScanFetching(false);
     }
   };
+
+  if (isAnalysisExhausted) {
+    return (
+      <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto" data-testid="institutional-page">
+        <LimitReached feature="Institutional Analysis" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="institutional-page">
