@@ -31,10 +31,20 @@ import { exec } from "child_process";
 // Must match what's configured in GitHub webhook settings
 const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "LJ.QfHwAcRXiJ6Vdq_-tHRMXn";
 let deployInProgress = false;
+let lastDeployLog = "No deploys yet";
+let lastDeployTime = "";
+let lastDeploySuccess = false;
 
 // Deploy health check (no auth needed)
 app.get("/api/deploy/health", (_req, res) => {
-  res.json({ status: "ok", secret_configured: !!DEPLOY_SECRET, deploy_in_progress: deployInProgress });
+  res.json({
+    status: "ok",
+    secret_configured: !!DEPLOY_SECRET,
+    deploy_in_progress: deployInProgress,
+    last_deploy_time: lastDeployTime,
+    last_deploy_success: lastDeploySuccess,
+    last_deploy_log: lastDeployLog.substring(0, 2000),
+  });
 });
 
 // Deploy endpoint uses express.raw so we get the exact bytes GitHub signed
@@ -86,12 +96,18 @@ app.post("/api/deploy", express.raw({ type: '*/*' }), (req, res) => {
   res.json({ status: "deploying" });
 
   const cmd = `cd /opt/stock-analyzer && git pull origin main 2>&1 && npm install 2>&1 && npm run build 2>&1 && pm2 restart stock-analyzer 2>&1`;
-  exec(cmd, { timeout: 120000 }, (error, stdout, stderr) => {
+  exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
     deployInProgress = false;
+    lastDeployTime = new Date().toISOString();
     if (error) {
+      lastDeploySuccess = false;
+      lastDeployLog = `ERROR: ${error.message}\nSTDERR: ${stderr}\nSTDOUT: ${stdout}`;
       console.error(`[deploy] FAILED:`, error.message);
-      console.error(stderr);
+      console.error(`[deploy] stderr:`, stderr);
+      console.error(`[deploy] stdout:`, stdout);
     } else {
+      lastDeploySuccess = true;
+      lastDeployLog = stdout;
       console.log(`[deploy] SUCCESS:\n${stdout}`);
     }
   });
