@@ -37,8 +37,11 @@ app.get("/api/deploy/health", (_req, res) => {
   res.json({ status: "ok", secret_configured: !!DEPLOY_SECRET, deploy_in_progress: deployInProgress });
 });
 
-app.post("/api/deploy", (req, res) => {
-  console.log("[deploy] Request received. Headers:", JSON.stringify({
+// Deploy endpoint uses express.raw so we get the exact bytes GitHub signed
+app.post("/api/deploy", express.raw({ type: '*/*' }), (req, res) => {
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body || ""));
+
+  console.log("[deploy] Request received. Body size:", rawBody.length, "Headers:", JSON.stringify({
     'x-hub-signature-256': req.headers['x-hub-signature-256'] || 'none',
     'x-deploy-token': req.headers['x-deploy-token'] ? 'present' : 'none',
     'content-type': req.headers['content-type'] || 'none',
@@ -47,20 +50,19 @@ app.post("/api/deploy", (req, res) => {
   // Method 1: GitHub webhook signature verification
   const signature = req.headers["x-hub-signature-256"] as string;
   if (signature) {
-    const rawBody = (req as any).rawBody ? Buffer.from((req as any).rawBody) : Buffer.from(JSON.stringify(req.body || ""));
     const hmac = crypto.createHmac("sha256", DEPLOY_SECRET);
     hmac.update(rawBody);
     const expected = `sha256=${hmac.digest("hex")}`;
     try {
       if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-        console.log("[deploy] Invalid webhook signature");
+        console.log("[deploy] Signature mismatch.");
         return res.status(403).json({ error: "Invalid signature" });
       }
     } catch (e: any) {
-      console.log("[deploy] Signature verification error:", e.message);
+      console.log("[deploy] Signature error:", e.message);
       return res.status(403).json({ error: "Invalid signature" });
     }
-    console.log("[deploy] GitHub signature verified");
+    console.log("[deploy] GitHub signature verified OK");
   } else {
     // Method 2: Token in header OR query param (for manual curl triggers)
     const token = (
@@ -69,10 +71,10 @@ app.post("/api/deploy", (req, res) => {
       ""
     ).trim();
     if (token !== DEPLOY_SECRET) {
-      console.log(`[deploy] Token mismatch. Got: '${token}' (${token.length} chars), Expected: '${DEPLOY_SECRET}' (${DEPLOY_SECRET.length} chars)`);
+      console.log(`[deploy] Token mismatch.`);
       return res.status(403).json({ error: "Unauthorized" });
     }
-    console.log("[deploy] Token verified");
+    console.log("[deploy] Token verified OK");
   }
 
   if (deployInProgress) {
