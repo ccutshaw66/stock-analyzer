@@ -3979,16 +3979,19 @@ export async function registerRoutes(
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
       const accountValue = settings.startingAccountValue + totalProfit + txTotal;
 
-      // Open P/L (for open trades using current price)
+      // Open P/L (stocks only — we have stock price for both open and current)
+      // Options are excluded: currentPrice is the STOCK price, not the option premium,
+      // so we can't compare it to openPrice (which is the option premium). The client-side
+      // computeOptionPL handles option P/L estimation using strike-based logic.
       const openPL = openTrades.reduce((s, t) => {
         if (!t.currentPrice) return s;
-        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
-        const costToOpen = t.openPrice * t.contractsShares * multiplier;
-        const currentValue = t.currentPrice * t.contractsShares * multiplier;
-        const pl = t.creditDebit === 'CREDIT'
-          ? costToOpen - currentValue - (t.commIn || 0)
-          : currentValue + costToOpen - (t.commIn || 0);
-        return s + pl;
+        // Only calculate for stock trades where currentPrice and openPrice are comparable
+        if (t.tradeCategory !== 'Stock') return s;
+        const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
+        const pl = isShort
+          ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
+          : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
+        return s + pl - (t.commIn || 0);
       }, 0);
 
       // Allocated $
