@@ -4,6 +4,7 @@ import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
 import { LimitReached } from "@/components/LimitReached";
 import { useSubscription } from "@/hooks/useSubscription";
+import { Disclaimer } from "@/components/Disclaimer";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
   Zap, AlertTriangle, Gem, DollarSign, Target,
