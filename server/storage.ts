@@ -194,6 +194,27 @@ export class DatabaseStorage implements IStorage {
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT`);
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP`);
       await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS has_seen_tour BOOLEAN DEFAULT false`);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS signal_log (
+          id SERIAL PRIMARY KEY,
+          ticker TEXT NOT NULL,
+          signal_date TEXT NOT NULL,
+          signal_type TEXT NOT NULL,
+          source TEXT NOT NULL,
+          score DOUBLE PRECISION,
+          price_at_signal DOUBLE PRECISION NOT NULL,
+          price_7d DOUBLE PRECISION,
+          price_30d DOUBLE PRECISION,
+          price_90d DOUBLE PRECISION,
+          return_7d DOUBLE PRECISION,
+          return_30d DOUBLE PRECISION,
+          return_90d DOUBLE PRECISION,
+          spy_return_7d DOUBLE PRECISION,
+          spy_return_30d DOUBLE PRECISION,
+          spy_return_90d DOUBLE PRECISION,
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `);
     } finally {
       client.release();
     }

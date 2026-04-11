@@ -4242,6 +4242,48 @@ export async function registerRoutes(
   const { initCron } = await import("./cron");
   initCron(getQuote, ensureReady);
 
+  // ─── Track Record API ────────────────────────────────────────────────
+  app.get("/api/track-record", async (_req, res) => {
+    try {
+      const { getTrackRecordStats } = await import("./track-record");
+      const stats = await getTrackRecordStats();
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to get track record" });
+    }
+  });
+
+  // Manual trigger for signal logging (admin only)
+  app.post("/api/track-record/log-signals", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    try {
+      const { logSignals } = await import("./track-record");
+      const count = await logSignals(getQuote, screenStocks, computeEMA, getChart, ensureReady);
+      res.json({ logged: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Initialize track record cron (daily at 4:30 PM ET = market close + 30 min)
+  const { logSignals, checkOutcomes } = await import("./track-record");
+  // Run signal logger daily at 16:30 ET (20:30 UTC)
+  setInterval(async () => {
+    const now = new Date();
+    const hour = now.getUTCHours();
+    const min = now.getUTCMinutes();
+    const day = now.getUTCDay();
+    // Only weekdays at ~20:30 UTC (4:30 PM ET)
+    if (day >= 1 && day <= 5 && hour === 20 && min >= 30 && min <= 35) {
+      try {
+        await logSignals(getQuote, screenStocks, computeEMA, getChart, ensureReady);
+        await checkOutcomes(getQuote, ensureReady);
+      } catch (err: any) {
+        console.error("[track-record] Cron error:", err.message);
+      }
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+
   // ─── Demo Account Idle Reset Timer ────────────────────────────────────────
   // Check every 5 minutes. If demo was active and is now idle for 60 min, reset.
   const demoPool = new pg.Pool({

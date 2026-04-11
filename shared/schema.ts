@@ -96,6 +96,29 @@ export const dividendPortfolio = pgTable("dividend_portfolio", {
   addedAt: text("added_at").notNull(),
 });
 
+// Track Record — every signal logged with forward returns
+export const signalLog = pgTable("signal_log", {
+  id: serial("id").primaryKey(),
+  ticker: text("ticker").notNull(),
+  signalDate: text("signal_date").notNull(), // YYYY-MM-DD
+  signalType: text("signal_type").notNull(), // BUY, SELL, STRONG_BUY, HOLD
+  source: text("source").notNull(), // VER, AMC, BBTC, COMBINED, VERDICT
+  score: doublePrecision("score"), // numeric score at time of signal
+  priceAtSignal: doublePrecision("price_at_signal").notNull(),
+  // Forward returns (filled in later by outcome checker)
+  price7d: doublePrecision("price_7d"),
+  price30d: doublePrecision("price_30d"),
+  price90d: doublePrecision("price_90d"),
+  return7d: doublePrecision("return_7d"), // percentage
+  return30d: doublePrecision("return_30d"),
+  return90d: doublePrecision("return_90d"),
+  // Benchmark comparison
+  spyReturn7d: doublePrecision("spy_return_7d"),
+  spyReturn30d: doublePrecision("spy_return_30d"),
+  spyReturn90d: doublePrecision("spy_return_90d"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
