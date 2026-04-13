@@ -1110,7 +1110,7 @@ export async function registerRoutes(
       if (!["free", "pro", "elite"].includes(tier)) {
         return res.status(400).json({ error: "Invalid tier. Must be free, pro, or elite" });
       }
-      await storage.updateUser(userId, { subscriptionTier: tier });
+      await storage.updateUserSubscription(userId, { subscriptionTier: tier });
       res.json({ ok: true, userId, tier });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update tier" });
