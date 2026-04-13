@@ -1099,6 +1099,24 @@ export async function registerRoutes(
     }
   });
 
+  // Admin: update user subscription tier
+  app.patch("/api/admin/users/:id/tier", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+      const userId = parseInt(req.params.id);
+      const { tier } = req.body;
+      if (!["free", "pro", "elite"].includes(tier)) {
+        return res.status(400).json({ error: "Invalid tier. Must be free, pro, or elite" });
+      }
+      await storage.updateUser(userId, { subscriptionTier: tier });
+      res.json({ ok: true, userId, tier });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to update tier" });
+    }
+  });
+
   app.get("/api/admin/cache", async (req, res) => {
     if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
     if (req.query.clear === "true") { clearCache(); return res.json({ cleared: true }); }

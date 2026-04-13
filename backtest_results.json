@@ -1,0 +1,607 @@
+{
+  "overall_7d": {
+    "total_signals": 14586,
+    "buy_signals": 8623,
+    "sell_signals": 5963,
+    "buy_win_rate": 52.3,
+    "sell_win_rate": 45.4,
+    "combined_win_rate": 49.5,
+    "avg_buy_return": 0.38,
+    "avg_sell_return": 0.78,
+    "avg_spy_return": 0.18,
+    "alpha_vs_spy": 0.21
+  },
+  "overall_30d": {
+    "total_signals": 13827,
+    "buy_signals": 8397,
+    "sell_signals": 5430,
+    "buy_win_rate": 56.3,
+    "sell_win_rate": 42.4,
+    "combined_win_rate": 50.8,
+    "avg_buy_return": 2.17,
+    "avg_sell_return": 2.84,
+    "avg_spy_return": 0.94,
+    "alpha_vs_spy": 1.23
+  },
+  "overall_90d": {
+    "total_signals": 11847,
+    "buy_signals": 7328,
+    "sell_signals": 4519,
+    "buy_win_rate": 57.6,
+    "sell_win_rate": 34.4,
+    "combined_win_rate": 48.7,
+    "avg_buy_return": 7.52,
+    "avg_sell_return": 11.56,
+    "avg_spy_return": 3.88,
+    "alpha_vs_spy": 3.64
+  },
+  "by_score_bracket_30d": {
+    "Strong Buy (3+)": {
+      "count": 4876,
+      "win_rate": 55.7,
+      "avg_return_30d": 2.1,
+      "wins": 2716
+    },
+    "Buy (1-2)": {
+      "count": 3521,
+      "win_rate": 57.1,
+      "avg_return_30d": 2.26,
+      "wins": 2011
+    },
+    "Sell (-1 to -2)": {
+      "count": 3013,
+      "win_rate": 42.5,
+      "avg_return_30d": 2.42,
+      "wins": 1281
+    },
+    "Strong Sell (-3+)": {
+      "count": 2417,
+      "win_rate": 42.2,
+      "avg_return_30d": 3.37,
+      "wins": 1020
+    }
+  },
+  "by_ticker_30d": {
+    "AAPL": {
+      "total": 419,
+      "buys": 279,
+      "sells": 140,
+      "win_rate": 52.0,
+      "avg_return_30d": 1.33
+    },
+    "AMD": {
+      "total": 419,
+      "buys": 199,
+      "sells": 220,
+      "win_rate": 53.0,
+      "avg_return_30d": 3.9
+    },
+    "AMZN": {
+      "total": 419,
+      "buys": 266,
+      "sells": 153,
+      "win_rate": 47.0,
+      "avg_return_30d": 1.38
+    },
+    "BAC": {
+      "total": 419,
+      "buys": 297,
+      "sells": 122,
+      "win_rate": 51.6,
+      "avg_return_30d": 1.64
+    },
+    "COIN": {
+      "total": 419,
+      "buys": 176,
+      "sells": 243,
+      "win_rate": 46.3,
+      "avg_return_30d": 2.61
+    },
+    "DIS": {
+      "total": 419,
+      "buys": 207,
+      "sells": 212,
+      "win_rate": 47.0,
+      "avg_return_30d": 0.93
+    },
+    "F": {
+      "total": 419,
+      "buys": 268,
+      "sells": 151,
+      "win_rate": 54.2,
+      "avg_return_30d": 0.18
+    },
+    "GOOGL": {
+      "total": 419,
+      "buys": 293,
+      "sells": 126,
+      "win_rate": 64.4,
+      "avg_return_30d": 4.45
+    },
+    "HD": {
+      "total": 419,
+      "buys": 247,
+      "sells": 172,
+      "win_rate": 41.3,
+      "avg_return_30d": 0.06
+    },
+    "INTC": {
+      "total": 419,
+      "buys": 231,
+      "sells": 188,
+      "win_rate": 36.5,
+      "avg_return_30d": 5.31
+    },
+    "IWM": {
+      "total": 419,
+      "buys": 312,
+      "sells": 107,
+      "win_rate": 62.1,
+      "avg_return_30d": 1.46
+    },
+    "JEPI": {
+      "total": 419,
+      "buys": 292,
+      "sells": 127,
+      "win_rate": 48.7,
+      "avg_return_30d": 0.14
+    },
+    "JNJ": {
+      "total": 419,
+      "buys": 284,
+      "sells": 135,
+      "win_rate": 63.0,
+      "avg_return_30d": 3.53
+    },
+    "KO": {
+      "total": 419,
+      "buys": 238,
+      "sells": 181,
+      "win_rate": 48.9,
+      "avg_return_30d": 1.39
+    },
+    "META": {
+      "total": 419,
+      "buys": 265,
+      "sells": 154,
+      "win_rate": 56.1,
+      "avg_return_30d": 2.17
+    },
+    "MO": {
+      "total": 419,
+      "buys": 273,
+      "sells": 146,
+      "win_rate": 39.9,
+      "avg_return_30d": 2.61
+    },
+    "MSFT": {
+      "total": 419,
+      "buys": 194,
+      "sells": 225,
+      "win_rate": 49.9,
+      "avg_return_30d": -0.54
+    },
+    "NFLX": {
+      "total": 419,
+      "buys": 252,
+      "sells": 167,
+      "win_rate": 54.7,
+      "avg_return_30d": 3.61
+    },
+    "NKE": {
+      "total": 419,
+      "buys": 150,
+      "sells": 269,
+      "win_rate": 43.2,
+      "avg_return_30d": -1.77
+    },
+    "NVDA": {
+      "total": 419,
+      "buys": 280,
+      "sells": 139,
+      "win_rate": 51.1,
+      "avg_return_30d": 3.75
+    },
+    "O": {
+      "total": 419,
+      "buys": 259,
+      "sells": 160,
+      "win_rate": 49.2,
+      "avg_return_30d": 1.04
+    },
+    "PG": {
+      "total": 419,
+      "buys": 171,
+      "sells": 248,
+      "win_rate": 43.0,
+      "avg_return_30d": -0.66
+    },
+    "PLTR": {
+      "total": 419,
+      "buys": 328,
+      "sells": 91,
+      "win_rate": 67.3,
+      "avg_return_30d": 15.14
+    },
+    "QQQ": {
+      "total": 419,
+      "buys": 329,
+      "sells": 90,
+      "win_rate": 60.6,
+      "avg_return_30d": 1.79
+    },
+    "RIVN": {
+      "total": 419,
+      "buys": 196,
+      "sells": 223,
+      "win_rate": 34.4,
+      "avg_return_30d": 1.51
+    },
+    "ROKU": {
+      "total": 419,
+      "buys": 281,
+      "sells": 138,
+      "win_rate": 48.2,
+      "avg_return_30d": 4.61
+    },
+    "SNAP": {
+      "total": 419,
+      "buys": 145,
+      "sells": 274,
+      "win_rate": 40.3,
+      "avg_return_30d": -5.71
+    },
+    "SOFI": {
+      "total": 419,
+      "buys": 275,
+      "sells": 144,
+      "win_rate": 67.8,
+      "avg_return_30d": 9.52
+    },
+    "SPY": {
+      "total": 419,
+      "buys": 341,
+      "sells": 78,
+      "win_rate": 63.0,
+      "avg_return_30d": 1.51
+    },
+    "T": {
+      "total": 419,
+      "buys": 294,
+      "sells": 125,
+      "win_rate": 59.2,
+      "avg_return_30d": 3.17
+    },
+    "TSLA": {
+      "total": 419,
+      "buys": 277,
+      "sells": 142,
+      "win_rate": 53.0,
+      "avg_return_30d": 5.96
+    },
+    "VZ": {
+      "total": 419,
+      "buys": 232,
+      "sells": 187,
+      "win_rate": 32.9,
+      "avg_return_30d": 1.79
+    },
+    "XOM": {
+      "total": 419,
+      "buys": 266,
+      "sells": 153,
+      "win_rate": 47.7,
+      "avg_return_30d": 2.55
+    }
+  },
+  "best_buy_calls": [
+    {
+      "ticker": "TSLA",
+      "date": "2024-11-04",
+      "score": 1,
+      "price": 242.84,
+      "return_30d": 97.6
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2024-11-01",
+      "score": 3,
+      "price": 248.98,
+      "return_30d": 85.97
+    },
+    {
+      "ticker": "PLTR",
+      "date": "2024-10-31",
+      "score": 1,
+      "price": 41.56,
+      "return_30d": 83.04
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-09-30",
+      "score": 1,
+      "price": 178.17,
+      "return_30d": 81.98
+    },
+    {
+      "ticker": "SOFI",
+      "date": "2024-10-01",
+      "score": 1,
+      "price": 7.63,
+      "return_30d": 81.13
+    },
+    {
+      "ticker": "PLTR",
+      "date": "2024-11-01",
+      "score": 1,
+      "price": 41.92,
+      "return_30d": 80.7
+    },
+    {
+      "ticker": "PLTR",
+      "date": "2024-11-04",
+      "score": 1,
+      "price": 41.41,
+      "return_30d": 79.64
+    },
+    {
+      "ticker": "SOFI",
+      "date": "2024-09-30",
+      "score": 3,
+      "price": 7.86,
+      "return_30d": 79.52
+    },
+    {
+      "ticker": "PLTR",
+      "date": "2024-10-24",
+      "score": 3,
+      "price": 43.56,
+      "return_30d": 75.25
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2024-11-05",
+      "score": 3,
+      "price": 251.44,
+      "return_30d": 75.04
+    }
+  ],
+  "worst_buy_calls": [
+    {
+      "ticker": "SNAP",
+      "date": "2024-06-26",
+      "score": 3,
+      "price": 16.77,
+      "return_30d": -46.69
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-06-28",
+      "score": 3,
+      "price": 16.61,
+      "return_30d": -45.7
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-06-27",
+      "score": 3,
+      "price": 16.57,
+      "return_30d": -45.38
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2025-01-24",
+      "score": 1,
+      "price": 406.58,
+      "return_30d": -45.36
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-02",
+      "score": 3,
+      "price": 16.26,
+      "return_30d": -44.46
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-10",
+      "score": 3,
+      "price": 16.84,
+      "return_30d": -43.71
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-05",
+      "score": 3,
+      "price": 16.38,
+      "return_30d": -43.65
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-11",
+      "score": 1,
+      "price": 16.37,
+      "return_30d": -43.49
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-09",
+      "score": 3,
+      "price": 16.75,
+      "return_30d": -43.46
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2026-01-06",
+      "score": 3,
+      "price": 8.79,
+      "return_30d": -43.12
+    }
+  ],
+  "best_sell_calls": [
+    {
+      "ticker": "TSLA",
+      "date": "2025-02-03",
+      "score": -1,
+      "price": 383.68,
+      "return_30d": -41.28
+    },
+    {
+      "ticker": "COIN",
+      "date": "2025-12-22",
+      "score": -3,
+      "price": 247.9,
+      "return_30d": -41.06
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-22",
+      "score": -1,
+      "price": 14.78,
+      "return_30d": -40.05
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2025-02-04",
+      "score": -1,
+      "price": 392.21,
+      "return_30d": -39.86
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2026-01-28",
+      "score": -1,
+      "price": 7.67,
+      "return_30d": -39.37
+    },
+    {
+      "ticker": "INTC",
+      "date": "2024-07-09",
+      "score": -1,
+      "price": 34.59,
+      "return_30d": -39.32
+    },
+    {
+      "ticker": "INTC",
+      "date": "2024-07-26",
+      "score": -1,
+      "price": 31.35,
+      "return_30d": -39.17
+    },
+    {
+      "ticker": "COIN",
+      "date": "2025-12-30",
+      "score": -3,
+      "price": 231.6,
+      "return_30d": -39.08
+    },
+    {
+      "ticker": "SNAP",
+      "date": "2024-07-23",
+      "score": -1,
+      "price": 14.33,
+      "return_30d": -38.66
+    },
+    {
+      "ticker": "INTC",
+      "date": "2024-07-29",
+      "score": -1,
+      "price": 30.83,
+      "return_30d": -38.44
+    }
+  ],
+  "worst_sell_calls": [
+    {
+      "ticker": "COIN",
+      "date": "2024-10-08",
+      "score": -3,
+      "price": 167.69,
+      "return_30d": 93.55
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-01",
+      "score": -3,
+      "price": 165.01,
+      "return_30d": 93.4
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-07",
+      "score": -3,
+      "price": 168.92,
+      "return_30d": 92.64
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-09",
+      "score": -3,
+      "price": 166.97,
+      "return_30d": 91.66
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-10",
+      "score": -3,
+      "price": 164.27,
+      "return_30d": 79.72
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-04",
+      "score": -1,
+      "price": 170.91,
+      "return_30d": 78.95
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-02",
+      "score": -3,
+      "price": 164.47,
+      "return_30d": 73.11
+    },
+    {
+      "ticker": "COIN",
+      "date": "2025-05-09",
+      "score": -1,
+      "price": 199.32,
+      "return_30d": 73.0
+    },
+    {
+      "ticker": "TSLA",
+      "date": "2024-10-23",
+      "score": -1,
+      "price": 213.65,
+      "return_30d": 72.94
+    },
+    {
+      "ticker": "COIN",
+      "date": "2024-10-11",
+      "score": -1,
+      "price": 176.38,
+      "return_30d": 72.72
+    }
+  ],
+  "signal_distribution": {
+    "STRONG_BUY": 4980,
+    "BUY": 3723,
+    "SELL": 3334,
+    "STRONG_SELL": 2780
+  },
+  "BBTC_standalone_30d": {
+    "total": 9886,
+    "buys": 5929,
+    "sells": 3957,
+    "buy_win_rate": 56.5,
+    "sell_win_rate": 42.7,
+    "combined_win_rate": 51.0
+  },
+  "VER_standalone_30d": {
+    "total": 503,
+    "buys": 249,
+    "sells": 254,
+    "buy_win_rate": 63.9,
+    "sell_win_rate": 46.5,
+    "combined_win_rate": 55.1
+  }
+}
