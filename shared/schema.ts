@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
   hasSeenTour: boolean("has_seen_tour").default(false),
+  lastLoginAt: timestamp("last_login_at"),
 });
 
 export const favorites = pgTable("favorites", {

@@ -149,6 +149,14 @@ export async function loginHandler(req: Request, res: Response) {
 
     const token = signToken(user.id);
 
+    // Stamp last login
+    try {
+      const { users } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const { db } = await import("./storage");
+      await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    } catch (e) { /* non-fatal */ }
+
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

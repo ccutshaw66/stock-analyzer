@@ -1067,17 +1067,29 @@ export async function registerRoutes(
     }
     try {
       const allUsers = await storage.getAllUsers();
-      const usersWithCounts = await Promise.all(
-        allUsers.map(async (u) => ({
+      const usersWithDetails = allUsers.map((u) => {
+        const usage = getDailyUsage(u.id);
+        const tier = (u.subscriptionTier || "free") as keyof typeof TIER_LIMITS;
+        const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
+        return {
           id: u.id,
           email: u.email,
           displayName: u.displayName,
           createdAt: u.createdAt,
-          tradeCount: await storage.getUserTradeCount(u.id),
-          favoriteCount: await storage.getUserFavoriteCount(u.id),
-        }))
-      );
-      res.json(usersWithCounts);
+          lastLoginAt: u.lastLoginAt || null,
+          tier: u.subscriptionTier || "free",
+          isAdmin: ADMIN_EMAILS_LIST.includes(u.email),
+          stripeCustomerId: u.stripeCustomerId || null,
+          subscriptionExpiresAt: u.subscriptionExpiresAt || null,
+          usage: {
+            scansUsed: usage.scans,
+            scansLimit: limits.scansPerDay,
+            analysisUsed: usage.analysis,
+            analysisLimit: limits.analysisPerDay,
+          },
+        };
+      });
+      res.json(usersWithDetails);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch users" });
     }
@@ -1114,6 +1126,53 @@ export async function registerRoutes(
       res.json({ ok: true, userId, tier });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update tier" });
+    }
+  });
+
+  // Admin: system stats (KPIs, cache, queue health)
+  app.get("/api/admin/stats", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    try {
+      const allUsers = await storage.getAllUsers();
+      const tiers = { free: 0, pro: 0, elite: 0 };
+      let activeToday = 0;
+      let activeThisWeek = 0;
+      const now = Date.now();
+      for (const u of allUsers) {
+        const t = (u.subscriptionTier || "free") as keyof typeof tiers;
+        if (t in tiers) tiers[t]++;
+        if (u.lastLoginAt) {
+          const loginMs = new Date(u.lastLoginAt).getTime();
+          if (now - loginMs < 24 * 60 * 60 * 1000) activeToday++;
+          if (now - loginMs < 7 * 24 * 60 * 60 * 1000) activeThisWeek++;
+        }
+      }
+
+      const cacheStats = getCacheStats();
+      const queueStats = getQueueStats();
+
+      // Uptime
+      const uptimeSeconds = process.uptime();
+      const uptimeHours = Math.floor(uptimeSeconds / 3600);
+      const uptimeMins = Math.floor((uptimeSeconds % 3600) / 60);
+
+      // Memory
+      const mem = process.memoryUsage();
+
+      res.json({
+        users: { total: allUsers.length, ...tiers, activeToday, activeThisWeek },
+        system: {
+          uptime: `${uptimeHours}h ${uptimeMins}m`,
+          uptimeSeconds,
+          memoryMB: Math.round(mem.heapUsed / 1024 / 1024),
+          memoryMaxMB: Math.round(mem.heapTotal / 1024 / 1024),
+          nodeVersion: process.version,
+        },
+        cache: { size: cacheStats.size, keys: cacheStats.keys.length },
+        queue: queueStats,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to fetch stats" });
     }
   });
 
