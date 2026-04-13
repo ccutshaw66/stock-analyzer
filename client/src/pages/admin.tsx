@@ -60,21 +60,32 @@ function TierBadge({ tier }: { tier: string }) {
 
 function TierDropdown({ user, onUpdate, isPending }: { user: AdminUser; onUpdate: (userId: number, tier: string) => void; isPending: boolean }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const handleOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Position the dropdown in fixed space so it's never clipped
+    setPos({ top: rect.bottom + 4, left: rect.left });
+    setOpen(!open);
+  };
 
   return (
-    <div className="relative" data-testid={`tier-dropdown-${user.id}`}>
+    <div data-testid={`tier-dropdown-${user.id}`}>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={handleOpen}
         disabled={isPending}
         className="flex items-center gap-1 hover:opacity-80 transition-opacity"
       >
         <TierBadge tier={user.tier} />
         <ChevronDown className="h-3 w-3 text-muted-foreground" />
       </button>
-      {open && (
+      {open && pos && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-card-border rounded-lg shadow-xl py-1 min-w-[100px]">
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[70] bg-card border border-card-border rounded-lg shadow-xl py-1 min-w-[100px]"
+            style={{ top: pos.top, left: pos.left }}
+          >
             {["free", "pro", "elite"].map((t) => (
               <button
                 key={t}
