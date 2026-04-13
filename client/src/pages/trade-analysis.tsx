@@ -264,6 +264,126 @@ export default function TradeAnalysis() {
       {/* Data */}
       {data && !isLoading && !isAnalysisExhausted && (
         <div className="space-y-6">
+          {/* 3-Gate Signal Pipeline */}
+          {data.gates && (
+            <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5" data-testid="gate-pipeline">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-bold text-foreground">Signal Pipeline</h3>
+                </div>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                  data.gates.confidence === "HIGH" ? "bg-green-500/10 text-green-400 ring-1 ring-green-500/30" :
+                  data.gates.confidence === "MODERATE" ? "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/30" :
+                  data.gates.confidence === "EARLY" ? "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/30" :
+                  "bg-zinc-500/10 text-zinc-400 ring-1 ring-zinc-500/30"
+                }`}>
+                  {data.gates.confidence} CONFIDENCE
+                </span>
+              </div>
+
+              {/* Gate Progress Bar */}
+              <div className="flex items-center gap-1 mb-5">
+                {[1, 2, 3].map((gate) => (
+                  <div key={gate} className="flex-1 relative">
+                    <div className={`h-2 rounded-full transition-all ${
+                      gate <= data.gates.gatesCleared
+                        ? gate === 3 ? "bg-green-500" : gate === 2 ? "bg-blue-500" : "bg-amber-500"
+                        : "bg-muted/30"
+                    }`} />
+                  </div>
+                ))}
+              </div>
+
+              {/* Summary */}
+              {data.gates.signal !== "HOLD" && (
+                <div className={`text-sm font-semibold mb-4 ${
+                  data.gates.signal === "STRONG_BUY" ? "text-green-400" :
+                  data.gates.signal === "BUY" ? "text-blue-400" :
+                  data.gates.signal === "WATCH" ? "text-amber-400" :
+                  data.gates.signal === "SELL" ? "text-red-400" :
+                  data.gates.signal === "STRONG_SELL" ? "text-red-500" :
+                  "text-muted-foreground"
+                }` } data-testid="gate-summary">
+                  {data.gates.summary}
+                </div>
+              )}
+
+              {/* 3 Gate Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Gate 1: READY */}
+                <div className={`rounded-lg border p-3 ${
+                  data.gates.gate1.cleared ? "border-amber-500/30 bg-amber-500/5" : "border-card-border bg-card"
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      data.gates.gate1.cleared ? "bg-amber-500" : "bg-muted-foreground/30"
+                    }`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 1 — Ready</span>
+                  </div>
+                  <div className="text-xs font-bold text-foreground mb-1">
+                    {data.gates.gate1.cleared ? `Reversal ${data.gates.gate1.direction === "BULLISH" ? "↑" : "↓"}` : "No Reversal"}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate1.detail}</p>
+                  {data.gates.gate1.rsi !== null && (
+                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                      <span>RSI: <span className="font-mono text-foreground">{data.gates.gate1.rsi}</span></span>
+                      {data.gates.gate1.volumeRatio !== null && (
+                        <span>Vol: <span className="font-mono text-foreground">{data.gates.gate1.volumeRatio}x</span></span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Gate 2: SET */}
+                <div className={`rounded-lg border p-3 ${
+                  data.gates.gate2.cleared ? "border-blue-500/30 bg-blue-500/5" : "border-card-border bg-card"
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      data.gates.gate2.cleared ? "bg-blue-500" : "bg-muted-foreground/30"
+                    }`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 2 — Set</span>
+                  </div>
+                  <div className="text-xs font-bold text-foreground mb-1">
+                    {data.gates.gate2.cleared ? "Momentum Confirmed" : `AMC Score: ${data.gates.gate2.amcScore}/5`}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate2.detail}</p>
+                  <div className="flex items-center gap-1 mt-2">
+                    {[1, 2, 3, 4, 5].map((dot) => (
+                      <div key={dot} className={`h-1.5 w-1.5 rounded-full ${
+                        dot <= data.gates.gate2.amcScore ? "bg-blue-500" : "bg-muted-foreground/20"
+                      }`} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Gate 3: GO */}
+                <div className={`rounded-lg border p-3 ${
+                  data.gates.gate3.cleared ? "border-green-500/30 bg-green-500/5" : "border-card-border bg-card"
+                }`}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      data.gates.gate3.cleared ? "bg-green-500" : "bg-muted-foreground/30"
+                    }`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 3 — Go</span>
+                  </div>
+                  <div className="text-xs font-bold text-foreground mb-1">
+                    {data.gates.gate3.cleared ? "All Clear" : "Waiting"}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate3.detail}</p>
+                  <div className="flex items-center gap-2 mt-2 text-[10px]">
+                    <span className={data.gates.gate3.emaStackAligned ? "text-green-400" : "text-muted-foreground/50"}>EMA {data.gates.gate3.emaStackAligned ? "✓" : "✗"}</span>
+                    <span className={data.gates.gate3.priceAboveEma9 ? "text-green-400" : "text-muted-foreground/50"}>Price {data.gates.gate3.priceAboveEma9 ? "✓" : "✗"}</span>
+                    {data.gates.gate3.mmeAligned !== null && (
+                      <span className={data.gates.gate3.mmeAligned ? "text-green-400" : "text-muted-foreground/50"}>MME {data.gates.gate3.mmeAligned ? "✓" : "✗"}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Combined Signal Banner */}
           <div
             className={`bg-card border rounded-lg p-6 ${getSignalColor(data.combined.signal).border}`}

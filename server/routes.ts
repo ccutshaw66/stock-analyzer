@@ -8,6 +8,7 @@ import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
+import { runGateSystem, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
@@ -2550,9 +2551,39 @@ export async function registerRoutes(
         });
       }
 
+      // ── Run 3-Gate Signal Engine ──
+      let gateResult: GateSystemResult | null = null;
+      try {
+        // Try to get MME data for Gate 3 (best-effort, non-blocking)
+        let mmeData = null;
+        try {
+          const optionsUrl = `https://query2.finance.yahoo.com/v7/finance/options/${ticker}`;
+          const cacheKey = `mme_gate_${ticker}`;
+          const cached = getCached(cacheKey);
+          if (cached) {
+            mmeData = cached;
+          }
+          // We skip live MME fetch in trade-analysis to avoid 429s.
+          // Gate 3 will evaluate without MME data (EMA-only check)
+        } catch {}
+
+        gateResult = runGateSystem({
+          ticker,
+          closes,
+          highs,
+          lows,
+          volumes,
+          mmeData,
+        });
+      } catch (err: any) {
+        console.error(`[gate-system] Error for ${ticker}:`, err.message);
+      }
+
       res.json({
         ticker,
         currentPrice: Number(currentPrice.toFixed(2)),
+        // 3-Gate Signal System
+        gates: gateResult,
         bbtc: {
           signal: bbtcTopSignal,
           signalDetail: bbtcSignalDetail,
