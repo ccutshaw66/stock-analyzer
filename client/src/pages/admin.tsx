@@ -32,7 +32,7 @@ interface SystemStats {
   users: { total: number; free: number; pro: number; elite: number; activeToday: number; activeThisWeek: number };
   system: { uptime: string; uptimeSeconds: number; memoryMB: number; memoryMaxMB: number; nodeVersion: string };
   cache: { size: number; keys: number };
-  queue: { active: number; waiting: number; maxConcurrent: number; totalProcessed: number; cacheHits: number; circuitOpen: boolean };
+  queue: { active: number; queued: number; total: number; cacheHits: number; consecutive429s: number; circuitBroken: boolean; circuitBreakUntil: string | null };
 }
 
 const TIER_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
@@ -251,8 +251,8 @@ export default function AdminPage() {
           icon={Database}
           label="Cache"
           value={stats?.cache.size ?? 0}
-          sub={`Queue: ${stats?.queue.active ?? 0} active, ${stats?.queue.waiting ?? 0} waiting`}
-          color={stats?.queue.circuitOpen ? "text-red-400" : "text-cyan-400"}
+          sub={`Queue: ${stats?.queue.active ?? 0} active, ${stats?.queue.queued ?? 0} waiting`}
+          color={stats?.queue.circuitBroken ? "text-red-400" : "text-cyan-400"}
         />
       </div>
 
@@ -262,9 +262,13 @@ export default function AdminPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-foreground">System Health</h2>
             <div className="flex items-center gap-3">
-              {stats.queue.circuitOpen ? (
+              {stats.queue.circuitBroken ? (
                 <span className="flex items-center gap-1 text-[10px] text-red-400 font-semibold">
                   <XCircle className="h-3 w-3" /> Circuit Breaker OPEN
+                </span>
+              ) : stats.queue.consecutive429s > 0 ? (
+                <span className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold">
+                  <Activity className="h-3 w-3" /> {stats.queue.consecutive429s} consecutive 429s
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-[10px] text-green-400 font-semibold">
@@ -284,8 +288,8 @@ export default function AdminPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             <div>
               <div className="text-muted-foreground mb-1">Yahoo Queue</div>
-              <div className="font-mono text-foreground">{stats.queue.active}/{stats.queue.maxConcurrent} active</div>
-              <div className="text-muted-foreground/70">{stats.queue.totalProcessed.toLocaleString()} total reqs</div>
+              <div className="font-mono text-foreground">{stats.queue.active} active, {stats.queue.queued} queued</div>
+              <div className="text-muted-foreground/70">{stats.queue.total.toLocaleString()} total reqs</div>
             </div>
             <div>
               <div className="text-muted-foreground mb-1">Cache Hits</div>
