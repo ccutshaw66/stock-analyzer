@@ -18,6 +18,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import mascotUrl from "@/assets/mascot.jpg";
 import { LimitReached } from "@/components/LimitReached";
+import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
   ResponsiveContainer,
@@ -209,13 +210,14 @@ export default function TradeAnalysis() {
             </div>
           );
         }
+        if (isSymbolNotFound(msg)) {
+          return <InvalidSymbol ticker={activeTicker} />;
+        }
         return (
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center" data-testid="error-message">
             <p className="text-red-400 font-medium mb-2">Trade analysis unavailable</p>
             <p className="text-sm text-muted-foreground">
-              {msg.includes("No chart data") || msg.includes("404")
-                ? "Chart data is temporarily unavailable. This can happen outside market hours or for tickers with limited history. Try again during market hours."
-                : msg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to load trade analysis. Please try again."}
+              {msg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to load trade analysis. Please try again."}
             </p>
           </div>
         );

@@ -10,10 +10,11 @@ import { RedFlags } from "@/components/RedFlags";
 import { DecisionShortcut } from "@/components/DecisionShortcut";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { LimitReached } from "@/components/LimitReached";
+import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
 
 export default function Home() {
-  const { analysisData: data, isAnalysisLoading: isLoading, analysisError: error } = useTicker();
+  const { activeTicker, analysisData: data, isAnalysisLoading: isLoading, analysisError: error } = useTicker();
   const { isAnalysisExhausted } = useSubscription();
 
   return (
@@ -28,11 +29,15 @@ export default function Home() {
 
           {/* Error State */}
           {error && !isLoading && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
-              <p className="text-red-400 font-medium">
-                {error.message || "Failed to analyze ticker. Please try again."}
-              </p>
-            </div>
+            isSymbolNotFound(error.message || "") ? (
+              <InvalidSymbol ticker={activeTicker} />
+            ) : (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
+                <p className="text-red-400 font-medium">
+                  {error.message?.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to analyze ticker. Please try again."}
+                </p>
+              </div>
+            )
           )}
 
           {/* Analysis Results */}

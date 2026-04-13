@@ -3323,6 +3323,11 @@ export async function registerRoutes(
       const institutional = instRes.status === "fulfilled" ? instRes.value : null;
       const strategies = stratRes.value;
 
+      // If the primary analysis failed (bad ticker), return 404 early
+      if (!analysis && !institutional) {
+        return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
+      }
+
       // Build stress test comparison
       function getReturnDuringPeriod(chart: any, startDate: string, endDate: string): number | null {
         if (!chart?.timestamp || !chart?.indicators?.quote?.[0]?.close) return null;

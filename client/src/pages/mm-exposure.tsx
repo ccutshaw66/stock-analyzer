@@ -13,6 +13,7 @@ import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest } from "@/lib/queryClient";
 import mascotUrl from "@/assets/mascot.jpg";
+import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { Disclaimer } from "@/components/Disclaimer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -166,6 +167,9 @@ export default function MMExposure() {
               </div>
             </div>
           );
+        }
+        if (isSymbolNotFound(msg)) {
+          return <InvalidSymbol ticker={ticker} />;
         }
         return (
           <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">

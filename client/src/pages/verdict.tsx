@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
 import { LimitReached } from "@/components/LimitReached";
+import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Disclaimer } from "@/components/Disclaimer";
 import {
@@ -370,11 +371,19 @@ export default function Verdict() {
   }
 
   if (error) {
+    const errMsg = (error as Error).message || "";
+    if (isSymbolNotFound(errMsg)) {
+      return (
+        <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+          <InvalidSymbol ticker={activeTicker} />
+        </div>
+      );
+    }
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center">
           <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-red-400" />
-          <p className="text-red-400 font-medium">{(error as Error).message || "Failed to generate verdict. Please try again."}</p>
+          <p className="text-red-400 font-medium">{errMsg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
         </div>
       </div>
     );
