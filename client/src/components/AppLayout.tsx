@@ -473,12 +473,23 @@ function Sidebar({
   // Grouped nav structure
   const navGroups = [
     {
+      label: "Trade Tracker",
+      items: [
+        { path: "/tracker", label: "Current Positions", icon: ClipboardList },
+        { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
+        { path: "#add-trade", label: "Add Trade", icon: Plus },
+        { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
+        { path: "/analytics", label: "Performance Analytics", icon: PieChart },
+      ],
+    },
+    {
       label: "Company Information",
       items: [
         { path: "/profile", label: "Profile", icon: BarChart3 },
-        { path: "/institutional", label: "Institutions", icon: Building2 },
         { path: "/trade", label: "Trade Analysis", icon: Activity },
-        { path: "/verdict", label: "Verdict", icon: Award },
+        ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
+        { path: "/institutional", label: "Institutions", icon: Building2 },
+        { path: "/verdict", label: "Long-Term Outlook", icon: Award },
       ],
     },
     {
@@ -488,7 +499,6 @@ function Sidebar({
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
         { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
-        ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
         { path: "/track-record", label: "Track Record", icon: Trophy },
       ],
     },
@@ -499,16 +509,6 @@ function Sidebar({
         { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
         { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
         { path: "/kelly", label: "Kelly Criterion", icon: Percent },
-      ],
-    },
-    {
-      label: "Trade Tracker",
-      items: [
-        { path: "/tracker", label: "Current Positions", icon: ClipboardList },
-        { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
-        { path: "#add-trade", label: "Add Trade", icon: Plus },
-        { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
-        { path: "/analytics", label: "Performance Analytics", icon: PieChart },
       ],
     },
   ];

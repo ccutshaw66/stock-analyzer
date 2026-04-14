@@ -335,9 +335,10 @@ export default function Verdict() {
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         <div className="text-center py-24 text-muted-foreground">
           <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">Search a ticker to generate a research verdict</p>
+          <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
       <Disclaimer />
-          <p className="text-sm mt-1 opacity-60">Unified analysis combining fundamentals, flow, stress tests &amp; more</p>
+          <p className="text-sm mt-1 opacity-60">Is this a good stock to own? Fundamentals, institutional flow, stress resilience &amp; insider confidence</p>
+          <p className="text-[10px] mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
         </div>
       </div>
     );
@@ -351,7 +352,7 @@ export default function Verdict() {
           <div className="flex items-center gap-3 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm font-medium">
-              Building unified verdict for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
+              Building long-term outlook for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
             </span>
           </div>
         </div>
@@ -365,7 +366,7 @@ export default function Verdict() {
   if (isAnalysisExhausted && !isLoading) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <LimitReached feature="Verdict Analysis" />
+        <LimitReached feature="Long-Term Outlook" />
       </div>
     );
   }
@@ -398,8 +399,9 @@ export default function Verdict() {
     <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
 
       {/* ━━━ FAQ / How It Works ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <HelpBlock title="How the Unified Verdict Score Works">
-        <p>The verdict combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
+      <HelpBlock title="How the Long-Term Outlook Score Works">
+        <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
+        <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
 
         <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
         <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
@@ -460,6 +462,7 @@ export default function Verdict() {
           <div className={`mt-5 px-5 py-1.5 rounded-full border text-sm font-bold tracking-wider uppercase ${verdictBadgeStyle(data.finalVerdict)}`}>
             {data.finalVerdict}
           </div>
+          <span className="mt-2 text-[10px] text-muted-foreground/50 uppercase tracking-widest">Long-Term Outlook — Not a Trade Signal</span>
 
           {/* Company info */}
           <h2 className="mt-4 text-lg font-semibold text-foreground">{data.companyName}</h2>

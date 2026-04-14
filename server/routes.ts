@@ -3120,10 +3120,27 @@ export async function registerRoutes(
 
             const alignmentLabel = score >= 5 ? "Strong Buy" : score >= 3 ? "Buy" : score >= 2 ? "Lean Buy" : null;
 
+            // Run 3-Gate System
+            let gates = null;
+            try {
+              const cleanCloses = closes.map((v: any) => Number(v) || 0);
+              const cleanHighs = highs.map((v: any) => Number(v) || 0);
+              const cleanLows = lows.map((v: any) => Number(v) || 0);
+              const cleanVols = volumes.map((v: any) => Number(v) || 0);
+              gates = runGateSystem({ ticker, closes: cleanCloses, highs: cleanHighs, lows: cleanLows, volumes: cleanVols, mmeData: null });
+            } catch {}
+
             return {
               ticker,
               price: Number(currentPrice.toFixed(2)),
               score,
+              gates: gates ? {
+                gatesCleared: gates.gatesCleared,
+                confidence: gates.confidence,
+                signal: gates.signal,
+                direction: gates.direction,
+                summary: gates.summary,
+              } : null,
               bbtc: { signal: bbtcTopSignal, trend: bbtcTrend, bias: bbtcBias },
               ver: { signal: verTopSignal, rsi: lastRsi },
               confirmation: {
@@ -3151,9 +3168,14 @@ export async function registerRoutes(
         }
       }
 
-      // Sort by score descending
-      const sorted = allResults.sort((a, b) => b.score - a.score);
-      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.score >= 2).slice(0, 20);
+      // Sort: gate-cleared stocks first (by gates desc), then by old score
+      const sorted = allResults.sort((a, b) => {
+        const aGates = a.gates?.gatesCleared ?? 0;
+        const bGates = b.gates?.gatesCleared ?? 0;
+        if (aGates !== bGates) return bGates - aGates;
+        return b.score - a.score;
+      });
+      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.score >= 2 || (r.gates?.gatesCleared ?? 0) >= 1).slice(0, 25);
 
       res.json({
         scannedAt: new Date().toISOString(),

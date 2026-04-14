@@ -84,12 +84,42 @@ function ConfirmationDetail({ c }: { c: any }) {
 
 // ─── 3-Strategy Result Card ───
 
+function GatePips({ gatesCleared }: { gatesCleared: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3].map((g) => (
+        <div key={g} className={`h-1.5 w-4 rounded-full ${
+          g <= gatesCleared
+            ? g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+            : "bg-muted-foreground/15"
+        }`} />
+      ))}
+    </div>
+  );
+}
+
 function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const label = result.score >= 5 ? "Strong Buy" : result.score >= 3 ? "Buy" : result.score >= 2 ? "Lean Buy" : result.score >= 0 ? "Neutral" : result.score >= -2 ? "Lean Sell" : "Sell";
-  const labelColor = result.score >= 5 ? "bg-green-500 text-white" : result.score >= 3 ? "bg-green-500/70 text-white" : result.score >= 2 ? "bg-green-500/30 text-green-300" : result.score >= 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400";
+  const g = result.gates;
+  // Use gate signal if available, fall back to old score
+  const gateLabel = g?.gatesCleared >= 3 ? (g.direction === "BULLISH" ? "Strong Buy" : "Strong Sell")
+    : g?.gatesCleared >= 2 ? (g.direction === "BULLISH" ? "Buy" : "Sell")
+    : g?.gatesCleared >= 1 ? "Watch"
+    : null;
+  const label = gateLabel || (result.score >= 5 ? "Strong Buy" : result.score >= 3 ? "Buy" : result.score >= 2 ? "Lean Buy" : result.score >= 0 ? "Neutral" : result.score >= -2 ? "Lean Sell" : "Sell");
+  const labelColor = g?.gatesCleared >= 3 ? "bg-green-500 text-white"
+    : g?.gatesCleared >= 2 ? "bg-blue-500 text-white"
+    : g?.gatesCleared >= 1 ? "bg-amber-500/20 text-amber-400"
+    : result.score >= 5 ? "bg-green-500 text-white" : result.score >= 3 ? "bg-green-500/70 text-white" : result.score >= 2 ? "bg-green-500/30 text-green-300" : result.score >= 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400";
+
+  // Border glow for gate-cleared stocks
+  const borderClass = g?.gatesCleared >= 3 ? "border-green-500/40"
+    : g?.gatesCleared >= 2 ? "border-blue-500/40"
+    : g?.gatesCleared >= 1 ? "border-amber-500/30"
+    : "border-card-border";
+
   return (
-    <div className="bg-card border border-card-border rounded-lg p-4 hover:border-primary/30 transition-colors" data-testid={`scanner-result-${result.ticker}`}>
+    <div className={`bg-card border ${borderClass} rounded-lg p-4 hover:border-primary/30 transition-colors`} data-testid={`scanner-result-${result.ticker}`}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <span className="text-2xl font-bold text-muted-foreground/40 tabular-nums w-8">{rank}</span>
@@ -98,7 +128,7 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
               <span onClick={onClick} className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
             </div>
-            <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5">
               {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
               <span className="text-[10px] text-muted-foreground">{result.bbtc.trend} · {result.bbtc.bias}</span>
               {result.ver.rsi !== null && <span className={`text-[10px] ml-1 ${result.ver.rsi < 30 ? "text-green-400" : result.ver.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
@@ -107,17 +137,42 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
         </div>
         <span className={`${labelColor} px-3 py-1 text-xs font-bold rounded-md uppercase`}>{label}</span>
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.ver.signal} /><span className="text-[9px] text-muted-foreground">VER</span></div>
-        <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.bbtc.signal} /><span className="text-[9px] text-muted-foreground">BBTC</span></div>
-        <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.confirmation.signal} /><span className="text-[9px] text-muted-foreground">Confirm</span></div>
-        <div className="ml-auto"><ScoreBar score={result.score} max={7} /></div>
-      </div>
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-center gap-1 mt-3 pt-2 border-t border-card-border/30 text-xs text-muted-foreground hover:text-foreground transition-colors">
+
+      {/* Gate Pipeline Bar */}
+      {g && (
+        <div className="flex items-center gap-2 mb-3">
+          <GatePips gatesCleared={g.gatesCleared} />
+          <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+            g.confidence === "HIGH" ? "text-green-400" :
+            g.confidence === "MODERATE" ? "text-blue-400" :
+            g.confidence === "EARLY" ? "text-amber-400" :
+            "text-muted-foreground/40"
+          }`}>
+            {g.confidence !== "NEUTRAL" ? `${g.confidence} — ${g.signal.replace(/_/g, " ")}` : "No setup"}
+          </span>
+          {g.direction && (
+            <span className={`text-[10px] ml-auto ${g.direction === "BULLISH" ? "text-green-400" : "text-red-400"}`}>
+              {g.direction === "BULLISH" ? "↑" : "↓"} {g.direction}
+            </span>
+          )}
+        </div>
+      )}
+
+      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-center gap-1 mt-1 pt-2 border-t border-card-border/30 text-xs text-muted-foreground hover:text-foreground transition-colors">
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         {expanded ? "Hide" : "Show"} details
       </button>
-      {expanded && <ConfirmationDetail c={result.confirmation} />}
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.ver.signal} /><span className="text-[9px] text-muted-foreground">VER</span></div>
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.bbtc.signal} /><span className="text-[9px] text-muted-foreground">BBTC</span></div>
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.confirmation.signal} /><span className="text-[9px] text-muted-foreground">Confirm</span></div>
+            <div className="ml-auto"><ScoreBar score={result.score} max={7} /></div>
+          </div>
+          <ConfirmationDetail c={result.confirmation} />
+        </div>
+      )}
     </div>
   );
 }
