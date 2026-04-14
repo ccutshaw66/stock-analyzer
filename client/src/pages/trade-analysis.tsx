@@ -264,9 +264,51 @@ export default function TradeAnalysis() {
       {/* Data */}
       {data && !isLoading && !isAnalysisExhausted && (
         <div className="space-y-6">
-          {/* 3-Gate Signal Pipeline */}
+          {/* Combined Signal Banner — ticker + price first */}
+          <div
+            className={`bg-card border rounded-lg p-6 ${getSignalColor(data.combined.signal).border}`}
+            data-testid="combined-signal-banner"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <SignalBadge signal={data.combined.signal} size="lg" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs ${
+                        data.combined.confidence === "Strong"
+                          ? "border-green-500/40 text-green-500"
+                          : data.combined.confidence === "Weak"
+                          ? "border-red-500/40 text-red-500"
+                          : "border-yellow-500/40 text-yellow-500"
+                      }`}
+                    >
+                      {data.combined.confidence} Confidence
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1" data-testid="text-reasoning">
+                    {data.combined.reasoning}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">{data.ticker}</div>
+                <div className="text-2xl font-bold tabular-nums text-foreground" data-testid="text-current-price">
+                  {formatCurrency(data.currentPrice)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3-Gate Signal Pipeline — prominently styled */}
           {data.gates && (
-            <div className="bg-card border border-card-border rounded-xl p-4 sm:p-5" data-testid="gate-pipeline">
+            <div className={`rounded-xl p-4 sm:p-5 border-2 ${
+              data.gates.gatesCleared === 3 ? "border-green-500/40 bg-green-500/5" :
+              data.gates.gatesCleared === 2 ? "border-blue-500/40 bg-blue-500/5" :
+              data.gates.gatesCleared === 1 ? "border-amber-500/40 bg-amber-500/5" :
+              "border-card-border bg-card"
+            }`} data-testid="gate-pipeline">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-primary" />
@@ -384,42 +426,7 @@ export default function TradeAnalysis() {
             </div>
           )}
 
-          {/* Combined Signal Banner */}
-          <div
-            className={`bg-card border rounded-lg p-6 ${getSignalColor(data.combined.signal).border}`}
-            data-testid="combined-signal-banner"
-          >
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <SignalBadge signal={data.combined.signal} size="lg" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${
-                        data.combined.confidence === "Strong"
-                          ? "border-green-500/40 text-green-500"
-                          : data.combined.confidence === "Weak"
-                          ? "border-red-500/40 text-red-500"
-                          : "border-yellow-500/40 text-yellow-500"
-                      }`}
-                    >
-                      {data.combined.confidence} Confidence
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1" data-testid="text-reasoning">
-                    {data.combined.reasoning}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">{data.ticker}</div>
-                <div className="text-2xl font-bold tabular-nums text-foreground" data-testid="text-current-price">
-                  {formatCurrency(data.currentPrice)}
-                </div>
-              </div>
-            </div>
-          </div>
+
 
           {/* Strategy Cards — ordered by trade lifecycle: Reversal → Momentum → Trend */}
           <div className="hidden md:grid grid-cols-3 gap-1 mb-2">
