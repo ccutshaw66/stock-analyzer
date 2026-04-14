@@ -40,6 +40,8 @@ function getSignalColor(signal: string) {
       return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
     case "SELL":
       return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
+    case "WATCH":
+      return { bg: "bg-zinc-500", text: "text-zinc-400", border: "border-zinc-500/30" };
     case "HOLD":
     default:
       return { bg: "bg-yellow-500", text: "text-yellow-500", border: "border-yellow-500/30" };
@@ -428,16 +430,16 @@ export default function TradeAnalysis() {
 
 
 
-          {/* Strategy Cards — ordered by trade lifecycle: Reversal → Momentum → Trend */}
+          {/* Strategy Cards — signals overridden by gate system for confluence */}
           <div className="hidden md:grid grid-cols-3 gap-1 mb-2">
             <div className="text-center">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-red-400/70">1 — Reversal Signal</span>
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate1?.cleared ? "text-amber-400" : "text-muted-foreground/40"}`}>1 — Reversal Signal</span>
             </div>
             <div className="text-center">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-400/70">2 — Momentum Confirms</span>
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate2?.cleared ? "text-blue-400" : "text-muted-foreground/40"}`}>2 — Momentum Confirms</span>
             </div>
             <div className="text-center">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-green-400/70">3 — Trend Rides</span>
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate3?.cleared ? "text-green-400" : "text-muted-foreground/40"}`}>3 — Trend Rides</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -449,7 +451,7 @@ export default function TradeAnalysis() {
                     <Target className="h-4 w-4 text-primary" />
                     VER Volume Exhaustion Reversal
                   </CardTitle>
-                  <SignalBadge signal={data.ver.signal} />
+                  <SignalBadge signal={data.gates?.gate1?.cleared ? data.ver.signal : "WATCH"} />
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -529,9 +531,14 @@ export default function TradeAnalysis() {
                     <Zap className="h-4 w-4 text-purple-400" />
                     <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
                   </div>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${data.amc?.signal === "ENTER" ? "bg-green-500/80 text-white" : data.amc?.signal === "SELL" ? "bg-red-500/80 text-white" : "bg-yellow-500/20 text-yellow-400"}`}>
-                    {data.amc?.signal || "HOLD"}
-                  </span>
+                  {(() => {
+                    const amcGateSignal = data.gates?.gate2?.cleared ? (data.amc?.signal || "HOLD") : "WATCH";
+                    return (
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${amcGateSignal === "ENTER" ? "bg-green-500/80 text-white" : amcGateSignal === "SELL" ? "bg-red-500/80 text-white" : amcGateSignal === "WATCH" ? "bg-zinc-500/20 text-zinc-400" : "bg-yellow-500/20 text-yellow-400"}`}>
+                        {amcGateSignal}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">{data.amc?.signalDetail || "Adaptive Momentum Confluence"}</p>
               </CardHeader>
@@ -598,7 +605,7 @@ export default function TradeAnalysis() {
                     <BarChart3 className="h-4 w-4 text-primary" />
                     BBTC EMA Pyramid
                   </CardTitle>
-                  <SignalBadge signal={data.bbtc.signal} />
+                  <SignalBadge signal={data.gates?.gate3?.cleared ? data.bbtc.signal : "WATCH"} />
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
