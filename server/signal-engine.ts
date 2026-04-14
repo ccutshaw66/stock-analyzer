@@ -471,6 +471,59 @@ function evaluateGate3(input: Gate3Input): Gate3Result {
   };
 }
 
+// ─── Live AMC Score (preview, no Gate 1 required) ──────────────────────────
+
+function computeLiveAmcScore(
+  closes: number[], rsi: number[], histogram: number[],
+  vamiScaled: number[], ema9: number[], ema21: number[],
+  direction: GateDirection,
+): Gate2Result {
+  const li = closes.length - 1;
+  if (li < 1) return { cleared: false, direction: null, daysAfterGate1: null, detail: "Insufficient data", macdHistogram: null, macdTurning: false, vamiPositive: false, rsiRecovering: false, amcScore: 0 };
+
+  let score = 0;
+
+  const macdTurning = direction === "BULLISH"
+    ? (!isNaN(histogram[li]) && histogram[li] > (isNaN(histogram[li - 1]) ? 0 : histogram[li - 1]))
+    : (!isNaN(histogram[li]) && histogram[li] < (isNaN(histogram[li - 1]) ? 0 : histogram[li - 1]));
+  if (macdTurning) score++;
+
+  const rsiRecovering = !isNaN(rsi[li]) && rsi[li] > 35 && rsi[li] < 65;
+  if (rsiRecovering) score++;
+
+  const priceConfirms = direction === "BULLISH"
+    ? closes[li] > closes[li - 1]
+    : closes[li] < closes[li - 1];
+  if (priceConfirms) score++;
+
+  const vamiPositive = direction === "BULLISH"
+    ? (vamiScaled[li] > 0 && vamiScaled[li] > (vamiScaled[li - 1] || 0))
+    : (vamiScaled[li] < 0 && vamiScaled[li] < (vamiScaled[li - 1] || 0));
+  if (vamiPositive) score++;
+
+  if (!isNaN(ema9[li]) && !isNaN(ema21[li]) && closes[li] > 0) {
+    if (Math.abs(ema9[li] - ema21[li]) / closes[li] * 100 > 0.3) score++;
+  }
+
+  const parts: string[] = [];
+  if (macdTurning) parts.push("MACD");
+  if (rsiRecovering) parts.push("RSI");
+  if (priceConfirms) parts.push("Price");
+  if (vamiPositive) parts.push("VAMI");
+
+  return {
+    cleared: false,
+    direction: null,
+    daysAfterGate1: null,
+    detail: parts.length > 0 ? `Live: ${parts.join(", ")} confirming (${score}/5)` : `Live score: ${score}/5`,
+    macdHistogram: !isNaN(histogram[li]) ? Number(histogram[li].toFixed(4)) : null,
+    macdTurning,
+    vamiPositive,
+    rsiRecovering,
+    amcScore: score,
+  };
+}
+
 // ─── Main Entry Point ───────────────────────────────────────────────────────
 
 export interface SignalEngineInput {
@@ -559,6 +612,27 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     5 // Look back 5 trading days for reversal
   );
 
+  // ── Always compute live AMC score (even if Gate 1 hasn't cleared) ──
+  // Use bullish as default direction for preview when no gate has fired
+  const previewDirection: GateDirection = gate1.direction || "BULLISH";
+  const liveGate2 = gate1.cleared && gate1.direction
+    ? evaluateGate2({
+        closes, volumes, rsi, ema9, ema50,
+        histogram, vamiScaled,
+        ema9Values: ema9, ema21Values: ema21,
+        gate1Direction: gate1.direction,
+        gate1DaysAgo: gate1.daysAgo || 0,
+      }, 5)
+    : computeLiveAmcScore(closes, rsi, histogram, vamiScaled, ema9, ema21, previewDirection);
+
+  // ── Always compute live EMA/trend status (even if Gate 2 hasn't cleared) ──
+  const liveGate3Direction = liveGate2.direction || previewDirection;
+  const liveGate3 = evaluateGate3({
+    closes, ema9, ema21, ema50,
+    gate2Direction: liveGate3Direction,
+    mmeData,
+  });
+
   if (!gate1.cleared || !gate1.direction) {
     return {
       ticker,
@@ -568,32 +642,25 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
       signal: "HOLD",
       summary: "No reversal detected — waiting for setup",
       gate1,
-      gate2: { cleared: false, direction: null, daysAfterGate1: null, detail: "Waiting for Gate 1", macdHistogram: !isNaN(histogram[closes.length - 1]) ? Number(histogram[closes.length - 1].toFixed(4)) : null, macdTurning: false, vamiPositive: false, rsiRecovering: false, amcScore: 0 },
-      gate3: { cleared: false, direction: null, detail: "Waiting for Gate 2", emaStackAligned: false, priceAboveEma9: false, mmeAligned: null, gammaRegime: null, gammaSupports: null, maxPainAlignment: null, maxPainSupports: null, nearCallWall: null, nearPutWall: null },
+      gate2: { ...liveGate2, cleared: false, direction: null, daysAfterGate1: null, detail: `AMC Score: ${liveGate2.amcScore}/5 — waiting for reversal` },
+      gate3: { ...liveGate3, cleared: false, direction: null, detail: `${liveGate3.emaStackAligned ? "EMA aligned" : "EMA not aligned"} — waiting for reversal` },
     };
   }
 
   // ── Gate 2 ──
-  const gate2 = evaluateGate2({
-    closes, volumes, rsi, ema9, ema50,
-    histogram, vamiScaled,
-    ema9Values: ema9, ema21Values: ema21,
-    gate1Direction: gate1.direction,
-    gate1DaysAgo: gate1.daysAgo || 0,
-  }, 5);
+  const gate2 = liveGate2;
 
   if (!gate2.cleared) {
-    const signal = gate1.direction === "BULLISH" ? "WATCH" : "WATCH";
     return {
       ticker,
       direction: gate1.direction,
       gatesCleared: 1,
       confidence: "EARLY",
-      signal,
+      signal: "WATCH",
       summary: `Reversal detected (${gate1.direction.toLowerCase()}) — waiting for momentum confirmation`,
       gate1,
       gate2,
-      gate3: { cleared: false, direction: null, detail: "Waiting for Gate 2", emaStackAligned: false, priceAboveEma9: false, mmeAligned: null, gammaRegime: null, gammaSupports: null, maxPainAlignment: null, maxPainSupports: null, nearCallWall: null, nearPutWall: null },
+      gate3: { ...liveGate3, cleared: false, direction: null, detail: `${liveGate3.emaStackAligned ? "EMA aligned" : "EMA not aligned"} — waiting for momentum` },
     };
   }
 
