@@ -357,7 +357,7 @@ export default function TradeAnalysis() {
                 </div>
               )}
 
-              {/* 3 Gate Cards */}
+              {/* 3 Gate Cards — consistent layout */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Gate 1: READY */}
                 <div className={`rounded-lg border p-3 ${
@@ -369,12 +369,12 @@ export default function TradeAnalysis() {
                     }`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 1 — Ready</span>
                   </div>
-                  <div className="text-xs font-bold text-foreground mb-1">
+                  <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate1.cleared ? `Reversal ${data.gates.gate1.direction === "BULLISH" ? "↑" : "↓"}` : "No Reversal"}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate1.detail}</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate1.detail}</p>
                   {data.gates.gate1.rsi !== null && (
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                       <span>RSI: <span className="font-mono text-foreground">{data.gates.gate1.rsi}</span></span>
                       {data.gates.gate1.volumeRatio !== null && (
                         <span>Vol: <span className="font-mono text-foreground">{data.gates.gate1.volumeRatio}x</span></span>
@@ -393,11 +393,11 @@ export default function TradeAnalysis() {
                     }`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 2 — Set</span>
                   </div>
-                  <div className="text-xs font-bold text-foreground mb-1">
+                  <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate2.cleared ? "Momentum Confirmed" : `AMC Score: ${data.gates.gate2.amcScore}/5`}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate2.detail}</p>
-                  <div className="flex items-center gap-1 mt-2">
+                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate2.detail}</p>
+                  <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((dot) => (
                       <div key={dot} className={`h-1.5 w-1.5 rounded-full ${
                         dot <= data.gates.gate2.amcScore ? "bg-blue-500" : "bg-muted-foreground/20"
@@ -416,11 +416,11 @@ export default function TradeAnalysis() {
                     }`} />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 3 — Go</span>
                   </div>
-                  <div className="text-xs font-bold text-foreground mb-1">
+                  <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate3.cleared ? "All Clear" : "Waiting"}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{data.gates.gate3.detail}</p>
-                  <div className="flex items-center gap-2 mt-2 text-[10px]">
+                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate3.detail}</p>
+                  <div className="flex items-center gap-2 text-[10px]">
                     <span className={data.gates.gate3.emaStackAligned ? "text-green-400" : "text-muted-foreground/50"}>EMA {data.gates.gate3.emaStackAligned ? "✓" : "✗"}</span>
                     <span className={data.gates.gate3.priceAboveEma9 ? "text-green-400" : "text-muted-foreground/50"}>Price {data.gates.gate3.priceAboveEma9 ? "✓" : "✗"}</span>
                     {data.gates.gate3.mmeAligned !== null && (

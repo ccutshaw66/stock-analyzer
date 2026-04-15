@@ -327,9 +327,10 @@ function ScoreBadge({
 }) {
   if (score === null && !verdict) return null;
 
-  // Gate-style signals (stored as gatesCleared in score, signal in verdict)
+  // Gate-style signals (stored as gatesCleared 0-3 in score, signal in verdict)
+  // Detect gate data: score must be 0-3 (gate range) AND verdict must be a gate signal
   const gateSignals = ["HOLD", "WATCH", "BUY", "SELL", "STRONG_BUY", "STRONG_SELL"];
-  const isGateData = verdict && gateSignals.includes(verdict);
+  const isGateData = verdict && gateSignals.includes(verdict) && score !== null && score >= 0 && score <= 3;
 
   if (isGateData) {
     const gatesCleared = Math.round(score ?? 0);
@@ -358,23 +359,9 @@ function ScoreBadge({
     );
   }
 
-  // Legacy profile score display
-  const colors = verdict
-    ? getVerdictColor(verdict)
-    : { bg: "bg-muted", text: "text-muted-foreground", border: "" };
+  // Legacy profile score — show refresh indicator
   return (
-    <div className="flex items-center gap-1">
-      <span className={`text-[11px] font-bold tabular-nums ${colors.text}`}>
-        {(score ?? 0).toFixed(1)}
-      </span>
-      {verdict && (
-        <span
-          className={`text-[9px] font-bold px-1 py-0.5 rounded ${colors.bg} text-white leading-none`}
-        >
-          {verdict}
-        </span>
-      )}
-    </div>
+    <span className="text-[9px] text-muted-foreground/50 italic">refresh</span>
   );
 }
 
