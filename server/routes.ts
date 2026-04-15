@@ -1630,10 +1630,19 @@ export async function registerRoutes(
       // ── Key Levels ──
       const totalGEX = strikes.reduce((s, d) => s + d.netGEX, 0);
 
-      // Call Wall = strike with highest call GEX (resistance)
-      const callWall = strikes.reduce((max, s) => s.callGEX > max.callGEX ? s : max, strikes[0]);
-      // Put Wall = strike with most negative put GEX (support)
-      const putWall = strikes.reduce((min, s) => s.putGEX < min.putGEX ? s : min, strikes[0]);
+      // Call Wall = strike with highest call OI ABOVE current price (resistance)
+      // Put Wall = strike with highest put OI BELOW current price (support)
+      // Filter: must be at least 2% away from spot to be meaningful
+      const minDistancePct = 0.02; // 2% minimum distance from spot
+      const callCandidates = strikes.filter(s => s.strike > spot * (1 + minDistancePct) && s.callOI > 0);
+      const putCandidates = strikes.filter(s => s.strike < spot * (1 - minDistancePct) && s.putOI > 0);
+
+      const callWall = callCandidates.length > 0
+        ? callCandidates.reduce((max, s) => s.callOI > max.callOI ? s : max, callCandidates[0])
+        : null;
+      const putWall = putCandidates.length > 0
+        ? putCandidates.reduce((max, s) => s.putOI > max.putOI ? s : max, putCandidates[0])
+        : null;
 
       // Gamma Flip = where netGEX crosses zero
       let gammaFlip: number | null = null;
