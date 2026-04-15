@@ -325,14 +325,47 @@ function ScoreBadge({
   score: number | null;
   verdict: string | null;
 }) {
-  if (score === null) return null;
+  if (score === null && !verdict) return null;
+
+  // Gate-style signals (stored as gatesCleared in score, signal in verdict)
+  const gateSignals = ["HOLD", "WATCH", "BUY", "SELL", "STRONG_BUY", "STRONG_SELL"];
+  const isGateData = verdict && gateSignals.includes(verdict);
+
+  if (isGateData) {
+    const gatesCleared = Math.round(score ?? 0);
+    const signalColor = verdict === "STRONG_BUY" ? "bg-green-500" :
+      verdict === "BUY" ? "bg-blue-500" :
+      verdict === "WATCH" ? "bg-amber-500" :
+      verdict === "SELL" ? "bg-red-500" :
+      verdict === "STRONG_SELL" ? "bg-red-600" :
+      "bg-zinc-500";
+    const label = verdict.replace(/_/g, " ");
+    return (
+      <div className="flex items-center gap-1">
+        <div className="flex gap-0.5">
+          {[1, 2, 3].map((g) => (
+            <div key={g} className={`h-1 w-2 rounded-full ${
+              g <= gatesCleared
+                ? g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+                : "bg-muted-foreground/20"
+            }`} />
+          ))}
+        </div>
+        <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
+          {label}
+        </span>
+      </div>
+    );
+  }
+
+  // Legacy profile score display
   const colors = verdict
     ? getVerdictColor(verdict)
     : { bg: "bg-muted", text: "text-muted-foreground", border: "" };
   return (
     <div className="flex items-center gap-1">
       <span className={`text-[11px] font-bold tabular-nums ${colors.text}`}>
-        {score.toFixed(1)}
+        {(score ?? 0).toFixed(1)}
       </span>
       {verdict && (
         <span
@@ -355,7 +388,7 @@ function Sidebar({
   isMobile: boolean;
 }) {
   const [location] = useLocation();
-  const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
+  const { activeTicker, setActiveTicker, analysisData, tradeData, isAnalysisLoading } =
     useTicker();
   const { tier } = useSubscription();
   // Fetch open trades for sidebar
@@ -455,12 +488,14 @@ function Sidebar({
 
   const handleAddCurrent = (listType: "watchlist" | "portfolio") => {
     if (!analysisData) return;
+    // Store gate system data instead of profile score for watchlist
+    const gates = tradeData?.gates;
     addMutation.mutate({
       ticker: analysisData.ticker,
       companyName: analysisData.companyName,
       listType,
-      score: analysisData.score,
-      verdict: analysisData.verdict,
+      score: gates ? gates.gatesCleared : analysisData.score,
+      verdict: gates ? gates.signal : analysisData.verdict,
       sector: analysisData.sector,
     });
   };

@@ -2520,9 +2520,9 @@ export async function registerRoutes(
       } else if (sellVotes === 2 && buyVotes === 0) {
         combinedSignal = "SELL"; confidence = "Moderate"; reasoning = `${[bbtcIsSell&&"BBTC",verIsSell&&"VER",amcIsSell&&"AMC"].filter(Boolean).join(" + ")} signal exit`;
       } else if (buyVotes === 1 && sellVotes === 0) {
-        combinedSignal = "ENTER"; confidence = "Weak"; reasoning = `Only ${[bbtcIsBuy&&"BBTC",verIsBuy&&"VER",amcIsBuy&&"AMC"].filter(Boolean)[0]} signals entry`;
+        combinedSignal = "HOLD"; confidence = "Weak"; reasoning = `Only ${[bbtcIsBuy&&"BBTC",verIsBuy&&"VER",amcIsBuy&&"AMC"].filter(Boolean)[0]} is bullish — not enough confluence`;
       } else if (sellVotes === 1 && buyVotes === 0) {
-        combinedSignal = "SELL"; confidence = "Weak"; reasoning = `Only ${[bbtcIsSell&&"BBTC",verIsSell&&"VER",amcIsSell&&"AMC"].filter(Boolean)[0]} signals exit`;
+        combinedSignal = "HOLD"; confidence = "Weak"; reasoning = `Only ${[bbtcIsSell&&"BBTC",verIsSell&&"VER",amcIsSell&&"AMC"].filter(Boolean)[0]} is bearish — not enough confluence`;
       } else if (buyVotes > 0 && sellVotes > 0) {
         combinedSignal = "HOLD"; confidence = "Weak"; reasoning = "Strategies conflict — wait for alignment";
       } else {
@@ -3406,21 +3406,23 @@ export async function registerRoutes(
 
       for (const item of items) {
         try {
-          const summary = await getQuote(item.ticker);
-          if (summary) {
-            const { quote, financials } = extractQuoteData(summary);
-            const chart1Y = await getChart(item.ticker, "1y", "1d").catch(() => null);
-            const { computedReturn: ret1Y } = extractChartData(chart1Y);
-            const chart3Y = await getChart(item.ticker, "3y", "1wk").catch(() => null);
-            const { computedReturn: ret3Y } = extractChartData(chart3Y);
-            const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: null };
-            const fullData = { quote, financials, historicalReturns };
-            const scoring = computeScoring(fullData);
-            const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-            const { verdict } = computeVerdict(weightedScore);
-            const score = Number(weightedScore.toFixed(2));
-            await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
-            results.push({ ...item, score, verdict });
+          // Run gate system on 6mo chart data
+          const chart6m = await getChart(item.ticker, "6mo", "1d").catch(() => null);
+          if (chart6m && chart6m.timestamp) {
+            const q = chart6m.indicators?.quote?.[0] || {};
+            const closes = (q.close || []).map((v: any) => Number(v) || 0);
+            const highs = (q.high || []).map((v: any) => Number(v) || 0);
+            const lows = (q.low || []).map((v: any) => Number(v) || 0);
+            const vols = (q.volume || []).map((v: any) => Number(v) || 0);
+            if (closes.length >= 60) {
+              const gateResult = runGateSystem({ ticker: item.ticker, closes, highs, lows, volumes: vols, mmeData: null });
+              const score = gateResult.gatesCleared;
+              const verdict = gateResult.signal;
+              await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
+              results.push({ ...item, score, verdict });
+            } else {
+              results.push(item);
+            }
           } else {
             results.push(item);
           }
