@@ -76,10 +76,14 @@ export function getScoreBgColor(score: number): string {
 
 export function getVerdictColor(verdict: string): { bg: string; text: string; border: string } {
   switch (verdict) {
+    case "STRONG CONVICTION":
+    case "INVESTMENT GRADE":
     case "YES":
       return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
+    case "SPECULATIVE":
     case "WATCH":
       return { bg: "bg-yellow-500", text: "text-yellow-500", border: "border-yellow-500/30" };
+    case "HIGH RISK":
     case "NO":
       return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
     default:

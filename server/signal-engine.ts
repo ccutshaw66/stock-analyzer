@@ -73,7 +73,7 @@ export interface GateSystemResult {
   direction: GateDirection | null;
   gatesCleared: number;       // 0, 1, 2, or 3
   confidence: "HIGH" | "MODERATE" | "EARLY" | "NEUTRAL";
-  signal: "STRONG_BUY" | "BUY" | "WATCH" | "HOLD" | "SELL" | "STRONG_SELL";
+  signal: string;             // Gate language: "READY ↑", "SET ↑", "GO ↑", "GATES CLOSED", "NO SETUP"
   summary: string;            // Human-readable one-liner
   gate1: Gate1Result;
   gate2: Gate2Result;
@@ -573,7 +573,7 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
       direction: null,
       gatesCleared: 0,
       confidence: "NEUTRAL",
-      signal: "HOLD",
+      signal: "NO SETUP",
       summary: "Insufficient data for analysis",
       gate1: { cleared: false, direction: null, daysAgo: null, detail: "Need 60+ bars", rsi: null, volumeRatio: null, hasDivergence: false, touchedBB: false },
       gate2: { cleared: false, direction: null, daysAfterGate1: null, detail: "Waiting for Gate 1", macdHistogram: null, macdTurning: false, vamiPositive: false, rsiRecovering: false, amcScore: 0 },
@@ -777,7 +777,7 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
       direction: null,
       gatesCleared: 0,
       confidence: "NEUTRAL",
-      signal: "HOLD",
+      signal: "NO SETUP",
       summary: "No reversal detected — waiting for setup",
       gate1,
       gate2: { ...liveGate2, cleared: false, direction: null, daysAfterGate1: null, detail: `AMC Score: ${liveGate2.amcScore}/5 — waiting for reversal` },
@@ -792,7 +792,7 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
       direction: gate1.direction,
       gatesCleared: 1,
       confidence: "EARLY",
-      signal: "WATCH",
+      signal: `READY ${gate1.direction === "BULLISH" ? "↑" : "↓"}`,
       summary: `Reversal detected (${gate1.direction.toLowerCase()}) — waiting for momentum confirmation`,
       gate1,
       gate2,
@@ -803,13 +803,13 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
   const gate3 = liveGate3;
 
   if (!gate3.cleared) {
-    const signal = gate2.direction === "BULLISH" ? "BUY" : "SELL";
+    const arrow = gate2.direction === "BULLISH" ? "↑" : "↓";
     return {
       ticker,
       direction: gate2.direction,
       gatesCleared: 2,
       confidence: "MODERATE",
-      signal,
+      signal: `SET ${arrow}`,
       summary: `Reversal + momentum confirmed (${gate2.direction?.toLowerCase()}) — trend/MME not yet aligned`,
       gate1,
       gate2,
@@ -819,13 +819,13 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
 
   // All 3 gates cleared
   const direction = gate3.direction || gate2.direction || gate1.direction;
-  const signal = direction === "BULLISH" ? "STRONG_BUY" : "STRONG_SELL";
+  const arrow = direction === "BULLISH" ? "↑" : "↓";
   return {
     ticker,
     direction,
     gatesCleared: 3,
     confidence: "HIGH",
-    signal,
+    signal: `GO ${arrow}`,
     summary: `All gates cleared — ${direction?.toLowerCase()} with high confidence`,
     gate1,
     gate2,

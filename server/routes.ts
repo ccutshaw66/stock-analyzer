@@ -620,11 +620,11 @@ function computeScoring(data: any): ScoringCategory[] {
   ];
 }
 
-function computeVerdict(weightedScore: number): { verdict: "YES" | "WATCH" | "NO"; ruling: string } {
-  if (weightedScore >= 8.5) return { verdict: "YES", ruling: "Strong conviction buy — fundamentals, income, and performance all align." };
-  if (weightedScore >= 7.0) return { verdict: "YES", ruling: "Buy with minor caveats — solid fundamentals with some areas to monitor." };
-  if (weightedScore >= 5.5) return { verdict: "WATCH", ruling: "Hold or watchlist — mixed signals, needs improvement in key areas." };
-  return { verdict: "NO", ruling: "Avoid for now — significant concerns across multiple categories." };
+function computeVerdict(weightedScore: number): { verdict: string; ruling: string } {
+  if (weightedScore >= 8.5) return { verdict: "STRONG CONVICTION", ruling: "Strong long-term hold — fundamentals, income, and performance all align." };
+  if (weightedScore >= 7.0) return { verdict: "INVESTMENT GRADE", ruling: "Solid long-term hold — good fundamentals with some areas to monitor." };
+  if (weightedScore >= 5.5) return { verdict: "SPECULATIVE", ruling: "Mixed fundamentals — needs improvement in key areas before committing." };
+  return { verdict: "HIGH RISK", ruling: "Significant concerns across multiple categories — not recommended for long-term holding." };
 }
 
 function generateBullBear(data: any): { positives: string[]; risks: string[] } {
@@ -2639,7 +2639,7 @@ export async function registerRoutes(
           recentSignals: amcRecent,
         },
         combined: {
-          signal: gateResult ? (gateResult.signal === "STRONG_BUY" ? "ENTER" : gateResult.signal === "BUY" ? "ENTER" : gateResult.signal === "STRONG_SELL" ? "SELL" : gateResult.signal === "SELL" ? "SELL" : "HOLD") : combinedSignal,
+          signal: gateResult ? gateResult.signal : combinedSignal,
           confidence: gateResult ? gateResult.confidence : confidence,
           reasoning: gateResult ? gateResult.summary : reasoning,
           votes: { buy: buyVotes, sell: sellVotes },
@@ -3595,12 +3595,12 @@ export async function registerRoutes(
       }
 
       // Final verdict
-      let finalVerdict = "HOLD";
+      let finalVerdict = "SPECULATIVE";
       let verdictColor = "yellow";
-      if (unifiedScore >= 70) { finalVerdict = "STRONG BUY"; verdictColor = "green"; }
-      else if (unifiedScore >= 55) { finalVerdict = "BUY"; verdictColor = "green"; }
-      else if (unifiedScore <= 30) { finalVerdict = "AVOID"; verdictColor = "red"; }
-      else if (unifiedScore <= 40) { finalVerdict = "CAUTIOUS"; verdictColor = "red"; }
+      if (unifiedScore >= 70) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
+      else if (unifiedScore >= 55) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
+      else if (unifiedScore <= 30) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
+      else if (unifiedScore <= 40) { finalVerdict = "SPECULATIVE"; verdictColor = "red"; }
 
       res.json({
         ticker,

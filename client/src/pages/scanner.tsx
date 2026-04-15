@@ -101,21 +101,18 @@ function GatePips({ gatesCleared }: { gatesCleared: number }) {
 function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const g = result.gates;
-  // Use gate signal if available, fall back to old score
-  const gateLabel = g?.gatesCleared >= 3 ? (g.direction === "BULLISH" ? "Strong Buy" : "Strong Sell")
-    : g?.gatesCleared >= 2 ? (g.direction === "BULLISH" ? "Buy" : "Sell")
-    : g?.gatesCleared >= 1 ? "Watch"
-    : null;
-  const label = gateLabel || (result.score >= 5 ? "Strong Buy" : result.score >= 3 ? "Buy" : result.score >= 2 ? "Lean Buy" : result.score >= 0 ? "Neutral" : result.score >= -2 ? "Lean Sell" : "Sell");
-  const labelColor = g?.gatesCleared >= 3 ? "bg-green-500 text-white"
-    : g?.gatesCleared >= 2 ? "bg-blue-500 text-white"
-    : g?.gatesCleared >= 1 ? "bg-amber-500/20 text-amber-400"
-    : result.score >= 5 ? "bg-green-500 text-white" : result.score >= 3 ? "bg-green-500/70 text-white" : result.score >= 2 ? "bg-green-500/30 text-green-300" : result.score >= 0 ? "bg-yellow-500/20 text-yellow-400" : "bg-red-500/20 text-red-400";
+  // Use gate signal directly
+  const label = g?.signal || "NO SETUP";
+  const labelColor = label.startsWith("GO") ? "bg-green-500 text-white"
+    : label.startsWith("SET") ? "bg-blue-500 text-white"
+    : label.startsWith("READY") ? "bg-amber-500 text-white"
+    : label.startsWith("GATES CLOSED") ? "bg-red-500 text-white"
+    : "bg-zinc-500/20 text-zinc-400";
 
-  // Border glow for gate-cleared stocks
-  const borderClass = g?.gatesCleared >= 3 ? "border-green-500/40"
-    : g?.gatesCleared >= 2 ? "border-blue-500/40"
-    : g?.gatesCleared >= 1 ? "border-amber-500/30"
+  const borderClass = label.startsWith("GO") ? "border-green-500/40"
+    : label.startsWith("SET") ? "border-blue-500/40"
+    : label.startsWith("READY") ? "border-amber-500/30"
+    : label.startsWith("GATES CLOSED") ? "border-red-500/40"
     : "border-card-border";
 
   return (
@@ -142,19 +139,15 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
       {g && (
         <div className="flex items-center gap-2 mb-3">
           <GatePips gatesCleared={g.gatesCleared} />
-          <span className={`text-[10px] font-semibold uppercase tracking-wider ${
-            g.confidence === "HIGH" ? "text-green-400" :
-            g.confidence === "MODERATE" ? "text-blue-400" :
-            g.confidence === "EARLY" ? "text-amber-400" :
+          <span className={`text-[10px] font-semibold tracking-wider ${
+            label.startsWith("GO") ? "text-green-400" :
+            label.startsWith("SET") ? "text-blue-400" :
+            label.startsWith("READY") ? "text-amber-400" :
+            label.startsWith("GATES") ? "text-red-400" :
             "text-muted-foreground/40"
           }`}>
-            {g.confidence !== "NEUTRAL" ? `${g.confidence} — ${g.signal.replace(/_/g, " ")}` : "No setup"}
+            {g.summary}
           </span>
-          {g.direction && (
-            <span className={`text-[10px] ml-auto ${g.direction === "BULLISH" ? "text-green-400" : "text-red-400"}`}>
-              {g.direction === "BULLISH" ? "↑" : "↓"} {g.direction}
-            </span>
-          )}
         </div>
       )}
 

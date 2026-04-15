@@ -328,19 +328,18 @@ function ScoreBadge({
   if (score === null && !verdict) return null;
 
   // Gate-style signals (stored as gatesCleared 0-3 in score, signal in verdict)
-  // Detect gate data: score must be 0-3 (gate range) AND verdict must be a gate signal
-  const gateSignals = ["HOLD", "WATCH", "BUY", "SELL", "STRONG_BUY", "STRONG_SELL"];
-  const isGateData = verdict && gateSignals.includes(verdict) && score !== null && score >= 0 && score <= 3;
+  // Detect gate data: score must be 0-3 AND verdict starts with gate keywords
+  const isGateData = verdict && score !== null && score >= 0 && score <= 3 &&
+    (verdict.startsWith("READY") || verdict.startsWith("SET") || verdict.startsWith("GO") ||
+     verdict.startsWith("GATES") || verdict === "NO SETUP");
 
-  if (isGateData) {
+  if (isGateData && verdict) {
     const gatesCleared = Math.round(score ?? 0);
-    const signalColor = verdict === "STRONG_BUY" ? "bg-green-500" :
-      verdict === "BUY" ? "bg-blue-500" :
-      verdict === "WATCH" ? "bg-amber-500" :
-      verdict === "SELL" ? "bg-red-500" :
-      verdict === "STRONG_SELL" ? "bg-red-600" :
+    const signalColor = verdict.startsWith("GO") ? "bg-green-500" :
+      verdict.startsWith("SET") ? "bg-blue-500" :
+      verdict.startsWith("READY") ? "bg-amber-500" :
+      verdict.startsWith("GATES") ? "bg-red-500" :
       "bg-zinc-500";
-    const label = verdict.replace(/_/g, " ");
     return (
       <div className="flex items-center gap-1">
         <div className="flex gap-0.5">
@@ -353,7 +352,7 @@ function ScoreBadge({
           ))}
         </div>
         <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
-          {label}
+          {verdict}
         </span>
       </div>
     );

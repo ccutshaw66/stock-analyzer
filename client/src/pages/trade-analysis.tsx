@@ -35,17 +35,13 @@ import {
 } from "recharts";
 
 function getSignalColor(signal: string) {
-  switch (signal) {
-    case "ENTER":
-      return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
-    case "SELL":
-      return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
-    case "WATCH":
-      return { bg: "bg-zinc-500", text: "text-zinc-400", border: "border-zinc-500/30" };
-    case "HOLD":
-    default:
-      return { bg: "bg-yellow-500", text: "text-yellow-500", border: "border-yellow-500/30" };
-  }
+  if (signal.startsWith("GO")) return { bg: "bg-green-500", text: "text-green-400", border: "border-green-500/30" };
+  if (signal.startsWith("SET")) return { bg: "bg-blue-500", text: "text-blue-400", border: "border-blue-500/30" };
+  if (signal.startsWith("READY")) return { bg: "bg-amber-500", text: "text-amber-400", border: "border-amber-500/30" };
+  if (signal.startsWith("GATES CLOSED")) return { bg: "bg-red-500", text: "text-red-400", border: "border-red-500/30" };
+  if (signal === "ENTER") return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
+  if (signal === "SELL") return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
+  return { bg: "bg-zinc-500", text: "text-zinc-400", border: "border-zinc-500/30" };
 }
 
 function getTrendIcon(trend: string) {
@@ -344,15 +340,8 @@ export default function TradeAnalysis() {
               </div>
 
               {/* Summary */}
-              {data.gates.signal !== "HOLD" && (
-                <div className={`text-sm font-semibold mb-4 ${
-                  data.gates.signal === "STRONG_BUY" ? "text-green-400" :
-                  data.gates.signal === "BUY" ? "text-blue-400" :
-                  data.gates.signal === "WATCH" ? "text-amber-400" :
-                  data.gates.signal === "SELL" ? "text-red-400" :
-                  data.gates.signal === "STRONG_SELL" ? "text-red-500" :
-                  "text-muted-foreground"
-                }` } data-testid="gate-summary">
+              {data.gates.signal !== "NO SETUP" && (
+                <div className={`text-sm font-semibold mb-4 ${getSignalColor(data.gates.signal).text}`} data-testid="gate-summary">
                   {data.gates.summary}
                 </div>
               )}

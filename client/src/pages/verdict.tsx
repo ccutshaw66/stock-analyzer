@@ -134,11 +134,10 @@ function signalBadgeColor(color: string): string {
 
 function verdictBadgeStyle(verdict: string): string {
   switch (verdict) {
-    case "STRONG BUY": return "bg-green-500/20 text-green-400 border-green-500/30";
-    case "BUY": return "bg-green-500/15 text-green-400 border-green-500/20";
-    case "HOLD": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/20";
-    case "CAUTIOUS": return "bg-red-500/15 text-red-400 border-red-500/20";
-    case "AVOID": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "STRONG CONVICTION": return "bg-green-500/20 text-green-400 border-green-500/30";
+    case "INVESTMENT GRADE": return "bg-green-500/15 text-green-400 border-green-500/20";
+    case "SPECULATIVE": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/20";
+    case "HIGH RISK": return "bg-red-500/20 text-red-400 border-red-500/30";
     default: return "bg-muted text-muted-foreground border-card-border";
   }
 }
@@ -410,11 +409,11 @@ export default function Verdict() {
         <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
 
         <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
-        <ScoreRange label="STRONG BUY" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident." />
-        <ScoreRange label="BUY" range="55–69" color="green" description="Most factors positive with minor weaknesses. Good entry with some caveats." />
-        <ScoreRange label="HOLD" range="41–54" color="yellow" description="Mixed signals. Some strengths, some concerns. Monitor but don't rush." />
-        <ScoreRange label="CAUTIOUS" range="31–40" color="red" description="More negatives than positives. Proceed with caution if already in a position." />
-        <ScoreRange label="AVOID" range="0–30" color="red" description="Significant red flags across multiple factors. Not a good risk/reward." />
+        <ScoreRange label="STRONG CONVICTION" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident. Strong long-term hold." />
+        <ScoreRange label="INVESTMENT GRADE" range="55–69" color="green" description="Most factors positive with minor weaknesses. Solid long-term hold with some caveats." />
+        <ScoreRange label="SPECULATIVE" range="41–54" color="yellow" description="Mixed fundamentals. Some strengths, some concerns. Higher risk for long-term commitment." />
+        <ScoreRange label="SPECULATIVE" range="31–40" color="yellow" description="More negatives than positives. High risk for long-term holding." />
+        <ScoreRange label="HIGH RISK" range="0–30" color="red" description="Significant concerns across multiple categories. Not recommended for long-term holding." />
 
         <p className="font-semibold text-foreground mt-2">Examples:</p>
         <Example type="good">
