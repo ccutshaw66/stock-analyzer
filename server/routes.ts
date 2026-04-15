@@ -2574,6 +2574,19 @@ export async function registerRoutes(
           lows,
           volumes,
           mmeData,
+          precomputed: {
+            verSignal: verTopSignal,
+            verRsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(1)),
+            verVolRatio: Number(volRatio.toFixed(2)),
+            amcScore,
+            amcSignal,
+            bbtcSignal: bbtcTopSignal,
+            bbtcBias,
+            bbtcTrend,
+            emaStackBull: !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx]) && ema9[lastIdx] > ema21[lastIdx] && ema21[lastIdx] > ema50[lastIdx],
+            emaStackBear: !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx]) && ema9[lastIdx] < ema21[lastIdx] && ema21[lastIdx] < ema50[lastIdx],
+            priceAboveEma9: !isNaN(ema9[lastIdx]) && closes[lastIdx] > ema9[lastIdx],
+          },
         });
       } catch (err: any) {
         console.error(`[gate-system] Error for ${ticker}:`, err.message);

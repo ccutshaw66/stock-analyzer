@@ -539,6 +539,20 @@ export interface SignalEngineInput {
   highs: number[];
   lows: number[];
   volumes: number[];
+  // Pre-computed strategy data from routes.ts (if available, used instead of signal engine's own calcs)
+  precomputed?: {
+    verSignal: string;           // "ENTER" | "SELL" | "HOLD"
+    verRsi: number | null;
+    verVolRatio: number | null;
+    amcScore: number;            // 0-5 from routes.ts AMC
+    amcSignal: string;           // "ENTER" | "SELL" | "HOLD"
+    bbtcSignal: string;          // "ENTER" | "SELL" | "HOLD"
+    bbtcBias: string;            // "LONG" | "SHORT" | "FLAT"
+    bbtcTrend: string;           // "UP" | "DOWN" | "SIDEWAYS"
+    emaStackBull: boolean;       // ema9 > ema21 > ema50
+    emaStackBear: boolean;       // ema9 < ema21 < ema50
+    priceAboveEma9: boolean;
+  } | null;
   // Optional MME data (for Gate 3)
   mmeData?: {
     spot: number;
@@ -551,7 +565,7 @@ export interface SignalEngineInput {
 }
 
 export function runGateSystem(input: SignalEngineInput): GateSystemResult {
-  const { ticker, closes, highs, lows, volumes, mmeData } = input;
+  const { ticker, closes, highs, lows, volumes, mmeData, precomputed } = input;
 
   if (closes.length < 60) {
     return {
@@ -613,33 +627,119 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
   }
   const vamiScaled = vamiArr.map(v => v * 8);
 
-  // ── Gate 1 ──
-  const gate1 = evaluateGate1(
-    { closes, highs, lows, volumes, rsi, bbUpper, bbLower, volAvg20 },
-    5 // Look back 5 trading days for reversal
-  );
+  // ── Gate 1: Use precomputed VER data if available ──
+  let gate1: Gate1Result;
+  if (precomputed && precomputed.verSignal !== undefined) {
+    // Use the same VER signal/RSI/vol from routes.ts
+    const verIsBuy = precomputed.verSignal === "ENTER";
+    const verIsSell = precomputed.verSignal === "SELL";
+    gate1 = {
+      cleared: verIsBuy || verIsSell,
+      direction: verIsBuy ? "BULLISH" : verIsSell ? "BEARISH" : null,
+      daysAgo: 0,
+      detail: verIsBuy
+        ? `Bullish reversal — RSI ${precomputed.verRsi ?? "N/A"}, Vol ${precomputed.verVolRatio ?? "N/A"}x avg`
+        : verIsSell
+        ? `Bearish reversal — RSI ${precomputed.verRsi ?? "N/A"}, Vol ${precomputed.verVolRatio ?? "N/A"}x avg`
+        : `No reversal detected — RSI ${precomputed.verRsi ?? "N/A"}, Vol ${precomputed.verVolRatio ?? "N/A"}x avg`,
+      rsi: precomputed.verRsi,
+      volumeRatio: precomputed.verVolRatio,
+      hasDivergence: verIsBuy || verIsSell,
+      touchedBB: verIsBuy || verIsSell,
+    };
+  } else {
+    gate1 = evaluateGate1(
+      { closes, highs, lows, volumes, rsi, bbUpper, bbLower, volAvg20 },
+      5
+    );
+  }
 
-  // ── Always compute live AMC score (even if Gate 1 hasn't cleared) ──
-  // Use bullish as default direction for preview when no gate has fired
+  // ── Gate 2: Use precomputed AMC score if available ──
   const previewDirection: GateDirection = gate1.direction || "BULLISH";
-  const liveGate2 = gate1.cleared && gate1.direction
-    ? evaluateGate2({
-        closes, volumes, rsi, ema9, ema50,
-        histogram, vamiScaled,
-        ema9Values: ema9, ema21Values: ema21,
-        gate1Direction: gate1.direction,
-        gate1DaysAgo: gate1.daysAgo || 0,
-      }, 5)
-    : computeLiveAmcScore(closes, rsi, histogram, vamiScaled, ema9, ema21, previewDirection);
+  let liveGate2: Gate2Result;
+  if (precomputed && precomputed.amcScore !== undefined) {
+    const amcIsBuy = precomputed.amcSignal === "ENTER" && precomputed.bbtcBias !== "SHORT";
+    const amcIsSell = precomputed.amcSignal === "SELL";
+    const cleared = gate1.cleared && precomputed.amcScore >= 4;
+    const dir: GateDirection | null = cleared ? (amcIsBuy ? "BULLISH" : amcIsSell ? "BEARISH" : previewDirection) : null;
+    liveGate2 = {
+      cleared,
+      direction: dir,
+      daysAfterGate1: cleared ? 0 : null,
+      detail: cleared
+        ? `Momentum confirmed — AMC ${precomputed.amcScore}/5`
+        : `AMC Score: ${precomputed.amcScore}/5${!gate1.cleared ? " — waiting for reversal" : " — need 4+ to confirm"}`,
+      macdHistogram: !isNaN(histogram[closes.length - 1]) ? Number(histogram[closes.length - 1].toFixed(4)) : null,
+      macdTurning: false,
+      vamiPositive: false,
+      rsiRecovering: false,
+      amcScore: precomputed.amcScore,
+    };
+  } else if (gate1.cleared && gate1.direction) {
+    liveGate2 = evaluateGate2({
+      closes, volumes, rsi, ema9, ema50,
+      histogram, vamiScaled,
+      ema9Values: ema9, ema21Values: ema21,
+      gate1Direction: gate1.direction,
+      gate1DaysAgo: gate1.daysAgo || 0,
+    }, 5);
+  } else {
+    liveGate2 = computeLiveAmcScore(closes, rsi, histogram, vamiScaled, ema9, ema21, previewDirection);
+  }
 
-  // ── Always compute live EMA/trend status (even if Gate 2 hasn't cleared) ──
+  // ── Gate 3: Use precomputed BBTC data if available ──
   const liveGate3Direction = liveGate2.direction || previewDirection;
-  const liveGate3 = evaluateGate3({
-    closes, ema9, ema21, ema50,
-    gate2Direction: liveGate3Direction,
-    mmeData,
-  });
+  let liveGate3: Gate3Result;
+  if (precomputed) {
+    const isBull = liveGate3Direction === "BULLISH";
+    const stackAligned = isBull ? precomputed.emaStackBull : precomputed.emaStackBear;
+    const priceOk = precomputed.priceAboveEma9;
+    const trendConfirms = isBull ? precomputed.bbtcTrend === "UP" : precomputed.bbtcTrend === "DOWN";
+    const cleared = liveGate2.cleared && stackAligned && priceOk;
 
+    // Still check MME if available
+    let mmeAligned: boolean | null = null;
+    let gammaRegime: "POSITIVE" | "NEGATIVE" | null = null;
+    let gammaSupports: boolean | null = null;
+    let maxPainAlignment: "ABOVE" | "BELOW" | "AT" | null = null;
+    let maxPainSupports: boolean | null = null;
+    let nearCallWall: boolean | null = null;
+    let nearPutWall: boolean | null = null;
+
+    if (mmeData) {
+      // Run MME evaluation from the existing evaluateGate3
+      const mmeGate3 = evaluateGate3({ closes, ema9, ema21, ema50, gate2Direction: liveGate3Direction, mmeData });
+      mmeAligned = mmeGate3.mmeAligned;
+      gammaRegime = mmeGate3.gammaRegime;
+      gammaSupports = mmeGate3.gammaSupports;
+      maxPainAlignment = mmeGate3.maxPainAlignment;
+      maxPainSupports = mmeGate3.maxPainSupports;
+      nearCallWall = mmeGate3.nearCallWall;
+      nearPutWall = mmeGate3.nearPutWall;
+    }
+
+    const finalCleared = mmeData ? cleared && (mmeAligned === true) : cleared;
+
+    const parts: string[] = [];
+    parts.push(stackAligned ? "EMA stack aligned ✓" : "EMA stack NOT aligned ✗");
+    parts.push(priceOk ? "Price confirms ✓" : "Price not confirming ✗");
+    parts.push(trendConfirms ? `Trend ${precomputed.bbtcTrend} ✓` : `Trend ${precomputed.bbtcTrend}`);
+    if (!liveGate2.cleared) parts.push("waiting for momentum");
+    else if (!gate1.cleared) parts.push("waiting for reversal");
+
+    liveGate3 = {
+      cleared: finalCleared,
+      direction: finalCleared ? liveGate3Direction : null,
+      detail: parts.join(" | "),
+      emaStackAligned: stackAligned,
+      priceAboveEma9: priceOk,
+      mmeAligned, gammaRegime, gammaSupports, maxPainAlignment, maxPainSupports, nearCallWall, nearPutWall,
+    };
+  } else {
+    liveGate3 = evaluateGate3({ closes, ema9, ema21, ema50, gate2Direction: liveGate3Direction, mmeData });
+  }
+
+  // ── Return based on gate progression ──
   if (!gate1.cleared || !gate1.direction) {
     return {
       ticker,
@@ -654,9 +754,7 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     };
   }
 
-  // ── Gate 2 ──
   const gate2 = liveGate2;
-
   if (!gate2.cleared) {
     return {
       ticker,
@@ -671,12 +769,7 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     };
   }
 
-  // ── Gate 3 ──
-  const gate3 = evaluateGate3({
-    closes, ema9, ema21, ema50,
-    gate2Direction: gate2.direction || gate1.direction,
-    mmeData,
-  });
+  const gate3 = liveGate3;
 
   if (!gate3.cleared) {
     const signal = gate2.direction === "BULLISH" ? "BUY" : "SELL";
