@@ -279,10 +279,14 @@ export default function TradeAnalysis() {
                     <Badge
                       variant="outline"
                       className={`text-xs ${
-                        data.combined.confidence === "Strong"
+                        data.combined.confidence === "HIGH" || data.combined.confidence === "Strong"
                           ? "border-green-500/40 text-green-500"
-                          : data.combined.confidence === "Weak"
-                          ? "border-red-500/40 text-red-500"
+                          : data.combined.confidence === "MODERATE"
+                          ? "border-blue-500/40 text-blue-400"
+                          : data.combined.confidence === "EARLY"
+                          ? "border-amber-500/40 text-amber-400"
+                          : data.combined.confidence === "Weak" || data.combined.confidence === "NEUTRAL"
+                          ? "border-zinc-500/40 text-zinc-400"
                           : "border-yellow-500/40 text-yellow-500"
                       }`}
                     >
@@ -451,7 +455,9 @@ export default function TradeAnalysis() {
                     <Target className="h-4 w-4 text-primary" />
                     VER Volume Exhaustion Reversal
                   </CardTitle>
-                  <SignalBadge signal={data.gates?.gate1?.cleared ? data.ver.signal : "WATCH"} />
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                    data.gates?.gate1?.cleared ? "bg-amber-500/20 text-amber-400" : "bg-muted text-muted-foreground"
+                  }`}>{data.gates?.gate1?.cleared ? "Gate 1 ✓" : "Waiting"}</span>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -531,14 +537,9 @@ export default function TradeAnalysis() {
                     <Zap className="h-4 w-4 text-purple-400" />
                     <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
                   </div>
-                  {(() => {
-                    const amcGateSignal = data.gates?.gate2?.cleared ? (data.amc?.signal || "HOLD") : "WATCH";
-                    return (
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${amcGateSignal === "ENTER" ? "bg-green-500/80 text-white" : amcGateSignal === "SELL" ? "bg-red-500/80 text-white" : amcGateSignal === "WATCH" ? "bg-zinc-500/20 text-zinc-400" : "bg-yellow-500/20 text-yellow-400"}`}>
-                        {amcGateSignal}
-                      </span>
-                    );
-                  })()}
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                    data.gates?.gate2?.cleared ? "bg-blue-500/20 text-blue-400" : "bg-muted text-muted-foreground"
+                  }`}>{data.gates?.gate2?.cleared ? "Gate 2 ✓" : "Waiting"}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">{data.amc?.signalDetail || "Adaptive Momentum Confluence"}</p>
               </CardHeader>
@@ -605,7 +606,9 @@ export default function TradeAnalysis() {
                     <BarChart3 className="h-4 w-4 text-primary" />
                     BBTC EMA Pyramid
                   </CardTitle>
-                  <SignalBadge signal={data.gates?.gate3?.cleared ? data.bbtc.signal : "WATCH"} />
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                    data.gates?.gate3?.cleared ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"
+                  }`}>{data.gates?.gate3?.cleared ? "Gate 3 ✓" : "Waiting"}</span>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">

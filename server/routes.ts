@@ -2639,9 +2639,9 @@ export async function registerRoutes(
           recentSignals: amcRecent,
         },
         combined: {
-          signal: combinedSignal,
-          confidence,
-          reasoning,
+          signal: gateResult ? (gateResult.signal === "STRONG_BUY" ? "ENTER" : gateResult.signal === "BUY" ? "ENTER" : gateResult.signal === "STRONG_SELL" ? "SELL" : gateResult.signal === "SELL" ? "SELL" : "HOLD") : combinedSignal,
+          confidence: gateResult ? gateResult.confidence : confidence,
+          reasoning: gateResult ? gateResult.summary : reasoning,
           votes: { buy: buyVotes, sell: sellVotes },
         },
         chartData: chartDataArr,
