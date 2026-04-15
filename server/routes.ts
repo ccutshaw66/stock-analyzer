@@ -3404,30 +3404,43 @@ export async function registerRoutes(
       const items = await storage.getFavorites(req.user!.id, listType);
       const results = [];
 
-      for (const item of items) {
-        try {
-          // Run gate system on 6mo chart data
-          const chart6m = await getChart(item.ticker, "6mo", "1d").catch(() => null);
-          if (chart6m && chart6m.timestamp) {
-            const q = chart6m.indicators?.quote?.[0] || {};
-            const closes = (q.close || []).map((v: any) => Number(v) || 0);
-            const highs = (q.high || []).map((v: any) => Number(v) || 0);
-            const lows = (q.low || []).map((v: any) => Number(v) || 0);
-            const vols = (q.volume || []).map((v: any) => Number(v) || 0);
-            if (closes.length >= 60) {
+      // Process in batches of 3 with delays to avoid rate limits
+      for (let b = 0; b < items.length; b += 3) {
+        const batch = items.slice(b, b + 3);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (item) => {
+            try {
+              const chart6m = await getChart(item.ticker, "6mo", "1d");
+              if (!chart6m || !chart6m.timestamp) {
+                console.log(`[watchlist-refresh] ${item.ticker}: no chart data`);
+                return { ...item };
+              }
+              const q = chart6m.indicators?.quote?.[0] || {};
+              const closes = (q.close || []).map((v: any) => Number(v) || 0);
+              const highs = (q.high || []).map((v: any) => Number(v) || 0);
+              const lows = (q.low || []).map((v: any) => Number(v) || 0);
+              const vols = (q.volume || []).map((v: any) => Number(v) || 0);
+              if (closes.length < 60) {
+                console.log(`[watchlist-refresh] ${item.ticker}: only ${closes.length} bars`);
+                return { ...item };
+              }
               const gateResult = runGateSystem({ ticker: item.ticker, closes, highs, lows, volumes: vols, mmeData: null });
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
-              results.push({ ...item, score, verdict });
-            } else {
-              results.push(item);
+              console.log(`[watchlist-refresh] ${item.ticker}: ${verdict} (${score} gates)`);
+              return { ...item, score, verdict };
+            } catch (err: any) {
+              console.error(`[watchlist-refresh] ${item.ticker} error:`, err?.message);
+              return { ...item };
             }
-          } else {
-            results.push(item);
-          }
-        } catch {
-          results.push(item);
+          })
+        );
+        for (const r of batchResults) {
+          results.push(r.status === "fulfilled" ? r.value : items[b]);
+        }
+        if (b + 3 < items.length) {
+          await new Promise(r => setTimeout(r, 1000)); // 1s between batches
         }
       }
 
