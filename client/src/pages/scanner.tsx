@@ -397,7 +397,7 @@ export default function Scanner() {
         {/* Scan status */}
         {data && !isFetching && (
           <div className="text-center text-[11px] text-muted-foreground">
-            Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} results
+            Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} gate-ready
           </div>
         )}
 
@@ -414,7 +414,7 @@ export default function Scanner() {
               </div>
             ))}
             <p className="text-center text-sm text-muted-foreground animate-pulse">
-              {scanMode === "amc" ? "Running AMC analysis" : "Analyzing 3 strategies"} across {scanCount} stocks...
+              Scanning {scanCount} stocks for gate-ready setups...
             </p>
           </div>
         )}
@@ -423,18 +423,19 @@ export default function Scanner() {
         {data && !isFetching && (() => {
           const filtered = data.results.filter((r: any) => {
             if (signalFilter === "both") return true;
-            if (signalFilter === "buy") return r.score > 0;
-            if (signalFilter === "sell") return r.score < 0;
+            const dir = r.gates?.direction;
+            if (signalFilter === "buy") return dir === "BULLISH" || r.score > 0;
+            if (signalFilter === "sell") return dir === "BEARISH" || r.score < 0;
             return true;
           });
           return filtered.length > 0 ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  {filtered.length} Results {signalFilter !== "both" && `(${signalFilter} signals)`}
+                  {filtered.length} Gate-Ready {signalFilter !== "both" && `(${signalFilter})`}
                 </h3>
                 <span className="text-xs text-muted-foreground">
-                  {scanMode === "amc" ? "Ranked by AMC score + VAMI" : "Ranked by strategy alignment"}
+                  Ranked by gate progression + RSI extremes
                 </span>
               </div>
               {filtered.map((result: any, idx: number) => (
@@ -447,8 +448,8 @@ export default function Scanner() {
             </div>
           ) : (
             <div className="bg-card border border-card-border rounded-lg p-8 text-center">
-              <p className="text-muted-foreground">No stocks matched the current criteria.</p>
-              <p className="text-sm text-muted-foreground mt-1">Try widening your filters, changing the signal direction, or enabling "Show All".</p>
+              <p className="text-muted-foreground">No gate-ready stocks found.</p>
+              <p className="text-sm text-muted-foreground mt-1">No stocks are showing reversal setups right now. Try widening filters, changing sector, or enable "Show All" to see the full scan.</p>
             </div>
           );
         })()}

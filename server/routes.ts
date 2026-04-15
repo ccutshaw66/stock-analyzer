@@ -3190,14 +3190,35 @@ export async function registerRoutes(
         }
       }
 
-      // Sort: gate-cleared stocks first (by gates desc), then by old score
+      // ── Gate-ready sorting and filtering ──
+      // Priority: gates cleared > gate-approaching (high AMC + VER near trigger) > old score as last resort
       const sorted = allResults.sort((a, b) => {
         const aGates = a.gates?.gatesCleared ?? 0;
         const bGates = b.gates?.gatesCleared ?? 0;
         if (aGates !== bGates) return bGates - aGates;
+
+        // Same gate count: sort by RSI extremes (closer to oversold/overbought = closer to Gate 1)
+        const aRsi = a.ver?.rsi ?? 50;
+        const bRsi = b.ver?.rsi ?? 50;
+        const aExtreme = Math.abs(50 - aRsi); // Higher = more extreme
+        const bExtreme = Math.abs(50 - bRsi);
+        if (aExtreme !== bExtreme) return bExtreme - aExtreme;
+
         return b.score - a.score;
       });
-      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.score >= 2 || (r.gates?.gatesCleared ?? 0) >= 1).slice(0, 25);
+
+      // Filter: only show stocks worth looking at
+      // - At least 1 gate cleared, OR
+      // - Old score >= 5 (Strong Buy by legacy system), OR
+      // - showAll mode shows everything scored
+      const results = showAll
+        ? sorted.slice(0, 50)
+        : sorted.filter(r => {
+            const gates = r.gates?.gatesCleared ?? 0;
+            if (gates >= 1) return true;          // Gate setup active
+            if (r.score >= 5) return true;         // Strong signal from legacy
+            return false;                          // Everything else is noise
+          }).slice(0, 25);
 
       res.json({
         scannedAt: new Date().toISOString(),
