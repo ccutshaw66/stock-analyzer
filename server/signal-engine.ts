@@ -106,18 +106,25 @@ function computeSMA(data: number[], period: number): number[] {
 }
 
 function computeRSI(closes: number[], period: number = 14): number[] {
+  // Wilder-smoothed RSI — matches TradingView/TOS and the VER calculation in routes.ts
   const rsi: number[] = new Array(closes.length).fill(NaN);
   if (closes.length < period + 1) return rsi;
-  for (let idx = period; idx < closes.length; idx++) {
-    let gains = 0, losses = 0;
-    for (let i = idx - period + 1; i <= idx; i++) {
-      const diff = closes[i] - closes[i - 1];
-      if (diff > 0) gains += diff;
-      else losses += Math.abs(diff);
-    }
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
-    rsi[idx] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) avgGain += diff;
+    else avgLoss += Math.abs(diff);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
   }
   return rsi;
 }
