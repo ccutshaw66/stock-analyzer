@@ -655,20 +655,41 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
   }
 
   // ── Gate 2: Use precomputed AMC score if available ──
+  // DIRECTION LOCK: Gate 1 sets the direction. Gate 2 must confirm in the SAME direction.
   const previewDirection: GateDirection = gate1.direction || "BULLISH";
   let liveGate2: Gate2Result;
   if (precomputed && precomputed.amcScore !== undefined) {
-    const amcIsBuy = precomputed.amcSignal === "ENTER" && precomputed.bbtcBias !== "SHORT";
+    const amcIsBuy = precomputed.amcSignal === "ENTER";
     const amcIsSell = precomputed.amcSignal === "SELL";
-    const cleared = gate1.cleared && precomputed.amcScore >= 4;
-    const dir: GateDirection | null = cleared ? (amcIsBuy ? "BULLISH" : amcIsSell ? "BEARISH" : previewDirection) : null;
+
+    // Momentum must agree with Gate 1's direction
+    const g1Dir = gate1.direction;
+    const momentumAgreesWithGate1 = g1Dir
+      ? (g1Dir === "BULLISH" && amcIsBuy) || (g1Dir === "BEARISH" && amcIsSell)
+      : false;
+    const directionConflict = gate1.cleared && g1Dir && !momentumAgreesWithGate1 && (amcIsBuy || amcIsSell);
+
+    const cleared = gate1.cleared && precomputed.amcScore >= 4 && momentumAgreesWithGate1;
+    const dir: GateDirection | null = cleared ? g1Dir : null;
+
+    let detail: string;
+    if (cleared) {
+      detail = `Momentum confirmed — AMC ${precomputed.amcScore}/5`;
+    } else if (directionConflict) {
+      detail = `AMC ${precomputed.amcScore}/5 — CONFLICT: reversal is ${g1Dir?.toLowerCase()} but momentum is ${amcIsBuy ? "bullish" : "bearish"}`;
+    } else if (!gate1.cleared) {
+      detail = `AMC Score: ${precomputed.amcScore}/5 — waiting for reversal`;
+    } else if (precomputed.amcScore < 4) {
+      detail = `AMC Score: ${precomputed.amcScore}/5 — need 4+ to confirm`;
+    } else {
+      detail = `AMC Score: ${precomputed.amcScore}/5 — waiting for directional alignment`;
+    }
+
     liveGate2 = {
       cleared,
       direction: dir,
       daysAfterGate1: cleared ? 0 : null,
-      detail: cleared
-        ? `Momentum confirmed — AMC ${precomputed.amcScore}/5`
-        : `AMC Score: ${precomputed.amcScore}/5${!gate1.cleared ? " — waiting for reversal" : " — need 4+ to confirm"}`,
+      detail,
       macdHistogram: !isNaN(histogram[closes.length - 1]) ? Number(histogram[closes.length - 1].toFixed(4)) : null,
       macdTurning: false,
       vamiPositive: false,
@@ -688,14 +709,20 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
   }
 
   // ── Gate 3: Use precomputed BBTC data if available ──
-  const liveGate3Direction = liveGate2.direction || previewDirection;
+  // DIRECTION LOCK: Always evaluate Gate 3 in Gate 1's direction (if set)
+  const liveGate3Direction = gate1.direction || liveGate2.direction || previewDirection;
   let liveGate3: Gate3Result;
   if (precomputed) {
     const isBull = liveGate3Direction === "BULLISH";
     const stackAligned = isBull ? precomputed.emaStackBull : precomputed.emaStackBear;
     const priceOk = precomputed.priceAboveEma9;
     const trendConfirms = isBull ? precomputed.bbtcTrend === "UP" : precomputed.bbtcTrend === "DOWN";
-    const cleared = liveGate2.cleared && stackAligned && priceOk;
+    // Direction lock: trend must agree with Gate 1's direction
+    const trendConflict = gate1.direction && (
+      (gate1.direction === "BULLISH" && precomputed.bbtcTrend === "DOWN") ||
+      (gate1.direction === "BEARISH" && precomputed.bbtcTrend === "UP")
+    );
+    const cleared = liveGate2.cleared && stackAligned && priceOk && !trendConflict;
 
     // Still check MME if available
     let mmeAligned: boolean | null = null;
@@ -723,7 +750,11 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     const parts: string[] = [];
     parts.push(stackAligned ? "EMA stack aligned ✓" : "EMA stack NOT aligned ✗");
     parts.push(priceOk ? "Price confirms ✓" : "Price not confirming ✗");
-    parts.push(trendConfirms ? `Trend ${precomputed.bbtcTrend} ✓` : `Trend ${precomputed.bbtcTrend}`);
+    if (trendConflict) {
+      parts.push(`CONFLICT: reversal is ${gate1.direction?.toLowerCase()} but trend is ${precomputed.bbtcTrend}`);
+    } else {
+      parts.push(trendConfirms ? `Trend ${precomputed.bbtcTrend} ✓` : `Trend ${precomputed.bbtcTrend}`);
+    }
     if (!liveGate2.cleared) parts.push("waiting for momentum");
     else if (!gate1.cleared) parts.push("waiting for reversal");
 

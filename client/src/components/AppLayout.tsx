@@ -483,7 +483,7 @@ function Sidebar({
       ],
     },
     {
-      label: "Company Information",
+      label: "Company Research",
       items: [
         { path: "/profile", label: "Profile", icon: BarChart3 },
         { path: "/trade", label: "Trade Analysis", icon: Activity },
@@ -493,7 +493,7 @@ function Sidebar({
       ],
     },
     {
-      label: "Research",
+      label: "Investment Opportunities",
       items: [
         { path: "/scanner", label: "Scanner", icon: Radar },
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
