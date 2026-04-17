@@ -10,6 +10,14 @@ import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
 import { runGateSystem, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
+import {
+  getPolygonQuoteSummary,
+  getPolygonChart,
+  polygonSearch,
+  getPolygonOptionsChain,
+  polygonScreener,
+  polygonHasOptions,
+} from "./polygon";
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
 let demoLastActivity: number = 0; // timestamp of last API request from demo user
@@ -250,47 +258,66 @@ async function getQuote(ticker: string): Promise<any> {
     recordCacheHit();
     return cached;
   }
-  const modules = [
-    "price", "summaryDetail", "defaultKeyStatistics",
-    "financialData", "summaryProfile", "recommendationTrend", "earningsTrend", "calendarEvents"
-  ].join("%2C");
-  const data = await yahooFetch(
-    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
-  );
-  const result = data?.quoteSummary?.result?.[0] || null;
+  // Primary: Polygon (Stocks Starter). Returns a Yahoo-shaped quoteSummary.result[0] object.
+  const result = await getPolygonQuoteSummary(ticker);
   if (result) setCache(cacheKey, result, TTL.quote);
   return result;
 }
 
-// Lightweight quote — only price + dividend essentials (for refresh operations)
+// Lightweight quote — Polygon snapshot returns everything in one call already,
+// so we can share the code path with getQuote.
 async function getQuoteLight(ticker: string): Promise<any> {
-  const cacheKey = `quote:${ticker.toUpperCase()}`;
-  const cached = getCached(cacheKey);
-  if (cached) { recordCacheHit(); return cached; }
-  // Fetch only the 4 modules needed for price + dividend scoring
-  const modules = ["price", "summaryDetail", "defaultKeyStatistics", "calendarEvents"].join("%2C");
-  const data = await yahooFetch(
-    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
-  );
-  const result = data?.quoteSummary?.result?.[0] || null;
-  // Cache with same key as full quote — a full getQuote will overwrite with richer data later
-  if (result) setCache(cacheKey, result, TTL.quote);
-  return result;
+  return getQuote(ticker);
 }
 
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
   const cacheKey = `chart:${ticker.toUpperCase()}:${range}:${interval}`;
   const cached = getCached(cacheKey);
   if (cached) {
-    console.log(`[yahoo] Cache hit chart: ${ticker} ${range}`);
+    console.log(`[chart] Cache hit: ${ticker} ${range}`);
     return cached;
   }
-  const data = await yahooFetch(
-    `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
-  );
-  const result = data?.chart?.result?.[0] || null;
-  if (result) setCache(cacheKey, result, TTL.chart);
-  return result;
+
+  // Polygon Stocks Starter gives ~5 years of history. For longer ranges (10y/25y/max)
+  // we fall back to Yahoo so the Verdict 25y stress test keeps working.
+  const isLongRange = range === "10y" || range === "25y" || range === "max";
+
+  if (isLongRange) {
+    try {
+      const data = await yahooFetch(
+        `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
+      );
+      const result = data?.chart?.result?.[0] || null;
+      if (result) setCache(cacheKey, result, TTL.chart);
+      return result;
+    } catch (err) {
+      console.log(`[chart] Yahoo long-range fallback failed for ${ticker} ${range}, trying Polygon:`, (err as Error).message);
+      // Fall through to Polygon (will be capped at ~5y)
+    }
+  }
+
+  try {
+    const result = await getPolygonChart(ticker, range, interval);
+    if (result && result.timestamp?.length) {
+      setCache(cacheKey, result, TTL.chart);
+      return result;
+    }
+  } catch (err) {
+    console.log(`[chart] Polygon failed for ${ticker} ${range}:`, (err as Error).message);
+  }
+
+  // Last-resort fallback: Yahoo (for any range)
+  try {
+    const data = await yahooFetch(
+      `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
+    );
+    const result = data?.chart?.result?.[0] || null;
+    if (result) setCache(cacheKey, result, TTL.chart);
+    return result;
+  } catch (err) {
+    console.log(`[chart] All sources failed for ${ticker} ${range}`);
+    return null;
+  }
 }
 
 // ============================================================
@@ -1502,11 +1529,8 @@ export async function registerRoutes(
     const cacheKey = `options:${ticker.toUpperCase()}:${expDate || 'default'}`;
     const cached = getCached(cacheKey);
     if (cached) { recordCacheHit(); return cached; }
-    const url = expDate
-      ? `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}?date=${expDate}`
-      : `${YF_QUERY_BASE}/v7/finance/options/${encodeURIComponent(ticker)}`;
-    const data = await yahooFetch(url);
-    const result = data?.optionChain?.result?.[0] || null;
+    // Primary: Polygon Options Starter. Returns a Yahoo-shaped optionChain.result[0] object.
+    const result = await getPolygonOptionsChain(ticker, expDate);
     if (result) setCache(cacheKey, result, TTL.options);
     return result;
   }
@@ -1849,23 +1873,10 @@ export async function registerRoutes(
     const q = (req.query.q as string || "").trim();
     if (!q || q.length < 1) return res.json([]);
     try {
-      // Yahoo search/autocomplete endpoint (no auth needed)
-      const resp = await fetch(
-        `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`,
-        { headers: YF_BASE_HEADERS }
-      );
-      if (!resp.ok) return res.json([]);
-      const data = await resp.json();
-      const quotes = (data?.quotes || []).filter((q: any) =>
-        q.quoteType === "EQUITY" || q.quoteType === "ETF"
-      ).map((q: any) => ({
-        symbol: q.symbol,
-        name: q.shortname || q.longname || q.symbol,
-        type: q.quoteType,
-        exchange: q.exchDisp || q.exchange,
-      }));
-      res.json(quotes);
-    } catch {
+      const results = await polygonSearch(q);
+      res.json(results);
+    } catch (err: any) {
+      console.log(`[search] Polygon failed for "${q}":`, err.message);
       res.json([]);
     }
   });
@@ -2801,6 +2812,24 @@ export async function registerRoutes(
       sortBy = "dayvolume",
     } = options;
 
+    // Primary: Polygon grouped-daily screener.
+    // NOTE: Polygon doesn't support sector filtering server-side; if sector is specified,
+    // the downstream per-ticker analysis will filter on sector from ticker details.
+    try {
+      const tickers = await polygonScreener({
+        minPrice,
+        maxPrice,
+        sector,
+        minMarketCap,
+        maxMarketCap,
+        count,
+      });
+      if (tickers.length) return tickers;
+    } catch (err: any) {
+      console.log(`[screener] Polygon failed, falling back to Yahoo:`, err.message);
+    }
+
+    // Fallback: Yahoo screener (legacy)
     const operands: any[] = [
       { operator: "or", operands: [{ operator: "EQ", operands: ["region", "us"] }] },
       { operator: "gt", operands: ["dayvolume", minVolume] },
@@ -2825,7 +2854,6 @@ export async function registerRoutes(
       query: { operator: "AND", operands },
     });
 
-    // Use enqueue to respect global rate limiting
     const data = await enqueue(async () => {
       const { crumb, cookie } = await getYahooCrumb();
       const resp = await fetch(
