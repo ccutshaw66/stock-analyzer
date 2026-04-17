@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, ChevronDown, ChevronUp, ClipboardList, Calculator, BarChart3, Activity, Radar, HelpCircle } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronUp, ClipboardList, Calculator, BarChart3, Activity, Radar, HelpCircle, RefreshCw } from "lucide-react";
 
 function Section({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -148,6 +148,35 @@ export default function Help() {
           <p>1. <strong className="text-foreground">Low POP</strong> — A POP below 50% means you're MORE likely to lose than win. Raise it to 60-70% for credit spreads.</p>
           <p>2. <strong className="text-foreground">Wrong sign on price</strong> — Credit spreads should be positive (you receive money). Debit spreads should be negative (you pay).</p>
           <p>3. <strong className="text-foreground">Expectancy is statistical</strong> — Even a positive-expectancy trade will have losing trades. The expectancy calculator shows the expected NET result over many trades, not a single trade outcome.</p>
+        </Q>
+      </Section>
+
+      {/* ─── Wheel Strategy ───────────────────────────────────────────── */}
+      <Section title="Wheel Strategy" icon={RefreshCw}>
+        <Q q="What is The Wheel?">
+          <p>The Wheel is a continuous income strategy that cycles between <strong className="text-foreground">selling cash-secured puts (CSPs)</strong> and <strong className="text-foreground">selling covered calls (CCs)</strong> on a stock you'd be happy to own.</p>
+          <p>You keep rolling premium until the market assigns you — then you own the stock, and keep rolling premium on the other side until the market calls it away. Rinse, repeat.</p>
+        </Q>
+        <Q q="How do I use the Wheel calculator?">
+          <p>Open <strong className="text-foreground">Calculators → Wheel Strategy</strong> from the sidebar. Enter:</p>
+          <p>1. <strong className="text-foreground">Stock price</strong> — current price of the underlying.</p>
+          <p>2. <strong className="text-foreground">Put strike / premium</strong> — the CSP you plan to sell. Strike should be below stock price; premium from your broker's option chain.</p>
+          <p>3. <strong className="text-foreground">Call strike / premium</strong> — the covered call you'd sell <em>after</em> being assigned. Strike should be above your assignment cost basis.</p>
+          <p>4. <strong className="text-foreground">DTE</strong> — days to expiration. 21–45 is the theta-decay sweet spot.</p>
+          <p>5. <strong className="text-foreground">Contracts</strong> — each contract = 100 shares and requires strike × 100 in cash.</p>
+          <p>The calculator shows put-cycle return, call-cycle return, full-wheel return (annualized), cost basis if assigned, capital required, max loss, and a payoff chart overlaying the CSP-only vs. full-wheel P/L.</p>
+        </Q>
+        <Q q="What does 'Setup Quality' score mean?">
+          <p>A quick sanity check across five heuristics: put strike below stock price, call strike above cost basis, put yield &gt; 10% annualized, capital at risk under 25% of account, and DTE in the 21–45 sweet spot. 80%+ is a clean setup; below 60% means rethink.</p>
+        </Q>
+        <Q q="When does The Wheel blow up?">
+          <p>The wheel's biggest risk is a <strong className="text-red-400">catastrophic gap down</strong>. If you CSP a stock at $100 and it crashes to $50 on earnings, you're assigned at $100, holding a huge unrealized loss, and any call you sell above $100 (to avoid locking in the loss) will barely collect premium.</p>
+          <p>Only wheel tickers you'd genuinely be willing to own for years. Avoid: pre-earnings, biotech binary events, small-caps, meme stocks, and anything with a pending regulatory decision.</p>
+        </Q>
+        <Q q="How do I pick strikes?">
+          <p>For the CSP, common targets: 16-delta (≈84% prob OTM — conservative) or 30-delta (≈70% OTM — more premium, more assignments).</p>
+          <p>For the CC after assignment, target a strike <strong className="text-foreground">above your cost basis</strong> so you lock in a gain if called away. 30-delta is a typical choice.</p>
+          <p>Use the <strong className="text-foreground">Greeks Calculator</strong> for delta and <strong className="text-foreground">Payoff Diagram</strong> to visualize before committing.</p>
         </Q>
       </Section>
 

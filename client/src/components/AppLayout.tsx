@@ -530,6 +530,7 @@ function Sidebar({
         { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
         { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
         { path: "/kelly", label: "Kelly Criterion", icon: Percent },
+        { path: "/wheel", label: "Wheel Strategy", icon: RefreshCw },
       ],
     },
   ];
