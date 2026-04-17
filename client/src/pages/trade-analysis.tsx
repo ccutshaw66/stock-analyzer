@@ -38,6 +38,7 @@ function getSignalColor(signal: string) {
   if (signal.startsWith("GO")) return { bg: "bg-green-500", text: "text-green-400", border: "border-green-500/30" };
   if (signal.startsWith("SET")) return { bg: "bg-blue-500", text: "text-blue-400", border: "border-blue-500/30" };
   if (signal.startsWith("READY")) return { bg: "bg-amber-500", text: "text-amber-400", border: "border-amber-500/30" };
+  if (signal.startsWith("PULLBACK")) return { bg: "bg-orange-500", text: "text-orange-400", border: "border-orange-500/30" };
   if (signal.startsWith("GATES CLOSED")) return { bg: "bg-red-500", text: "text-red-400", border: "border-red-500/30" };
   if (signal === "ENTER") return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
   if (signal === "SELL") return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
@@ -326,17 +327,25 @@ export default function TradeAnalysis() {
                 </span>
               </div>
 
-              {/* Gate Progress Bar */}
+              {/* Gate Progress Bar — tinted orange (PULLBACK) or red (GATES CLOSED) in exit states */}
               <div className="flex items-center gap-1 mb-5">
-                {[1, 2, 3].map((gate) => (
-                  <div key={gate} className="flex-1 relative">
-                    <div className={`h-2 rounded-full transition-all ${
-                      gate <= data.gates.gatesCleared
-                        ? gate === 3 ? "bg-green-500" : gate === 2 ? "bg-blue-500" : "bg-amber-500"
-                        : "bg-muted/30"
-                    }`} />
-                  </div>
-                ))}
+                {[1, 2, 3].map((gate) => {
+                  const isPullback = data.gates.signal?.startsWith("PULLBACK");
+                  const isClosed = data.gates.signal?.startsWith("GATES CLOSED");
+                  const active = gate <= data.gates.gatesCleared;
+                  const barColor = !active
+                    ? "bg-muted/30"
+                    : isPullback ? "bg-orange-500"
+                    : isClosed   ? "bg-red-500"
+                    : gate === 3 ? "bg-green-500"
+                    : gate === 2 ? "bg-blue-500"
+                    : "bg-amber-500";
+                  return (
+                    <div key={gate} className="flex-1 relative">
+                      <div className={`h-2 rounded-full transition-all ${barColor}`} />
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Summary */}

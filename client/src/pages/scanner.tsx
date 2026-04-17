@@ -106,12 +106,14 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
   const labelColor = label.startsWith("GO") ? "bg-green-500 text-white"
     : label.startsWith("SET") ? "bg-blue-500 text-white"
     : label.startsWith("READY") ? "bg-amber-500 text-white"
+    : label.startsWith("PULLBACK") ? "bg-orange-500 text-white"
     : label.startsWith("GATES CLOSED") ? "bg-red-500 text-white"
     : "bg-zinc-500/20 text-zinc-400";
 
   const borderClass = label.startsWith("GO") ? "border-green-500/40"
     : label.startsWith("SET") ? "border-blue-500/40"
     : label.startsWith("READY") ? "border-amber-500/30"
+    : label.startsWith("PULLBACK") ? "border-orange-500/40"
     : label.startsWith("GATES CLOSED") ? "border-red-500/40"
     : "border-card-border";
 
