@@ -18,6 +18,11 @@ const TTL = {
   sector: 60 * 60 * 1000,       // 1 hour for sector data
   institutional: 2 * 60 * 60 * 1000, // 2 hours for institutional data
   options: 15 * 60 * 1000,      // 15 minutes for options chain data
+  // Route-level result caches — avoid recomputing full pipelines on repeat page loads
+  earnings: 4 * 60 * 60 * 1000,  // 4 hours for earnings calendar results (earnings dates don't change intraday)
+  watchlist: 15 * 60 * 1000,     // 15 minutes for watchlist gate/score results
+  scanner: 15 * 60 * 1000,       // 15 minutes for scanner results per filter tuple
+  verdict: 60 * 60 * 1000,       // 1 hour for verdict results per ticker
 };
 
 export function getCached(key: string): any | null {
