@@ -8,7 +8,7 @@ import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
-import { runGateSystem, type GateSystemResult } from "./signal-engine";
+import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import {
   getPolygonQuoteSummary,
@@ -3177,7 +3177,11 @@ export async function registerRoutes(
               const cleanHighs = highs.map((v: any) => Number(v) || 0);
               const cleanLows = lows.map((v: any) => Number(v) || 0);
               const cleanVols = volumes.map((v: any) => Number(v) || 0);
-              gates = runGateSystem({ ticker, closes: cleanCloses, highs: cleanHighs, lows: cleanLows, volumes: cleanVols, mmeData: null });
+              // Use analyzeTicker (not runGateSystem directly) so the scanner
+              // goes through the SAME precomputed VER/AMC/BBTC path as
+              // Trade Analysis and Watchlist. This is what enables the
+              // GATES CLOSED / PULLBACK exit signals to fire consistently.
+              gates = analyzeTicker({ ticker, closes: cleanCloses, highs: cleanHighs, lows: cleanLows, volumes: cleanVols, mmeData: null });
             } catch {}
 
             return {
@@ -3190,6 +3194,8 @@ export async function registerRoutes(
                 signal: gates.signal,
                 direction: gates.direction,
                 summary: gates.summary,
+                fib: gates.fib ?? null,
+                priorSetup: gates.priorSetup ?? null,
               } : null,
               bbtc: { signal: bbtcTopSignal, trend: bbtcTrend, bias: bbtcBias },
               ver: { signal: verTopSignal, rsi: lastRsi },
@@ -3452,7 +3458,8 @@ export async function registerRoutes(
                 console.log(`[watchlist-refresh] ${item.ticker}: only ${closes.length} bars`);
                 return { ...item };
               }
-              const gateResult = runGateSystem({ ticker: item.ticker, closes, highs, lows, volumes: vols, mmeData: null });
+              // Use unified analyzer so watchlist signals match Trade Analysis exactly
+              const gateResult = analyzeTicker({ ticker: item.ticker, closes, highs, lows, volumes: vols, mmeData: null });
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);

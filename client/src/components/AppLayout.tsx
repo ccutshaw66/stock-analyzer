@@ -331,22 +331,29 @@ function ScoreBadge({
   // Detect gate data: score must be 0-3 AND verdict starts with gate keywords
   const isGateData = verdict && score !== null && score >= 0 && score <= 3 &&
     (verdict.startsWith("READY") || verdict.startsWith("SET") || verdict.startsWith("GO") ||
-     verdict.startsWith("GATES") || verdict === "NO SETUP");
+     verdict.startsWith("GATES") || verdict.startsWith("PULLBACK") || verdict === "NO SETUP");
 
   if (isGateData && verdict) {
     const gatesCleared = Math.round(score ?? 0);
     const signalColor = verdict.startsWith("GO") ? "bg-green-500" :
       verdict.startsWith("SET") ? "bg-blue-500" :
       verdict.startsWith("READY") ? "bg-amber-500" :
+      verdict.startsWith("PULLBACK") ? "bg-orange-500" :
       verdict.startsWith("GATES") ? "bg-red-500" :
       "bg-zinc-500";
+    // For PULLBACK/GATES CLOSED, tint ALL the active pips to match the signal
+    // color so the watchlist row reads as a single state (not mixed gate colors).
+    const isExitState = verdict.startsWith("PULLBACK") || verdict.startsWith("GATES");
+    const exitPipColor = verdict.startsWith("PULLBACK") ? "bg-orange-500" : "bg-red-500";
     return (
       <div className="flex items-center gap-1">
         <div className="flex gap-0.5">
           {[1, 2, 3].map((g) => (
             <div key={g} className={`h-1 w-2 rounded-full ${
               g <= gatesCleared
-                ? g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+                ? isExitState
+                  ? exitPipColor
+                  : g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
                 : "bg-muted-foreground/20"
             }`} />
           ))}

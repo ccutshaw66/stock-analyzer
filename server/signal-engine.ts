@@ -73,11 +73,26 @@ export interface GateSystemResult {
   direction: GateDirection | null;
   gatesCleared: number;       // 0, 1, 2, or 3
   confidence: "HIGH" | "MODERATE" | "EARLY" | "NEUTRAL";
-  signal: string;             // Gate language: "READY ↑", "SET ↑", "GO ↑", "GATES CLOSED", "NO SETUP"
+  signal: string;             // Gate language: "READY ↑", "SET ↑", "GO ↑", "GATES CLOSED", "PULLBACK", "NO SETUP"
   summary: string;            // Human-readable one-liner
   gate1: Gate1Result;
   gate2: Gate2Result;
   gate3: Gate3Result;
+  // Exit / pullback context (populated when a prior bullish/bearish setup is unwinding)
+  priorSetup?: {
+    direction: GateDirection;        // Direction of the setup that is now at risk
+    gatesClearedPrior: number;       // How many gates had cleared in the prior setup
+    daysSincePriorSetup: number;     // Bars since the prior setup last cleared
+  } | null;
+  // Fibonacci retracement context (populated when signal is PULLBACK)
+  fib?: {
+    zone: "SHALLOW" | "HEALTHY" | "DEEP" | "FAILED";  // retracement depth bucket
+    label: string;                   // Short human label: "shallow", "golden pocket", "deep", "failed"
+    retracementPct: number;          // 0..1+, where current price sits on the impulse leg
+    swingHigh: number;               // Impulse leg high price
+    swingLow: number;                // Impulse leg low price
+    invalidationPrice: number;       // Break of this = trend invalidated
+  } | null;
 }
 
 // ─── Helper: Compute indicators ─────────────────────────────────────────────
@@ -564,6 +579,263 @@ export interface SignalEngineInput {
   } | null;
 }
 
+// ─── Exit-signal helpers (GATES CLOSED / PULLBACK detection) ────────────────
+
+interface FindPriorSetupInput {
+  closes: number[];
+  highs: number[];
+  lows: number[];
+  volumes: number[];
+  rsi: number[];
+  bbUpper: number[];
+  bbLower: number[];
+  volAvg20: number[];
+  currentGate1: Gate1Result;
+  lookbackBars: number;
+}
+
+/**
+ * Walk backward through the price history looking for a Gate-1 reversal that
+ * fired in the OPPOSITE direction from the current setup. If we find one and it
+ * was "real" (had Gate 2 momentum confirming in its direction), we return info
+ * about it so the caller can decide between GATES CLOSED and PULLBACK.
+ *
+ * We skip the last 3 bars so we don't double-count the current Gate 1 itself.
+ */
+function findPriorOppositeSetup(input: FindPriorSetupInput): {
+  direction: GateDirection;
+  gatesClearedPrior: number;
+  daysSincePriorSetup: number;
+} | null {
+  const { closes, highs, lows, volumes, rsi, bbUpper, bbLower, volAvg20, currentGate1, lookbackBars } = input;
+  const len = closes.length;
+
+  // Scan bars [lastIdx - 3 .. lastIdx - lookbackBars]
+  for (let daysBack = 4; daysBack <= lookbackBars; daysBack++) {
+    const i = len - 1 - daysBack;
+    if (i < 25 || isNaN(rsi[i]) || isNaN(bbUpper[i]) || isNaN(bbLower[i]) || isNaN(volAvg20[i])) continue;
+
+    const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 1.8;
+    if (!volumeSpike) continue;
+
+    // Check for BULLISH reversal at bar i
+    let hasBullishDiv = false;
+    for (let lb = 5; lb <= Math.min(20, i); lb++) {
+      const prevIdx = i - lb;
+      if (prevIdx < 0 || isNaN(rsi[prevIdx])) continue;
+      if (closes[i] < closes[prevIdx] && rsi[i] > rsi[prevIdx] && rsi[i] < 40) { hasBullishDiv = true; break; }
+    }
+    const touchedLowerBB = lows[i] <= bbLower[i] || (i > 0 && closes[i - 1] <= bbLower[i - 1]);
+    const closedBackInside = closes[i] > bbLower[i];
+    if (hasBullishDiv && touchedLowerBB && closedBackInside) {
+      // Prior BULLISH setup found. Only meaningful if the CURRENT direction isn't still BULLISH.
+      if (currentGate1.direction !== "BULLISH") {
+        return { direction: "BULLISH", gatesClearedPrior: 2, daysSincePriorSetup: daysBack };
+      }
+      continue;
+    }
+
+    // Check for BEARISH reversal at bar i
+    let hasBearishDiv = false;
+    for (let lb = 5; lb <= Math.min(20, i); lb++) {
+      const prevIdx = i - lb;
+      if (prevIdx < 0 || isNaN(rsi[prevIdx])) continue;
+      if (closes[i] > closes[prevIdx] && rsi[i] < rsi[prevIdx] && rsi[i] > 60) { hasBearishDiv = true; break; }
+    }
+    const touchedUpperBB = highs[i] >= bbUpper[i] || (i > 0 && closes[i - 1] >= bbUpper[i - 1]);
+    const closedBackInsideUpper = closes[i] < bbUpper[i];
+    if (hasBearishDiv && touchedUpperBB && closedBackInsideUpper) {
+      if (currentGate1.direction !== "BEARISH") {
+        return { direction: "BEARISH", gatesClearedPrior: 2, daysSincePriorSetup: daysBack };
+      }
+    }
+  }
+
+  return null;
+}
+
+interface TrendWeightInput {
+  closes: number[];
+  ema9: number[];
+  ema21: number[];
+  ema50: number[];
+  histogram: number[];
+  vamiScaled: number[];
+  priorDirection: GateDirection;
+}
+
+/**
+ * Is the trend (AMC momentum + BBTC EMA stack) still "heavy" in the prior
+ * direction? We need BOTH to be heavy to classify a Gate-1 flip as a PULLBACK
+ * rather than GATES CLOSED. If only one is heavy, the gates have closed.
+ */
+function evaluateTrendWeight(input: TrendWeightInput): {
+  amcHeavy: boolean;
+  bbtcHeavy: boolean;
+  bothHeavy: boolean;
+} {
+  const { closes, ema9, ema21, ema50, histogram, vamiScaled, priorDirection } = input;
+  const i = closes.length - 1;
+  const isBull = priorDirection === "BULLISH";
+
+  // AMC momentum heaviness: histogram still solidly positive/negative in prior direction,
+  // AND VAMI still aligned.
+  const histOk = !isNaN(histogram[i]) &&
+    (isBull ? histogram[i] > 0 : histogram[i] < 0);
+  const vamiOk = isBull ? vamiScaled[i] > 0 : vamiScaled[i] < 0;
+  // Look 5 bars back to check momentum isn't already rolling
+  let consecutiveHeavy = 0;
+  for (let k = 0; k < 5 && i - k >= 0; k++) {
+    const h = histogram[i - k];
+    if (isNaN(h)) continue;
+    if ((isBull && h > 0) || (!isBull && h < 0)) consecutiveHeavy++;
+  }
+  const amcHeavy = histOk && vamiOk && consecutiveHeavy >= 3;
+
+  // BBTC EMA stack heaviness: full 9>21>50 (or inverse) plus price still on the right side of 50
+  const e9 = ema9[i], e21 = ema21[i], e50 = ema50[i], px = closes[i];
+  const stackAligned = !isNaN(e9) && !isNaN(e21) && !isNaN(e50) && (
+    isBull ? (e9 > e21 && e21 > e50 && px > e21) : (e9 < e21 && e21 < e50 && px < e21)
+  );
+  // Also check the 50-day EMA hasn't already rolled against the trend
+  const ema50Sloping = !isNaN(ema50[i]) && !isNaN(ema50[i - 5])
+    ? (isBull ? ema50[i] > ema50[i - 5] : ema50[i] < ema50[i - 5])
+    : false;
+  const bbtcHeavy = stackAligned && ema50Sloping;
+
+  return { amcHeavy, bbtcHeavy, bothHeavy: amcHeavy && bbtcHeavy };
+}
+
+// ─── Fibonacci retracement (PULLBACK depth classification) ────────────────
+
+interface FibImpulseInput {
+  closes: number[];
+  highs: number[];
+  lows: number[];
+  priorDirection: GateDirection;
+  lookbackBars: number;    // how far back to search for the impulse leg
+  pivotWindow: number;     // bars on each side for pivot confirmation
+}
+
+interface FibImpulseLeg {
+  swingHigh: number;
+  swingLow: number;
+  swingHighIdx: number;
+  swingLowIdx: number;
+}
+
+/**
+ * Identify the most recent impulse leg in the prior-setup direction using
+ * N-bar pivot highs/lows. For a BULLISH setup we want the most recent
+ * swing-low → swing-high sequence; for BEARISH we want swing-high → swing-low.
+ * The retracement is then measured from the endpoint of that leg back toward
+ * its origin.
+ */
+function findImpulseLeg(input: FibImpulseInput): FibImpulseLeg | null {
+  const { highs, lows, priorDirection, lookbackBars, pivotWindow } = input;
+  const len = highs.length;
+  if (len < lookbackBars + pivotWindow * 2) return null;
+
+  const start = Math.max(pivotWindow, len - 1 - lookbackBars);
+  const end = len - 1 - pivotWindow;
+
+  // Collect confirmed pivot highs and lows within the window.
+  const pivotHighs: { idx: number; price: number }[] = [];
+  const pivotLows: { idx: number; price: number }[] = [];
+  for (let i = start; i <= end; i++) {
+    let isHigh = true, isLow = true;
+    for (let k = 1; k <= pivotWindow; k++) {
+      if (highs[i] <= highs[i - k] || highs[i] <= highs[i + k]) isHigh = false;
+      if (lows[i] >= lows[i - k] || lows[i] >= lows[i + k]) isLow = false;
+      if (!isHigh && !isLow) break;
+    }
+    if (isHigh) pivotHighs.push({ idx: i, price: highs[i] });
+    if (isLow) pivotLows.push({ idx: i, price: lows[i] });
+  }
+
+  if (pivotHighs.length === 0 || pivotLows.length === 0) return null;
+
+  if (priorDirection === "BULLISH") {
+    // Most recent swing high is the leg endpoint; need the preceding swing low.
+    const lastHigh = pivotHighs[pivotHighs.length - 1];
+    const priorLows = pivotLows.filter(p => p.idx < lastHigh.idx);
+    if (priorLows.length === 0) return null;
+    const precedingLow = priorLows[priorLows.length - 1];
+    if (lastHigh.price <= precedingLow.price) return null;
+    return {
+      swingHigh: lastHigh.price,
+      swingLow: precedingLow.price,
+      swingHighIdx: lastHigh.idx,
+      swingLowIdx: precedingLow.idx,
+    };
+  } else {
+    const lastLow = pivotLows[pivotLows.length - 1];
+    const priorHighs = pivotHighs.filter(p => p.idx < lastLow.idx);
+    if (priorHighs.length === 0) return null;
+    const precedingHigh = priorHighs[priorHighs.length - 1];
+    if (precedingHigh.price <= lastLow.price) return null;
+    return {
+      swingHigh: precedingHigh.price,
+      swingLow: lastLow.price,
+      swingHighIdx: precedingHigh.idx,
+      swingLowIdx: lastLow.idx,
+    };
+  }
+}
+
+/**
+ * Given the impulse leg and current price, classify into a Fib retracement
+ * zone. Retracement % = how far price has retraced back toward the leg origin.
+ *   0%    = still at the leg endpoint (no pullback)
+ *   38.2% = shallow
+ *   50%   = golden pocket entry
+ *   61.8% = golden pocket exit
+ *   78.6% = deep — last-chance zone
+ *   >100% = failed, leg origin broken
+ */
+function classifyFibZone(
+  currentPrice: number,
+  leg: FibImpulseLeg,
+  priorDirection: GateDirection,
+): NonNullable<GateSystemResult["fib"]> {
+  const range = leg.swingHigh - leg.swingLow;
+  const isBull = priorDirection === "BULLISH";
+
+  // Retracement % from the leg endpoint back toward its origin.
+  const retracementPct = isBull
+    ? (leg.swingHigh - currentPrice) / range   // fell from high toward low
+    : (currentPrice - leg.swingLow) / range;   // rose from low toward high
+
+  // Invalidation = origin of the leg
+  const invalidationPrice = isBull ? leg.swingLow : leg.swingHigh;
+
+  // Zone thresholds per design:
+  //   < 38.2%  → SHALLOW  (very strong trend, just a pause)
+  //   38.2–61.8 → HEALTHY (golden pocket — best re-entry)
+  //   61.8–78.6 → DEEP    (still valid but risky)
+  //   > 78.6%  → FAILED   (trend likely broken — downgrade to GATES CLOSED)
+  let zone: "SHALLOW" | "HEALTHY" | "DEEP" | "FAILED";
+  let label: string;
+  if (retracementPct < 0.382) {
+    zone = "SHALLOW"; label = "shallow";
+  } else if (retracementPct < 0.618) {
+    zone = "HEALTHY"; label = "golden pocket";
+  } else if (retracementPct < 0.786) {
+    zone = "DEEP"; label = "deep";
+  } else {
+    zone = "FAILED"; label = "failed";
+  }
+
+  return {
+    zone,
+    label,
+    retracementPct,
+    swingHigh: leg.swingHigh,
+    swingLow: leg.swingLow,
+    invalidationPrice,
+  };
+}
+
 export function runGateSystem(input: SignalEngineInput): GateSystemResult {
   const { ticker, closes, highs, lows, volumes, mmeData, precomputed } = input;
 
@@ -770,6 +1042,95 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     liveGate3 = evaluateGate3({ closes, ema9, ema21, ema50, gate2Direction: liveGate3Direction, mmeData });
   }
 
+  // ── Exit-signal detection: look back for a prior opposite-direction reversal ──
+  // If a prior setup fired in the last 30 bars and the CURRENT Gate 1 has flipped
+  // direction (or Gate 3's trend has decisively broken), we need to decide between:
+  //   1. GATES CLOSED — reversal flipped AND momentum/trend are losing conviction
+  //   2. PULLBACK      — reversal flipped BUT AMC + BBTC are still heavy in the
+  //                      original direction; treat as a shake-out, not an exit
+  const priorSetup = findPriorOppositeSetup({
+    closes, highs, lows, volumes, rsi, bbUpper, bbLower, volAvg20,
+    currentGate1: gate1,
+    lookbackBars: 30,
+  });
+
+  if (priorSetup) {
+    // Evaluate how heavy the trend still is in the PRIOR direction
+    const isPriorBull = priorSetup.direction === "BULLISH";
+    const trendStillHeavy = evaluateTrendWeight({
+      closes, ema9, ema21, ema50, histogram, vamiScaled,
+      priorDirection: priorSetup.direction,
+    });
+
+    // A reversal flip counts as "closing the gates" only when:
+    //   (a) Gate 1 has fired in the OPPOSITE direction very recently (last 3 bars), OR
+    //   (b) The EMA stack has decisively broken against the prior direction
+    const gate1Flipped = gate1.cleared && gate1.direction && gate1.direction !== priorSetup.direction
+      && (gate1.daysAgo ?? 99) <= 3;
+    const stackBroken = isPriorBull
+      ? (!isNaN(ema9[closes.length - 1]) && !isNaN(ema21[closes.length - 1]) && ema9[closes.length - 1] < ema21[closes.length - 1])
+      : (!isNaN(ema9[closes.length - 1]) && !isNaN(ema21[closes.length - 1]) && ema9[closes.length - 1] > ema21[closes.length - 1]);
+
+    if (gate1Flipped || stackBroken) {
+      // Compute Fibonacci retracement on the prior-direction impulse leg so we
+      // know HOW DEEP the pullback is. A shallow/healthy retracement keeps the
+      // PULLBACK label; a retracement past 78.6% (FAILED) downgrades to
+      // GATES CLOSED even if AMC+BBTC still look heavy — the origin of the
+      // impulse leg has been taken out, so the prior trend structure is gone.
+      const impulseLeg = findImpulseLeg({
+        closes, highs, lows,
+        priorDirection: priorSetup.direction,
+        lookbackBars: 60,
+        pivotWindow: 3,
+      });
+      const fib = impulseLeg
+        ? classifyFibZone(closes[closes.length - 1], impulseLeg, priorSetup.direction)
+        : null;
+
+      const fibQualifiesForPullback = fib ? fib.zone !== "FAILED" : true;
+
+      if (trendStillHeavy.bothHeavy && fibQualifiesForPullback) {
+        // PULLBACK: reversal flipped but momentum + trend are still in the prior
+        // direction AND price hasn't retraced past the 78.6% fib level.
+        // Don't shake the trader out.
+        const zoneSuffix = fib ? ` (${fib.label})` : "";
+        return {
+          ticker,
+          direction: priorSetup.direction,
+          gatesCleared: priorSetup.gatesClearedPrior,
+          confidence: "MODERATE",
+          signal: `PULLBACK${zoneSuffix}`,
+          summary: fib
+            ? `Reversal flipped but ${priorSetup.direction.toLowerCase()} trend still heavy — ${fib.label} retracement (${(fib.retracementPct * 100).toFixed(0)}%), invalidation at ${fib.invalidationPrice.toFixed(2)}`
+            : `Reversal flipped but ${priorSetup.direction.toLowerCase()} trend still heavy — likely a pullback, not an exit`,
+          gate1,
+          gate2: liveGate2,
+          gate3: liveGate3,
+          priorSetup,
+          fib,
+        };
+      }
+      // GATES CLOSED: either trend conviction is gone OR price has retraced
+      // past the 78.6% fib level — the prior trend structure is broken.
+      const fibNote = fib && fib.zone === "FAILED"
+        ? ` — fib invalidation (${(fib.retracementPct * 100).toFixed(0)}% retrace)`
+        : "";
+      return {
+        ticker,
+        direction: priorSetup.direction,
+        gatesCleared: 0,
+        confidence: "NEUTRAL",
+        signal: "GATES CLOSED",
+        summary: `Reversal against prior ${priorSetup.direction.toLowerCase()} setup${fibNote} — take profit / exit`,
+        gate1,
+        gate2: liveGate2,
+        gate3: liveGate3,
+        priorSetup,
+        fib,
+      };
+    }
+  }
+
   // ── Return based on gate progression ──
   if (!gate1.cleared || !gate1.direction) {
     return {
@@ -831,6 +1192,172 @@ export function runGateSystem(input: SignalEngineInput): GateSystemResult {
     gate2,
     gate3,
   };
+}
+
+// ─── UNIFIED TICKER ANALYSIS ──────────────────────────────────────────────────
+//
+// `analyzeTicker` is the single entry point that scanner + watchlist + any other
+// non-Trade-Analysis path should use. It computes VER/AMC/BBTC exactly the same
+// way the /api/analyze route does, then calls runGateSystem with precomputed,
+// so the same ticker produces the SAME answer everywhere on the site.
+//
+// Trade Analysis uses its own deep computation path and already passes precomputed
+// directly, so it stays as-is.
+// ──────────────────────────────────────────────────────────────────────────────────────
+
+export interface AnalyzeTickerInput {
+  ticker: string;
+  closes: number[];
+  highs: number[];
+  lows: number[];
+  volumes: number[];
+  mmeData?: SignalEngineInput["mmeData"];
+}
+
+export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
+  const { ticker, closes, highs, lows, volumes, mmeData } = input;
+
+  if (closes.length < 60) {
+    return runGateSystem({ ticker, closes, highs, lows, volumes, mmeData: mmeData ?? null });
+  }
+
+  const lastIdx = closes.length - 1;
+
+  // ── Compute indicators (mirrors routes.ts /api/analyze exactly) ──
+  const rsi14 = computeRSI(closes, 14);
+  const ema9 = computeEMA(closes, 9);
+  const ema21 = computeEMA(closes, 21);
+  const ema50 = computeEMA(closes, 50);
+
+  // Bollinger Bands
+  const bbPeriod = 20;
+  const bbSma = computeSMA(closes, bbPeriod);
+  const bbUpper = new Array(closes.length).fill(NaN);
+  const bbLower = new Array(closes.length).fill(NaN);
+  for (let i = bbPeriod - 1; i < closes.length; i++) {
+    let sum = 0;
+    for (let j = i - bbPeriod + 1; j <= i; j++) sum += (closes[j] - bbSma[i]) ** 2;
+    const stdDev = Math.sqrt(sum / bbPeriod);
+    bbUpper[i] = bbSma[i] + 2 * stdDev;
+    bbLower[i] = bbSma[i] - 2 * stdDev;
+  }
+  const volAvg20 = computeSMA(volumes, 20);
+
+  // MACD histogram
+  const macdEma12 = computeEMA(closes, 12);
+  const macdEma26 = computeEMA(closes, 26);
+  const macdLine = closes.map((_, i) => (!isNaN(macdEma12[i]) && !isNaN(macdEma26[i])) ? macdEma12[i] - macdEma26[i] : NaN);
+  const validMacd: number[] = []; const validIdx: number[] = [];
+  macdLine.forEach((v, i) => { if (!isNaN(v)) { validMacd.push(v); validIdx.push(i); } });
+  const macdSigEma = computeEMA(validMacd, 9);
+  const macdSignal = new Array(closes.length).fill(NaN);
+  validIdx.forEach((idx, j) => { macdSignal[idx] = macdSigEma[j]; });
+  const histogram = closes.map((_, i) => (!isNaN(macdLine[i]) && !isNaN(macdSignal[i])) ? macdLine[i] - macdSignal[i] : NaN);
+
+  // VAMI
+  const vamiArr = new Array(closes.length).fill(0);
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i - 1] === 0 || isNaN(volAvg20[i]) || volAvg20[i] === 0) continue;
+    const ret = (closes[i] - closes[i - 1]) / closes[i - 1] * 100;
+    const vr = Math.min(2.5, Math.max(0.5, volumes[i] / volAvg20[i]));
+    const wr = ret * vr;
+    const k = 2 / (12 + 1);
+    vamiArr[i] = wr * k + vamiArr[i - 1] * (1 - k);
+  }
+  const vamiScaled = vamiArr.map(v => v * 8);
+
+  // ── BBTC top signal: EMA stack + price position ──
+  const e9 = ema9[lastIdx], e21 = ema21[lastIdx], e50 = ema50[lastIdx], px = closes[lastIdx];
+  let bbtcSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+  let bbtcBias: "LONG" | "SHORT" | "FLAT" = "FLAT";
+  let bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" = "SIDEWAYS";
+  if (!isNaN(e9) && !isNaN(e21) && !isNaN(e50)) {
+    if (e9 > e21 && px > e50) { bbtcBias = "LONG"; bbtcTrend = "UP"; bbtcSignal = "ENTER"; }
+    else if (e9 < e21 && px < e50) { bbtcBias = "SHORT"; bbtcTrend = "DOWN"; bbtcSignal = "SELL"; }
+  }
+
+  // ── VER top signal: walk back looking for most recent reversal ──
+  let verSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
+  let verRsi: number | null = null;
+  let verVolRatio: number | null = null;
+  for (let i = lastIdx; i >= Math.max(20, lastIdx - 10); i--) {
+    if (isNaN(rsi14[i]) || isNaN(bbUpper[i]) || isNaN(bbLower[i]) || isNaN(volAvg20[i])) continue;
+    const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 1.8;
+    if (!volumeSpike) continue;
+
+    // Bullish reversal
+    let bullDiv = false;
+    for (let lb = 5; lb <= Math.min(20, i); lb++) {
+      const p = i - lb;
+      if (p < 0 || isNaN(rsi14[p])) continue;
+      if (closes[i] < closes[p] && rsi14[i] > rsi14[p] && rsi14[i] < 40) { bullDiv = true; break; }
+    }
+    const touchedLower = lows[i] <= bbLower[i] || (i > 0 && closes[i - 1] <= bbLower[i - 1]);
+    const closedInside = closes[i] > bbLower[i];
+    if (bullDiv && touchedLower && closedInside) {
+      verSignal = "ENTER";
+      verRsi = Number(rsi14[i].toFixed(1));
+      verVolRatio = Number((volumes[i] / volAvg20[i]).toFixed(2));
+      break;
+    }
+
+    // Bearish reversal
+    let bearDiv = false;
+    for (let lb = 5; lb <= Math.min(20, i); lb++) {
+      const p = i - lb;
+      if (p < 0 || isNaN(rsi14[p])) continue;
+      if (closes[i] > closes[p] && rsi14[i] < rsi14[p] && rsi14[i] > 60) { bearDiv = true; break; }
+    }
+    const touchedUpper = highs[i] >= bbUpper[i] || (i > 0 && closes[i - 1] >= bbUpper[i - 1]);
+    const closedInsideUp = closes[i] < bbUpper[i];
+    if (bearDiv && touchedUpper && closedInsideUp) {
+      verSignal = "SELL";
+      verRsi = Number(rsi14[i].toFixed(1));
+      verVolRatio = Number((volumes[i] / volAvg20[i]).toFixed(2));
+      break;
+    }
+  }
+  const currentVol = volumes[lastIdx] || 0;
+  const curAvgVol = !isNaN(volAvg20[lastIdx]) ? volAvg20[lastIdx] : 0;
+  const curVolRatio = curAvgVol > 0 ? currentVol / curAvgVol : 0;
+  if (verRsi === null) verRsi = !isNaN(rsi14[lastIdx]) ? Number(rsi14[lastIdx].toFixed(1)) : null;
+  if (verVolRatio === null) verVolRatio = Number(curVolRatio.toFixed(2));
+
+  // ── AMC score (matches /api/analyze exactly) ──
+  const li = lastIdx;
+  let amcScore = 0;
+  if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li - 1] || 0)) amcScore++;
+  if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++;
+  if (!isNaN(e9) && !isNaN(e50) && closes[li] > e9 && e9 > e50) amcScore++;
+  if (vamiScaled[li] > 0 && vamiScaled[li] > vamiScaled[li - 1]) amcScore++;
+  if (!isNaN(e9) && !isNaN(e21) && Math.abs(e9 - e21) / closes[li] * 100 > 0.5) amcScore++;
+
+  let amcSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
+  if (amcScore >= 4 && closes[li] > closes[li - 1]) amcSignal = "ENTER";
+  if (!isNaN(rsi14[li]) && rsi14[li] > 75) amcSignal = "SELL";
+  if (!isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li - 1]) && histogram[li - 1] >= 0) amcSignal = "SELL";
+
+  return runGateSystem({
+    ticker,
+    closes,
+    highs,
+    lows,
+    volumes,
+    mmeData: mmeData ?? null,
+    precomputed: {
+      verSignal,
+      verRsi,
+      verVolRatio,
+      amcScore,
+      amcSignal,
+      bbtcSignal,
+      bbtcBias,
+      bbtcTrend,
+      emaStackBull: !isNaN(e9) && !isNaN(e21) && !isNaN(e50) && e9 > e21 && e21 > e50,
+      emaStackBear: !isNaN(e9) && !isNaN(e21) && !isNaN(e50) && e9 < e21 && e21 < e50,
+      priceAboveEma9: !isNaN(e9) && closes[li] > e9,
+    },
+  });
 }
 
 // ─── Backtest helper: run gate system on each day ───────────────────────────
