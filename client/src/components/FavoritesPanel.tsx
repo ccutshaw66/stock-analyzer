@@ -102,7 +102,8 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
 
   const refreshMutation = useMutation({
     mutationFn: async (listType: string) => {
-      const res = await apiRequest("POST", `/api/favorites/${listType}/refresh`);
+      // force=1 bypasses server-side cache for manual refresh
+      const res = await apiRequest("POST", `/api/favorites/${listType}/refresh?force=1`);
       return res.json();
     },
     onSuccess: () => {

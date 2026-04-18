@@ -2903,6 +2903,14 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
+    // Route-level cache: same filter tuple → instant response.
+    // User-scoped to keep rate-limit fairness but shared filters hit the same key anyway.
+    const scanCacheKey = `scanner:main:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
+    {
+      const cached = getCached(scanCacheKey);
+      if (cached) return res.json(cached);
+    }
+
     try {
       await ensureReady();
       console.log(`[scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}, count=${scanSize}`);
@@ -3258,12 +3266,14 @@ export async function registerRoutes(
             return false;                          // Everything else is noise
           }).slice(0, 25);
 
-      res.json({
+      const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
         filters: { minPrice, maxPrice, sector, marketCapTier },
         results,
-      });
+      };
+      setCache(scanCacheKey, payload, TTL.scanner);
+      res.json(payload);
     } catch (error: any) {
       console.error("Scanner error:", error?.message || error);
       res.status(500).json({ error: `Scanner failed: ${error?.message || "Unknown error."}` });
@@ -3291,6 +3301,13 @@ export async function registerRoutes(
       case "mid": minMarketCap = 2_000_000_000; maxMarketCap = 10_000_000_000; break;
       case "small": minMarketCap = 300_000_000; maxMarketCap = 2_000_000_000; break;
       default: minMarketCap = 500_000_000; break;
+    }
+
+    // Route-level cache: same filter tuple → instant response.
+    const amcCacheKey = `scanner:amc:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
+    {
+      const cached = getCached(amcCacheKey);
+      if (cached) return res.json(cached);
     }
 
     try {
@@ -3424,12 +3441,14 @@ export async function registerRoutes(
       const sorted = allResults.sort((a, b) => b.amcScore - a.amcScore || b.vami - a.vami);
       const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.amcScore >= 3).slice(0, 20);
 
-      res.json({
+      const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
         filters: { minPrice, maxPrice, sector, marketCapTier },
         results,
-      });
+      };
+      setCache(amcCacheKey, payload, TTL.scanner);
+      res.json(payload);
     } catch (error: any) {
       console.error("AMC Scanner error:", error?.message || error);
       res.status(500).json({ error: `AMC Scanner failed: ${error?.message || "Unknown error."}` });
@@ -3442,11 +3461,25 @@ export async function registerRoutes(
       await ensureReady();
       const listType = req.params.listType;
       const items = await storage.getFavorites(req.user!.id, listType);
-      const results = [];
+      const force = String(req.query.force || "") === "1";
+      const results: any[] = [];
+
+      // Partition: cached vs needs-compute. Per-ticker gate cache with 15min TTL.
+      // Force=1 (manual Refresh button) bypasses cache; normal page loads reuse.
+      const toCompute: typeof items = [];
+      for (const item of items) {
+        const key = `watchlist:gate:${item.ticker.toUpperCase()}`;
+        const cached = force ? null : getCached(key);
+        if (cached) {
+          results.push({ ...item, score: cached.score, verdict: cached.verdict });
+        } else {
+          toCompute.push(item);
+        }
+      }
 
       // Process in batches of 3 with delays to avoid rate limits
-      for (let b = 0; b < items.length; b += 3) {
-        const batch = items.slice(b, b + 3);
+      for (let b = 0; b < toCompute.length; b += 3) {
+        const batch = toCompute.slice(b, b + 3);
         const batchResults = await Promise.allSettled(
           batch.map(async (item) => {
             try {
@@ -3469,6 +3502,7 @@ export async function registerRoutes(
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
+              setCache(`watchlist:gate:${item.ticker.toUpperCase()}`, { score, verdict }, TTL.watchlist);
               console.log(`[watchlist-refresh] ${item.ticker}: ${verdict} (${score} gates)`);
               return { ...item, score, verdict };
             } catch (err: any) {
@@ -3478,9 +3512,9 @@ export async function registerRoutes(
           })
         );
         for (const r of batchResults) {
-          results.push(r.status === "fulfilled" ? r.value : items[b]);
+          results.push(r.status === "fulfilled" ? r.value : toCompute[b]);
         }
-        if (b + 3 < items.length) {
+        if (b + 3 < toCompute.length) {
           await new Promise(r => setTimeout(r, 1000)); // 1s between batches
         }
       }
@@ -3511,6 +3545,13 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
+
+      // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
+      // recomputing it for every page load (7+ chart fetches) is pure waste.
+      const verdictCacheKey = `verdict:${ticker}`;
+      const verdictCached = getCached(verdictCacheKey);
+      if (verdictCached) return res.json(verdictCached);
+
       const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
       // Batch 1: Core ticker data (analysis + institutional)
@@ -3680,7 +3721,7 @@ export async function registerRoutes(
       else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
       else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
 
-      res.json({
+      const verdictPayload = {
         ticker,
         companyName: analysis?.quote?.companyName || institutional?.companyName || ticker,
         price: analysis?.quote?.price || institutional?.currentPrice || 0,
@@ -3731,7 +3772,9 @@ export async function registerRoutes(
             name: "S&P 500",
           },
         },
-      });
+      };
+      setCache(verdictCacheKey, verdictPayload, TTL.verdict);
+      res.json(verdictPayload);
     } catch (error: any) {
       console.error("Verdict error:", error?.message || error);
       res.status(500).json({ error: error?.message || "Failed to generate verdict" });
@@ -3882,6 +3925,15 @@ export async function registerRoutes(
         return res.json([]);
       }
 
+      // Route-level cache: same user + same watchlist tickers → instant response.
+      // Earnings dates don't move intraday, so 4h TTL is safe.
+      const tickerKey = watchlistItems.map(i => i.ticker.toUpperCase()).sort().join(",");
+      const cacheKey = `earnings:${req.user!.id}:${tickerKey}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       // Polygon-backed earnings rows. Fetch in parallel (batches of 5 to stay
       // under the free-tier 5-rps limit) instead of the old sequential
       // Yahoo loop with 400ms sleeps.
@@ -3897,6 +3949,7 @@ export async function registerRoutes(
         }
       }
 
+      setCache(cacheKey, results, TTL.earnings);
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Earnings calendar fetch failed" });

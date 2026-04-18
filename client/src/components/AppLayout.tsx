@@ -445,9 +445,11 @@ function Sidebar({
 
   const refreshMutation = useMutation({
     mutationFn: async (listType: string) => {
+      // force=1 bypasses server-side 15min cache so manual Refresh
+      // button always returns fresh gate signals.
       const res = await apiRequest(
         "POST",
-        `/api/favorites/${listType}/refresh`
+        `/api/favorites/${listType}/refresh?force=1`
       );
       return res.json();
     },
