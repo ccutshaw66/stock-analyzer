@@ -550,8 +550,30 @@ export interface ScreenerFilters {
  * NOTE: Polygon's grouped daily bars endpoint is on Stocks Starter. It returns every US stock's
  * prior-day OHLCV. We filter by price here and look up market cap lazily only for top candidates.
  */
+// In-memory cache of Polygon market caps (24h TTL) so repeat scans don't hit
+// /v3/reference/tickers for every candidate every time.
+const _marketCapCache = new Map<string, { cap: number | null; ts: number }>();
+const MARKET_CAP_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function getPolygonMarketCap(ticker: string): Promise<number | null> {
+  const T = ticker.toUpperCase();
+  const cached = _marketCapCache.get(T);
+  if (cached && Date.now() - cached.ts < MARKET_CAP_TTL_MS) return cached.cap;
+  try {
+    const res = await pget(`/v3/reference/tickers/${encodeURIComponent(T)}`);
+    const cap = res?.results?.market_cap ?? null;
+    _marketCapCache.set(T, { cap: typeof cap === "number" ? cap : null, ts: Date.now() });
+    return typeof cap === "number" ? cap : null;
+  } catch {
+    _marketCapCache.set(T, { cap: null, ts: Date.now() });
+    return null;
+  }
+}
+
 export async function polygonScreener(filters: ScreenerFilters): Promise<string[]> {
   const count = filters.count ?? 100;
+  const needsCapFilter = filters.minMarketCap != null || filters.maxMarketCap != null;
+
   // Previous trading day - try yesterday first, walk back up to 5 days for weekends/holidays.
   for (let back = 1; back <= 5; back++) {
     const d = new Date();
@@ -573,10 +595,31 @@ export async function polygonScreener(filters: ScreenerFilters): Promise<string[
       // Sort by dollar volume to prioritize liquid names
       priced.sort((a: any, b: any) => (b.c * b.v) - (a.c * a.v));
 
-      // Take more than count because market-cap filter will prune
-      const candidates = priced.slice(0, Math.min(count * 3, 500));
+      if (!needsCapFilter) {
+        // No cap filter — fast path
+        return priced.slice(0, count).map((b: any) => b.T as string);
+      }
 
-      return candidates.map((b: any) => b.T).slice(0, count);
+      // Cap filter path: enrich candidates with market_cap in parallel (cached 24h)
+      // Pull 4x the requested count so there's enough after filtering
+      const candidates: any[] = priced.slice(0, Math.min(count * 4, 600));
+      const BATCH = 20;
+      const kept: string[] = [];
+
+      for (let i = 0; i < candidates.length && kept.length < count; i += BATCH) {
+        const slice = candidates.slice(i, i + BATCH);
+        const caps = await Promise.all(slice.map((b: any) => getPolygonMarketCap(b.T)));
+        for (let j = 0; j < slice.length; j++) {
+          const cap = caps[j];
+          if (cap == null) continue;
+          if (filters.minMarketCap != null && cap < filters.minMarketCap) continue;
+          if (filters.maxMarketCap != null && cap > filters.maxMarketCap) continue;
+          kept.push(slice[j].T as string);
+          if (kept.length >= count) break;
+        }
+      }
+
+      return kept;
     } catch (err) {
       continue;
     }

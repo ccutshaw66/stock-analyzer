@@ -2925,9 +2925,12 @@ export async function registerRoutes(
 
       const allResults: any[] = [];
 
-      // Process in batches of 5
-      for (let b = 0; b < tickers.length; b += 5) {
-        const batch = tickers.slice(b, b + 5);
+      // Process in batches of 20 (Polygon Starter has no per-second cap; the
+      // only real limit is network/CPU).  Scanner was previously batching 5
+      // which made a 100-ticker scan take ~10–15s just on wall time.
+      const BATCH = 20;
+      for (let b = 0; b < tickers.length; b += BATCH) {
+        const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             const chart = await getChart(ticker, "6mo", "1d");
@@ -3309,8 +3312,10 @@ export async function registerRoutes(
 
       const allResults: any[] = [];
 
-      for (let b = 0; b < tickers.length; b += 5) {
-        const batch = tickers.slice(b, b + 5);
+      // Batch 20 (was 5) — Polygon Starter has no per-second cap.
+      const BATCH = 20;
+      for (let b = 0; b < tickers.length; b += BATCH) {
+        const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             const chart = await getChart(ticker, "6mo", "1d");
