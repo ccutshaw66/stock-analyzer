@@ -585,6 +585,109 @@ export async function polygonScreener(filters: ScreenerFilters): Promise<string[
 }
 
 // ────────────────────────────────────────────────────────────
+// Earnings calendar row (per-ticker) — used by /api/earnings-calendar
+// Uses Polygon /vX/reference/financials for quarterly history and
+// /v3/reference/tickers for the company name.
+// ────────────────────────────────────────────────────────────
+
+export interface PolygonEarningsRow {
+  ticker: string;
+  companyName: string;
+  earningsDate: string | null;
+  epsEstimate: number | null;
+  revenueEstimate: number | null;
+  history: Array<{
+    quarter: string;
+    actual: number | null;
+    estimate: number | null;
+    surprise: number | null;
+    surprisePct: number | null;
+  }>;
+}
+
+export async function getPolygonEarningsRow(ticker: string): Promise<PolygonEarningsRow | null> {
+  const T = ticker.toUpperCase();
+  try {
+    const [refRes, finRes] = await Promise.allSettled([
+      pget(`/v3/reference/tickers/${encodeURIComponent(T)}`),
+      pget(`/vX/reference/financials`, {
+        ticker: T,
+        limit: 8,
+        timeframe: "quarterly",
+        order: "desc",
+      }),
+    ]);
+
+    const companyName =
+      refRes.status === "fulfilled" ? (refRes.value?.results?.name || T) : T;
+
+    const quarters: any[] =
+      finRes.status === "fulfilled" ? (finRes.value?.results || []) : [];
+
+    if (!quarters.length) {
+      // Still return a row so the UI can show the ticker with no data
+      return {
+        ticker: T,
+        companyName,
+        earningsDate: null,
+        epsEstimate: null,
+        revenueEstimate: null,
+        history: [],
+      };
+    }
+
+    // Build quarterly history (oldest → newest so charts render left-to-right)
+    const history = quarters
+      .slice()
+      .reverse()
+      .map((q: any) => {
+        const inc = q?.financials?.income_statement || {};
+        const eps =
+          inc?.diluted_earnings_per_share?.value ??
+          inc?.basic_earnings_per_share?.value ??
+          null;
+        const label =
+          q?.fiscal_period && q?.fiscal_year
+            ? `${q.fiscal_period} ${q.fiscal_year}`
+            : q?.end_date || "";
+        return {
+          quarter: String(label),
+          actual: typeof eps === "number" ? Math.round(eps * 10000) / 10000 : null,
+          // Polygon does not publish analyst estimates; leave null so UI shows "—"
+          estimate: null,
+          surprise: null,
+          surprisePct: null,
+        };
+      });
+
+    // Next earnings date: Polygon does not expose a forward earnings calendar
+    // on standard plans. Best-effort: compute ~90 days after the most recent
+    // period end so the UI can show a projected window.
+    let earningsDate: string | null = null;
+    const latestEnd = quarters[0]?.end_date;
+    if (latestEnd) {
+      const d = new Date(latestEnd);
+      if (!isNaN(d.getTime())) {
+        d.setDate(d.getDate() + 90);
+        earningsDate = d.toISOString().slice(0, 10);
+      }
+    }
+
+    return {
+      ticker: T,
+      companyName,
+      earningsDate,
+      epsEstimate: null,
+      revenueEstimate: null,
+      history,
+    };
+  } catch (err: any) {
+    console.log(`[polygon earnings] ${T} failed: ${err?.message}`);
+    return null;
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // Polygon availability probe — tells main app whether Options tier is enabled
 // ────────────────────────────────────────────────────────────
 

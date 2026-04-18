@@ -17,6 +17,7 @@ import {
   getPolygonOptionsChain,
   polygonScreener,
   polygonHasOptions,
+  getPolygonEarningsRow,
 } from "./polygon";
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
@@ -3852,58 +3853,18 @@ export async function registerRoutes(
         return res.json([]);
       }
 
+      // Polygon-backed earnings rows. Fetch in parallel (batches of 5 to stay
+      // under the free-tier 5-rps limit) instead of the old sequential
+      // Yahoo loop with 400ms sleeps.
+      const BATCH = 5;
       const results: any[] = [];
-
-      for (const item of watchlistItems) {
-        try {
-          const data = await yahooFetch(
-            `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(item.ticker)}?modules=earningsTrend%2CcalendarEvents%2Cearnings`
-          );
-
-          const summary = data?.quoteSummary?.result?.[0];
-          if (!summary) continue;
-
-          const calEvents = summary.calendarEvents;
-          const earningsModule = summary.earnings;
-
-          // Extract earnings date
-          const earningsDateRaw = calEvents?.earnings?.earningsDate;
-          const earningsDate = earningsDateRaw?.[0]?.fmt || null;
-
-          // Extract estimates
-          const epsEstimate = calEvents?.earnings?.earningsAverage?.raw ?? null;
-          const revenueEstimate = calEvents?.earnings?.revenueAverage?.raw ?? null;
-          const companyName = calEvents?.earnings?.earningsDate ? item.ticker : item.ticker;
-
-          // Extract quarterly earnings history
-          const history: any[] = [];
-          const earningsHistory = earningsModule?.earningsChart?.quarterly || [];
-          for (const q of earningsHistory) {
-            history.push({
-              quarter: q.date || "",
-              actual: q.actual?.raw ?? null,
-              estimate: q.estimate?.raw ?? null,
-              surprise: q.actual?.raw != null && q.estimate?.raw != null
-                ? Math.round((q.actual.raw - q.estimate.raw) * 10000) / 10000
-                : null,
-              surprisePct: q.actual?.raw != null && q.estimate?.raw != null && q.estimate.raw !== 0
-                ? Math.round((q.actual.raw - q.estimate.raw) / Math.abs(q.estimate.raw) * 10000) / 100
-                : null,
-            });
-          }
-
-          results.push({
-            ticker: item.ticker,
-            companyName: item.ticker,
-            earningsDate,
-            epsEstimate,
-            revenueEstimate,
-            history,
-          });
-
-          await new Promise(r => setTimeout(r, 400));
-        } catch (e: any) {
-          console.log(`[earnings] ${item.ticker} failed: ${e?.message}`);
+      for (let i = 0; i < watchlistItems.length; i += BATCH) {
+        const slice = watchlistItems.slice(i, i + BATCH);
+        const rows = await Promise.all(
+          slice.map((item) => getPolygonEarningsRow(item.ticker))
+        );
+        for (const row of rows) {
+          if (row) results.push(row);
         }
       }
 
