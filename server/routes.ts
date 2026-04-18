@@ -3606,7 +3606,16 @@ export async function registerRoutes(
 
       if (analysis) {
         const s = Math.round(analysis.score * 10); // 0-100
-        factors.push({ name: "Fundamental Analysis", score: s, weight: 0.30, signal: analysis.verdict, color: analysis.verdict === "YES" ? "green" : analysis.verdict === "NO" ? "red" : "yellow" });
+        // analysis.verdict is one of: STRONG CONVICTION, INVESTMENT GRADE,
+        // SPECULATIVE, HIGH RISK (from computeVerdict). The previous code
+        // compared against "YES"/"NO" which never matched, so the pill was
+        // always yellow.
+        const v = analysis.verdict;
+        const color =
+          v === "STRONG CONVICTION" || v === "INVESTMENT GRADE" ? "green" :
+          v === "HIGH RISK" ? "red" :
+          "yellow";
+        factors.push({ name: "Fundamental Analysis", score: s, weight: 0.30, signal: v, color });
       }
 
       if (institutional) {
@@ -3642,19 +3651,34 @@ export async function registerRoutes(
         factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
       }
 
-      // Calculate unified score
+      // Calculate unified score. NOTE: post-Polygon migration, some factors
+      // (institutional, strategies, stress, insider) can silently drop out
+      // when Yahoo endpoints are blocked or 25y history is unavailable.
+      // Re-normalize across the factors that actually contributed so we
+      // don't default to SPECULATIVE just because data is missing.
       const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
       if (totalWeight > 0) {
         unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
       }
 
+      // If only one or two factors contributed (common when Yahoo data is
+      // unavailable), nudge the buckets wider so the verdict is not
+      // artificially pessimistic.
+      const factorsContributed = factors.length;
+      const narrowEvidence = factorsContributed <= 2;
+
       // Final verdict
       let finalVerdict = "SPECULATIVE";
       let verdictColor = "yellow";
-      if (unifiedScore >= 70) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
-      else if (unifiedScore >= 55) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
-      else if (unifiedScore <= 30) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
-      else if (unifiedScore <= 40) { finalVerdict = "SPECULATIVE"; verdictColor = "red"; }
+      // Thresholds widen by 5 points in each direction when evidence is thin
+      const strongCutoff = narrowEvidence ? 65 : 70;
+      const investCutoff = narrowEvidence ? 50 : 55;
+      const highRiskCutoff = narrowEvidence ? 25 : 30;
+      const specCutoff = narrowEvidence ? 35 : 40;
+      if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
+      else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
+      else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
+      else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
 
       res.json({
         ticker,
