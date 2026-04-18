@@ -17,6 +17,7 @@ import {
   getPolygonOptionsChain,
   polygonScreener,
   polygonHasOptions,
+  getPolygonEarningsRow,
 } from "./polygon";
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
@@ -2924,9 +2925,12 @@ export async function registerRoutes(
 
       const allResults: any[] = [];
 
-      // Process in batches of 5
-      for (let b = 0; b < tickers.length; b += 5) {
-        const batch = tickers.slice(b, b + 5);
+      // Process in batches of 20 (Polygon Starter has no per-second cap; the
+      // only real limit is network/CPU).  Scanner was previously batching 5
+      // which made a 100-ticker scan take ~10–15s just on wall time.
+      const BATCH = 20;
+      for (let b = 0; b < tickers.length; b += BATCH) {
+        const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             const chart = await getChart(ticker, "6mo", "1d");
@@ -3308,8 +3312,10 @@ export async function registerRoutes(
 
       const allResults: any[] = [];
 
-      for (let b = 0; b < tickers.length; b += 5) {
-        const batch = tickers.slice(b, b + 5);
+      // Batch 20 (was 5) — Polygon Starter has no per-second cap.
+      const BATCH = 20;
+      for (let b = 0; b < tickers.length; b += BATCH) {
+        const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
             const chart = await getChart(ticker, "6mo", "1d");
@@ -3600,7 +3606,16 @@ export async function registerRoutes(
 
       if (analysis) {
         const s = Math.round(analysis.score * 10); // 0-100
-        factors.push({ name: "Fundamental Analysis", score: s, weight: 0.30, signal: analysis.verdict, color: analysis.verdict === "YES" ? "green" : analysis.verdict === "NO" ? "red" : "yellow" });
+        // analysis.verdict is one of: STRONG CONVICTION, INVESTMENT GRADE,
+        // SPECULATIVE, HIGH RISK (from computeVerdict). The previous code
+        // compared against "YES"/"NO" which never matched, so the pill was
+        // always yellow.
+        const v = analysis.verdict;
+        const color =
+          v === "STRONG CONVICTION" || v === "INVESTMENT GRADE" ? "green" :
+          v === "HIGH RISK" ? "red" :
+          "yellow";
+        factors.push({ name: "Fundamental Analysis", score: s, weight: 0.30, signal: v, color });
       }
 
       if (institutional) {
@@ -3636,19 +3651,34 @@ export async function registerRoutes(
         factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
       }
 
-      // Calculate unified score
+      // Calculate unified score. NOTE: post-Polygon migration, some factors
+      // (institutional, strategies, stress, insider) can silently drop out
+      // when Yahoo endpoints are blocked or 25y history is unavailable.
+      // Re-normalize across the factors that actually contributed so we
+      // don't default to SPECULATIVE just because data is missing.
       const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
       if (totalWeight > 0) {
         unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
       }
 
+      // If only one or two factors contributed (common when Yahoo data is
+      // unavailable), nudge the buckets wider so the verdict is not
+      // artificially pessimistic.
+      const factorsContributed = factors.length;
+      const narrowEvidence = factorsContributed <= 2;
+
       // Final verdict
       let finalVerdict = "SPECULATIVE";
       let verdictColor = "yellow";
-      if (unifiedScore >= 70) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
-      else if (unifiedScore >= 55) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
-      else if (unifiedScore <= 30) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
-      else if (unifiedScore <= 40) { finalVerdict = "SPECULATIVE"; verdictColor = "red"; }
+      // Thresholds widen by 5 points in each direction when evidence is thin
+      const strongCutoff = narrowEvidence ? 65 : 70;
+      const investCutoff = narrowEvidence ? 50 : 55;
+      const highRiskCutoff = narrowEvidence ? 25 : 30;
+      const specCutoff = narrowEvidence ? 35 : 40;
+      if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
+      else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
+      else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
+      else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
 
       res.json({
         ticker,
@@ -3852,58 +3882,18 @@ export async function registerRoutes(
         return res.json([]);
       }
 
+      // Polygon-backed earnings rows. Fetch in parallel (batches of 5 to stay
+      // under the free-tier 5-rps limit) instead of the old sequential
+      // Yahoo loop with 400ms sleeps.
+      const BATCH = 5;
       const results: any[] = [];
-
-      for (const item of watchlistItems) {
-        try {
-          const data = await yahooFetch(
-            `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(item.ticker)}?modules=earningsTrend%2CcalendarEvents%2Cearnings`
-          );
-
-          const summary = data?.quoteSummary?.result?.[0];
-          if (!summary) continue;
-
-          const calEvents = summary.calendarEvents;
-          const earningsModule = summary.earnings;
-
-          // Extract earnings date
-          const earningsDateRaw = calEvents?.earnings?.earningsDate;
-          const earningsDate = earningsDateRaw?.[0]?.fmt || null;
-
-          // Extract estimates
-          const epsEstimate = calEvents?.earnings?.earningsAverage?.raw ?? null;
-          const revenueEstimate = calEvents?.earnings?.revenueAverage?.raw ?? null;
-          const companyName = calEvents?.earnings?.earningsDate ? item.ticker : item.ticker;
-
-          // Extract quarterly earnings history
-          const history: any[] = [];
-          const earningsHistory = earningsModule?.earningsChart?.quarterly || [];
-          for (const q of earningsHistory) {
-            history.push({
-              quarter: q.date || "",
-              actual: q.actual?.raw ?? null,
-              estimate: q.estimate?.raw ?? null,
-              surprise: q.actual?.raw != null && q.estimate?.raw != null
-                ? Math.round((q.actual.raw - q.estimate.raw) * 10000) / 10000
-                : null,
-              surprisePct: q.actual?.raw != null && q.estimate?.raw != null && q.estimate.raw !== 0
-                ? Math.round((q.actual.raw - q.estimate.raw) / Math.abs(q.estimate.raw) * 10000) / 100
-                : null,
-            });
-          }
-
-          results.push({
-            ticker: item.ticker,
-            companyName: item.ticker,
-            earningsDate,
-            epsEstimate,
-            revenueEstimate,
-            history,
-          });
-
-          await new Promise(r => setTimeout(r, 400));
-        } catch (e: any) {
-          console.log(`[earnings] ${item.ticker} failed: ${e?.message}`);
+      for (let i = 0; i < watchlistItems.length; i += BATCH) {
+        const slice = watchlistItems.slice(i, i + BATCH);
+        const rows = await Promise.all(
+          slice.map((item) => getPolygonEarningsRow(item.ticker))
+        );
+        for (const row of rows) {
+          if (row) results.push(row);
         }
       }
 

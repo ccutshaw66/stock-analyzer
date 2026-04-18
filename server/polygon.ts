@@ -550,8 +550,30 @@ export interface ScreenerFilters {
  * NOTE: Polygon's grouped daily bars endpoint is on Stocks Starter. It returns every US stock's
  * prior-day OHLCV. We filter by price here and look up market cap lazily only for top candidates.
  */
+// In-memory cache of Polygon market caps (24h TTL) so repeat scans don't hit
+// /v3/reference/tickers for every candidate every time.
+const _marketCapCache = new Map<string, { cap: number | null; ts: number }>();
+const MARKET_CAP_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function getPolygonMarketCap(ticker: string): Promise<number | null> {
+  const T = ticker.toUpperCase();
+  const cached = _marketCapCache.get(T);
+  if (cached && Date.now() - cached.ts < MARKET_CAP_TTL_MS) return cached.cap;
+  try {
+    const res = await pget(`/v3/reference/tickers/${encodeURIComponent(T)}`);
+    const cap = res?.results?.market_cap ?? null;
+    _marketCapCache.set(T, { cap: typeof cap === "number" ? cap : null, ts: Date.now() });
+    return typeof cap === "number" ? cap : null;
+  } catch {
+    _marketCapCache.set(T, { cap: null, ts: Date.now() });
+    return null;
+  }
+}
+
 export async function polygonScreener(filters: ScreenerFilters): Promise<string[]> {
   const count = filters.count ?? 100;
+  const needsCapFilter = filters.minMarketCap != null || filters.maxMarketCap != null;
+
   // Previous trading day - try yesterday first, walk back up to 5 days for weekends/holidays.
   for (let back = 1; back <= 5; back++) {
     const d = new Date();
@@ -573,15 +595,139 @@ export async function polygonScreener(filters: ScreenerFilters): Promise<string[
       // Sort by dollar volume to prioritize liquid names
       priced.sort((a: any, b: any) => (b.c * b.v) - (a.c * a.v));
 
-      // Take more than count because market-cap filter will prune
-      const candidates = priced.slice(0, Math.min(count * 3, 500));
+      if (!needsCapFilter) {
+        // No cap filter — fast path
+        return priced.slice(0, count).map((b: any) => b.T as string);
+      }
 
-      return candidates.map((b: any) => b.T).slice(0, count);
+      // Cap filter path: enrich candidates with market_cap in parallel (cached 24h)
+      // Pull 4x the requested count so there's enough after filtering
+      const candidates: any[] = priced.slice(0, Math.min(count * 4, 600));
+      const BATCH = 20;
+      const kept: string[] = [];
+
+      for (let i = 0; i < candidates.length && kept.length < count; i += BATCH) {
+        const slice = candidates.slice(i, i + BATCH);
+        const caps = await Promise.all(slice.map((b: any) => getPolygonMarketCap(b.T)));
+        for (let j = 0; j < slice.length; j++) {
+          const cap = caps[j];
+          if (cap == null) continue;
+          if (filters.minMarketCap != null && cap < filters.minMarketCap) continue;
+          if (filters.maxMarketCap != null && cap > filters.maxMarketCap) continue;
+          kept.push(slice[j].T as string);
+          if (kept.length >= count) break;
+        }
+      }
+
+      return kept;
     } catch (err) {
       continue;
     }
   }
   return [];
+}
+
+// ────────────────────────────────────────────────────────────
+// Earnings calendar row (per-ticker) — used by /api/earnings-calendar
+// Uses Polygon /vX/reference/financials for quarterly history and
+// /v3/reference/tickers for the company name.
+// ────────────────────────────────────────────────────────────
+
+export interface PolygonEarningsRow {
+  ticker: string;
+  companyName: string;
+  earningsDate: string | null;
+  epsEstimate: number | null;
+  revenueEstimate: number | null;
+  history: Array<{
+    quarter: string;
+    actual: number | null;
+    estimate: number | null;
+    surprise: number | null;
+    surprisePct: number | null;
+  }>;
+}
+
+export async function getPolygonEarningsRow(ticker: string): Promise<PolygonEarningsRow | null> {
+  const T = ticker.toUpperCase();
+  try {
+    const [refRes, finRes] = await Promise.allSettled([
+      pget(`/v3/reference/tickers/${encodeURIComponent(T)}`),
+      pget(`/vX/reference/financials`, {
+        ticker: T,
+        limit: 8,
+        timeframe: "quarterly",
+        order: "desc",
+      }),
+    ]);
+
+    const companyName =
+      refRes.status === "fulfilled" ? (refRes.value?.results?.name || T) : T;
+
+    const quarters: any[] =
+      finRes.status === "fulfilled" ? (finRes.value?.results || []) : [];
+
+    if (!quarters.length) {
+      // Still return a row so the UI can show the ticker with no data
+      return {
+        ticker: T,
+        companyName,
+        earningsDate: null,
+        epsEstimate: null,
+        revenueEstimate: null,
+        history: [],
+      };
+    }
+
+    // Build quarterly history (oldest → newest so charts render left-to-right)
+    const history = quarters
+      .slice()
+      .reverse()
+      .map((q: any) => {
+        const inc = q?.financials?.income_statement || {};
+        const eps =
+          inc?.diluted_earnings_per_share?.value ??
+          inc?.basic_earnings_per_share?.value ??
+          null;
+        const label =
+          q?.fiscal_period && q?.fiscal_year
+            ? `${q.fiscal_period} ${q.fiscal_year}`
+            : q?.end_date || "";
+        return {
+          quarter: String(label),
+          actual: typeof eps === "number" ? Math.round(eps * 10000) / 10000 : null,
+          // Polygon does not publish analyst estimates; leave null so UI shows "—"
+          estimate: null,
+          surprise: null,
+          surprisePct: null,
+        };
+      });
+
+    // Next earnings date: Polygon does not expose a forward earnings calendar
+    // on standard plans. Best-effort: compute ~90 days after the most recent
+    // period end so the UI can show a projected window.
+    let earningsDate: string | null = null;
+    const latestEnd = quarters[0]?.end_date;
+    if (latestEnd) {
+      const d = new Date(latestEnd);
+      if (!isNaN(d.getTime())) {
+        d.setDate(d.getDate() + 90);
+        earningsDate = d.toISOString().slice(0, 10);
+      }
+    }
+
+    return {
+      ticker: T,
+      companyName,
+      earningsDate,
+      epsEstimate: null,
+      revenueEstimate: null,
+      history,
+    };
+  } catch (err: any) {
+    console.log(`[polygon earnings] ${T} failed: ${err?.message}`);
+    return null;
+  }
 }
 
 // ────────────────────────────────────────────────────────────
