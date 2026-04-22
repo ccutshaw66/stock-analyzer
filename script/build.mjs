@@ -2,6 +2,10 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
 
+// Packages in this list get bundled into dist/index.cjs. Everything else
+// in package.json is left external and resolved from node_modules at runtime.
+// Add here when a dep needs to be bundled (e.g. one that uses worker threads
+// or has other runtime-resolution quirks).
 const allowlist = [
   "dotenv", "bcryptjs", "cookie-parser", "@google/generative-ai", "axios",
   "cors", "date-fns", "drizzle-orm", "drizzle-zod", "express",

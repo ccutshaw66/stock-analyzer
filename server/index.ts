@@ -9,6 +9,10 @@ import { createServer } from "http";
 const app = express();
 app.use(cookieParser());
 
+// ─── Request context (req.id) ─ MUST be first, before any route ────────────
+import { requestContext } from "./middleware/request-context";
+app.use(requestContext);
+
 // ─── Health endpoints (unauthenticated, before everything else) ────────────
 import { healthRouter } from "./api/routes/health";
 app.use("/api", healthRouter);
