@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      # Pure-logic smoke tests that don't need a DB or live server.
+      # These exercise the strategy modules extracted in Phase 1.
+      - name: Signal parity tests
+        run: |
+          npx tsx scripts/bbtc-parity.ts
+          npx tsx scripts/ver-parity.ts
+          npx tsx scripts/amc-parity.ts
+
+      - name: Jobs scheduler smoke
+        run: npx tsx scripts/jobs-smoke.ts
+
+      - name: Tier middleware smoke
+        run: npx tsx scripts/tier-middleware-smoke.ts
