@@ -149,4 +149,5 @@ export interface DataProvider {
   getInstitutionalHoldings?(symbol: Symbol): Promise<InstitutionalHolding[]>;
   getFinancials?(symbol: Symbol, limit?: number): Promise<FinancialSnapshot[]>;
   searchTickers?(query: string, limit?: number): Promise<Array<{ symbol: Symbol; name: string }>>;
+  getBeta?(symbol: Symbol): Promise<BetaValue>;
 }
