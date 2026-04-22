@@ -8,6 +8,11 @@ import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
+import {
+  checkFeatureAccess,
+  checkScanRateLimit,
+  getUsageSnapshot,
+} from "./middleware/tier";
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
@@ -908,98 +913,8 @@ export async function registerRoutes(
   });
 
   // ─── Feature Gating ─────────────────────────────────────────────────────────────
-
-  // Daily usage counters: Map<userId, { date: string, scans: number, analysis: number }>
-  const dailyUsage = new Map<number, { date: string; scans: number; analysis: number }>();
-
-  function getDailyUsage(userId: number) {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const existing = dailyUsage.get(userId);
-    if (!existing || existing.date !== today) {
-      const fresh = { date: today, scans: 0, analysis: 0 };
-      dailyUsage.set(userId, fresh);
-      return fresh;
-    }
-    return existing;
-  }
-
-  /**
-   * Feature gating middleware factory.
-   * feature: 'mmExposure' | 'scansPerDay' | 'analysisPerDay' | 'tradeLimit'
-   */
-  function checkFeatureAccess(feature: 'mmExposure' | 'scansPerDay' | 'analysisPerDay' | 'tradeLimit') {
-    return async (req: any, res: any, next: NextFunction) => {
-      try {
-        const userId = req.user?.id;
-        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
-
-        const tier = await getUserTier(userId);
-        const limits = TIER_LIMITS[tier];
-
-        if (feature === 'mmExposure') {
-          if (!limits.mmExposure) {
-            return res.status(403).json({
-              error: 'Upgrade to Pro to access MM Exposure',
-              tier,
-              upgradeUrl: '/api/subscription/checkout',
-            });
-          }
-          return next();
-        }
-
-        const usage = getDailyUsage(userId);
-
-        if (feature === 'scansPerDay') {
-          if (usage.scans >= limits.scansPerDay) {
-            return res.status(403).json({
-              error: `Daily scan limit reached (${limits.scansPerDay} scans/day on ${tier} plan). Upgrade for more.`,
-              tier,
-              upgradeUrl: '/api/subscription/checkout',
-              limit: limits.scansPerDay,
-              used: usage.scans,
-            });
-          }
-          usage.scans++;
-          return next();
-        }
-
-        if (feature === 'analysisPerDay') {
-          if (usage.analysis >= limits.analysisPerDay) {
-            return res.status(403).json({
-              error: `Daily analysis limit reached (${limits.analysisPerDay} analyses/day on ${tier} plan). Upgrade for more.`,
-              tier,
-              upgradeUrl: '/api/subscription/checkout',
-              limit: limits.analysisPerDay,
-              used: usage.analysis,
-            });
-          }
-          usage.analysis++;
-          return next();
-        }
-
-        if (feature === 'tradeLimit') {
-          // For trade limit, check total trade count in DB
-          const tradeCount = await storage.getUserTradeCount(userId);
-          if (tradeCount >= limits.tradeLimit) {
-            return res.status(403).json({
-              error: `Trade limit reached (${limits.tradeLimit} trades on ${tier} plan). Upgrade to add more.`,
-              tier,
-              upgradeUrl: '/api/subscription/checkout',
-              limit: limits.tradeLimit,
-              used: tradeCount,
-            });
-          }
-          return next();
-        }
-
-        next();
-      } catch (err: any) {
-        console.error('[featureGate] Error:', err.message);
-        // On error, allow through to avoid blocking legitimate users
-        next();
-      }
-    };
-  }
+  // Implementation lives in server/middleware/tier.ts.
+  // Imported: getDailyUsage, checkFeatureAccess, checkScanRateLimit, getUsageSnapshot.
 
   // ─── Subscription Routes ───────────────────────────────────────────────────
 
@@ -1042,17 +957,17 @@ export async function registerRoutes(
       const dbUser = await storage.getUser(user.id);
       const tier = await getUserTier(user.id);
       const limits = TIER_LIMITS[tier];
-      const usage = getDailyUsage(user.id);
+      const snap = getUsageSnapshot(user.id, tier);
       res.json({
         tier,
         subscriptionExpiresAt: dbUser?.subscriptionExpiresAt || null,
         stripeCustomerId: dbUser?.stripeCustomerId || null,
         limits,
         usage: {
-          scansUsed: usage.scans,
-          scansRemaining: Math.max(0, limits.scansPerDay - usage.scans),
-          analysisUsed: usage.analysis,
-          analysisRemaining: Math.max(0, limits.analysisPerDay - usage.analysis),
+          scansUsed: snap.scansUsed,
+          scansRemaining: snap.scansRemaining,
+          analysisUsed: snap.analysisUsed,
+          analysisRemaining: snap.analysisRemaining,
         },
       });
     } catch (err: any) {
@@ -1062,24 +977,7 @@ export async function registerRoutes(
   });
 
   // ─── Per-user API rate limiter (scan endpoints) ───────────────────────
-  const userScanTimestamps = new Map<number, number[]>();
-  const MAX_SCANS_PER_MINUTE = 3;
-
-  function checkScanRateLimit(req: any, res: any): boolean {
-    const userId = req.user?.id;
-    if (!userId) return false;
-    const now = Date.now();
-    const timestamps = userScanTimestamps.get(userId) || [];
-    // Remove entries older than 60 seconds
-    const recent = timestamps.filter(t => now - t < 60000);
-    if (recent.length >= MAX_SCANS_PER_MINUTE) {
-      res.status(429).json({ error: `Rate limited — max ${MAX_SCANS_PER_MINUTE} scans per minute. Results are cached, try again in a moment.` });
-      return true;
-    }
-    recent.push(now);
-    userScanTimestamps.set(userId, recent);
-    return false;
-  }
+  // Implementation lives in server/middleware/tier.ts.
 
   // ─── Protected Auth Routes ──────────────────────────────────────────────────
   app.patch("/api/auth/profile", updateProfileHandler);
@@ -1105,9 +1003,8 @@ export async function registerRoutes(
     try {
       const allUsers = await storage.getAllUsers();
       const usersWithDetails = allUsers.map((u) => {
-        const usage = getDailyUsage(u.id);
         const tier = (u.subscriptionTier || "free") as keyof typeof TIER_LIMITS;
-        const limits = TIER_LIMITS[tier] || TIER_LIMITS.free;
+        const snap = getUsageSnapshot(u.id, tier);
         return {
           id: u.id,
           email: u.email,
@@ -1119,10 +1016,10 @@ export async function registerRoutes(
           stripeCustomerId: u.stripeCustomerId || null,
           subscriptionExpiresAt: u.subscriptionExpiresAt || null,
           usage: {
-            scansUsed: usage.scans,
-            scansLimit: limits.scansPerDay,
-            analysisUsed: usage.analysis,
-            analysisLimit: limits.analysisPerDay,
+            scansUsed: snap.scansUsed,
+            scansLimit: snap.scansLimit,
+            analysisUsed: snap.analysisUsed,
+            analysisLimit: snap.analysisLimit,
           },
         };
       });

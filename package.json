@@ -13,7 +13,8 @@
     "rsi:diff": "tsx scripts/rsi-diff.ts",
     "bbtc:parity": "tsx scripts/bbtc-parity.ts",
     "ver:parity": "tsx scripts/ver-parity.ts",
-    "amc:parity": "tsx scripts/amc-parity.ts"
+    "amc:parity": "tsx scripts/amc-parity.ts",
+    "tier:smoke": "tsx scripts/tier-middleware-smoke.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
