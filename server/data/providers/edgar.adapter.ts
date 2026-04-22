@@ -445,11 +445,11 @@ export async function getInstitutionalSummary(
     return empty;
   }
 
-  // Enumerate 13F filers from last ~100 days (latest filing per CIK).
-  // Capped at 800 most recent filers — covers the largest AUM filers since
-  // big institutions file at or near the deadline. Cached 24h (13Fs only
-  // update quarterly anyway).
-  const filerRefs = await listRecentThirteenFFilings(100, 800);
+  // Enumerate 13F filers from the last 120 days (covers Q4 2025 filings
+  // through the 45-day post-quarter deadline). Cached 24h (13Fs only update
+  // quarterly anyway). 1500 cap keeps cost bounded but captures the major
+  // filers that drive institutionPct accuracy.
+  const filerRefs = await listRecentThirteenFFilings(120, 1500);
   console.log(`[edgar] ${ticker} aggregating ${filerRefs.length} filers against CUSIP ${targetCusip}`);
 
   // Parse information tables with bounded concurrency (8 parallel)

@@ -2,6 +2,8 @@
  * SEC EDGAR 13F smoke test.
  *
  * Usage (on server):
+ *   tsx scripts/edgar-smoke.ts
+ * or
  *   ./node_modules/.bin/tsx scripts/edgar-smoke.ts
  *
  * Verifies:
@@ -12,6 +14,7 @@
  *   5. CAR no longer returns 147%
  */
 
+import "dotenv/config";
 import {
   tickerToCik,
   getCompanyBasics,
