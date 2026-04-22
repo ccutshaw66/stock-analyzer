@@ -11,6 +11,7 @@ import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } 
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
+import { computeBBTC } from "./signals";
 import {
   getPolygonQuoteSummary,
   getPolygonChart,
@@ -2287,63 +2288,10 @@ export async function registerRoutes(
       const sma200Daily = computeSMA(closes, 200);
 
       // ---- Strategy 1: BBTC EMA Pyramid Risk ----
-      type BBTCSignal = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
-      const bbtcSignals: BBTCSignal[] = new Array(closes.length).fill(null);
-      let inPosition = false;
-      let positionSide: "LONG" | "SHORT" | null = null;
-      let entryPrice = 0;
-      let highestSinceEntry = 0;
-
-      for (let i = 1; i < closes.length; i++) {
-        if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
-
-        const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
-        const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
-
-        if (!inPosition) {
-          if (crossAbove && closes[i] > ema50[i]) {
-            bbtcSignals[i] = "BUY";
-            inPosition = true;
-            positionSide = "LONG";
-            entryPrice = closes[i];
-            highestSinceEntry = highs[i];
-          } else if (crossBelow && closes[i] < ema50[i]) {
-            bbtcSignals[i] = "SELL";
-            inPosition = true;
-            positionSide = "SHORT";
-            entryPrice = closes[i];
-            highestSinceEntry = highs[i];
-          }
-        } else {
-          highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
-          if (positionSide === "LONG") {
-            const stopLoss = entryPrice - atr14[i] * 2.0;
-            const trailStop = highestSinceEntry - atr14[i] * 1.5;
-            const target = entryPrice + atr14[i] * 3.0;
-            if (lows[i] <= stopLoss || lows[i] <= trailStop) {
-              bbtcSignals[i] = "STOP_HIT";
-              inPosition = false;
-              positionSide = null;
-            } else if (highs[i] >= target) {
-              bbtcSignals[i] = "REDUCE";
-            } else if (crossAbove && closes[i] > ema50[i]) {
-              bbtcSignals[i] = "ADD_LONG";
-            } else if (crossBelow && closes[i] < ema50[i]) {
-              bbtcSignals[i] = "SELL";
-              inPosition = false;
-              positionSide = null;
-            }
-          } else if (positionSide === "SHORT") {
-            if (crossAbove && closes[i] > ema50[i]) {
-              bbtcSignals[i] = "BUY";
-              inPosition = false;
-              positionSide = null;
-            } else if (crossBelow && closes[i] < ema50[i]) {
-              bbtcSignals[i] = "ADD_LONG";
-            }
-          }
-        }
-      }
+      const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+      const bbtcSignals = bbtcResult.signals;
+      const entryPrice = bbtcResult.entryPrice;
+      const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
       type VERSignal = "BUY" | "SELL" | null;
@@ -2399,31 +2347,11 @@ export async function registerRoutes(
       const lastIdx = closes.length - 1;
       const currentPrice = closes[lastIdx];
 
-      // BBTC current state
-      const lastBbtcSignal = (() => {
-        for (let i = lastIdx; i >= 0; i--) {
-          if (bbtcSignals[i]) return bbtcSignals[i];
-        }
-        return null;
-      })();
-
-      let bbtcTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-      if (lastBbtcSignal === "BUY" || lastBbtcSignal === "ADD_LONG") bbtcTopSignal = "ENTER";
-      else if (lastBbtcSignal === "SELL" || lastBbtcSignal === "STOP_HIT" || lastBbtcSignal === "REDUCE") bbtcTopSignal = "SELL";
-
-      const bbtcBias: "LONG" | "SHORT" | "FLAT" =
-        !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
-          ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "LONG"
-             : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "SHORT"
-             : "FLAT")
-          : "FLAT";
-
-      const bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" =
-        !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
-          ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "UP"
-             : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "DOWN"
-             : "SIDEWAYS")
-          : "SIDEWAYS";
+      // BBTC current state (from computeBBTC result)
+      const lastBbtcSignal = bbtcResult.lastSignal;
+      const bbtcTopSignal = bbtcResult.topSignal;
+      const bbtcBias = bbtcResult.bias;
+      const bbtcTrend = bbtcResult.trend;
 
       let bbtcSignalDetail = "";
       if (bbtcTrend === "UP") bbtcSignalDetail = "EMA9 above EMA21, bullish trend confirmed";
@@ -3013,71 +2941,11 @@ export async function registerRoutes(
             const ema50 = computeEMA(closes, 50);
             const atr14 = computeATR(highs, lows, closes, 14);
 
-            type BBTCSig = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
-            const bbtcSignals: BBTCSig[] = new Array(closes.length).fill(null);
-            let inPos = false;
-            let posSide: "LONG" | "SHORT" | null = null;
-            let entryPx = 0;
-            let highSince = 0;
-
-            for (let i = 1; i < closes.length; i++) {
-              if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
-              const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
-              const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
-
-              if (!inPos) {
-                if (crossAbove && closes[i] > ema50[i]) {
-                  bbtcSignals[i] = "BUY"; inPos = true; posSide = "LONG";
-                  entryPx = closes[i]; highSince = highs[i];
-                } else if (crossBelow && closes[i] < ema50[i]) {
-                  bbtcSignals[i] = "SELL"; inPos = true; posSide = "SHORT";
-                  entryPx = closes[i]; highSince = highs[i];
-                }
-              } else {
-                highSince = Math.max(highSince, highs[i]);
-                if (posSide === "LONG") {
-                  const stopLoss = entryPx - atr14[i] * 2.0;
-                  const trailStp = highSince - atr14[i] * 1.5;
-                  const target = entryPx + atr14[i] * 3.0;
-                  if (lows[i] <= stopLoss || lows[i] <= trailStp) {
-                    bbtcSignals[i] = "STOP_HIT"; inPos = false; posSide = null;
-                  } else if (highs[i] >= target) {
-                    bbtcSignals[i] = "REDUCE";
-                  } else if (crossAbove && closes[i] > ema50[i]) {
-                    bbtcSignals[i] = "ADD_LONG";
-                  } else if (crossBelow && closes[i] < ema50[i]) {
-                    bbtcSignals[i] = "SELL"; inPos = false; posSide = null;
-                  }
-                } else if (posSide === "SHORT") {
-                  if (crossAbove && closes[i] > ema50[i]) {
-                    bbtcSignals[i] = "BUY"; inPos = false; posSide = null;
-                  } else if (crossBelow && closes[i] < ema50[i]) {
-                    bbtcSignals[i] = "ADD_LONG";
-                  }
-                }
-              }
-            }
-
-            // BBTC current state
-            let lastBbtc: BBTCSig = null;
-            for (let i = lastIdx; i >= 0; i--) {
-              if (bbtcSignals[i]) { lastBbtc = bbtcSignals[i]; break; }
-            }
-            let bbtcTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-            if (lastBbtc === "BUY" || lastBbtc === "ADD_LONG") bbtcTopSignal = "ENTER";
-            else if (lastBbtc === "SELL" || lastBbtc === "STOP_HIT" || lastBbtc === "REDUCE") bbtcTopSignal = "SELL";
-
-            const bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" =
-              !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
-                ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "UP"
-                   : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "DOWN" : "SIDEWAYS")
-                : "SIDEWAYS";
-
-            const bbtcBias: "LONG" | "SHORT" | "FLAT" =
-              !isNaN(ema9[lastIdx]) && !isNaN(ema21[lastIdx]) && !isNaN(ema50[lastIdx])
-                ? (ema9[lastIdx] > ema21[lastIdx] && closes[lastIdx] > ema50[lastIdx] ? "LONG"
-                   : ema9[lastIdx] < ema21[lastIdx] && closes[lastIdx] < ema50[lastIdx] ? "SHORT" : "FLAT")
-                : "FLAT";
+            const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+            const bbtcSignals = bbtcResult.signals;
+            const bbtcTopSignal = bbtcResult.topSignal;
+            const bbtcTrend = bbtcResult.trend;
+            const bbtcBias = bbtcResult.bias;
 
             // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
             const rsi14 = computeRSI(closes, 14);
