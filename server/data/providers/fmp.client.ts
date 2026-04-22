@@ -1,6 +1,9 @@
 /**
  * FMP HTTP client — shared fetch layer for the FMP adapter.
  *
+ * Uses FMP's STABLE API (post-August 31, 2025 migration). Legacy /v3 and /v4
+ * endpoints are no longer available on new keys.
+ *
  * Features:
  *   - API key injection (from FMP_API_KEY env var)
  *   - Automatic retry with exponential backoff on 429 / 5xx
@@ -17,7 +20,8 @@ import { logger as rootLogger } from "../../lib/logger";
 
 const log = rootLogger.child({ module: "fmp" });
 
-const BASE_URL = process.env.FMP_BASE_URL || "https://financialmodelingprep.com/api";
+// NOTE: stable API base. Override with FMP_BASE_URL if needed.
+const BASE_URL = process.env.FMP_BASE_URL || "https://financialmodelingprep.com/stable";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 3;
 
@@ -48,21 +52,21 @@ interface CacheEntry {
 }
 const cache = new Map<string, CacheEntry>();
 
-/** Default TTLs by endpoint prefix. Tune as we learn real request patterns. */
+/** Default TTLs by endpoint prefix. Paths are stable-API-style (no /v3 or /v4). */
 const TTL_BY_PREFIX: Array<{ prefix: string; ttlMs: number }> = [
-  // Slow-moving: refresh occasionally
-  { prefix: "/v3/institutional-holder/", ttlMs: 24 * 60 * 60 * 1000 },   // 24h
-  { prefix: "/v4/institutional-ownership/", ttlMs: 24 * 60 * 60 * 1000 }, // 24h
-  { prefix: "/v3/ratios-ttm/", ttlMs: 6 * 60 * 60 * 1000 },               // 6h
-  { prefix: "/v3/income-statement/", ttlMs: 6 * 60 * 60 * 1000 },         // 6h
-  { prefix: "/v3/balance-sheet-statement/", ttlMs: 6 * 60 * 60 * 1000 },  // 6h
-  { prefix: "/v3/cash-flow-statement/", ttlMs: 6 * 60 * 60 * 1000 },      // 6h
-  // Medium: intraday refresh
-  { prefix: "/v3/analyst-estimates/", ttlMs: 60 * 60 * 1000 },   // 1h
-  { prefix: "/v4/price-target-consensus", ttlMs: 60 * 60 * 1000 }, // 1h
-  { prefix: "/v3/earnings-surprises/", ttlMs: 60 * 60 * 1000 },  // 1h
-  { prefix: "/v3/historical/earning_calendar/", ttlMs: 60 * 60 * 1000 },
-  { prefix: "/v4/insider-trading", ttlMs: 30 * 60 * 1000 },      // 30m
+  // Slow-moving: 13F filings, annual financials
+  { prefix: "/institutional-ownership/", ttlMs: 24 * 60 * 60 * 1000 }, // 24h
+  { prefix: "/ratios-ttm", ttlMs: 6 * 60 * 60 * 1000 },                 // 6h
+  { prefix: "/income-statement", ttlMs: 6 * 60 * 60 * 1000 },           // 6h
+  { prefix: "/balance-sheet-statement", ttlMs: 6 * 60 * 60 * 1000 },    // 6h
+  { prefix: "/cash-flow-statement", ttlMs: 6 * 60 * 60 * 1000 },        // 6h
+  // Medium: analyst + earnings — intraday refresh
+  { prefix: "/price-target-consensus", ttlMs: 60 * 60 * 1000 }, // 1h
+  { prefix: "/grades-consensus", ttlMs: 60 * 60 * 1000 },       // 1h
+  { prefix: "/ratings-snapshot", ttlMs: 60 * 60 * 1000 },       // 1h
+  { prefix: "/ratings-historical", ttlMs: 60 * 60 * 1000 },     // 1h
+  { prefix: "/earnings", ttlMs: 60 * 60 * 1000 },               // 1h
+  { prefix: "/insider-trading", ttlMs: 30 * 60 * 1000 },        // 30m
   // Default: 5m
 ];
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
@@ -85,7 +89,9 @@ function isRetryable(status: number): boolean {
 
 // ─── Core fetch ─────────────────────────────────────────────────────────────
 /**
- * GET a path on FMP. Path should start with "/v3/..." or "/v4/...".
+ * GET a path on FMP. Path should start with a slash and use stable endpoints,
+ * e.g. "/price-target-consensus" or "/insider-trading/search".
+ *
  * Query params should be passed as an object; apikey is added automatically.
  *
  * Returns parsed JSON. Throws FmpApiError with status and body on HTTP errors.

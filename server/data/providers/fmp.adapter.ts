@@ -5,11 +5,14 @@
  *
  * Tier assumed: Premium ($59/mo). Rate limit: 750/min.
  *
+ * API STYLE: Uses FMP's STABLE API (post-August 31, 2025 migration).
+ * Legacy /v3 and /v4 endpoints are no longer available.
+ *
  * Capabilities implemented:
- *   - analyst_ratings       (price-target-consensus + upgrades-downgrades-consensus)
- *   - earnings              (historical/earning_calendar + earnings-surprises)
- *   - insider_transactions  (insider-trading)
- *   - institutional_holdings (institutional-holder)
+ *   - analyst_ratings       (price-target-consensus + grades-consensus + ratings-snapshot)
+ *   - earnings              (earnings per symbol)
+ *   - insider_transactions  (insider-trading/search)
+ *   - institutional_holdings (institutional-ownership/extract-analytics/holder)
  *   - financials            (income-statement + ratios-ttm)
  */
 import type {
@@ -27,7 +30,6 @@ import { fmpGet } from "./fmp.client";
 function toDate(s: string | number | Date | undefined): Date {
   if (!s) return new Date(NaN);
   if (s instanceof Date) return s;
-  // FMP date format is "YYYY-MM-DD" or full ISO; both parseable
   return new Date(s);
 }
 
@@ -37,7 +39,6 @@ function num(x: any): number {
 }
 
 function normalizeConsensus(raw: any): AnalystRating["consensus"] {
-  // FMP returns variations like "Buy", "Strong Buy", "Outperform", etc.
   const s = String(raw || "").toLowerCase().trim();
   if (s.includes("strong") && s.includes("buy")) return "strong_buy";
   if (s === "buy" || s.includes("outperform") || s.includes("overweight")) return "buy";
@@ -56,6 +57,26 @@ function normalizeInsiderType(raw: any): InsiderTransaction["transactionType"] {
   return "sell"; // conservative default
 }
 
+/**
+ * Return the most recently completed 13F filing quarter. 13F filings are due
+ * 45 days after quarter end, so we step back one full quarter from "now" to be
+ * safe. If the latest quarter has no data yet, the caller can retry with a
+ * fallback (handled below in getInstitutionalHoldings).
+ */
+function latestFiledQuarter(now = new Date()): { year: number; quarter: number } {
+  // Step back ~90 days to ensure the quarter has been filed
+  const d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const m = d.getUTCMonth(); // 0-11
+  const quarter = Math.floor(m / 3) + 1; // 1-4
+  const year = d.getUTCFullYear();
+  return { year, quarter };
+}
+
+function prevQuarter(year: number, quarter: number): { year: number; quarter: number } {
+  if (quarter === 1) return { year: year - 1, quarter: 4 };
+  return { year, quarter: quarter - 1 };
+}
+
 // ─── Adapter ────────────────────────────────────────────────────────────────
 export const fmpAdapter: DataProvider = {
   name: "fmp",
@@ -68,42 +89,41 @@ export const fmpAdapter: DataProvider = {
   ],
 
   async getAnalystRatings(symbol: Symbol): Promise<AnalystRating> {
-    // Two calls composed: price-target-consensus (targets) + ratings (consensus label).
-    const [targets, ratings] = await Promise.all([
-      fmpGet<any[]>(`/v4/price-target-consensus`, { symbol }),
-      // /v3/rating/{symbol} returns an overall rating letter + recommendations
-      fmpGet<any[]>(`/v3/rating/${encodeURIComponent(symbol)}`),
+    // Compose: price-target-consensus (targets) + grades-consensus (buy/hold/sell counts).
+    const [targets, grades] = await Promise.all([
+      fmpGet<any[]>(`/price-target-consensus`, { symbol }),
+      fmpGet<any[]>(`/grades-consensus`, { symbol }),
     ]);
 
     const t = Array.isArray(targets) && targets.length ? targets[0] : {};
-    const r = Array.isArray(ratings) && ratings.length ? ratings[0] : {};
+    const g = Array.isArray(grades) && grades.length ? grades[0] : {};
+
+    // Analyst count = sum of strongBuy + buy + hold + sell + strongSell
+    const analystCount =
+      num(g.strongBuy) + num(g.buy) + num(g.hold) + num(g.sell) + num(g.strongSell);
 
     return {
       symbol,
-      asOf: toDate(r.date || new Date()),
-      consensus: normalizeConsensus(r.ratingRecommendation),
+      asOf: new Date(),
+      consensus: normalizeConsensus(g.consensus),
       priceTargetLow: num(t.targetLow),
       priceTargetAvg: num(t.targetConsensus ?? t.targetMedian),
       priceTargetHigh: num(t.targetHigh),
-      analystCount: num(t.numberOfAnalysts ?? t.numberOfAnalyst),
+      analystCount,
       source: "fmp",
     };
   },
 
   async getEarnings(symbol: Symbol, limit = 8): Promise<EarningsEvent[]> {
-    // Historical earning_calendar gives us report date + surprise; earnings-surprises
-    // gives the clean surprise pct. Prefer the calendar when both present.
-    const rows = await fmpGet<any[]>(
-      `/v3/historical/earning_calendar/${encodeURIComponent(symbol)}`,
-      { limit },
-    );
+    // Per-symbol historical+upcoming earnings.
+    const rows = await fmpGet<any[]>(`/earnings`, { symbol, limit });
     if (!Array.isArray(rows)) return [];
 
     return rows.map((r) => {
       const epsEst = r.epsEstimated != null ? num(r.epsEstimated) : undefined;
-      const epsAct = r.eps != null ? num(r.eps) : undefined;
+      const epsAct = r.epsActual != null ? num(r.epsActual) : undefined;
       const revEst = r.revenueEstimated != null ? num(r.revenueEstimated) : undefined;
-      const revAct = r.revenue != null ? num(r.revenue) : undefined;
+      const revAct = r.revenueActual != null ? num(r.revenueActual) : undefined;
       let surprisePct: number | undefined = undefined;
       if (epsEst != null && epsAct != null && epsEst !== 0) {
         surprisePct = ((epsAct - epsEst) / Math.abs(epsEst)) * 100;
@@ -123,7 +143,8 @@ export const fmpAdapter: DataProvider = {
   },
 
   async getInsiderTransactions(symbol: Symbol, limit = 50): Promise<InsiderTransaction[]> {
-    const rows = await fmpGet<any[]>(`/v4/insider-trading`, { symbol, limit });
+    // Stable search endpoint. `page` defaults to 0.
+    const rows = await fmpGet<any[]>(`/insider-trading/search`, { symbol, page: 0, limit });
     if (!Array.isArray(rows)) return [];
     return rows.map((r) => {
       const shares = num(r.securitiesTransacted);
@@ -143,29 +164,41 @@ export const fmpAdapter: DataProvider = {
   },
 
   async getInstitutionalHoldings(symbol: Symbol): Promise<InstitutionalHolding[]> {
-    // /v3/institutional-holder/{symbol} returns the Top N institutional holders.
-    const rows = await fmpGet<any[]>(
-      `/v3/institutional-holder/${encodeURIComponent(symbol)}`,
-    );
+    // 13F extract by holder. Requires year + quarter. Walk back up to 4 quarters
+    // in case the most-recent quarter hasn't been filed yet.
+    let { year, quarter } = latestFiledQuarter();
+    let rows: any[] = [];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await fmpGet<any[]>(
+        `/institutional-ownership/extract-analytics/holder`,
+        { symbol, year: String(year), quarter: String(quarter), page: 0, limit: 50 },
+      );
+      if (Array.isArray(res) && res.length > 0) {
+        rows = res;
+        break;
+      }
+      const prev = prevQuarter(year, quarter);
+      year = prev.year;
+      quarter = prev.quarter;
+    }
     if (!Array.isArray(rows)) return [];
     return rows.map((r) => ({
       symbol,
-      reportDate: toDate(r.dateReported),
-      institutionName: String(r.holder || ""),
-      sharesHeld: num(r.shares),
-      sharesChange: num(r.change),
-      // FMP returns ownership as a percentage — we just pass it through.
-      // May be 0 if not provided; downstream code can infer from float.
-      percentOfFloat: num(r.weightPercentage ?? r.ownership ?? 0),
+      reportDate: toDate(r.date),
+      institutionName: String(r.investorName || r.holder || ""),
+      sharesHeld: num(r.sharesNumber),
+      sharesChange: num(r.changeInSharesNumber),
+      // `ownership` in the stable response is already a percentage of total shares.
+      percentOfFloat: num(r.ownership ?? r.portfolioPercentage ?? 0),
       source: "fmp",
     }));
   },
 
   async getFinancials(symbol: Symbol, limit = 8): Promise<FinancialSnapshot[]> {
-    // Annual income statement for the core fields + TTM ratios for P/E etc.
+    // Stable paths: /income-statement?symbol=AAPL, /ratios-ttm?symbol=AAPL
     const [income, ratiosTtm] = await Promise.all([
-      fmpGet<any[]>(`/v3/income-statement/${encodeURIComponent(symbol)}`, { limit }),
-      fmpGet<any[]>(`/v3/ratios-ttm/${encodeURIComponent(symbol)}`),
+      fmpGet<any[]>(`/income-statement`, { symbol, limit }),
+      fmpGet<any[]>(`/ratios-ttm`, { symbol }),
     ]);
     if (!Array.isArray(income)) return [];
     const ratios = Array.isArray(ratiosTtm) && ratiosTtm.length ? ratiosTtm[0] : {};
@@ -176,10 +209,18 @@ export const fmpAdapter: DataProvider = {
       netIncome: num(r.netIncome),
       eps: num(r.eps ?? r.epsdiluted),
       // TTM ratios are a single snapshot — attach to the most recent period only
-      peRatio: idx === 0 ? num(ratios.peRatioTTM) || undefined : undefined,
-      pbRatio: idx === 0 ? num(ratios.priceToBookRatioTTM) || undefined : undefined,
-      debtToEquity: idx === 0 ? num(ratios.debtEquityRatioTTM) || undefined : undefined,
-      roe: idx === 0 ? num(ratios.returnOnEquityTTM) || undefined : undefined,
+      peRatio: idx === 0
+        ? num(ratios.priceToEarningsRatioTTM ?? ratios.peRatioTTM) || undefined
+        : undefined,
+      pbRatio: idx === 0
+        ? num(ratios.priceToBookRatioTTM) || undefined
+        : undefined,
+      debtToEquity: idx === 0
+        ? num(ratios.debtToEquityTTM ?? ratios.debtEquityRatioTTM) || undefined
+        : undefined,
+      roe: idx === 0
+        ? num(ratios.returnOnEquityTTM) || undefined
+        : undefined,
       source: "fmp",
     }));
   },
