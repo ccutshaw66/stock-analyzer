@@ -19,3 +19,10 @@ export type {
   VERInput,
   VERResult,
 } from "./strategies/ver";
+export { computeAMC, scoreAMC } from "./strategies/amc";
+export type {
+  AMCSignal,
+  AMCMode,
+  AMCInput,
+  AMCResult,
+} from "./strategies/amc";
