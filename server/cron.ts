@@ -1,6 +1,7 @@
 import { storage, db } from "./storage";
 import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { registerJob } from "./platform/jobs/scheduler";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -10,26 +11,24 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   _getQuote = getQuote;
   _ensureReady = ensureReady;
 
-  // Run every hour during market hours (9:30 AM - 4:00 PM ET, Mon-Fri)
-  const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-
-  console.log("[CRON] Price snapshot job initialized — every 1 hour during market hours");
-
-  setInterval(async () => {
-    if (!isMarketHours()) {
-      return;
-    }
-    console.log(`[CRON] Running price snapshot job at ${new Date().toISOString()}`);
-    await refreshAllOpenTrades();
-  }, INTERVAL_MS);
-
-  // Also run once on startup if during market hours (with a 30s delay to let Yahoo warm up)
-  setTimeout(async () => {
-    if (isMarketHours()) {
-      console.log("[CRON] Initial market-hours snapshot run");
+  // Register the price-snapshot job with the Phase 2.5 scheduler.
+  // Runs every hour at :00. The handler itself checks market hours so weekends
+  // and off-hours are skipped cheaply. Keeping the runOnStart behavior by
+  // triggering the scheduler's initial fire.
+  registerJob({
+    id: "price-snapshot",
+    description: "Hourly price snapshot + P/L update for all open trades (market hours only)",
+    cron: "0 * * * *",
+    timeoutMs: 10 * 60 * 1000, // 10 min hard cap
+    preventOverrun: true,
+    runOnStart: true,
+    handler: async () => {
+      if (!isMarketHours()) return;
       await refreshAllOpenTrades();
-    }
-  }, 30000);
+    },
+  });
+
+  console.log("[CRON] Price snapshot job registered with scheduler (0 * * * *)");
 }
 
 function isMarketHours(): boolean {
