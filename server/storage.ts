@@ -13,7 +13,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { eq, and, desc, sql, count } from "drizzle-orm";
 
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
   max: 20,                    // max connections (default was 10)
   min: 2,                     // keep 2 idle connections warm
