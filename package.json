@@ -18,7 +18,8 @@
     "health:smoke": "tsx scripts/health-smoke.ts",
     "logging:smoke": "tsx scripts/logging-smoke.ts",
     "jobs:smoke": "tsx scripts/jobs-smoke.ts",
-    "fmp:smoke": "tsx scripts/fmp-smoke.ts"
+    "fmp:smoke": "tsx scripts/fmp-smoke.ts",
+    "ratings:smoke": "tsx scripts/ratings-smoke.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
