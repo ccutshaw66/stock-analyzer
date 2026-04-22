@@ -17,7 +17,8 @@
     "tier:smoke": "tsx scripts/tier-middleware-smoke.ts",
     "health:smoke": "tsx scripts/health-smoke.ts",
     "logging:smoke": "tsx scripts/logging-smoke.ts",
-    "jobs:smoke": "tsx scripts/jobs-smoke.ts"
+    "jobs:smoke": "tsx scripts/jobs-smoke.ts",
+    "fmp:smoke": "tsx scripts/fmp-smoke.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
