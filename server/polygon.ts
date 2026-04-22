@@ -32,17 +32,49 @@ async function pget(path: string, query: Record<string, any> = {}): Promise<any>
   }
   params.append("apiKey", apiKey());
   const url = `${POLY_BASE}${path}?${params.toString()}`;
-  const resp = await fetch(url);
-  if (resp.status === 429) throw new Error("Polygon rate limited (429)");
-  if (resp.status === 401 || resp.status === 403) {
-    const body = await resp.text();
-    throw new Error(`Polygon not authorized (${resp.status}): ${body.substring(0, 200)}`);
+
+  // Retry on transient 5xx / 429 with exponential backoff
+  const maxAttempts = 4;
+  const backoffMs = [250, 600, 1500];
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(url);
+      if (resp.status === 401 || resp.status === 403) {
+        const body = await resp.text();
+        throw new Error(`Polygon not authorized (${resp.status}): ${body.substring(0, 200)}`);
+      }
+ if (resp.status === 429 || (resp.status >= 500 && resp.status < 600)) {
+        const body = await resp.text().catch(() => "");
+        lastErr = new Error(`Polygon HTTP ${resp.status}: ${body.substring(0, 200)}`);
+        if (attempt < maxAttempts - 1) {
+          const delay = backoffMs[attempt] ?? 1500;
+          console.warn(`[polygon] pget retry attempt ${attempt + 1}/${maxAttempts - 1} after ${resp.status} for ${path} (sleeping ${delay}ms)`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw lastErr;
+      }
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`Polygon HTTP ${resp.status}: ${body.substring(0, 200)}`);
+      }
+      return resp.json();
+    } catch (e: any) {
+      // Network errors — also retry
+      const msg = String(e?.message || e);
+      const isNetwork = !msg.startsWith("Polygon ");
+      if (isNetwork && attempt < maxAttempts - 1) {
+        lastErr = e;
+        const delay = backoffMs[attempt] ?? 1500;
+        console.warn(`[polygon] pget retry attempt ${attempt + 1}/${maxAttempts - 1} after network error for ${path}: ${msg} (sleeping ${delay}ms)`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw e;
+    }
   }
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`Polygon HTTP ${resp.status}: ${body.substring(0, 200)}`);
-  }
-  return resp.json();
+  throw lastErr ?? new Error("Polygon pget: exhausted retries");
 }
 
 // ────────────────────────────────────────────────────────────
@@ -66,16 +98,30 @@ function yfDate(unixSec: number | null | undefined): { raw: number; fmt: string 
 export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
   const T = ticker.toUpperCase();
 
-  const [snapshotRes, detailsRes, finRes, divsRes] = await Promise.allSettled([
+  const [snapshotRes, detailsRes, finRes, annualRes, divsRes] = await Promise.allSettled([
     pget(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(T)}`),
     pget(`/v3/reference/tickers/${encodeURIComponent(T)}`),
-    pget(`/vX/reference/financials`, { ticker: T, limit: 4, timeframe: "ttm,annual", order: "desc" }),
+    pget(`/vX/reference/financials`, { ticker: T, limit: 4, timeframe: "ttm", order: "desc" }),
+    pget(`/vX/reference/financials`, { ticker: T, limit: 4, timeframe: "annual", order: "desc" }),
     pget(`/v3/reference/dividends`, { ticker: T, limit: 8, order: "desc" }),
   ]);
 
+  // Log any rejected sub-requests (helps diagnose Polygon plan/quota issues)
+  const _labels1 = ["snapshot", "details", "financials.ttm", "financials.annual", "dividends"];
+  [snapshotRes, detailsRes, finRes, annualRes, divsRes].forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.warn(`[polygon] ${_labels1[i]} for ${T} rejected:`, (r as any).reason?.message || (r as any).reason);
+    }
+  });
+
   const snap = snapshotRes.status === "fulfilled" ? snapshotRes.value?.ticker : null;
   const details = detailsRes.status === "fulfilled" ? detailsRes.value?.results : null;
-  const finResults = finRes.status === "fulfilled" ? finRes.value?.results || [] : [];
+  const finTTM = finRes.status === "fulfilled" ? finRes.value?.results || [] : [];
+  const finAnn = annualRes.status === "fulfilled" ? annualRes.value?.results || [] : [];
+  const finResults = [...finTTM, ...finAnn];
+  if (finTTM.length === 0 && finAnn.length === 0) {
+    console.warn(`[polygon] ${T}: no financials data returned`);
+  }
   const divResults = divsRes.status === "fulfilled" ? divsRes.value?.results || [] : [];
 
   if (!snap && !details) return null;
@@ -87,7 +133,11 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
   const bal = f.balance_sheet || {};
   const cf = f.cash_flow_statement || {};
 
-  const regPrice = snap?.day?.c ?? snap?.prevDay?.c ?? null;
+  const regPrice =
+    (snap?.day?.c && snap.day.c > 0 ? snap.day.c : null) ??
+    (snap?.min?.c && snap.min.c > 0 ? snap.min.c : null) ??
+    (snap?.prevDay?.c && snap.prevDay.c > 0 ? snap.prevDay.c : null) ??
+    (snap?.lastTrade?.p && snap.lastTrade.p > 0 ? snap.lastTrade.p : null);
   const prevClose = snap?.prevDay?.c ?? null;
   const change = snap?.todaysChange ?? (regPrice != null && prevClose != null ? regPrice - prevClose : null);
   // Yahoo returns change percent as a decimal fraction (e.g. 0.0123 = 1.23%).
@@ -476,8 +526,18 @@ export async function getPolygonOptionsChain(ticker: string, expDateUnixSec?: nu
   let spot: number | null = null;
   try {
     const snap = await pget(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(T)}`);
-    spot = snap?.ticker?.day?.c ?? snap?.ticker?.prevDay?.c ?? null;
-  } catch { /* ignore */ }
+    const t = snap?.ticker;
+    // Walk fallback chain, skipping zero values (weekends/closed markets return 0)
+    const candidates = [t?.day?.c, t?.min?.c, t?.prevDay?.c, t?.lastTrade?.p];
+    for (const v of candidates) {
+      if (typeof v === "number" && v > 0) { spot = v; break; }
+    }
+    if (spot === null) {
+      console.warn(`[polygon] getPolygonOptionsChain: no non-zero spot for ${T}`, { day: t?.day?.c, min: t?.min?.c, prevDay: t?.prevDay?.c, lastTrade: t?.lastTrade?.p });
+    }
+  } catch (e) {
+    console.warn(`[polygon] getPolygonOptionsChain: snapshot failed for ${T}`, e);
+  }
 
   // If expDateUnixSec requested, pick that page; else pick nearest
   const targetExp = expDateUnixSec
@@ -661,6 +721,14 @@ export async function getPolygonEarningsRow(ticker: string): Promise<PolygonEarn
       }),
     ]);
 
+  // Log any rejected sub-requests
+  const _labels2 = ["reference", "financials"];
+  [refRes, finRes].forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.warn(`[polygon] ${_labels2[i]} rejected:`, (r as any).reason?.message || (r as any).reason);
+    }
+  });
+
     const companyName =
       refRes.status === "fulfilled" ? (refRes.value?.results?.name || T) : T;
 
@@ -746,3 +814,49 @@ export async function polygonHasOptions(): Promise<boolean> {
   }
   return _optionsProbed;
 }
+
+// ────────────────────────────────────────────────────────────
+// Get full US common-stock universe from Polygon reference API.
+// Filters to active, US-domiciled, common stock tickers.
+// Market cap filter is applied via the reference endpoint itself.
+// Returns an array of ticker symbols.
+// ────────────────────────────────────────────────────────────
+export async function getPolygonUniverse(opts: { minMarketCap?: number } = {}): Promise<string[]> {
+  const minCap = opts.minMarketCap ?? 500_000_000;
+  const tickers: string[] = [];
+  let url: string | null = `/v3/reference/tickers`;
+  let params: Record<string, any> = {
+    market: "stocks",
+    active: "true",
+    type: "CS", // Common Stock only
+    limit: 1000,
+    "market_cap.gte": minCap,
+  };
+
+  // Polygon paginates with next_url. We follow it up to 20 pages (=20,000 tickers max).
+  for (let page = 0; page < 20 && url; page++) {
+    const data: any = await pget(url, params);
+    if (Array.isArray(data?.results)) {
+      for (const r of data.results) {
+        if (r?.ticker && typeof r.ticker === "string") {
+          tickers.push(r.ticker.toUpperCase());
+        }
+      }
+    }
+    // next_url is a full URL including apiKey. Strip base + apiKey for our pget helper.
+    if (data?.next_url) {
+      const u = new URL(data.next_url);
+      url = u.pathname; // e.g. /v3/reference/tickers
+      params = {};
+      u.searchParams.forEach((v, k) => {
+        if (k !== "apiKey") params[k] = v;
+      });
+    } else {
+      url = null;
+    }
+  }
+
+  console.log(`[polygon] Universe fetched: ${tickers.length} tickers (minCap=$${minCap})`);
+  return tickers;
+}
+

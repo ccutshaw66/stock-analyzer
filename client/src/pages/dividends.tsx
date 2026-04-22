@@ -40,6 +40,7 @@ export default function Dividends() {
   // Filter state
   const [minYield, setMinYield] = useState<string>("");
   const [frequency, setFrequency] = useState("All");
+  const [resultLimit, setResultLimit] = useState<string>("30");
   const [maxPayout, setMaxPayout] = useState<string>("");
 
   // Fetch single ticker dividend data when active ticker is set
@@ -69,6 +70,7 @@ export default function Dividends() {
       const parts: string[] = [];
       if (minYield && parseFloat(minYield) > 0) parts.push(`minYield=${minYield}`);
       if (frequency !== "All") parts.push(`frequency=${encodeURIComponent(frequency)}`);
+      if (resultLimit) parts.push(`limit=${resultLimit}`);
       if (maxPayout && parseFloat(maxPayout) < 100) parts.push(`maxPayout=${maxPayout}`);
       if (parts.length > 0) url += url.includes("?") ? `&${parts.join("&")}` : `?${parts.join("&")}`;
 
@@ -267,19 +269,22 @@ export default function Dividends() {
         </div>
 
         {/* Filter Controls */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3" data-testid="dividend-filters">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3" data-testid="dividend-filters">
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Min Yield (%)</label>
-            <input
-              type="number"
-              step={0.5}
-              min={0}
+            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Min Yield</label>
+            <select
               value={minYield}
               onChange={e => setMinYield(e.target.value)}
-              placeholder="Min %"
-              className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums placeholder:text-muted-foreground"
+              className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground"
               data-testid="filter-min-yield"
-            />
+            >
+              <option value="">Any</option>
+              <option value="1">1%+</option>
+              <option value="2">2%+</option>
+              <option value="3">3%+</option>
+              <option value="4">4%+</option>
+              <option value="5">5%+</option>
+            </select>
           </div>
           <div>
             <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Frequency</label>
@@ -310,7 +315,23 @@ export default function Dividends() {
               data-testid="filter-max-payout"
             />
           </div>
-          <div className="flex items-end">
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Results</label>
+            <select
+              value={resultLimit}
+              onChange={e => setResultLimit(e.target.value)}
+              className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground"
+              data-testid="filter-result-limit"
+            >
+              <option value="10">Top 10</option>
+              <option value="20">Top 20</option>
+              <option value="30">Top 30</option>
+              <option value="40">Top 40</option>
+              <option value="80">Top 80</option>
+              <option value="100">Top 100</option>
+            </select>
+          </div>
+          <div className="flex items-end col-span-2 md:col-span-1">
             <button
               onClick={handleScanDefault}
               disabled={isScanLoading}
