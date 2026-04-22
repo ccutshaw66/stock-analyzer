@@ -23,6 +23,7 @@
  */
 
 import { edgarFetch, edgarFetchJson } from "./edgar.client";
+import { fmpGet } from "./fmp.client";
 
 // In-process cache (same pattern as fmp.adapter)
 type CacheEntry<T> = { value: T; expiresAt: number };
@@ -37,9 +38,9 @@ function setCached<T>(k: string, v: T, ttlMs: number) {
   cache.set(k, { value: v, expiresAt: Date.now() + ttlMs });
 }
 
-const TTL_TICKER_MAP = 24 * 60 * 60 * 1000; // 24h
-const TTL_FILING_LIST = 6 * 60 * 60 * 1000; // 6h
-const TTL_HOLDINGS = 6 * 60 * 60 * 1000;    // 6h
+const TTL_TICKER_MAP = 24 * 60 * 60 * 1000;    // 24h
+const TTL_FILING_LIST = 24 * 60 * 60 * 1000;   // 24h (13Fs only update quarterly)
+const TTL_HOLDINGS = 12 * 60 * 60 * 1000;      // 12h per ticker
 
 // ------------------------------------------------------------
 // 1. Ticker -> CIK mapping
@@ -91,6 +92,7 @@ export interface CompanyBasics {
   title: string;
   sharesOutstanding: number | null;
   sharesAsOf: string | null;
+  cusip: string | null;
 }
 
 export async function getCompanyBasics(ticker: string): Promise<CompanyBasics | null> {
@@ -125,11 +127,22 @@ export async function getCompanyBasics(ticker: string): Promise<CompanyBasics | 
     // non-fatal; basics is still usable without shares
   }
 
+  // CUSIP from FMP profile (already on premium, no extra cost)
+  let cusip: string | null = null;
+  try {
+    const profile: any = await fmpGet(`/profile`, { symbol: ticker });
+    const row = Array.isArray(profile) ? profile[0] : profile;
+    cusip = (row?.cusip ?? null) || null;
+  } catch {
+    // non-fatal
+  }
+
   const basics: CompanyBasics = {
     cik: lookup.cik,
     title: lookup.title,
     sharesOutstanding,
     sharesAsOf,
+    cusip,
   };
   setCached(key, basics, TTL_FILING_LIST);
   return basics;
@@ -192,6 +205,73 @@ export async function searchThirteenFFilings(
     });
   }
   return refs;
+}
+
+/**
+ * List ALL recent 13F-HR filings filed in the last N days.
+ *
+ * Paginates EDGAR full-text search (100 per page, up to 10,000 results).
+ * This replaces the name-based search: instead of hoping the filer mentions
+ * the target company in their primary document, we enumerate every 13F filer
+ * and then parse their Information Tables for the target CUSIP.
+ */
+export async function listRecentThirteenFFilings(
+  days = 100,
+  maxResults = 2000
+): Promise<FilingRef[]> {
+  const cacheKey = `all13f:${days}:${maxResults}`;
+  const cached = getCached<FilingRef[]>(cacheKey);
+  if (cached) return cached;
+
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+
+  const pageSize = 100;
+  const refs: FilingRef[] = [];
+  const seenAccession = new Set<string>();
+
+  for (let from = 0; from < maxResults; from += pageSize) {
+    const url =
+      `https://efts.sec.gov/LATEST/search-index?q=&forms=13F-HR` +
+      `&dateRange=custom&startdt=${startStr}&enddt=${endStr}` +
+      `&from=${from}`;
+    let data: EftsResponse;
+    try {
+      data = await edgarFetchJson<EftsResponse>(url);
+    } catch {
+      break;
+    }
+    const hits = data?.hits?.hits ?? [];
+    if (!hits.length) break;
+    for (const h of hits) {
+      const s = h._source;
+      if (!s?.adsh || seenAccession.has(s.adsh)) continue;
+      seenAccession.add(s.adsh);
+      refs.push({
+        accession: s.adsh,
+        accessionNoDashes: s.adsh.replace(/-/g, ""),
+        cik: (s.ciks?.[0] ?? "").padStart(10, "0"),
+        filerName: s.display_names?.[0] ?? "Unknown",
+        filedAt: s.file_date,
+        form: s.form,
+      });
+    }
+    // EFTS caps at 10k; break early if we got less than a full page
+    if (hits.length < pageSize) break;
+  }
+
+  // Deduplicate to latest filing per filer CIK (only need one 13F per filer)
+  const byCik = new Map<string, FilingRef>();
+  for (const r of refs) {
+    const existing = byCik.get(r.cik);
+    if (!existing || r.filedAt > existing.filedAt) byCik.set(r.cik, r);
+  }
+  const latestPerFiler = Array.from(byCik.values());
+  setCached(cacheKey, latestPerFiler, TTL_FILING_LIST);
+  return latestPerFiler;
 }
 
 function getEndDate(): string {
@@ -317,12 +397,14 @@ export interface InstitutionalSummary {
 /**
  * Build top-holder list for a ticker.
  *
- * 3.4a implementation:
- *   - Full-text search 13F-HR filings mentioning the ticker or company name
- *   - Fetch each filing's Information Table; filter to the target CUSIP
- *     (auto-detected from the most common CUSIP tied to the issuer name across filings)
- *   - Aggregate by filer (latest filing per CIK)
- *   - Compute pctHeld = shares / sharesOutstanding
+ * 3.4a (coverage-fix) implementation:
+ *   1. Resolve CUSIP from FMP profile (authoritative)
+ *   2. Enumerate latest 13F-HR per filer from last ~100 days (cached 6h)
+ *   3. Parse each filer's Information Table, find row matching target CUSIP
+ *   4. Aggregate top holders by position value; compute institutionPct
+ *
+ * First run is slow (~1-2 min for 1000+ filers), subsequent lookups hit cache.
+ * Concurrency limited to 8 parallel requests to stay under SEC 10/sec cap.
  */
 export async function getInstitutionalSummary(
   ticker: string,
@@ -335,12 +417,11 @@ export async function getInstitutionalSummary(
   const basics = await getCompanyBasics(ticker);
   if (!basics) return null;
 
-  // Search by company title (more reliable than raw ticker for 13F text)
-  const queryName = basics.title.replace(/\s+(INC|CORP|CORPORATION|COMPANY|CO|LTD|PLC|LLC)\.?$/i, "");
-  const refs = await searchThirteenFFilings(queryName, 60);
+  const targetCusip = basics.cusip?.replace(/\s+/g, "").toUpperCase();
+  const sharesOut = basics.sharesOutstanding || 0;
 
-  if (!refs.length) {
-    // Nothing found; return empty-but-valid summary so callers don't crash
+  // If no CUSIP, we cannot match filings. Return empty but valid shape.
+  if (!targetCusip) {
     const empty: InstitutionalSummary = {
       ticker: ticker.toUpperCase(),
       cik: basics.cik,
@@ -357,58 +438,56 @@ export async function getInstitutionalSummary(
     return empty;
   }
 
-  // Parse information tables in parallel (bounded concurrency 6)
-  const limit = 6;
-  const perFilerRows: Array<{ ref: FilingRef; rows: HoldingRow[] }> = [];
-  for (let i = 0; i < refs.length; i += limit) {
-    const slice = refs.slice(i, i + limit);
-    const results = await Promise.all(
-      slice.map(async r => ({ ref: r, rows: await getInformationTable(r).catch(() => []) }))
-    );
-    perFilerRows.push(...results);
-  }
+  // Enumerate 13F filers from last ~100 days (latest filing per CIK).
+  // Capped at 800 most recent filers — covers the largest AUM filers since
+  // big institutions file at or near the deadline. Cached 24h (13Fs only
+  // update quarterly anyway).
+  const filerRefs = await listRecentThirteenFFilings(100, 800);
+  console.log(`[edgar] ${ticker} aggregating ${filerRefs.length} filers against CUSIP ${targetCusip}`);
 
-  // Auto-detect the dominant CUSIP that matches our issuer name
-  const cusipCounts = new Map<string, number>();
-  const nameUpper = basics.title.toUpperCase();
-  for (const { rows } of perFilerRows) {
-    for (const row of rows) {
-      if (!row.cusip) continue;
-      const n = (row.nameOfIssuer || "").toUpperCase();
-      // Heuristic: issuer name should share a word with company title
-      const firstWord = nameUpper.split(/\s+/)[0];
-      if (!n.includes(firstWord)) continue;
-      cusipCounts.set(row.cusip, (cusipCounts.get(row.cusip) ?? 0) + 1);
-    }
-  }
-  const targetCusip = Array.from(cusipCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-
-  // Pick the largest holding row matching targetCusip per filer (latest filing)
+  // Parse information tables with bounded concurrency (8 parallel)
   const byFiler = new Map<string, TopHolder>();
   let latest = "";
-  const sharesOut = basics.sharesOutstanding || 0;
+  const CONCURRENCY = 8;
 
-  for (const { ref, rows } of perFilerRows) {
-    if (!targetCusip) continue;
-    const match = rows.find(r => r.cusip.replace(/\s+/g, "").toUpperCase() === targetCusip);
-    if (!match) continue;
-    const shares = Number(match.sshPrnamt) || 0;
-    if (shares <= 0) continue;
-    const value = Number(match.value) || 0;
-    if (ref.filedAt > latest) latest = ref.filedAt;
+  for (let i = 0; i < filerRefs.length; i += CONCURRENCY) {
+    const slice = filerRefs.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      slice.map(async ref => {
+        try {
+          const rows = await getInformationTable(ref, targetCusip);
+          return { ref, rows };
+        } catch {
+          return { ref, rows: [] as HoldingRow[] };
+        }
+      })
+    );
+    for (const { ref, rows } of results) {
+      if (!rows.length) continue;
+      // Sum all rows for this CUSIP in this filing (a filer may have multiple
+      // position rows — e.g. different share classes or sub-accounts).
+      let shares = 0;
+      let value = 0;
+      for (const r of rows) {
+        shares += Number(r.sshPrnamt) || 0;
+        value += Number(r.value) || 0;
+      }
+      if (shares <= 0) continue;
+      if (ref.filedAt > latest) latest = ref.filedAt;
 
-    const existing = byFiler.get(ref.cik);
-    if (!existing || ref.filedAt > existing.filedAt) {
-      byFiler.set(ref.cik, {
-        name: ref.filerName,
-        cik: ref.cik,
-        accession: ref.accession,
-        filedAt: ref.filedAt,
-        shares,
-        value,
-        pctHeld: sharesOut > 0 ? shares / sharesOut : 0,
-        reportDate: ref.filedAt,
-      });
+      const existing = byFiler.get(ref.cik);
+      if (!existing || ref.filedAt > existing.filedAt) {
+        byFiler.set(ref.cik, {
+          name: ref.filerName,
+          cik: ref.cik,
+          accession: ref.accession,
+          filedAt: ref.filedAt,
+          shares,
+          value,
+          pctHeld: sharesOut > 0 ? shares / sharesOut : 0,
+          reportDate: ref.filedAt,
+        });
+      }
     }
   }
 
