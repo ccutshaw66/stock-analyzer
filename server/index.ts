@@ -9,6 +9,10 @@ import { createServer } from "http";
 const app = express();
 app.use(cookieParser());
 
+// ─── Health endpoints (unauthenticated, before everything else) ────────────
+import { healthRouter } from "./api/routes/health";
+app.use("/api", healthRouter);
+
 // ─── Stripe Webhook (MUST be before express.json()) ──────────────────────────
 // Stripe requires the raw body buffer for signature verification
 app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {

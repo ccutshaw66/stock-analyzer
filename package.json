@@ -14,7 +14,8 @@
     "bbtc:parity": "tsx scripts/bbtc-parity.ts",
     "ver:parity": "tsx scripts/ver-parity.ts",
     "amc:parity": "tsx scripts/amc-parity.ts",
-    "tier:smoke": "tsx scripts/tier-middleware-smoke.ts"
+    "tier:smoke": "tsx scripts/tier-middleware-smoke.ts",
+    "health:smoke": "tsx scripts/health-smoke.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
