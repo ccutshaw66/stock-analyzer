@@ -25,25 +25,45 @@ app.post("/api/stripe/webhook", express.raw({ type: 'application/json' }), async
 
 // ─── GitHub Deploy Webhook ─────────────────────────────────────────────────
 import crypto from "crypto";
-import { exec } from "child_process";
+import { spawn } from "child_process";
+import fs from "fs";
+import path from "path";
 
 // Deploy secret — checked against GitHub webhook signature or x-deploy-token header
 // Must match what's configured in GitHub webhook settings
 const DEPLOY_SECRET = process.env.DEPLOY_WEBHOOK_SECRET || "LJ.QfHwAcRXiJ6Vdq_-tHRMXn";
-let deployInProgress = false;
-let lastDeployLog = "No deploys yet";
-let lastDeployTime = "";
-let lastDeploySuccess = false;
+const DEPLOY_LOG_PATH = "/tmp/stock-analyzer-deploy.log";
+const DEPLOY_STATUS_PATH = "/tmp/stock-analyzer-deploy-status.json";
+
+function readDeployStatus(): { last_deploy_time: string; last_deploy_success: boolean; in_progress: boolean } {
+  try {
+    if (fs.existsSync(DEPLOY_STATUS_PATH)) {
+      return JSON.parse(fs.readFileSync(DEPLOY_STATUS_PATH, "utf8"));
+    }
+  } catch {}
+  return { last_deploy_time: "", last_deploy_success: false, in_progress: false };
+}
+
+function readDeployLog(): string {
+  try {
+    if (fs.existsSync(DEPLOY_LOG_PATH)) {
+      const buf = fs.readFileSync(DEPLOY_LOG_PATH, "utf8");
+      return buf.slice(-4000);
+    }
+  } catch {}
+  return "No deploys yet";
+}
 
 // Deploy health check (no auth needed)
 app.get("/api/deploy/health", (_req, res) => {
+  const status = readDeployStatus();
   res.json({
     status: "ok",
     secret_configured: !!DEPLOY_SECRET,
-    deploy_in_progress: deployInProgress,
-    last_deploy_time: lastDeployTime,
-    last_deploy_success: lastDeploySuccess,
-    last_deploy_log: lastDeployLog.substring(0, 2000),
+    deploy_in_progress: status.in_progress,
+    last_deploy_time: status.last_deploy_time,
+    last_deploy_success: status.last_deploy_success,
+    last_deploy_log: readDeployLog().substring(0, 2000),
   });
 });
 
@@ -87,30 +107,53 @@ app.post("/api/deploy", express.raw({ type: '*/*' }), (req, res) => {
     console.log("[deploy] Token verified OK");
   }
 
-  if (deployInProgress) {
+  const status = readDeployStatus();
+  if (status.in_progress) {
     return res.status(409).json({ error: "Deploy already in progress" });
   }
 
-  deployInProgress = true;
   console.log("[deploy] Webhook received, starting deploy...");
   res.json({ status: "deploying" });
 
-  const cmd = `cd /opt/stock-analyzer && git pull origin main 2>&1 && NODE_ENV=development npm install 2>&1 && npm run build 2>&1 && pm2 restart stock-analyzer 2>&1`;
-  exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
-    deployInProgress = false;
-    lastDeployTime = new Date().toISOString();
-    if (error) {
-      lastDeploySuccess = false;
-      lastDeployLog = `ERROR: ${error.message}\nSTDERR: ${stderr}\nSTDOUT: ${stdout}`;
-      console.error(`[deploy] FAILED:`, error.message);
-      console.error(`[deploy] stderr:`, stderr);
-      console.error(`[deploy] stdout:`, stdout);
-    } else {
-      lastDeploySuccess = true;
-      lastDeployLog = stdout;
-      console.log(`[deploy] SUCCESS:\n${stdout}`);
-    }
+  // Mark in-progress BEFORE spawning so health endpoint reflects state
+  try {
+    fs.writeFileSync(DEPLOY_STATUS_PATH, JSON.stringify({
+      last_deploy_time: "",
+      last_deploy_success: false,
+      in_progress: true,
+    }));
+  } catch (e: any) {
+    console.error("[deploy] Failed to write status file:", e.message);
+  }
+
+  // Use a shell script that runs detached from this process. Because `pm2 restart`
+  // kills the current node process, an in-process exec callback never fires.
+  // Instead we spawn a detached shell that writes its own status/log files.
+  const script = `
+(
+  echo "=== Deploy started at $(date -u +%FT%TZ) ==="
+  cd /opt/stock-analyzer || exit 1
+  git pull origin main 2>&1
+  NODE_ENV=development npm install 2>&1
+  npm run build 2>&1
+  BUILD_EXIT=$?
+  if [ $BUILD_EXIT -eq 0 ]; then
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":true,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    echo "=== Build succeeded, restarting pm2 ==="
+    pm2 restart stock-analyzer --update-env 2>&1
+  else
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    echo "=== Build FAILED (exit $BUILD_EXIT) ==="
+  fi
+) > ${DEPLOY_LOG_PATH} 2>&1
+`;
+
+  const child = spawn("bash", ["-c", script], {
+    detached: true,
+    stdio: "ignore",
   });
+  child.unref();
+  console.log("[deploy] Detached deploy spawned, pid:", child.pid);
 });
 
 const httpServer = createServer(app);
