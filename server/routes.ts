@@ -10,6 +10,7 @@ import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
+import { computeRSISeries } from "./indicators";
 import {
   getPolygonQuoteSummary,
   getPolygonChart,
@@ -2187,27 +2188,10 @@ export async function registerRoutes(
     return sma;
   }
 
+  // RSI is imported from the canonical indicators module (see top of file).
+  // Local wrapper preserves the positional-arg signature used by this route.
   function computeRSI(closes: number[], period: number): number[] {
-    const rsi: number[] = new Array(closes.length).fill(NaN);
-    if (closes.length < period + 1) return rsi;
-    let avgGain = 0, avgLoss = 0;
-    for (let i = 1; i <= period; i++) {
-      const diff = closes[i] - closes[i - 1];
-      if (diff > 0) avgGain += diff;
-      else avgLoss += Math.abs(diff);
-    }
-    avgGain /= period;
-    avgLoss /= period;
-    rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-    for (let i = period + 1; i < closes.length; i++) {
-      const diff = closes[i] - closes[i - 1];
-      const gain = diff > 0 ? diff : 0;
-      const loss = diff < 0 ? Math.abs(diff) : 0;
-      avgGain = (avgGain * (period - 1) + gain) / period;
-      avgLoss = (avgLoss * (period - 1) + loss) / period;
-      rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-    }
-    return rsi;
+    return computeRSISeries(closes, { period });
   }
 
   function computeATR(highs: number[], lows: number[], closes: number[], period: number): number[] {
