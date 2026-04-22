@@ -306,30 +306,36 @@ export async function getInformationTable(
   // Filing index: https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNoDashes}/
   const base = `https://www.sec.gov/Archives/edgar/data/${Number(ref.cik)}/${ref.accessionNoDashes}`;
 
-  // Try to locate the Information Table XML. Filers commonly name it
-  // "infotable.xml" or "*_informationtable.xml"; the index.json lists items.
-  let infoUrl: string | null = null;
+  // Locate the Information Table XML. Filers use inconsistent filenames
+  // (infotable.xml, informationtable.xml, EPF13F2009Q2.xml, Form13FInfoTable.xml, etc.)
+  // Strategy: pick all .xml files that are NOT primary_doc.xml, try each.
+  let candidates: string[] = [];
   try {
     const idx: any = await edgarFetchJson(`${base}/index.json`);
     const items: any[] = idx?.directory?.item ?? [];
-    const match = items.find((i: any) => {
-      const n = String(i.name || "").toLowerCase();
-      return n.endsWith(".xml") && (n.includes("infotable") || n.includes("information"));
-    });
-    if (match) infoUrl = `${base}/${match.name}`;
+    candidates = items
+      .map((i: any) => String(i.name || ""))
+      .filter(n => n.toLowerCase().endsWith(".xml") && n.toLowerCase() !== "primary_doc.xml");
   } catch {
     return [];
   }
-  if (!infoUrl) return [];
+  if (!candidates.length) return [];
 
-  let xml: string;
-  try {
-    xml = await edgarFetch(infoUrl, { accept: "text/xml" });
-  } catch {
-    return [];
+  // Try candidates in order; return on first successful parse
+  for (const name of candidates) {
+    try {
+      const xml = await edgarFetch(`${base}/${name}`, { accept: "text/xml" });
+      // Quick sanity check: looks like an information table?
+      if (!/informationTable|infoTable/i.test(xml)) continue;
+      const rows = parseInformationTableXml(xml, cusipFilter);
+      if (rows.length > 0 || !cusipFilter) return rows;
+      // If we filtered by CUSIP and got 0, this filing genuinely doesn't hold it
+      return rows;
+    } catch {
+      // try next candidate
+    }
   }
-
-  return parseInformationTableXml(xml, cusipFilter);
+  return [];
 }
 
 /**
@@ -338,7 +344,8 @@ export async function getInformationTable(
  */
 export function parseInformationTableXml(xml: string, cusipFilter?: string): HoldingRow[] {
   const rows: HoldingRow[] = [];
-  const blockRe = /<(?:ns1:|n1:|\w+:)?infoTable[^>]*>([\s\S]*?)<\/(?:ns1:|n1:|\w+:)?infoTable>/gi;
+  // Match any namespace prefix (ns1:, n1:, f:, etc.) or no prefix
+  const blockRe = /<(?:[\w-]+:)?infoTable[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?infoTable>/gi;
   const wantedCusip = cusipFilter?.replace(/\s+/g, "").toUpperCase();
   let m: RegExpExecArray | null;
   while ((m = blockRe.exec(xml)) !== null) {
@@ -361,7 +368,7 @@ export function parseInformationTableXml(xml: string, cusipFilter?: string): Hol
 }
 
 function pickTag(xml: string, tag: string): string | null {
-  const re = new RegExp(`<(?:\\w+:)?${tag}>([^<]*)</(?:\\w+:)?${tag}>`, "i");
+  const re = new RegExp(`<(?:[\\w-]+:)?${tag}>([^<]*)</(?:[\\w-]+:)?${tag}>`, "i");
   const m = xml.match(re);
   return m ? m[1].trim() : null;
 }

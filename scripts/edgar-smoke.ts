@@ -54,19 +54,33 @@ async function run() {
   }
 
   // 2. Company basics
-  console.log("\n2) Company basics (shares outstanding)");
+  console.log("\n2) Company basics (shares outstanding + CUSIP)");
   for (const t of ["AAPL", "CAR"]) {
     try {
       const b = await getCompanyBasics(t);
-      const pass = !!b && !!b.sharesOutstanding && b.sharesOutstanding > 0;
+      const pass = !!b && !!b.sharesOutstanding && b.sharesOutstanding > 0 && !!b.cusip;
       record(
         `basics:${t}`,
         pass,
-        b ? `shares=${b.sharesOutstanding?.toLocaleString()} asOf=${b.sharesAsOf}` : "null"
+        b ? `shares=${b.sharesOutstanding?.toLocaleString()} cusip=${b.cusip ?? 'MISSING'} asOf=${b.sharesAsOf}` : "null"
       );
     } catch (e: any) {
       record(`basics:${t}`, false, e?.message ?? "error");
     }
+  }
+
+  // 2b. Filer enumeration
+  console.log("\n2b) Filer enumeration (first 100 days)");
+  try {
+    const { listRecentThirteenFFilings } = await import("../server/data/providers/edgar.adapter");
+    console.log(`   ${DIM}fetching filer list (slow, one-time)...${RESET}`);
+    const filers = await listRecentThirteenFFilings(100, 800);
+    record("filers:count", filers.length >= 100, `${filers.length} unique filers`);
+    if (filers.length) {
+      console.log(`   ${DIM}sample: ${filers.slice(0, 3).map(f => f.filerName).join(', ')}${RESET}`);
+    }
+  } catch (e: any) {
+    record("filers:count", false, e?.message ?? "error");
   }
 
   // 3. 13F search
