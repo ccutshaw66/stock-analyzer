@@ -11,7 +11,7 @@ import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } 
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
-import { computeBBTC } from "./signals";
+import { computeBBTC, computeVER } from "./signals";
 import {
   getPolygonQuoteSummary,
   getPolygonChart,
@@ -2294,54 +2294,8 @@ export async function registerRoutes(
       const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
-      type VERSignal = "BUY" | "SELL" | null;
-      const verSignals: VERSignal[] = new Array(closes.length).fill(null);
-
-      for (let i = 2; i < closes.length; i++) {
-        if (isNaN(rsi14[i]) || isNaN(rsi14[i-1]) || isNaN(bbUpper[i]) || isNaN(bbLower[i]) || isNaN(volAvg20[i])) continue;
-
-        const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 2;
-
-        // Bullish Reversal: RSI divergence (price lower low, RSI higher low) + volume spike + BB lower band touch
-        if (i >= 5) {
-          let hasBullishDiv = false;
-          for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
-            const prevIdx = i - lookback;
-            if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
-            if (closes[i] < closes[prevIdx] && rsi14[i] > rsi14[prevIdx] && rsi14[i] < 40) {
-              hasBullishDiv = true;
-              break;
-            }
-          }
-
-          const touchedLowerBB = lows[i] <= bbLower[i] || closes[i-1] <= bbLower[i-1];
-          const closedBackInside = closes[i] > bbLower[i];
-
-          if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) {
-            verSignals[i] = "BUY";
-          }
-        }
-
-        // Bearish Reversal: RSI divergence (price higher high, RSI lower high) + volume spike + BB upper band touch
-        if (i >= 5) {
-          let hasBearishDiv = false;
-          for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
-            const prevIdx = i - lookback;
-            if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
-            if (closes[i] > closes[prevIdx] && rsi14[i] < rsi14[prevIdx] && rsi14[i] > 60) {
-              hasBearishDiv = true;
-              break;
-            }
-          }
-
-          const touchedUpperBB = highs[i] >= bbUpper[i] || closes[i-1] >= bbUpper[i-1];
-          const closedBackInsideUpper = closes[i] < bbUpper[i];
-
-          if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
-            verSignals[i] = "SELL";
-          }
-        }
-      }
+      const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+      const verSignals = verResult.signals;
 
       // ---- Build response ----
       const lastIdx = closes.length - 1;
@@ -2375,17 +2329,9 @@ export async function registerRoutes(
         }
       }
 
-      // VER current state
-      const lastVerSignal = (() => {
-        for (let i = lastIdx; i >= 0; i--) {
-          if (verSignals[i]) return verSignals[i];
-        }
-        return null;
-      })();
-
-      let verTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-      if (lastVerSignal === "BUY") verTopSignal = "ENTER";
-      else if (lastVerSignal === "SELL") verTopSignal = "SELL";
+      // VER current state (from computeVER result)
+      const lastVerSignal = verResult.lastSignal;
+      const verTopSignal = verResult.topSignal;
 
       const currentVol = volumes[lastIdx] || 0;
       const avgVol = !isNaN(volAvg20[lastIdx]) ? volAvg20[lastIdx] : 0;
@@ -2969,37 +2915,15 @@ export async function registerRoutes(
               volAvg20S[i] = sum / 20;
             }
 
-            type VERSig = "BUY" | "SELL" | null;
-            const verSignals: VERSig[] = new Array(closes.length).fill(null);
-            for (let i = 2; i < closes.length; i++) {
-              if (isNaN(rsi14[i]) || isNaN(rsi14[i-1]) || isNaN(bbUpperS[i]) || isNaN(bbLowerS[i]) || isNaN(volAvg20S[i])) continue;
-              const volumeSpike = (volumes[i] || 0) >= volAvg20S[i] * 2;
-              if (i >= 5) {
-                let bullDiv = false;
-                for (let lb = 5; lb <= Math.min(20, i); lb++) {
-                  const pi = i - lb;
-                  if (pi < 0 || isNaN(rsi14[pi])) continue;
-                  if (closes[i] < closes[pi] && rsi14[i] > rsi14[pi] && rsi14[i] < 40) { bullDiv = true; break; }
-                }
-                if (bullDiv && volumeSpike && (lows[i] <= bbLowerS[i] || closes[i-1] <= bbLowerS[i-1]) && closes[i] > bbLowerS[i]) verSignals[i] = "BUY";
-
-                let bearDiv = false;
-                for (let lb = 5; lb <= Math.min(20, i); lb++) {
-                  const pi = i - lb;
-                  if (pi < 0 || isNaN(rsi14[pi])) continue;
-                  if (closes[i] > closes[pi] && rsi14[i] < rsi14[pi] && rsi14[i] > 60) { bearDiv = true; break; }
-                }
-                if (bearDiv && volumeSpike && (highs[i] >= bbUpperS[i] || closes[i-1] >= bbUpperS[i-1]) && closes[i] < bbUpperS[i]) verSignals[i] = "SELL";
-              }
-            }
-
-            let lastVer: VERSig = null;
-            for (let i = lastIdx; i >= 0; i--) {
-              if (verSignals[i]) { lastVer = verSignals[i]; break; }
-            }
-            let verTopSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-            if (lastVer === "BUY") verTopSignal = "ENTER";
-            else if (lastVer === "SELL") verTopSignal = "SELL";
+            const verResult = computeVER({
+              closes, highs, lows, volumes,
+              rsi14,
+              bbUpper: bbUpperS,
+              bbLower: bbLowerS,
+              volAvg20: volAvg20S,
+            });
+            const verSignals = verResult.signals;
+            const verTopSignal = verResult.topSignal;
 
             const lastRsi = isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(1));
 

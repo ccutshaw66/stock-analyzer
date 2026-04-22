@@ -12,3 +12,10 @@ export type {
   BBTCInput,
   BBTCResult,
 } from "./strategies/bbtc";
+export { computeVER } from "./strategies/ver";
+export type {
+  VERSignal,
+  VERTopSignal,
+  VERInput,
+  VERResult,
+} from "./strategies/ver";
