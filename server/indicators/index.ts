@@ -1,4 +1,4 @@
-export { computeRSI } from "./rsi";
+export { computeRSI, computeRSISeries } from "./rsi";
 export { computeBollinger } from "./bollinger";
 export { computeMACD } from "./macd";
 export { averageVolume, volumeSpikeRatio } from "./volume";

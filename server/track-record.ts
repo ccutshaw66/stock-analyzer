@@ -14,6 +14,7 @@
 import { db } from "./storage";
 import { signalLog } from "@shared/schema";
 import { eq, and, isNull, lte, sql } from "drizzle-orm";
+import { computeRSISeries } from "./indicators";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,16 +117,12 @@ export async function logSignals(
       const lastVol = cleanVolumes[cleanVolumes.length - 1] || 0;
       const volRatio = avgVol > 0 ? lastVol / avgVol : 1;
 
-      // RSI calculation
-      const rsiPeriod = 14;
-      let gains = 0, losses = 0;
-      for (let i = cleanCloses.length - rsiPeriod; i < cleanCloses.length; i++) {
-        const diff = cleanCloses[i] - cleanCloses[i - 1];
-        if (diff > 0) gains += diff; else losses += Math.abs(diff);
-      }
-      const avgGain = gains / rsiPeriod;
-      const avgLoss = losses / rsiPeriod;
-      const rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+      // RSI — Wilder's smoothed, same as Scanner / VER / TradingView.
+      // Previously this was a simple MA over the last 14 bars which produced
+      // slightly different values than the rest of the app.
+      const rsiSeries = computeRSISeries(cleanCloses, { period: 14 });
+      const rsiLast = rsiSeries[rsiSeries.length - 1];
+      const rsi = Number.isFinite(rsiLast) ? rsiLast : 50;
 
       let verSignal = "HOLD";
       if (rsi < 30 && volRatio > 1.5) verSignal = "BUY"; // oversold + high volume = exhaustion reversal
