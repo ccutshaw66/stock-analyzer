@@ -208,26 +208,17 @@ export async function searchThirteenFFilings(
 }
 
 /**
- * List ALL recent 13F-HR filings filed in the last N days.
- *
- * Paginates EDGAR full-text search (100 per page, up to 10,000 results).
- * This replaces the name-based search: instead of hoping the filer mentions
- * the target company in their primary document, we enumerate every 13F filer
- * and then parse their Information Tables for the target CUSIP.
+ * List 13F-HR filings in an explicit date window.
+ * Paginates efts.sec.gov at 100/page.
  */
-export async function listRecentThirteenFFilings(
-  days = 100,
-  maxResults = 2000
+export async function listThirteenFFilingsInWindow(
+  startStr: string,
+  endStr: string,
+  maxResults = 3000
 ): Promise<FilingRef[]> {
-  const cacheKey = `all13f:${days}:${maxResults}`;
+  const cacheKey = `13fwin:${startStr}:${endStr}:${maxResults}`;
   const cached = getCached<FilingRef[]>(cacheKey);
   if (cached) return cached;
-
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - days);
-  const startStr = start.toISOString().slice(0, 10);
-  const endStr = end.toISOString().slice(0, 10);
 
   const pageSize = 100;
   const refs: FilingRef[] = [];
@@ -259,11 +250,9 @@ export async function listRecentThirteenFFilings(
         form: s.form,
       });
     }
-    // EFTS caps at 10k; break early if we got less than a full page
     if (hits.length < pageSize) break;
   }
 
-  // Deduplicate to latest filing per filer CIK (only need one 13F per filer)
   const byCik = new Map<string, FilingRef>();
   for (const r of refs) {
     const existing = byCik.get(r.cik);
@@ -272,6 +261,120 @@ export async function listRecentThirteenFFilings(
   const latestPerFiler = Array.from(byCik.values());
   setCached(cacheKey, latestPerFiler, TTL_FILING_LIST);
   return latestPerFiler;
+}
+
+/**
+ * Get the most-recently-filed 13F-HR per filer. Strategy: sample the current
+ * quarter's filing deadline window (where >90% of 13Fs are filed) plus the
+ * preceding quarter's window as a fallback for filers who missed the current
+ * deadline.
+ *
+ * The 13F deadline is 45 days after the end of the calendar quarter:
+ *   Q1 ends Mar 31 -> due May 15
+ *   Q2 ends Jun 30 -> due Aug 14
+ *   Q3 ends Sep 30 -> due Nov 14
+ *   Q4 ends Dec 31 -> due Feb 14
+ */
+export async function listRecentThirteenFFilings(
+  days = 100,
+  maxResults = 2000
+): Promise<FilingRef[]> {
+  const now = new Date();
+  // Sample a wide window that captures the most recent deadline cluster
+  const end = new Date(now);
+  const start = new Date(now);
+  start.setDate(start.getDate() - days);
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+
+  const refs = await listThirteenFFilingsInWindow(startStr, endStr, maxResults);
+
+  // Sort by filedAt desc (newest first). Cap to maxResults (already applied in fetch).
+  refs.sort((a, b) => b.filedAt.localeCompare(a.filedAt));
+  return refs;
+}
+
+/**
+ * Fetch and parse primary_doc.xml to extract the filer's total portfolio value.
+ * Used to rank filers by AUM. Returns 0 on any failure (filer deranked).
+ */
+export async function getFilerAum(ref: FilingRef): Promise<number> {
+  const url =
+    `https://www.sec.gov/Archives/edgar/data/${Number(ref.cik)}/${ref.accessionNoDashes}/primary_doc.xml`;
+  try {
+    const xml = await edgarFetch(url, { accept: "text/xml" });
+    const m = xml.match(/<(?:[\w-]+:)?tableValueTotal>([^<]+)<\/(?:[\w-]+:)?tableValueTotal>/i);
+    if (!m) return 0;
+    return Number(m[1].replace(/,/g, "")) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Rank recent 13F filers by AUM (tableValueTotal from primary_doc.xml).
+ * Cached 24h at the module level — ticker-independent, so one cold fetch
+ * per day serves every institutional lookup.
+ */
+export async function rankedTopFilers(topN = 500): Promise<FilingRef[]> {
+  const cacheKey = `ranked_top_filers:${topN}`;
+  const cached = getCached<FilingRef[]>(cacheKey);
+  if (cached) return cached;
+
+  const { startStr, endStr } = recentDeadlineWindow(new Date());
+  const refs = await listThirteenFFilingsInWindow(startStr, endStr, 8000);
+  console.log(`[edgar] ranking ${refs.length} filers by AUM...`);
+
+  // Fetch tableValueTotal in parallel batches of 10
+  const CONCURRENCY = 10;
+  const withAum: Array<{ ref: FilingRef; aum: number }> = [];
+  const startMs = Date.now();
+  for (let i = 0; i < refs.length; i += CONCURRENCY) {
+    const slice = refs.slice(i, i + CONCURRENCY);
+    const aums = await Promise.all(slice.map(r => getFilerAum(r)));
+    for (let j = 0; j < slice.length; j++) {
+      withAum.push({ ref: slice[j], aum: aums[j] });
+    }
+    if ((i + CONCURRENCY) % 500 === 0 || i + CONCURRENCY >= refs.length) {
+      const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
+      console.log(`[edgar] ranked ${Math.min(i + CONCURRENCY, refs.length)}/${refs.length} filers [${elapsed}s]`);
+    }
+  }
+
+  withAum.sort((a, b) => b.aum - a.aum);
+  const topFilers = withAum.slice(0, topN).map(x => x.ref);
+  setCached(cacheKey, topFilers, TTL_FILING_LIST);
+  return topFilers;
+}
+
+/**
+ * Compute the filing-deadline window around the given date.
+ * Returns a 21-day window ending on (or just before) the most recent
+ * 13F deadline, which is where >80% of large-filer 13Fs are filed.
+ */
+export function recentDeadlineWindow(now: Date): { startStr: string; endStr: string } {
+  // Deadlines for each quarter (month is 0-indexed)
+  const year = now.getUTCFullYear();
+  const candidates = [
+    new Date(Date.UTC(year - 1, 10, 14)), // prior year Q3
+    new Date(Date.UTC(year, 1, 14)),      // Q4 of prior fiscal (Feb 14)
+    new Date(Date.UTC(year, 4, 15)),      // Q1 (May 15)
+    new Date(Date.UTC(year, 7, 14)),      // Q2 (Aug 14)
+    new Date(Date.UTC(year, 10, 14)),     // Q3 (Nov 14)
+  ];
+  // Most recent deadline at or before 'now'
+  const past = candidates.filter(d => d.getTime() <= now.getTime());
+  const deadline = past[past.length - 1] ?? candidates[0];
+  const end = new Date(deadline);
+  end.setUTCDate(end.getUTCDate() + 7); // grace period for late filers
+  // Don't go past today
+  if (end.getTime() > now.getTime()) end.setTime(now.getTime());
+  const start = new Date(deadline);
+  start.setUTCDate(start.getUTCDate() - 21);
+  return {
+    startStr: start.toISOString().slice(0, 10),
+    endStr: end.toISOString().slice(0, 10),
+  };
 }
 
 function getEndDate(): string {
@@ -445,17 +548,19 @@ export async function getInstitutionalSummary(
     return empty;
   }
 
-  // Enumerate 13F filers from the last 120 days (covers Q4 2025 filings
-  // through the 45-day post-quarter deadline). Cached 24h (13Fs only update
-  // quarterly anyway). 1500 cap keeps cost bounded but captures the major
-  // filers that drive institutionPct accuracy.
-  const filerRefs = await listRecentThirteenFFilings(120, 1500);
+  // Use the globally-cached top-AUM filer list. First cold call (once per day)
+  // takes ~10-15 minutes to rank ~7000 filers; after that, every ticker lookup
+  // reuses the cached top-500 list and only pays for info table fetches.
+  const filerRefs = await rankedTopFilers(500);
+  const startMs = Date.now();
   console.log(`[edgar] ${ticker} aggregating ${filerRefs.length} filers against CUSIP ${targetCusip}`);
 
   // Parse information tables with bounded concurrency (8 parallel)
   const byFiler = new Map<string, TopHolder>();
   let latest = "";
   const CONCURRENCY = 8;
+  let processed = 0;
+  let matched = 0;
 
   for (let i = 0; i < filerRefs.length; i += CONCURRENCY) {
     const slice = filerRefs.slice(i, i + CONCURRENCY);
@@ -469,6 +574,11 @@ export async function getInstitutionalSummary(
         }
       })
     );
+    processed += slice.length;
+    if (processed % 100 === 0 || processed >= filerRefs.length) {
+      const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+      console.log(`[edgar] ${ticker} ${processed}/${filerRefs.length} filers processed (${matched} hold CUSIP) [${elapsed}s]`);
+    }
     for (const { ref, rows } of results) {
       if (!rows.length) continue;
       // Sum all rows for this CUSIP in this filing (a filer may have multiple
@@ -480,6 +590,7 @@ export async function getInstitutionalSummary(
         value += Number(r.value) || 0;
       }
       if (shares <= 0) continue;
+      matched++;
       if (ref.filedAt > latest) latest = ref.filedAt;
 
       const existing = byFiler.get(ref.cik);
