@@ -27,6 +27,82 @@ import {
   polygonHasOptions,
   getPolygonEarningsRow,
 } from "./polygon";
+import { fmpAdapter } from "./data/providers/fmp.adapter";
+import { logger as rootLogger } from "./lib/logger";
+
+const routesLog = rootLogger.child({ module: "routes" });
+
+// Phase 3.2: FMP is PRIMARY and ONLY source for analyst ratings.
+// Yahoo was unreliable (stale crumbs, drift, TOS violation for SaaS).
+// Calls /price-target-consensus + /grades-consensus directly (not the adapter's
+// collapsed form) so we get per-bucket buy/hold/sell counts.
+import { fmpGet } from "./data/providers/fmp.client";
+
+interface AnalystBlock {
+  buy: number;
+  hold: number;
+  sell: number;
+  targetMean: number | null;
+  targetHigh: number | null;
+  targetLow: number | null;
+  recommendation: string | null;
+  analystCount: number;
+  source: string;
+}
+
+async function getFmpAnalyst(ticker: string): Promise<AnalystBlock> {
+  // Parallel fetch of both endpoints. grades-consensus gives true per-bucket
+  // counts (strongBuy + buy + hold + sell + strongSell); price-target-consensus
+  // gives aggregated targets.
+  const [targets, grades] = await Promise.all([
+    fmpGet<any[]>("/price-target-consensus", { symbol: ticker }),
+    fmpGet<any[]>("/grades-consensus", { symbol: ticker }),
+  ]);
+  const t = Array.isArray(targets) && targets.length ? targets[0] : {};
+  const g = Array.isArray(grades) && grades.length ? grades[0] : {};
+
+  const strongBuy = Number(g.strongBuy) || 0;
+  const buy = Number(g.buy) || 0;
+  const hold = Number(g.hold) || 0;
+  const sell = Number(g.sell) || 0;
+  const strongSell = Number(g.strongSell) || 0;
+  const total = strongBuy + buy + hold + sell + strongSell;
+
+  const consensusRaw = String(g.consensus || "").toLowerCase().trim();
+  let recommendation: string | null = null;
+  if (consensusRaw.includes("strong") && consensusRaw.includes("buy")) recommendation = "strong_buy";
+  else if (consensusRaw === "buy") recommendation = "buy";
+  else if (consensusRaw === "hold" || consensusRaw.includes("neutral")) recommendation = "hold";
+  else if (consensusRaw.includes("strong") && consensusRaw.includes("sell")) recommendation = "strong_sell";
+  else if (consensusRaw === "sell") recommendation = "sell";
+
+  const targetMean = Number(t.targetConsensus ?? t.targetMedian);
+  const targetHigh = Number(t.targetHigh);
+  const targetLow = Number(t.targetLow);
+
+  return {
+    // UI shows three buckets — collapse strong_buy/buy and sell/strong_sell
+    buy: strongBuy + buy,
+    hold,
+    sell: sell + strongSell,
+    targetMean: Number.isFinite(targetMean) && targetMean > 0 ? targetMean : null,
+    targetHigh: Number.isFinite(targetHigh) && targetHigh > 0 ? targetHigh : null,
+    targetLow: Number.isFinite(targetLow) && targetLow > 0 ? targetLow : null,
+    recommendation,
+    analystCount: total,
+    source: "fmp",
+  };
+}
+
+// Returns an empty analyst block when FMP has nothing for this ticker
+// (e.g. micro-caps with no coverage). Callers should treat empty as "no data".
+function emptyAnalystBlock(): AnalystBlock {
+  return {
+    buy: 0, hold: 0, sell: 0,
+    targetMean: null, targetHigh: null, targetLow: null,
+    recommendation: null, analystCount: 0, source: "none",
+  };
+}
 
 // ─── Demo Account Activity Tracking ──────────────────────────────────────────
 let demoLastActivity: number = 0; // timestamp of last API request from demo user
@@ -1868,7 +1944,23 @@ export async function registerRoutes(
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
-      const { quote, financials, analystData, profile } = extractQuoteData(summary);
+      const { quote, financials, analystData: _yahooAnalyst, profile } = extractQuoteData(summary);
+
+      // Phase 3.2: replace Yahoo analyst block with FMP. Yahoo retained only as
+      // last-resort fallback for micro-caps where FMP has no coverage.
+      let analystData: AnalystBlock;
+      try {
+        const fmp = await getFmpAnalyst(ticker);
+        if (fmp.analystCount > 0 || fmp.targetMean != null) {
+          analystData = fmp;
+        } else {
+          routesLog.info({ ticker }, "fmp has no analyst coverage; falling back to Yahoo");
+          analystData = { ..._yahooAnalyst, source: "yahoo", analystCount: (_yahooAnalyst.buy || 0) + (_yahooAnalyst.hold || 0) + (_yahooAnalyst.sell || 0) };
+        }
+      } catch (e: any) {
+        routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; falling back to Yahoo");
+        analystData = { ..._yahooAnalyst, source: "yahoo", analystCount: (_yahooAnalyst.buy || 0) + (_yahooAnalyst.hold || 0) + (_yahooAnalyst.sell || 0) };
+      }
 
       if (!quote.regularMarketPrice && !quote.marketCap) {
         console.log(`[analyze] ${ticker}: No price or market cap in quote data. Keys: ${Object.keys(quote).filter(k => quote[k] != null).join(',')}`);
