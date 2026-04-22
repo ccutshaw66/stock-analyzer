@@ -27,9 +27,12 @@ const DEFAULT_TICKERS = [
   "XOM", "KO", "JNJ", "UNH", "WMT",
   "HD", "V", "MA", "PG", "AVGO",
 ];
-const TOLERANCE = parseFloat(process.env.RSI_DIFF_TOLERANCE ?? "0.1"); // RSI points
+const TOLERANCE = parseFloat(process.env.RSI_DIFF_TOLERANCE ?? "0.2"); // RSI points
 const PERIOD = 14;
-const BARS = 120; // enough daily bars for Wilder smoothing to fully converge
+// Wilder's RSI seeds from a simple average then exponentially decays.
+// ~10× period gets close; 400 bars (~28× period) fully converges regardless of
+// where Polygon's reference series started its seed.
+const BARS = 400;
 const POLY_BASE = "https://api.polygon.io";
 
 function apiKey(): string {
@@ -46,7 +49,8 @@ interface PolygonAgg { c: number; t: number; }
 async function fetchDailyCloses(ticker: string): Promise<PolygonAgg[]> {
   // Pull enough bars for RSI(14) to fully converge, plus headroom for weekends/holidays.
   const to = new Date();
-  const from = new Date(to.getTime() - 260 * 24 * 60 * 60 * 1000); // ~260 calendar days
+  // Pull extra headroom beyond BARS to allow for weekends/holidays.
+  const from = new Date(to.getTime() - 800 * 24 * 60 * 60 * 1000); // ~2.2 years
   const fromStr = from.toISOString().slice(0, 10);
   const toStr = to.toISOString().slice(0, 10);
   const url = `${POLY_BASE}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=50000&apiKey=${apiKey()}`;
