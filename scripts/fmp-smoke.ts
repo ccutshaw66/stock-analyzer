@@ -96,10 +96,10 @@ async function main() {
   try {
     clearFmpCache();
     const t1 = Date.now();
-    await fmpGet<any>(`/v3/rating/${SYM}`);
+    await fmpGet<any>(`/ratings-snapshot`, { symbol: SYM });
     const cold = Date.now() - t1;
     const t2 = Date.now();
-    await fmpGet<any>(`/v3/rating/${SYM}`);
+    await fmpGet<any>(`/ratings-snapshot`, { symbol: SYM });
     const warm = Date.now() - t2;
     record(
       "cache hit is > 10x faster than cold fetch",
@@ -117,7 +117,7 @@ async function main() {
     clearFmpCache();
     let thrown = false;
     try {
-      await fmpGet<any>(`/v3/rating/AAPL`);
+      await fmpGet<any>(`/ratings-snapshot`, { symbol: "AAPL" });
     } catch (e) {
       thrown = e instanceof FmpConfigError;
     }
