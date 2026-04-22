@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "seed:demo": "tsx server/seed-demo.ts"
+    "seed:demo": "tsx server/seed-demo.ts",
+    "rsi:diff": "tsx scripts/rsi-diff.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
