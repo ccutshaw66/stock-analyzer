@@ -45,6 +45,20 @@ try {
 
 const BOOT_TIME = Date.now();
 const DEPLOY_STATUS_PATH = "/tmp/stock-analyzer-deploy-status.json";
+const HEARTBEAT_PATH = "/tmp/stock-analyzer-heartbeat";
+
+// Self-ping heartbeat: every minute, write a fresh timestamp to a file.
+// External monitoring is the source of truth for alerts, but this gives us
+// an internal fallback if outbound monitoring is somehow silent.
+setInterval(() => {
+  try {
+    fs.writeFileSync(HEARTBEAT_PATH, new Date().toISOString());
+  } catch {
+    // never let a failed heartbeat write crash anything
+  }
+}, 60_000).unref();
+// Write one immediately on boot so the file always exists.
+try { fs.writeFileSync(HEARTBEAT_PATH, new Date().toISOString()); } catch {}
 
 async function checkDb(): Promise<{ ok: boolean; latency_ms: number; error?: string }> {
   const start = Date.now();
