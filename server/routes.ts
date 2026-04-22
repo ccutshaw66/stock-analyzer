@@ -850,10 +850,15 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 // Routes
 // ============================================================
 
+import { registerSearchRoutes } from "./api/routes/search";
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ─── New compartmentalized routes (Phase 1 strangler) ──────────────────
+  registerSearchRoutes(app);
 
   // Warm up Yahoo crumb on startup — API routes wait for this before making Yahoo calls
   let _warmupDone = false;

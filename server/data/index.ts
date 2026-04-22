@@ -87,7 +87,15 @@ export const data = {
     withFallback<FinancialSnapshot[]>("financials", "getFinancials", [symbol, limit], cacheKey("financials", symbol, limit)),
 
   getBeta: (symbol: Symbol) =>
-    withFallback<BetaValue>("beta", "getBeta" as never, [symbol], cacheKey("beta", symbol)),
+    withFallback<BetaValue>("beta", "getBeta", [symbol], cacheKey("beta", symbol)),
+
+  searchTickers: (query: string, limit = 10) =>
+    withFallback<Array<{ symbol: Symbol; name: string }>>(
+      "search",
+      "searchTickers",
+      [query, limit],
+      cacheKey("search", query, limit)
+    ),
 };
 
 export type { Symbol, Quote, OHLCV, OptionsChain, AnalystRating, EarningsEvent, InsiderTransaction, InstitutionalHolding, FinancialSnapshot, BetaValue };
