@@ -29,6 +29,7 @@ import {
 } from "./polygon";
 import { fmpAdapter } from "./data/providers/fmp.adapter";
 import { logger as rootLogger } from "./lib/logger";
+import { getFmpEarningsRow } from "./fmp-earnings";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -3799,15 +3800,21 @@ export async function registerRoutes(
         return res.json(cached);
       }
 
-      // Polygon-backed earnings rows. Fetch in parallel (batches of 5 to stay
-      // under the free-tier 5-rps limit) instead of the old sequential
-      // Yahoo loop with 400ms sleeps.
+      // Phase 3.3: FMP is PRIMARY. FMP returns real upcoming dates + estimates
+      // (Polygon can only provide actuals and a +90 day date guess).
+      // Polygon is fallback for tickers with no FMP coverage.
       const BATCH = 5;
       const results: any[] = [];
       for (let i = 0; i < watchlistItems.length; i += BATCH) {
         const slice = watchlistItems.slice(i, i + BATCH);
         const rows = await Promise.all(
-          slice.map((item) => getPolygonEarningsRow(item.ticker))
+          slice.map(async (item) => {
+            const fmpRow = await getFmpEarningsRow(item.ticker);
+            if (fmpRow) return fmpRow;
+            // Fallback: Polygon
+            routesLog.info({ ticker: item.ticker }, "fmp earnings empty; falling back to polygon");
+            return getPolygonEarningsRow(item.ticker);
+          })
         );
         for (const row of rows) {
           if (row) results.push(row);
