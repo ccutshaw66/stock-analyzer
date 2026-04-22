@@ -67,13 +67,22 @@ async function main() {
     record("insider transactions", false, `err=${e?.message}`);
   }
 
-  // 4. Institutional holdings
+  // 4. Institutional holdings — FMP Premium tier does NOT include 13F data
+  //    (Ultimate-only). Adapter should throw a clear "Ultimate tier" error so
+  //    the registry routes elsewhere. Passing means the guard fires.
   try {
-    const h = await fmpAdapter.getInstitutionalHoldings!(SYM);
+    let thrown = false;
+    let msg = "";
+    try {
+      await fmpAdapter.getInstitutionalHoldings!(SYM);
+    } catch (e: any) {
+      thrown = true;
+      msg = String(e?.message || "");
+    }
     record(
-      "institutional holdings non-empty with names",
-      Array.isArray(h) && h.length >= 5 && h.every((x) => !!x.institutionName),
-      `count=${h?.length} first=${h?.[0]?.institutionName}`,
+      "institutional holdings correctly disabled on Premium tier",
+      thrown && /ultimate/i.test(msg),
+      `thrown=${thrown} msg=\"${msg.slice(0, 80)}\"`,
     );
   } catch (e: any) {
     record("institutional holdings", false, `err=${e?.message}`);

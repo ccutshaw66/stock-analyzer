@@ -84,7 +84,12 @@ export const fmpAdapter: DataProvider = {
     "analyst_ratings",
     "earnings",
     "insider_transactions",
-    "institutional_holdings",
+    // NOTE: "institutional_holdings" is NOT listed here on purpose.
+    // FMP's 13F endpoints require the Ultimate tier ($99–249/mo).
+    // Our current Premium plan returns HTTP 402 on every
+    // /institutional-ownership/* path. Capability is intentionally disabled
+    // so the provider registry falls through to another source.
+    // See getInstitutionalHoldings() below — it throws a clear error.
     "financials",
   ],
 
@@ -163,35 +168,16 @@ export const fmpAdapter: DataProvider = {
     });
   },
 
-  async getInstitutionalHoldings(symbol: Symbol): Promise<InstitutionalHolding[]> {
-    // 13F extract by holder. Requires year + quarter. Walk back up to 4 quarters
-    // in case the most-recent quarter hasn't been filed yet.
-    let { year, quarter } = latestFiledQuarter();
-    let rows: any[] = [];
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const res = await fmpGet<any[]>(
-        `/institutional-ownership/extract-analytics/holder`,
-        { symbol, year: String(year), quarter: String(quarter), page: 0, limit: 50 },
-      );
-      if (Array.isArray(res) && res.length > 0) {
-        rows = res;
-        break;
-      }
-      const prev = prevQuarter(year, quarter);
-      year = prev.year;
-      quarter = prev.quarter;
-    }
-    if (!Array.isArray(rows)) return [];
-    return rows.map((r) => ({
-      symbol,
-      reportDate: toDate(r.date),
-      institutionName: String(r.investorName || r.holder || ""),
-      sharesHeld: num(r.sharesNumber),
-      sharesChange: num(r.changeInSharesNumber),
-      // `ownership` in the stable response is already a percentage of total shares.
-      percentOfFloat: num(r.ownership ?? r.portfolioPercentage ?? 0),
-      source: "fmp",
-    }));
+  async getInstitutionalHoldings(_symbol: Symbol): Promise<InstitutionalHolding[]> {
+    // FMP's Form 13F endpoints are Ultimate-tier only. On our Premium plan
+    // every /institutional-ownership/* path returns HTTP 402 "Restricted
+    // Endpoint". Throw a clear error so the registry can route to another
+    // provider (or the caller can decide whether to retain the Yahoo path
+    // until we upgrade the plan).
+    throw new Error(
+      "FMP institutional holdings require the Ultimate tier — not available on Premium. " +
+      "Use a different provider or upgrade the FMP plan (Phase 6 consideration).",
+    );
   },
 
   async getFinancials(symbol: Symbol, limit = 8): Promise<FinancialSnapshot[]> {

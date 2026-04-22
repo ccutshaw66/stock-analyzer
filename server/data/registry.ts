@@ -22,7 +22,12 @@ export const providerChain: Record<Capability, DataProvider[]> = {
   analyst_ratings:         [fmpAdapter /*, finnhubAdapter */],
   earnings:                [fmpAdapter, polygonAdapter],
   insider_transactions:    [fmpAdapter /*, secEdgarAdapter */, yahooAdapter],
-  institutional_holdings:  [fmpAdapter /*, secEdgarAdapter */, yahooAdapter],
+  // NOTE: FMP 13F endpoints are Ultimate-tier only (our Premium plan gets 402).
+  // fmpAdapter is removed here until we upgrade, or swap in SEC EDGAR.
+  // Yahoo is the current source; the existing screenshot bug (e.g. CAR 147.2%)
+  // is handled as part of Phase 3.4 — likely via SEC EDGAR direct rather than
+  // an FMP upgrade.
+  institutional_holdings:  [yahooAdapter /*, secEdgarAdapter */],
   beta:                    [inHouseAdapter],
   search:                  [polygonAdapter],
   dividends:               [polygonAdapter],
