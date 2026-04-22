@@ -11,7 +11,7 @@ import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } 
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
-import { computeBBTC, computeVER } from "./signals";
+import { computeBBTC, computeVER, computeAMC, scoreAMC } from "./signals";
 import {
   getPolygonQuoteSummary,
   getPolygonChart,
@@ -2384,41 +2384,35 @@ export async function registerRoutes(
       }
       const vamiScaled = vamiArr.map(v => v * 8);
 
-      // AMC scoring for current bar
+      // AMC scoring for current bar (Trade Analysis uses EMA9/EMA50 trend stack,
+      // EMA9/EMA21 for trend-strength, and SMA200*0.95 as reversion floor.)
+      const sma200ScaledTA = sma200Daily.map(v => isNaN(v) ? NaN : v * 0.95);
+      const amcInput = {
+        closes,
+        histogram,
+        rsi14,
+        trendShortEma: ema9,
+        trendLongEma: ema50,
+        trendStrengthRefEma: ema21,
+        vamiScaled,
+        reversionRefLevel: sma200ScaledTA,
+        reversionDirection: "above" as const,
+      };
+      const amcResult = computeAMC(amcInput);
       const li = lastIdx;
-      let amcScore = 0;
-      if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li-1]||0)) amcScore++;
-      if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++;
-      if (!isNaN(ema9[li]) && !isNaN(ema50[li]) && closes[li] > ema9[li] && ema9[li] > ema50[li]) amcScore++;
-      if (vamiScaled[li] > 0 && vamiScaled[li] > vamiScaled[li-1]) amcScore++;
-      // ADX not available in daily chart easily, use trend proxy
-      if (!isNaN(ema9[li]) && !isNaN(ema21[li]) && Math.abs(ema9[li] - ema21[li]) / closes[li] * 100 > 0.5) amcScore++;
-
-      const amcMomentumEntry = amcScore >= 4 && closes[li] > closes[li-1];
-      const amcReversionEntry = !isNaN(rsi14[li]) && rsi14[li] < 30 && !isNaN(sma200Daily[li]) && closes[li] > sma200Daily[li] * 0.95 && closes[li] > closes[li-1] && vamiScaled[li] > vamiScaled[li-1];
-
-      let amcSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
-      let amcMode: "momentum" | "reversion" | "flat" = "flat";
-      if (amcMomentumEntry) { amcSignal = "ENTER"; amcMode = "momentum"; }
-      else if (amcReversionEntry) { amcSignal = "ENTER"; amcMode = "reversion"; }
-      // Exit signals for current bar
-      if (!isNaN(rsi14[li]) && rsi14[li] > 75) { amcSignal = "SELL"; }
-      if (!isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li-1]) && histogram[li-1] >= 0) { amcSignal = "SELL"; }
+      const amcScore = amcResult.score;
+      let amcSignal: "ENTER" | "HOLD" | "SELL" = amcResult.signal;
+      const amcMode: "momentum" | "reversion" | "flat" = amcResult.mode;
 
       let amcDetail = `Score: ${amcScore}/5`;
       if (amcSignal === "ENTER") amcDetail += ` — ${amcMode} entry triggered`;
       else if (amcSignal === "SELL") amcDetail += " — exit conditions met";
       else amcDetail += " — waiting for 4+ conditions";
 
-      // AMC recent signals
+      // AMC recent signals (uses same scoring as current bar via scoreAMC)
       const amcRecent: {date: string; signal: string; price: number}[] = [];
       for (let i = lastIdx; i >= 60 && amcRecent.length < 10; i--) {
-        let sc = 0;
-        if (!isNaN(histogram[i]) && histogram[i] > 0 && histogram[i] > (histogram[i-1]||0)) sc++;
-        if (!isNaN(rsi14[i]) && rsi14[i] >= 45 && rsi14[i] <= 65) sc++;
-        if (!isNaN(ema9[i]) && !isNaN(ema50[i]) && closes[i] > ema9[i] && ema9[i] > ema50[i]) sc++;
-        if (vamiScaled[i] > 0 && vamiScaled[i] > vamiScaled[i-1]) sc++;
-        if (!isNaN(ema9[i]) && !isNaN(ema21[i]) && Math.abs(ema9[i] - ema21[i]) / closes[i] * 100 > 0.5) sc++;
+        const sc = scoreAMC(i, amcInput);
         const mEntry = sc >= 4 && closes[i] > closes[i-1];
         const rEntry = !isNaN(rsi14[i]) && rsi14[i] < 30 && closes[i] > closes[i-1];
         const exitSig = (!isNaN(rsi14[i]) && rsi14[i] > 75) || (!isNaN(histogram[i]) && histogram[i] < 0 && !isNaN(histogram[i-1]) && histogram[i-1] >= 0);
@@ -3210,28 +3204,25 @@ export async function registerRoutes(
             }
             const vami = vamiArr.map(v => v * 8);
 
-            // AMC Score (0-5)
-            let amcScore = 0;
+            // AMC Score + signal (Scanner uses EMA20/EMA50 trend stack + trend-strength,
+            // and lower Bollinger band * 1.01 as reversion ceiling.)
+            const bbLoScaledS = bbLo.map(v => isNaN(v) ? NaN : v * 1.01);
+            const amcRes = computeAMC({
+              closes,
+              histogram,
+              rsi14,
+              trendShortEma: ema20,
+              trendLongEma: ema50,
+              trendStrengthRefEma: ema50,
+              vamiScaled: vami,
+              reversionRefLevel: bbLoScaledS,
+              reversionDirection: "below",
+            });
             const li = lastIdx;
-            if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li-1]||0)) amcScore++; // MACD accel
-            if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++; // RSI sweet spot
-            if (!isNaN(ema20[li]) && !isNaN(ema50[li]) && closes[li] > ema20[li] && ema20[li] > ema50[li]) amcScore++; // Trend
-            if (vami[li] > 0 && vami[li] > vami[li-1]) amcScore++; // VAMI positive & rising
-            if (!isNaN(ema20[li]) && !isNaN(ema50[li]) && Math.abs(ema20[li] - ema50[li]) / closes[li] * 100 > 0.5) amcScore++; // Trend strength
-
-            const greenClose = closes[li] > closes[li-1];
-            const momentumEntry = amcScore >= 4 && greenClose;
-            const reversionEntry = !isNaN(rsi14[li]) && rsi14[li] < 30 && !isNaN(bbLo[li]) && closes[li] <= bbLo[li] * 1.01 && greenClose && vami[li] > vami[li-1];
-
-            // Exit check
-            const rsiExit = !isNaN(rsi14[li]) && rsi14[li] > 75;
-            const macdFlip = !isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li-1]) && histogram[li-1] >= 0;
-
-            let signal: "ENTER" | "HOLD" | "SELL" = "HOLD";
-            let mode: "momentum" | "reversion" | "flat" = "flat";
-            if (momentumEntry) { signal = "ENTER"; mode = "momentum"; }
-            else if (reversionEntry) { signal = "ENTER"; mode = "reversion"; }
-            if (rsiExit || macdFlip) { signal = "SELL"; }
+            const amcScore = amcRes.score;
+            const greenClose = amcRes.greenClose;
+            const signal: "ENTER" | "HOLD" | "SELL" = amcRes.signal;
+            const mode: "momentum" | "reversion" | "flat" = amcRes.mode;
 
             const vamiVal = Number(vami[li]?.toFixed(2) || 0);
             const rsiVal = isNaN(rsi14[li]) ? null : Number(rsi14[li].toFixed(1));
