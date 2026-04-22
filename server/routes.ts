@@ -15,6 +15,7 @@ import {
   getPolygonChart,
   polygonSearch,
   getPolygonOptionsChain,
+  getPolygonUniverse,
   polygonScreener,
   polygonHasOptions,
   getPolygonEarningsRow,
@@ -1303,62 +1304,116 @@ export async function registerRoutes(
     if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
-      // Curated 40 best dividend stocks — manageable for Yahoo rate limits
-      // Mix of: monthly payers, Dividend Kings/Aristocrats, high yield, REITs, utilities
-      const defaultTickers = [
-        // Monthly payers
-        "O", "MAIN", "JEPI", "JEPQ", "EPD", "STAG", "DIVO",
-        // High yield (5%+)
-        "MO", "T", "VZ", "PFE", "ET", "KMI", "BTI",
-        // Dividend Aristocrats / Kings
-        "KO", "JNJ", "PG", "ABBV", "XOM", "CVX", "HD", "PEP", "KMB", "IBM",
-        // REITs
-        "SPG", "PSA", "VICI", "WPC", "DLR",
-        // Utilities
-        "DUK", "SO", "NEE", "D",
-        // Solid mid-yield
-        "MCD", "TGT", "AFL", "EOG", "ARCC", "HTGC",
-      ];
-      const tickersParam = req.query.tickers as string | undefined;
-      const tickers = tickersParam
-        ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
-        : defaultTickers;
-      // Deduplicate
-      const uniqueTickers = [...new Set(tickers)];
 
-      // Fetch in batches of 5 using lightweight query (price + dividend essentials only)
-      const results: any[] = [];
-      for (let i = 0; i < uniqueTickers.length; i += 5) {
-        const batch = uniqueTickers.slice(i, i + 5);
-        const batchResults = await Promise.allSettled(
-          batch.map(async (ticker) => {
-            try {
-              const quote = await getQuoteLight(ticker);
-              if (quote) return extractDividendData(ticker, quote);
-            } catch (err: any) {
-              console.log(`[dividends] Failed: ${ticker}: ${err.message}`);
-            }
-            return null;
-          })
-        );
-        for (const r of batchResults) {
-          if (r.status === "fulfilled" && r.value) results.push(r.value);
-        }
-      }
+      const refresh = req.query.refresh === "1" || req.query.refresh === "true";
 
-      // Apply filters from query params
-      let filtered = results;
+      // Parse filter params early so cache key reflects them
       const minYield = parseFloat(req.query.minYield as string) || 0;
       const freqFilter = (req.query.frequency as string) || "All";
       const maxPayout = parseFloat(req.query.maxPayout as string) || 100;
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 30, 1), 500);
 
+      const tickersParam = req.query.tickers as string | undefined;
+      const customTickers = tickersParam
+        ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
+        : null;
+
+      // Resolve universe: custom tickers OR full Polygon universe (cached 24h)
+      const UNIVERSE_TTL = 24 * 60 * 60 * 1000;
+      const universeCacheKey = "polygon:universe:500m";
+      let tickers: string[];
+      if (customTickers && customTickers.length) {
+        tickers = [...new Set(customTickers)].slice(0, 500);
+      } else {
+        const cachedUniverse = getCached(universeCacheKey);
+        if (cachedUniverse && !refresh) {
+          tickers = cachedUniverse;
+        } else {
+          console.log("[dividends-scan] Fetching Polygon universe...");
+          tickers = await getPolygonUniverse({ minMarketCap: 500_000_000 });
+          setCache(universeCacheKey, tickers, UNIVERSE_TTL);
+        }
+      }
+
+      // Aggregated result cache (6h) — key on filters too since they can change output
+      const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000;
+      const scanCacheKey = customTickers
+        ? `dividends-scan:custom:${customTickers.slice().sort().join(",")}:${minYield}:${freqFilter}:${maxPayout}:${limit}`
+        : `dividends-scan:universe:500m:${minYield}:${freqFilter}:${maxPayout}:${limit}`;
+
+      if (!refresh) {
+        const cached = getCached(scanCacheKey);
+        if (cached) {
+          res.setHeader("X-Scanned-At", cached.scannedAt);
+          res.setHeader("X-Total-Scanned", String(cached.totalScanned));
+          res.setHeader("X-Dividend-Payers", String(cached.dividendPayers));
+          res.setHeader("X-Matching-Filters", String(cached.matchingFilters));
+          res.setHeader("X-Cached", "true");
+          return res.json(cached.results);
+        }
+      }
+
+      console.log(`[dividends-scan] Scanning ${tickers.length} tickers (refresh=${refresh})`);
+      const scanStart = Date.now();
+      const results: any[] = [];
+
+      // Polygon Starter has no per-second cap; parallelize in batches of 20
+      const BATCH_SIZE = 20;
+      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+        const batch = tickers.slice(b, b + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+          try {
+            const quote = await getQuoteLight(ticker);
+            if (!quote) return null;
+            const d = extractDividendData(ticker, quote);
+            // Skip tickers with no dividend at all
+            if (!d || (d.dividendYield === 0 && d.dividendRate === 0)) return null;
+            return d;
+          } catch {
+            return null;
+          }
+        }));
+        for (const r of batchResults) {
+          if (r.status === "fulfilled" && r.value) results.push(r.value);
+        }
+        // Progress every 10 batches (=200 tickers)
+        if ((b / BATCH_SIZE) % 10 === 0) {
+          console.log(`[dividends-scan] Progress: ${Math.min(b + BATCH_SIZE, tickers.length)}/${tickers.length} (${results.length} dividend payers)`);
+        }
+      }
+
+      // Apply filters
+      let filtered = results;
       if (minYield > 0) filtered = filtered.filter(d => d.dividendYield >= minYield);
       if (freqFilter !== "All") filtered = filtered.filter(d => d.frequency === freqFilter);
       if (maxPayout < 100) filtered = filtered.filter(d => d.payoutRatio <= maxPayout || d.payoutRatio === 0);
 
       filtered.sort((a, b) => b.score - a.score);
+      filtered = filtered.slice(0, limit);
+
+      const elapsed = Date.now() - scanStart;
+      console.log(`[dividends-scan] Complete: ${filtered.length}/${results.length} after filters in ${elapsed}ms`);
+
+      const payload = {
+        scannedAt: new Date().toISOString(),
+        lastScannedAt: new Date().toISOString(),
+        totalScanned: tickers.length,
+        dividendPayers: results.length,
+        matchingFilters: filtered.length,
+        elapsedMs: elapsed,
+        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
+        results: filtered,
+      };
+      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      // UI expects a bare array — expose metadata via headers instead
+      res.setHeader("X-Scanned-At", payload.scannedAt);
+      res.setHeader("X-Total-Scanned", String(payload.totalScanned));
+      res.setHeader("X-Dividend-Payers", String(payload.dividendPayers));
+      res.setHeader("X-Matching-Filters", String(payload.matchingFilters));
+      res.setHeader("X-Cached", "false");
       res.json(filtered);
     } catch (error: any) {
+      console.error("[dividends-scan] Error:", error);
       res.status(500).json({ error: error?.message || "Failed to scan dividends" });
     }
   });
@@ -3809,49 +3864,94 @@ export async function registerRoutes(
     if (checkScanRateLimit(req, res)) return;
     try {
       await ensureReady();
-      // Default watchlist of popular/active stocks to scan
-      const defaultTickers = [
-        // Mega cap tech
-        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "CRM",
-        "AVGO", "ORCL", "ADBE", "INTC", "QCOM", "MU", "PLTR", "SNOW", "PANW", "SHOP",
-        // Finance
-        "JPM", "BAC", "GS", "MS", "V", "MA", "BLK", "SCHW", "C", "WFC",
-        // Healthcare
-        "UNH", "JNJ", "ABBV", "MRK", "LLY", "PFE", "TMO", "ABT", "BMY", "GILD",
-        // Consumer
-        "HD", "COST", "WMT", "PG", "KO", "PEP", "MCD", "NKE", "SBUX", "TGT",
-        // Energy & Industrial
-        "XOM", "CVX", "COP", "CAT", "DE", "BA", "GE", "RTX", "LMT", "UPS",
-        // Popular retail trader stocks
-        "SOFI", "RIVN", "COIN", "ROKU", "SNAP", "DIS", "PYPL", "SQ", "UBER", "ABNB",
-        // ETFs
-        "SPY", "QQQ", "IWM", "DIA", "XLF", "XLE", "XLK", "ARKK",
-      ];
+
+      const refresh = req.query.refresh === "1" || req.query.refresh === "true";
       const tickerParam = req.query.tickers as string | undefined;
-      const tickers = tickerParam ? tickerParam.split(",").map(t => t.trim().toUpperCase()) : defaultTickers;
+      const customTickers = tickerParam
+        ? tickerParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
+        : null;
+
+      // Resolve universe: custom tickers from query OR full Polygon universe (cached 24h)
+      const UNIVERSE_TTL = 24 * 60 * 60 * 1000; // 24h
+      const universeCacheKey = "polygon:universe:500m";
+      let tickers: string[];
+      if (customTickers && customTickers.length) {
+        tickers = customTickers.slice(0, 500); // safety cap on custom lists
+      } else {
+        const cachedUniverse = getCached(universeCacheKey);
+        if (cachedUniverse && !refresh) {
+          tickers = cachedUniverse;
+        } else {
+          console.log("[institutional-scan] Fetching Polygon universe...");
+          tickers = await getPolygonUniverse({ minMarketCap: 500_000_000 });
+          setCache(universeCacheKey, tickers, UNIVERSE_TTL);
+        }
+      }
+
+      // Aggregated result cache (6h) — keyed by universe signature
+      const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+      const scanCacheKey = customTickers
+        ? `institutional-scan:custom:${customTickers.slice().sort().join(",")}`
+        : `institutional-scan:universe:500m`;
+
+      if (!refresh) {
+        const cached = getCached(scanCacheKey);
+        if (cached) {
+          res.setHeader("X-Scanned-At", cached.scannedAt);
+          res.setHeader("X-Total-Scanned", String(cached.totalScanned));
+          res.setHeader("X-Dividend-Payers", String(cached.dividendPayers));
+          res.setHeader("X-Matching-Filters", String(cached.matchingFilters));
+          res.setHeader("X-Cached", "true");
+          return res.json(cached.results);
+        }
+      }
+
+      console.log(`[institutional-scan] Scanning ${tickers.length} tickers (refresh=${refresh})`);
+      const scanStart = Date.now();
       const results: any[] = [];
 
-      for (const ticker of tickers.slice(0, 80)) {
-        try {
-          const raw = await getInstitutionalData(ticker);
-          const parsed = parseInstitutionalData(raw, ticker);
-          if (parsed) results.push(parsed);
-          // Small delay to avoid rate limiting
-          await new Promise(r => setTimeout(r, 300));
-        } catch {
-          // Skip failed tickers
+      // Parallel batches of 5 — the enqueue() queue in yahooFetch will serialize
+      // Yahoo calls at a safe rate, but running batches in parallel lets us
+      // overlap retry-backoff windows.
+      const BATCH_SIZE = 5;
+      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+        const batch = tickers.slice(b, b + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+          try {
+            const raw = await getInstitutionalData(ticker);
+            return parseInstitutionalData(raw, ticker);
+          } catch {
+            return null;
+          }
+        }));
+        for (const r of batchResults) {
+          if (r.status === "fulfilled" && r.value) results.push(r.value);
+        }
+        // Log progress every 10 batches (~50 tickers)
+        if ((b / BATCH_SIZE) % 10 === 0) {
+          console.log(`[institutional-scan] Progress: ${b + batch.length}/${tickers.length} (${results.length} with data)`);
         }
       }
 
       // Sort by absolute flow score (strongest moves first)
       results.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
 
-      res.json({
+      const elapsed = Date.now() - scanStart;
+      console.log(`[institutional-scan] Complete: ${results.length}/${tickers.length} with data in ${elapsed}ms`);
+
+      const payload = {
         scannedAt: new Date().toISOString(),
+        lastScannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
+        withData: results.length,
+        elapsedMs: elapsed,
+        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
         results,
-      });
+      };
+      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      res.json({ ...payload, cached: false });
     } catch (error: any) {
+      console.error("[institutional-scan] Error:", error);
       res.status(500).json({ error: error?.message || "Institutional scan failed" });
     }
   });
