@@ -28,6 +28,7 @@ import {
   getPolygonEarningsRow,
 } from "./polygon";
 import { fmpAdapter } from "./data/providers/fmp.adapter";
+import { getInstitutionalSummary } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
 
@@ -411,42 +412,64 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // ============================================================
 
 async function getInstitutionalData(ticker: string): Promise<any> {
+  // Phase 3.4a: migrated off Yahoo. We still fetch the Yahoo price/summary
+  // blob for price + market cap + insider modules (unchanged), but institutional
+  // ownership now comes from SEC EDGAR 13F filings in parseInstitutionalData.
   const cacheKey = `inst:${ticker.toUpperCase()}`;
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
   const modules = [
-    "institutionOwnership", "insiderHolders", "insiderTransactions",
-    "majorHoldersBreakdown", "netSharePurchaseActivity", "fundOwnership",
+    "insiderHolders", "insiderTransactions",
+    "netSharePurchaseActivity",
     "price", "summaryDetail"
   ].join("%2C");
-  const data = await yahooFetch(
-    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
-  );
-  const result = data?.quoteSummary?.result?.[0] || null;
+  let result: any = null;
+  try {
+    const data = await yahooFetch(
+      `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
+    );
+    result = data?.quoteSummary?.result?.[0] || null;
+  } catch (e) {
+    // Non-fatal: EDGAR will still provide institutional data
+    result = null;
+  }
   if (result) setCache(cacheKey, result, TTL.institutional);
   return result;
 }
 
-function parseInstitutionalData(raw: any, ticker: string) {
-  if (!raw) return null;
+async function parseInstitutionalData(raw: any, ticker: string) {
+  // Phase 3.4a: institutional data sourced from SEC EDGAR 13Fs.
+  // Yahoo still supplies price/summary/insider modules for now (removed in 3.7).
+  const price = raw?.price || {};
+  const summary = raw?.summaryDetail || {};
+  const insiderHolders = raw?.insiderHolders?.holders || [];
+  const insiderTxns = raw?.insiderTransactions?.transactions || [];
+  const netActivity = raw?.netSharePurchaseActivity || {};
 
-  const price = raw.price || {};
-  const summary = raw.summaryDetail || {};
-  const majorBreakdown = raw.majorHoldersBreakdown || {};
-  const instOwnership = raw.institutionOwnership?.ownershipList || [];
-  const fundOwnership = raw.fundOwnership?.ownershipList || [];
-  const insiderHolders = raw.insiderHolders?.holders || [];
-  const insiderTxns = raw.insiderTransactions?.transactions || [];
-  const netActivity = raw.netSharePurchaseActivity || {};
+  // EDGAR institutional summary
+  let edgar: Awaited<ReturnType<typeof getInstitutionalSummary>> | null = null;
+  try {
+    edgar = await getInstitutionalSummary(ticker, 25);
+  } catch (e) {
+    console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
+    edgar = null;
+  }
 
-  // Top institutional holders
-  const topInstitutions = instOwnership.slice(0, 25).map((inst: any) => ({
-    name: inst.organization || "Unknown",
-    shares: inst.position?.raw || 0,
-    value: inst.value?.raw || 0,
-    pctHeld: inst.pctHeld?.raw || 0,
-    changeQoQ: inst.pctChange?.raw || 0,
-    reportDate: inst.reportDate?.fmt || null,
+  // Back-compat stubs (no longer Yahoo-sourced)
+  const instOwnership: any[] = [];
+  const fundOwnership: any[] = [];
+  const majorBreakdown: any = {};
+
+  // Top institutional holders (EDGAR 13F)
+  const topInstitutions = (edgar?.topHolders ?? []).map(h => ({
+    name: h.name,
+    shares: h.shares,
+    value: h.value,
+    pctHeld: h.pctHeld,
+    changeQoQ: 0, // Phase 3.4b will populate
+    reportDate: h.reportDate,
+    accession: h.accession,
+    cik: h.cik,
   }));
 
   // Top fund holders (mutual funds / ETFs)
@@ -526,11 +549,14 @@ function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    // Ownership breakdown
-    insiderPct: (majorBreakdown.insidersPercentHeld?.raw || 0) * 100,
-    institutionPct: (majorBreakdown.institutionsPercentHeld?.raw || 0) * 100,
-    institutionCount: majorBreakdown.institutionsCount?.raw || 0,
-    floatPct: (majorBreakdown.institutionsFloatPercentHeld?.raw || 0) * 100,
+    // Ownership breakdown (EDGAR-sourced)
+    insiderPct: 0, // retired from Yahoo majorHoldersBreakdown; frontend tolerates 0
+    institutionPct: edgar?.institutionPct ?? 0,
+    institutionCount: edgar?.institutionCount ?? 0,
+    floatPct: edgar?.institutionPct ?? 0,
+    sharesOutstanding: edgar?.sharesOutstanding ?? null,
+    institutionalAsOf: edgar?.asOf ?? null,
+    institutionalSource: edgar?.source ?? "sec-edgar-13f",
 
     // Money flow
     flowScore: combinedScore,
@@ -3612,7 +3638,7 @@ export async function registerRoutes(
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
       const raw = await getInstitutionalData(ticker);
-      const parsed = parseInstitutionalData(raw, ticker);
+      const parsed = await parseInstitutionalData(raw, ticker);
       if (!parsed) return res.status(404).json({ error: `No institutional data for ${ticker}` });
       res.json(parsed);
     } catch (error: any) {
