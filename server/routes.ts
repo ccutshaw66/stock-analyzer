@@ -994,6 +994,10 @@ export async function registerRoutes(
   });
 
   // ─── Admin Routes ───────────────────────────────────────────────────────────
+  // ─── Jobs Admin (Phase 2.5) ───────────────────────────────────────────────
+  const { jobsAdminRouter } = await import("./api/routes/jobs-admin");
+  app.use("/api", jobsAdminRouter);
+
   const ADMIN_EMAILS_LIST = ["awisper@me.com", "christopher.cutshaw@gmail.com", "admin@stockotter.ai"];
 
   app.get("/api/admin/users", async (req, res) => {
