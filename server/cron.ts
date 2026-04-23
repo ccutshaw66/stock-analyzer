@@ -2,6 +2,7 @@ import { storage, db } from "./storage";
 import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { registerJob } from "./platform/jobs/scheduler";
+import { rankedTopFilers } from "./data/providers/edgar.adapter";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -29,6 +30,31 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   });
 
   console.log("[CRON] Price snapshot job registered with scheduler (0 * * * *)");
+
+  // Daily refresh of EDGAR top-500 filer ranking at 3am ET (08:00 UTC).
+  // Primes the 24h cache so user-facing requests never hit the 25-min cold path.
+  // Pre-market hour, low SEC load. Hard 45-min cap.
+  registerJob({
+    id: "edgar-top-filers-refresh",
+    description: "Daily refresh of EDGAR top-500 13F filers ranked by AUM (primes 24h cache)",
+    cron: "0 8 * * *",
+    timeoutMs: 45 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const start = Date.now();
+      try {
+        const filers = await rankedTopFilers(500);
+        const secs = Math.round((Date.now() - start) / 1000);
+        console.log(`[CRON] EDGAR top-filers refresh complete: ${filers.length} filers in ${secs}s`);
+      } catch (e: any) {
+        console.error(`[CRON] EDGAR top-filers refresh failed: ${e?.message || e}`);
+        throw e;
+      }
+    },
+  });
+
+  console.log("[CRON] EDGAR top-filers refresh registered with scheduler (0 8 * * *)");
 }
 
 function isMarketHours(): boolean {
