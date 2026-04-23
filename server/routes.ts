@@ -3446,6 +3446,40 @@ export async function registerRoutes(
     }
   });
 
+  // Quick scanner gate result for a single ticker (used by portfolio pips).
+  // Uses the unified analyzer + 15min cache shared with the watchlist refresh path.
+  app.get("/api/scanner-v2/quick/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = String(req.params.ticker || "").toUpperCase().trim();
+      if (!ticker) return res.status(400).json({ error: "ticker required" });
+
+      const key = `watchlist:gate:${ticker}`;
+      const cached = getCached(key);
+      if (cached) return res.json({ ticker, score: cached.score, verdict: cached.verdict, cached: true });
+
+      const chart6m = await getChart(ticker, "6mo", "1d");
+      if (!chart6m || !chart6m.timestamp) {
+        return res.json({ ticker, score: null, verdict: null, reason: "no-chart" });
+      }
+      const q = chart6m.indicators?.quote?.[0] || {};
+      const closes = (q.close || []).map((v: any) => Number(v) || 0);
+      const highs = (q.high || []).map((v: any) => Number(v) || 0);
+      const lows = (q.low || []).map((v: any) => Number(v) || 0);
+      const vols = (q.volume || []).map((v: any) => Number(v) || 0);
+      if (closes.length < 60) {
+        return res.json({ ticker, score: null, verdict: null, reason: "insufficient-bars" });
+      }
+      const gateResult = analyzeTicker({ ticker, closes, highs, lows, volumes: vols, mmeData: null });
+      const score = gateResult.gatesCleared;
+      const verdict = gateResult.signal;
+      setCache(key, { score, verdict }, TTL.watchlist);
+      res.json({ ticker, score, verdict, cached: false });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to compute scanner pip" });
+    }
+  });
+
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {
@@ -4476,14 +4510,56 @@ export async function registerRoutes(
     }
   });
 
-  // Close a trade
+  // Close a trade (supports partial close via optional qty)
   app.post("/api/trades/:id/close", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { closeDate, closePrice, commOut } = req.body;
-      const trade = await storage.updateTrade(req.user!.id, id, { closeDate, closePrice, commOut });
-      if (!trade) return res.status(404).json({ error: "Trade not found" });
-      res.json(trade);
+      const { closeDate, closePrice, commOut, qty } = req.body;
+
+      // Load current trade to decide full vs partial
+      const current = await storage.getTrade(req.user!.id, id);
+      if (!current) return res.status(404).json({ error: "Trade not found" });
+
+      const totalQty = current.contractsShares || 0;
+      const closeQty = qty != null ? Number(qty) : totalQty;
+
+      if (closeQty <= 0 || closeQty > totalQty) {
+        return res.status(400).json({ error: `Invalid qty. Must be 1..${totalQty}` });
+      }
+
+      // Full close — preserve legacy behavior
+      if (closeQty >= totalQty) {
+        const trade = await storage.updateTrade(req.user!.id, id, { closeDate, closePrice, commOut });
+        return res.json(trade);
+      }
+
+      // Partial close — split into closed child + reduced open parent
+      const ratio = closeQty / totalQty;
+      const prorate = (v: any) => (v == null ? v : Number((Number(v) * ratio).toFixed(2)));
+      const remain  = (v: any) => (v == null ? v : Number((Number(v) * (1 - ratio)).toFixed(2)));
+
+      // Create the closed child row (copy open details, prorate $ fields)
+      const { id: _omitId, createdAt: _omitCreated, ...base } = current as any;
+      const closedChild = await storage.createTrade({
+        ...base,
+        contractsShares: closeQty,
+        commIn: prorate(current.commIn),
+        allocation: prorate(current.allocation),
+        maxProfit: prorate(current.maxProfit),
+        closeDate,
+        closePrice,
+        commOut,
+      });
+
+      // Reduce the original open row
+      const updatedOpen = await storage.updateTrade(req.user!.id, id, {
+        contractsShares: totalQty - closeQty,
+        commIn: remain(current.commIn),
+        allocation: remain(current.allocation),
+        maxProfit: remain(current.maxProfit),
+      });
+
+      res.json({ closed: closedChild, open: updatedOpen });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to close trade" });
     }
