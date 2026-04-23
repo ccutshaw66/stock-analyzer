@@ -28,6 +28,7 @@
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 import { computeRSISeries } from "./indicators";
+import { computeBBTC, computeVER, computeAMC } from "./signals";
 
 export type GateDirection = "BULLISH" | "BEARISH";
 
@@ -1229,15 +1230,17 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   }
 
   const lastIdx = closes.length - 1;
+  const li = lastIdx;
 
-  // ── Compute indicators (mirrors routes.ts /api/analyze exactly) ──
+  // ── Indicators (match /api/analyze exactly: same periods, same SMA200 reversion floor) ──
   const rsi14 = computeRSI(closes, 14);
   const ema9 = computeEMA(closes, 9);
   const ema21 = computeEMA(closes, 21);
   const ema50 = computeEMA(closes, 50);
   const atr14 = computeATR14(highs, lows, closes, 14);
+  const sma200Daily = computeSMA(closes, 200);
 
-  // Bollinger Bands
+  // Bollinger Bands (20, 2σ)
   const bbPeriod = 20;
   const bbSma = computeSMA(closes, bbPeriod);
   const bbUpper = new Array(closes.length).fill(NaN);
@@ -1251,7 +1254,7 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   }
   const volAvg20 = computeSMA(volumes, 20);
 
-  // MACD histogram
+  // MACD histogram (12/26/9)
   const macdEma12 = computeEMA(closes, 12);
   const macdEma26 = computeEMA(closes, 26);
   const macdLine = closes.map((_, i) => (!isNaN(macdEma12[i]) && !isNaN(macdEma26[i])) ? macdEma12[i] - macdEma26[i] : NaN);
@@ -1262,7 +1265,7 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   validIdx.forEach((idx, j) => { macdSignal[idx] = macdSigEma[j]; });
   const histogram = closes.map((_, i) => (!isNaN(macdLine[i]) && !isNaN(macdSignal[i])) ? macdLine[i] - macdSignal[i] : NaN);
 
-  // VAMI
+  // VAMI (scaled x8, same as /api/analyze)
   const vamiArr = new Array(closes.length).fill(0);
   for (let i = 1; i < closes.length; i++) {
     if (closes[i - 1] === 0 || isNaN(volAvg20[i]) || volAvg20[i] === 0) continue;
@@ -1274,121 +1277,41 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   }
   const vamiScaled = vamiArr.map(v => v * 8);
 
-  // ── BBTC EMA Pyramid (stateful walk — MATCHES /api/trade-analysis Strategy 1) ──
-  type BBTCSig = "BUY" | "SELL" | "ADD_LONG" | "REDUCE" | "STOP_HIT" | null;
-  const bbtcSignals: BBTCSig[] = new Array(closes.length).fill(null);
-  {
-    let inPosition = false;
-    let positionSide: "LONG" | "SHORT" | null = null;
-    let entryPrice = 0;
-    let highestSinceEntry = 0;
-    for (let i = 1; i < closes.length; i++) {
-      if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
-      const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
-      const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
-      if (!inPosition) {
-        if (crossAbove && closes[i] > ema50[i]) {
-          bbtcSignals[i] = "BUY"; inPosition = true; positionSide = "LONG"; entryPrice = closes[i]; highestSinceEntry = highs[i];
-        } else if (crossBelow && closes[i] < ema50[i]) {
-          bbtcSignals[i] = "SELL"; inPosition = true; positionSide = "SHORT"; entryPrice = closes[i]; highestSinceEntry = highs[i];
-        }
-      } else {
-        highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
-        if (positionSide === "LONG") {
-          const stopLoss = entryPrice - atr14[i] * 2.0;
-          const trailStop = highestSinceEntry - atr14[i] * 1.5;
-          const target = entryPrice + atr14[i] * 3.0;
-          if (lows[i] <= stopLoss || lows[i] <= trailStop) {
-            bbtcSignals[i] = "STOP_HIT"; inPosition = false; positionSide = null;
-          } else if (highs[i] >= target) {
-            bbtcSignals[i] = "REDUCE";
-          } else if (crossAbove && closes[i] > ema50[i]) {
-            bbtcSignals[i] = "ADD_LONG";
-          } else if (crossBelow && closes[i] < ema50[i]) {
-            bbtcSignals[i] = "SELL"; inPosition = false; positionSide = null;
-          }
-        } else if (positionSide === "SHORT") {
-          if (crossAbove && closes[i] > ema50[i]) {
-            bbtcSignals[i] = "BUY"; inPosition = false; positionSide = null;
-          } else if (crossBelow && closes[i] < ema50[i]) {
-            bbtcSignals[i] = "ADD_LONG";
-          }
-        }
-      }
-    }
-  }
-  // Most recent BBTC state — walk all of history
-  let lastBbtcSignal: BBTCSig = null;
-  for (let i = lastIdx; i >= 0; i--) { if (bbtcSignals[i]) { lastBbtcSignal = bbtcSignals[i]; break; } }
-  let bbtcSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-  if (lastBbtcSignal === "BUY" || lastBbtcSignal === "ADD_LONG") bbtcSignal = "ENTER";
-  else if (lastBbtcSignal === "SELL" || lastBbtcSignal === "STOP_HIT" || lastBbtcSignal === "REDUCE") bbtcSignal = "SELL";
+  // ── Strategies (SHARED helpers — single source of truth for BBTC/VER/AMC) ──
+  // This is the ONLY computation path for scanner + watchlist + portfolio pip +
+  // /api/analyze. Any divergence is a bug. Do NOT inline strategy logic here.
+  const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+  const bbtcSignal = bbtcResult.topSignal;
+  const bbtcBias = bbtcResult.bias;
+  const bbtcTrend = bbtcResult.trend;
 
-  const e9 = ema9[lastIdx], e21 = ema21[lastIdx], e50 = ema50[lastIdx], px = closes[lastIdx];
-  let bbtcBias: "LONG" | "SHORT" | "FLAT" = "FLAT";
-  let bbtcTrend: "UP" | "DOWN" | "SIDEWAYS" = "SIDEWAYS";
-  if (!isNaN(e9) && !isNaN(e21) && !isNaN(e50)) {
-    if (e9 > e21 && px > e50) { bbtcBias = "LONG"; bbtcTrend = "UP"; }
-    else if (e9 < e21 && px < e50) { bbtcBias = "SHORT"; bbtcTrend = "DOWN"; }
-  }
+  const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+  const verSignal = verResult.topSignal;
 
-  // ── VER (full-history scan — MATCHES /api/trade-analysis Strategy 2) ──
-  // Volume spike threshold = 2.0x avg (was 1.8x), scan from day 2 to lastIdx
-  type VERSig = "BUY" | "SELL" | null;
-  const verSignals: VERSig[] = new Array(closes.length).fill(null);
-  for (let i = 2; i < closes.length; i++) {
-    if (isNaN(rsi14[i]) || isNaN(rsi14[i - 1]) || isNaN(bbUpper[i]) || isNaN(bbLower[i]) || isNaN(volAvg20[i])) continue;
-    const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 2;
-    if (i >= 5) {
-      let hasBullishDiv = false;
-      for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
-        const prevIdx = i - lookback;
-        if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
-        if (closes[i] < closes[prevIdx] && rsi14[i] > rsi14[prevIdx] && rsi14[i] < 40) { hasBullishDiv = true; break; }
-      }
-      const touchedLowerBB = lows[i] <= bbLower[i] || closes[i - 1] <= bbLower[i - 1];
-      const closedBackInside = closes[i] > bbLower[i];
-      if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) verSignals[i] = "BUY";
-    }
-    if (i >= 5) {
-      let hasBearishDiv = false;
-      for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
-        const prevIdx = i - lookback;
-        if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
-        if (closes[i] > closes[prevIdx] && rsi14[i] < rsi14[prevIdx] && rsi14[i] > 60) { hasBearishDiv = true; break; }
-      }
-      const touchedUpperBB = highs[i] >= bbUpper[i] || closes[i - 1] >= bbUpper[i - 1];
-      const closedBackInsideUpper = closes[i] < bbUpper[i];
-      if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) verSignals[i] = "SELL";
-    }
-  }
-  // Most recent VER across entire history
-  let lastVerSignal: VERSig = null;
-  for (let i = lastIdx; i >= 0; i--) { if (verSignals[i]) { lastVerSignal = verSignals[i]; break; } }
-  let verSignal: "HOLD" | "ENTER" | "SELL" = "HOLD";
-  if (lastVerSignal === "BUY") verSignal = "ENTER";
-  else if (lastVerSignal === "SELL") verSignal = "SELL";
-
-  // verRsi & verVolRatio reported from CURRENT bar (matches /api/analyze lines 2600-2601)
+  // Current-bar VER reporting (matches /api/analyze lines 2470-2474)
   const currentVol = volumes[lastIdx] || 0;
   const curAvgVol = !isNaN(volAvg20[lastIdx]) ? volAvg20[lastIdx] : 0;
   const curVolRatio = curAvgVol > 0 ? currentVol / curAvgVol : 0;
   const verRsi: number | null = !isNaN(rsi14[lastIdx]) ? Number(rsi14[lastIdx].toFixed(1)) : null;
   const verVolRatio: number | null = Number(curVolRatio.toFixed(2));
 
-  // ── AMC score (matches /api/analyze exactly) ──
-  const li = lastIdx;
-  let amcScore = 0;
-  if (!isNaN(histogram[li]) && histogram[li] > 0 && histogram[li] > (histogram[li - 1] || 0)) amcScore++;
-  if (!isNaN(rsi14[li]) && rsi14[li] >= 45 && rsi14[li] <= 65) amcScore++;
-  if (!isNaN(e9) && !isNaN(e50) && closes[li] > e9 && e9 > e50) amcScore++;
-  if (vamiScaled[li] > 0 && vamiScaled[li] > vamiScaled[li - 1]) amcScore++;
-  if (!isNaN(e9) && !isNaN(e21) && Math.abs(e9 - e21) / closes[li] * 100 > 0.5) amcScore++;
+  // AMC — Trade Analysis knobs: EMA9/50 stack, EMA21 strength ref, SMA200*0.95 reversion floor
+  const sma200ScaledTA = sma200Daily.map(v => isNaN(v) ? NaN : v * 0.95);
+  const amcResult = computeAMC({
+    closes,
+    histogram,
+    rsi14,
+    trendShortEma: ema9,
+    trendLongEma: ema50,
+    trendStrengthRefEma: ema21,
+    vamiScaled,
+    reversionRefLevel: sma200ScaledTA,
+    reversionDirection: "above",
+  });
+  const amcScore = amcResult.score;
+  const amcSignal = amcResult.signal;
 
-  let amcSignal: "ENTER" | "HOLD" | "SELL" = "HOLD";
-  if (amcScore >= 4 && closes[li] > closes[li - 1]) amcSignal = "ENTER";
-  if (!isNaN(rsi14[li]) && rsi14[li] > 75) amcSignal = "SELL";
-  if (!isNaN(histogram[li]) && histogram[li] < 0 && !isNaN(histogram[li - 1]) && histogram[li - 1] >= 0) amcSignal = "SELL";
+  const e9 = ema9[lastIdx], e21 = ema21[lastIdx], e50 = ema50[lastIdx];
 
   return runGateSystem({
     ticker,

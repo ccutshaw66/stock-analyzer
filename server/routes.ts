@@ -3454,7 +3454,7 @@ export async function registerRoutes(
       const ticker = String(req.params.ticker || "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker required" });
 
-      const key = `watchlist:gate:${ticker}`;
+      const key = `v2:gate:${ticker}`;
       const cached = getCached(key);
       if (cached) return res.json({ ticker, score: cached.score, verdict: cached.verdict, cached: true });
 
@@ -3493,7 +3493,7 @@ export async function registerRoutes(
       // Force=1 (manual Refresh button) bypasses cache; normal page loads reuse.
       const toCompute: typeof items = [];
       for (const item of items) {
-        const key = `watchlist:gate:${item.ticker.toUpperCase()}`;
+        const key = `v2:gate:${item.ticker.toUpperCase()}`;
         const cached = force ? null : getCached(key);
         if (cached) {
           results.push({ ...item, score: cached.score, verdict: cached.verdict });
@@ -3527,7 +3527,7 @@ export async function registerRoutes(
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
-              setCache(`watchlist:gate:${item.ticker.toUpperCase()}`, { score, verdict }, TTL.watchlist);
+              setCache(`v2:gate:${item.ticker.toUpperCase()}`, { score, verdict }, TTL.watchlist);
               console.log(`[watchlist-refresh] ${item.ticker}: ${verdict} (${score} gates)`);
               return { ...item, score, verdict };
             } catch (err: any) {

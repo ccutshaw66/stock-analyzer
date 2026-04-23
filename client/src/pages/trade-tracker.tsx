@@ -13,14 +13,24 @@ import { HelpBlock } from "@/components/HelpBlock";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
 // Lightweight badge that calls /api/scanner-v2/quick/:ticker and shows
-// the gate count + verdict next to a position's symbol. 15min cache on server.
-const SCAN_VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
-  STRONG_BUY: { bg: "bg-green-500/15", text: "text-green-400" },
-  BUY:        { bg: "bg-green-500/10", text: "text-green-300" },
-  HOLD:       { bg: "bg-yellow-500/15", text: "text-yellow-400" },
-  AVOID:      { bg: "bg-red-500/15", text: "text-red-400" },
-  SELL:       { bg: "bg-red-500/20", text: "text-red-500" },
-};
+// the SAME 3-gate verdict as watchlist + trade analysis. 15min cache on server.
+//
+// Engine verdict language (from signal-engine.ts):
+//   "GO ↑" / "GO ↓"         = 3 gates cleared (best)
+//   "SET ↑" / "SET ↓"        = 2 gates cleared
+//   "READY ↑" / "READY ↓"    = 1 gate cleared
+//   "PULLBACK" (+ zone)      = prior setup in buyable pullback
+//   "GATES CLOSED"           = conditions stale
+//   "NO SETUP"               = nothing here
+function classifyGateVerdict(verdict: string): { bg: string; text: string; label: string } {
+  const v = verdict || "";
+  if (v.startsWith("GO"))       return { bg: "bg-green-500/20",  text: "text-green-400",       label: v };
+  if (v.startsWith("SET"))      return { bg: "bg-green-500/10",  text: "text-green-300",       label: v };
+  if (v.startsWith("READY"))    return { bg: "bg-yellow-500/15", text: "text-yellow-400",      label: v };
+  if (v.startsWith("PULLBACK")) return { bg: "bg-blue-500/15",   text: "text-blue-400",        label: v };
+  if (v.startsWith("GATES"))    return { bg: "bg-muted",         text: "text-muted-foreground", label: "CLOSED" };
+  return                          { bg: "bg-muted",         text: "text-muted-foreground", label: "NO SETUP" };
+}
 
 const ScannerPip = memo(function ScannerPip({ ticker }: { ticker: string }) {
   const { data, isLoading } = useQuery<{ score: number | null; verdict: string | null }>({
@@ -33,14 +43,13 @@ const ScannerPip = memo(function ScannerPip({ ticker }: { ticker: string }) {
     retry: false,
   });
   if (isLoading) return <span className="ml-1.5 text-[9px] text-muted-foreground/50">…</span>;
-  if (!data || data.score == null) return null;
-  const verdict = data.verdict || "";
-  const short = verdict.replace("STRONG_", "S-").replace("_", "");
-  const col = SCAN_VERDICT_COLORS[verdict] || { bg: "bg-muted", text: "text-muted-foreground" };
+  if (!data || data.verdict == null) return null;
+  const { bg, text, label } = classifyGateVerdict(data.verdict);
+  const gates = data.score ?? 0;
   return (
-    <span className={`ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded tabular-nums ${col.bg} ${col.text}`}
-      title={`Scanner 2.0: ${verdict} (${data.score} gates)`}>
-      {data.score}·{short || "?"}
+    <span className={`ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded tabular-nums ${bg} ${text}`}
+      title={`Scanner 2.0: ${data.verdict} (${gates}/3 gates)`}>
+      {gates}·{label}
     </span>
   );
 });
