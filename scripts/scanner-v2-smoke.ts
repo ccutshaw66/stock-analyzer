@@ -27,7 +27,7 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  console.log("\nScanner 2.0 smoke test (3.5.6 — BB + ATR + RelVol + 52w + Gap + Earnings + Analyst + Insider)\n");
+  console.log("\nScanner 2.0 smoke test (3.5.8 — all 9 signals + float-multiplier scoring)\n");
 
   // 1) Small universe to keep smoke quick
   console.log("1) Small scan (200 tickers, mega-cap bias for data quality)");
@@ -46,7 +46,7 @@ async function main() {
   if (scan.results.length) {
     const r0 = scan.results[0];
     check("row-shape", !!r0.symbol && typeof r0.price === "number" && Array.isArray(r0.signals), `top=${r0.symbol} score=${r0.score}`);
-    check("row-signals-length", r0.signals.length >= 3 && r0.signals.length <= 8, `${r0.signals.length} signal results (expect 3-8, catalyst detectors skip if no FMP data)`);
+    check("row-signals-length", r0.signals.length >= 3 && r0.signals.length <= 9, `${r0.signals.length} signal results (expect 3-9, catalyst detectors skip if no FMP data)`);
   }
 
   // At least SOME tickers should have a triggered signal in a 200-ticker mega-cap slice
