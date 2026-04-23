@@ -2745,7 +2745,30 @@ export async function registerRoutes(
       sortBy = "dayvolume",
     } = options;
 
-    // Primary: Polygon grouped-daily screener.
+    // Primary: FMP /stable/company-screener.
+    // Filters sector, market-cap, price, volume server-side in a single call.
+    // Returns US-listed common stocks only (no ETFs, no funds, actively trading).
+    try {
+      const { fmpScreenerSymbols } = await import("./data/providers/fmp.adapter");
+      const tickers = await fmpScreenerSymbols({
+        minPrice,
+        maxPrice,
+        sector,
+        minMarketCap,
+        maxMarketCap,
+        minVolume,
+        count,
+      });
+      if (tickers.length) {
+        console.log(`[screener] FMP returned ${tickers.length} tickers`);
+        return tickers;
+      }
+      console.log(`[screener] FMP returned 0 tickers, falling back to Polygon`);
+    } catch (err: any) {
+      console.log(`[screener] FMP failed, falling back to Polygon:`, err?.message || err);
+    }
+
+    // Fallback: Polygon grouped-daily screener.
     // NOTE: Polygon doesn't support sector filtering server-side; if sector is specified,
     // the downstream per-ticker analysis will filter on sector from ticker details.
     try {
@@ -2759,55 +2782,10 @@ export async function registerRoutes(
       });
       if (tickers.length) return tickers;
     } catch (err: any) {
-      console.log(`[screener] Polygon failed, falling back to Yahoo:`, err.message);
+      console.log(`[screener] Polygon also failed:`, err?.message || err);
     }
 
-    // Fallback: Yahoo screener (legacy)
-    const operands: any[] = [
-      { operator: "or", operands: [{ operator: "EQ", operands: ["region", "us"] }] },
-      { operator: "gt", operands: ["dayvolume", minVolume] },
-      { operator: "gt", operands: ["intradaymarketcap", minMarketCap] },
-      { operator: "btwn", operands: ["intradayprice", minPrice, maxPrice] },
-    ];
-
-    if (maxMarketCap) {
-      operands.push({ operator: "lt", operands: ["intradaymarketcap", maxMarketCap] });
-    }
-
-    if (sector && sector !== "all") {
-      operands.push({ operator: "EQ", operands: ["sector", sector] });
-    }
-
-    const body = JSON.stringify({
-      offset: 0,
-      size: Math.min(count, 250),
-      sortField: sortBy,
-      sortType: "DESC",
-      quoteType: "EQUITY",
-      query: { operator: "AND", operands },
-    });
-
-    const data = await enqueue(async () => {
-      const { crumb, cookie } = await getYahooCrumb();
-      const resp = await fetch(
-        `https://query1.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`,
-        {
-          method: "POST",
-          headers: { ...YF_BASE_HEADERS, "Content-Type": "application/json", Cookie: cookie },
-          body,
-        }
-      );
-      if (resp.status === 429) throw new Error("Yahoo Finance rate limited (429)");
-      if (!resp.ok) {
-        console.log(`[screener] Error: ${resp.status}`);
-        return null;
-      }
-      return resp.json();
-    }, "screener");
-
-    if (!data) return [];
-    const quotes = data?.finance?.result?.[0]?.quotes || [];
-    return quotes.map((q: any) => q.symbol as string).filter(Boolean);
+    return [];
   }
 
   // ============================================================
