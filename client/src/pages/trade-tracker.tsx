@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
@@ -10,6 +10,40 @@ import {
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { HelpBlock } from "@/components/HelpBlock";
+
+// ─── Scanner Pip ──────────────────────────────────────────────────────────────
+// Lightweight badge that calls /api/scanner-v2/quick/:ticker and shows
+// the gate count + verdict next to a position's symbol. 15min cache on server.
+const SCAN_VERDICT_COLORS: Record<string, { bg: string; text: string }> = {
+  STRONG_BUY: { bg: "bg-green-500/15", text: "text-green-400" },
+  BUY:        { bg: "bg-green-500/10", text: "text-green-300" },
+  HOLD:       { bg: "bg-yellow-500/15", text: "text-yellow-400" },
+  AVOID:      { bg: "bg-red-500/15", text: "text-red-400" },
+  SELL:       { bg: "bg-red-500/20", text: "text-red-500" },
+};
+
+const ScannerPip = memo(function ScannerPip({ ticker }: { ticker: string }) {
+  const { data, isLoading } = useQuery<{ score: number | null; verdict: string | null }>({
+    queryKey: ["/api/scanner-v2/quick", ticker],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}`);
+      return res.json();
+    },
+    staleTime: 15 * 60 * 1000,
+    retry: false,
+  });
+  if (isLoading) return <span className="ml-1.5 text-[9px] text-muted-foreground/50">…</span>;
+  if (!data || data.score == null) return null;
+  const verdict = data.verdict || "";
+  const short = verdict.replace("STRONG_", "S-").replace("_", "");
+  const col = SCAN_VERDICT_COLORS[verdict] || { bg: "bg-muted", text: "text-muted-foreground" };
+  return (
+    <span className={`ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded tabular-nums ${col.bg} ${col.text}`}
+      title={`Scanner 2.0: ${verdict} (${data.score} gates)`}>
+      {data.score}·{short || "?"}
+    </span>
+  );
+});
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -600,8 +634,11 @@ function TradeForm({ mode, initial, settings, onClose }: {
 function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: () => void; settings: AccountSettings }) {
   const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
   const [closePrice, setClosePrice] = useState("");
+  const [qty, setQty] = useState(String(trade.contractsShares));
   const typeDef = TRADE_TYPES[trade.tradeType as TradeTypeCode];
   const isCredit = typeDef?.isCredit ?? trade.creditDebit === "CREDIT";
+  const qtyNum = Math.max(1, Math.min(trade.contractsShares, parseInt(qty) || 0));
+  const isPartial = qtyNum > 0 && qtyNum < trade.contractsShares;
 
   const closeMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -623,11 +660,11 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
     const numLegs = typeDef?.legs || 0;
     let commOut = 0;
     if (trade.tradeCategory === "Option") {
-      commOut = trade.contractsShares * numLegs * (settings.commPerOptionContract || 0.65);
+      commOut = qtyNum * numLegs * (settings.commPerOptionContract || 0.65);
     } else {
       commOut = settings.commPerSharesTrade || 0;
     }
-    closeMutation.mutate({ closeDate, closePrice: signedClose, commOut });
+    closeMutation.mutate({ closeDate, closePrice: signedClose, commOut, qty: qtyNum });
   };
 
   return (
@@ -638,6 +675,23 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={handleClose} className="p-4 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              Quantity to Close <span className="text-[10px] text-muted-foreground">(of {trade.contractsShares} {trade.tradeCategory === "Option" ? "contracts" : "shares"})</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input type="number" min={1} max={trade.contractsShares} step={1} value={qty}
+                onChange={e => setQty(e.target.value)}
+                className="flex-1 h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
+              <button type="button" onClick={() => setQty(String(trade.contractsShares))}
+                className="h-9 px-3 text-[11px] font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">All</button>
+              <button type="button" onClick={() => setQty(String(Math.max(1, Math.floor(trade.contractsShares / 2))))}
+                className="h-9 px-3 text-[11px] font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">½</button>
+            </div>
+            {isPartial && (
+              <p className="text-[10px] text-amber-400 mt-1">Partial close: {qtyNum} will close, {trade.contractsShares - qtyNum} stays open.</p>
+            )}
+          </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
             <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
@@ -965,6 +1019,7 @@ export default function TradeTracker() {
                       </td>
                       <td className="py-2 px-3 font-mono font-bold text-foreground">
                         {g.symbol}
+                        <ScannerPip ticker={g.symbol} />
                         {!isSingleLot && <span className="ml-1.5 text-[9px] font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
                       </td>
                       <td className="py-2 px-3"><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{g.tradeType}</span></td>
