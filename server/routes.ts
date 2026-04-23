@@ -29,7 +29,7 @@ import {
   getPolygonEarningsRow,
 } from "./polygon";
 import { fmpAdapter } from "./data/providers/fmp.adapter";
-import { getInstitutionalSummary } from "./data/providers/edgar.adapter";
+import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
 
@@ -495,7 +495,10 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   // EDGAR institutional summary
   let edgar: Awaited<ReturnType<typeof getInstitutionalSummary>> | null = null;
   try {
-    edgar = await getInstitutionalSummary(ticker, 25);
+    // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
+    // present (even past TTL), triggers a background refresh. This prevents
+    // the 25-min EDGAR cold path from blocking a user-facing request.
+    edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
   } catch (e) {
     console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
     edgar = null;
@@ -1293,6 +1296,28 @@ export async function registerRoutes(
       (e) => console.error(`[admin] long-range warmup failed:`, e?.message || e),
     );
     res.json({ started: true, maxSymbols, note: "Running in background; check /api/admin/long-range-cache for progress." });
+  });
+
+  // Phase 3.8: Institutional disk cache admin
+  app.get("/api/admin/institutional-cache", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    const { listInstitutional } = await import("./institutional-cache");
+    const entries = listInstitutional();
+    res.json({
+      count: entries.length,
+      entries: entries.slice(0, 500),
+    });
+  });
+
+  app.post("/api/admin/institutional-warmup", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    const maxSymbols = Math.min(Number(req.query.max) || 50, 500);
+    const { warmInstitutionalCache } = await import("./institutional-warmup");
+    warmInstitutionalCache({ maxSymbols }).then(
+      (r) => console.log(`[admin] institutional warmup: ${JSON.stringify(r).slice(0, 400)}`),
+      (e) => console.error(`[admin] institutional warmup failed:`, e?.message || e),
+    );
+    res.json({ started: true, maxSymbols, note: "Running in background; check /api/admin/institutional-cache for progress." });
   });
 
   // ─── MM Exposure (Phase 3.6) ────────────────────────────────────────────

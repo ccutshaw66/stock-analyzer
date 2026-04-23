@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { registerJob } from "./platform/jobs/scheduler";
 import { rankedTopFilers } from "./data/providers/edgar.adapter";
 import { warmLongRangeCache } from "./long-range-warmup";
+import { warmInstitutionalCache } from "./institutional-warmup";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -75,6 +76,27 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   });
 
   console.log("[CRON] Long-range chart warmup registered with scheduler (30 7 * * *)");
+
+  // Phase 3.8: Institutional (EDGAR 13F) disk cache warmup. Runs at 5am ET
+  // (09:00 UTC), after the top-filers refresh at 3am ET so the filer list
+  // is already primed. Per-ticker cold path is expensive (~25 min on a
+  // completely-fresh ticker; much faster once the global filer ranking is
+  // cached), so we cap the batch at 100 symbols and run serially to respect
+  // SEC rate limits.
+  registerJob({
+    id: "institutional-cache-warmup",
+    description: "Nightly EDGAR 13F institutional summary cache warmup (open-trade symbols + mega-cap floor)",
+    cron: "0 9 * * *",
+    timeoutMs: 90 * 60 * 1000, // 90 min hard cap
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await warmInstitutionalCache({ maxSymbols: 100 });
+      console.log(`[CRON] institutional warmup: ${res.written} written, ${res.skipped} fresh, ${res.errors} errors`);
+    },
+  });
+
+  console.log("[CRON] Institutional cache warmup registered with scheduler (0 9 * * *)");
 }
 
 function isMarketHours(): boolean {
