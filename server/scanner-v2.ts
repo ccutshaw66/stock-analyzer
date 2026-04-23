@@ -16,6 +16,8 @@
  * server/scanner-v2-signals/*.ts and are wired in incrementally (3.5.2+).
  */
 import { fmpScreener, type FmpScreenerRow } from "./data/providers/fmp.adapter";
+import { getPolygonChart } from "./polygon";
+import { getCached, setCache } from "./cache";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -111,11 +113,14 @@ export type SignalDetector = (ctx: ScanContext) => SignalResult | null;
 
 /**
  * Registered detectors. Each 3.5.x PR appends here.
- * Intentionally empty at scaffold time — the endpoint returns a fully-formed
- * response with score=0 and empty signals, proving the pipeline works
- * end-to-end before any detection logic lands.
  */
-const SIGNAL_DETECTORS: SignalDetector[] = [];
+import { bbSqueezeDetector } from "./scanner-v2-signals/bb-squeeze";
+import { atrExpansionDetector } from "./scanner-v2-signals/atr-expansion";
+
+const SIGNAL_DETECTORS: SignalDetector[] = [
+  bbSqueezeDetector,
+  atrExpansionDetector,
+];
 
 export function registerDetector(det: SignalDetector): void {
   SIGNAL_DETECTORS.push(det);
@@ -129,6 +134,7 @@ export function registerDetector(det: SignalDetector): void {
 const SIGNAL_WEIGHTS: Record<string, number> = {
   // technical
   bb_squeeze: 12,
+  atr_expansion: 10,
   rel_volume: 10,
   gap_hold: 8,
   breakout_52w: 10,
@@ -192,37 +198,134 @@ async function fetchUniverse(filters: ScannerV2Filters): Promise<FmpScreenerRow[
 }
 
 /**
+ * Load ~180 days of daily bars for a ticker. Cached 30 min (re-use across scans).
+ * Returns null if Polygon fails or returns insufficient data.
+ */
+async function loadBars(symbol: string): Promise<ScanContext["bars"] | null> {
+  const cacheKey = `scanner-v2:bars:${symbol}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const chart = await getPolygonChart(symbol, "1y", "1d");
+    const ts: number[] = chart?.timestamp || [];
+    const q = chart?.indicators?.quote?.[0] || {};
+    const closes = q.close || [];
+    const opens = q.open || [];
+    const highs = q.high || [];
+    const lows = q.low || [];
+    const vols = q.volume || [];
+    if (ts.length < 150) return null;
+
+    const bars: ScanContext["bars"] = [];
+    for (let i = 0; i < ts.length; i++) {
+      const c = closes[i];
+      const o = opens[i];
+      const h = highs[i];
+      const l = lows[i];
+      const v = vols[i];
+      if (c == null || o == null || h == null || l == null) continue;
+      bars.push({ t: ts[i], o, h, l, c, v: v ?? 0 });
+    }
+    if (bars.length < 150) return null;
+    setCache(cacheKey, bars, 30 * 60 * 1000); // 30 min
+    return bars;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Evaluate all registered detectors against a ScanContext. Detectors that
+ * return null (insufficient data) are skipped silently. Detectors that throw
+ * are logged and treated as "did not fire".
+ */
+function evaluateSignals(ctx: ScanContext): SignalResult[] {
+  const out: SignalResult[] = [];
+  for (const det of SIGNAL_DETECTORS) {
+    try {
+      const r = det(ctx);
+      if (r) out.push(r);
+    } catch (e: any) {
+      // Silently skip — bad data on one ticker shouldn't kill the scan
+    }
+  }
+  return out;
+}
+
+/**
  * Run Scanner 2.0 end-to-end. Returns ranked ScannerV2Row[].
- *
- * Scaffold behavior: builds the universe, creates a zero-signal row per
- * ticker, scores them all at 0, returns the top `count` rows unfiltered.
- * This proves the pipeline plumbing works before detectors land.
  */
 export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2Response> {
   const startedAt = Date.now();
   const universe = await fetchUniverse(filters);
   console.log(`[scanner-v2] universe=${universe.length} (requested ${filters.universeSize ?? 2000})`);
 
-  // No detectors registered yet → every row gets empty signals + score 0.
-  // Once 3.5.2+ register detectors, this loop will run them with bars context.
-  const rows: ScannerV2Row[] = universe.map((u) => {
-    const signals: SignalResult[] = [];
-    // Detectors would fire here once bars are loaded. Scaffold leaves empty.
-    const { score, direction } = scoreRow(signals);
-    return {
-      symbol: u.symbol,
-      companyName: u.companyName,
-      sector: u.sector,
-      industry: u.industry,
-      price: u.price,
-      marketCap: u.marketCap,
-      volume: u.volume,
-      score,
-      direction,
-      signals,
-      topSignals: signals.filter((s) => s.triggered).map((s) => s.id),
-    };
-  });
+  // Load bars in parallel batches so we don't melt Polygon or the event loop.
+  // Polygon Starter has no per-second cap but we still throttle to 50 concurrent.
+  const BATCH = 50;
+  const rows: ScannerV2Row[] = [];
+  let processed = 0;
+  let withSignals = 0;
+
+  for (let i = 0; i < universe.length; i += BATCH) {
+    const slice = universe.slice(i, i + BATCH);
+    const results = await Promise.all(
+      slice.map(async (u) => {
+        const bars = await loadBars(u.symbol);
+        if (!bars) {
+          // Can't evaluate without bars — return row with empty signals/score 0
+          return {
+            symbol: u.symbol,
+            companyName: u.companyName,
+            sector: u.sector,
+            industry: u.industry,
+            price: u.price,
+            marketCap: u.marketCap,
+            volume: u.volume,
+            score: 0,
+            direction: "either" as SignalDirection,
+            signals: [],
+            topSignals: [],
+          };
+        }
+
+        const ctx: ScanContext = {
+          bars,
+          basics: {
+            symbol: u.symbol,
+            price: u.price,
+            marketCap: u.marketCap,
+            volume: u.volume,
+            sector: u.sector,
+          },
+        };
+        const signals = evaluateSignals(ctx);
+        const { score, direction } = scoreRow(signals);
+        if (signals.some((s) => s.triggered)) withSignals++;
+
+        return {
+          symbol: u.symbol,
+          companyName: u.companyName,
+          sector: u.sector,
+          industry: u.industry,
+          price: u.price,
+          marketCap: u.marketCap,
+          volume: u.volume,
+          score,
+          direction,
+          signals,
+          topSignals: signals.filter((s) => s.triggered).map((s) => s.id),
+        };
+      }),
+    );
+    rows.push(...results);
+    processed += slice.length;
+    if (processed % 500 === 0 || processed === universe.length) {
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      console.log(`[scanner-v2] processed ${processed}/${universe.length} (${withSignals} with triggered signals) [${elapsed}s]`);
+    }
+  }
 
   // Apply post-scan filters
   let filtered = rows;

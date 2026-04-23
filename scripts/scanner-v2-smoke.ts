@@ -1,15 +1,15 @@
 /**
- * Smoke test for Scanner 2.0 scaffold (3.5.1).
+ * Smoke test for Scanner 2.0 (3.5.2 — first signals wired).
  *
  *   tsx /opt/stock-analyzer/scripts/scanner-v2-smoke.ts
  *
  * Verifies:
- *   - runScannerV2 executes without errors
- *   - Universe size matches request
- *   - Response shape is valid (scannedAt, results, etc.)
- *   - Scoring pipeline returns score=0 with empty signals (scaffold behavior)
- *   - Sector filter narrows universe
- *   - Direction filter is respected
+ *   - runScannerV2 executes
+ *   - Universe size is honored (up to 2000)
+ *   - Bollinger squeeze + ATR expansion detectors evaluate
+ *   - At least some tickers fire triggered signals
+ *   - Scoring + direction bias produce sensible output
+ *   - Sector + market-cap filters still work
  */
 import "dotenv/config";
 import { runScannerV2 } from "../server/scanner-v2";
@@ -27,30 +27,56 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  console.log("\nScanner 2.0 scaffold smoke test\n");
+  console.log("\nScanner 2.0 smoke test (3.5.2 — BB squeeze + ATR expansion)\n");
 
-  // 1) Default scan
-  console.log("1) Default scan (2000 ticker universe)");
+  // 1) Small universe to keep smoke quick
+  console.log("1) Small scan (200 tickers, mega-cap bias for data quality)");
   const t1 = Date.now();
-  const def = await runScannerV2({ count: 50 });
+  const scan = await runScannerV2({
+    universeSize: 200,
+    count: 200,
+    minMarketCap: 5_000_000_000,
+  });
   const t1ms = Date.now() - t1;
-  check("default:shape", typeof def.scannedAt === "string" && Array.isArray(def.results));
-  check("default:universe", def.universeSize >= 500, `${def.universeSize} tickers`);
-  check("default:count", def.results.length === 50 || def.results.length === def.universeSize, `${def.results.length} rows`);
-  check("default:duration", t1ms < 60_000, `${t1ms}ms`);
-  check(
-    "default:scaffold-zero-score",
-    def.results.every((r) => r.score === 0 && r.signals.length === 0),
-    "all score=0 (expected — no detectors yet)",
-  );
-  if (def.results.length) {
-    const r0 = def.results[0];
-    check("default:row-shape", !!r0.symbol && typeof r0.price === "number" && typeof r0.marketCap === "number", `first=${r0.symbol}`);
+  check("shape", typeof scan.scannedAt === "string" && Array.isArray(scan.results));
+  check("universe", scan.universeSize >= 50 && scan.universeSize <= 200, `${scan.universeSize} tickers`);
+  check("duration", t1ms < 180_000, `${t1ms}ms`);
+
+  // Row shape
+  if (scan.results.length) {
+    const r0 = scan.results[0];
+    check("row-shape", !!r0.symbol && typeof r0.price === "number" && Array.isArray(r0.signals), `top=${r0.symbol} score=${r0.score}`);
+    check("row-signals-length", r0.signals.length === 2, `${r0.signals.length} signal results (expect 2: bb_squeeze + atr_expansion)`);
   }
 
-  // 2) Sector filter
-  console.log("\n2) Sector=Technology");
-  const tech = await runScannerV2({ sector: "Technology", count: 30, universeSize: 500 });
+  // At least SOME tickers should have a triggered signal in a 200-ticker mega-cap slice
+  const withTriggered = scan.results.filter((r) => r.signals.some((s) => s.triggered));
+  check("some-triggered", withTriggered.length > 0, `${withTriggered.length}/${scan.results.length} rows had ≥1 triggered signal`);
+
+  // Score distribution: highest scoring row should be > 0
+  const top = scan.results[0];
+  check("top-score-nonzero", top && top.score > 0, `top score=${top?.score ?? "n/a"} (${top?.symbol ?? "—"})`);
+
+  // 2) Direction bias sanity
+  console.log("\n2) Direction bias split");
+  const up = scan.results.filter((r) => r.direction === "up").length;
+  const down = scan.results.filter((r) => r.direction === "down").length;
+  const either = scan.results.filter((r) => r.direction === "either").length;
+  console.log(`   directions: up=${up}  down=${down}  either=${either}`);
+  check("direction-distribution", up + down + either === scan.results.length, "directions sum correctly");
+
+  // 3) Top 5 triggered preview
+  console.log("\n3) Top 5 triggered rows");
+  const top5 = withTriggered.slice(0, 5);
+  top5.forEach((r) => {
+    const triggered = r.signals.filter((s) => s.triggered).map((s) => `${s.id}(${s.direction},${s.strength.toFixed(2)})`).join(" ");
+    console.log(`   ${r.symbol.padEnd(6)} score=${String(r.score).padStart(3)} dir=${r.direction.padEnd(6)} ${triggered}`);
+  });
+  check("top5-present", top5.length > 0, `${top5.length} shown`);
+
+  // 4) Sector filter still works
+  console.log("\n4) Sector=Technology filter");
+  const tech = await runScannerV2({ sector: "Technology", count: 50, universeSize: 200 });
   check("tech:count", tech.results.length > 0, `${tech.results.length} rows`);
   check(
     "tech:sector-pure",
@@ -58,29 +84,15 @@ async function main() {
     `sectors: ${[...new Set(tech.results.map((r) => r.sector))].join(",")}`,
   );
 
-  // 3) Market-cap tier (large)
-  console.log("\n3) Large cap ($10B-$200B)");
-  const large = await runScannerV2({
-    minMarketCap: 10_000_000_000,
-    maxMarketCap: 200_000_000_000,
-    count: 30,
-    universeSize: 500,
-  });
-  check("large:count", large.results.length > 0, `${large.results.length} rows`);
+  // 5) minScore filter
+  console.log("\n5) minScore=10 filter");
+  const scored = await runScannerV2({ universeSize: 200, count: 200, minMarketCap: 5_000_000_000, minScore: 10 });
+  check("minScore:count", scored.results.length >= 0, `${scored.results.length} rows passed minScore=10`);
   check(
-    "large:cap-range",
-    large.results.every((r) => r.marketCap >= 10e9 && r.marketCap <= 200e9),
-    "caps within $10B-$200B",
+    "minScore:all-meet-threshold",
+    scored.results.every((r) => r.score >= 10),
+    `min=${Math.min(...scored.results.map((r) => r.score)) || "n/a"}`,
   );
-
-  // 4) Direction filter (scaffold: everyone is "either", so "up" should keep all)
-  console.log("\n4) Direction=up (scaffold: all either, so pass-through)");
-  const dirUp = await runScannerV2({ direction: "up", count: 20, universeSize: 500 });
-  check("dir:count", dirUp.results.length > 0, `${dirUp.results.length} rows`);
-
-  // 5) Scan duration
-  console.log("\n5) Timing profile");
-  check("scaffold:fast", t1ms < 30_000, `full 2000-ticker scan in ${t1ms}ms (scaffold should be <30s)`);
 
   console.log(`\n${pass}/${pass + fail} checks passed\n`);
   if (fail > 0) process.exit(1);

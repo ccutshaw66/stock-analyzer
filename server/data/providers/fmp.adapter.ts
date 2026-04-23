@@ -118,15 +118,16 @@ const US_EXCHANGES = new Set(["NYSE", "NASDAQ", "AMEX", "BATS"]);
  * restricted to US common stocks (no ETFs, no funds, actively trading).
  */
 export async function fmpScreener(filters: FmpScreenerFilters): Promise<FmpScreenerRow[]> {
-  const count = Math.min(filters.count ?? 100, 500);
+  const count = Math.min(filters.count ?? 100, 3000);
 
   // FMP param names are camelCase `More/LowerThan` style.
+  // FMP screener supports up to 10000 rows per call; we pull 2x count so the
+  // US-exchange + liquidity post-filter leaves enough headroom.
   const params: Record<string, any> = {
     isEtf: false,
     isFund: false,
     isActivelyTrading: true,
-    // Pull 3x the requested count so US-exchange filter leaves enough.
-    limit: Math.min(count * 3, 1000),
+    limit: Math.min(Math.max(count * 2, 300), 6000),
   };
   if (filters.minPrice != null) params.priceMoreThan = filters.minPrice;
   if (filters.maxPrice != null) params.priceLowerThan = filters.maxPrice;
