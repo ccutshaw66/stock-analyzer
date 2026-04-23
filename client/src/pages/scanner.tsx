@@ -9,6 +9,7 @@ import {
   SlidersHorizontal, Eye, EyeOff, Flame
 } from "lucide-react";
 import { Disclaimer } from "@/components/Disclaimer";
+import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 
 const SECTORS = [
   "All Sectors", "Technology", "Healthcare", "Financial Services",
@@ -166,6 +167,9 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
             <div className="ml-auto"><ScoreBar score={result.score} max={7} /></div>
           </div>
           <ConfirmationDetail c={result.confirmation} />
+          <div className="bg-background/40 rounded p-2">
+            <IndicatorOscillator ticker={result.ticker} bars={60} />
+          </div>
         </div>
       )}
     </div>
@@ -236,6 +240,9 @@ function AMCCard({ result, rank, onClick }: { result: any; rank: number; onClick
           <div className="text-center">
             <p className="text-[9px] text-muted-foreground uppercase">Close</p>
             <p className={`text-xs font-bold ${result.greenClose ? "text-green-400" : "text-red-400"}`}>{result.greenClose ? "Green ↑" : "Red ↓"}</p>
+          </div>
+          <div className="col-span-2 sm:col-span-5 bg-background/40 rounded p-2 mt-1">
+            <IndicatorOscillator ticker={result.ticker} bars={60} />
           </div>
         </div>
       )}
@@ -311,7 +318,11 @@ function ExplosionCard({ result, rank, onClick }: { result: any; rank: number; o
       )}
 
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-card-border/50 space-y-1">
+        <div className="mt-3 pt-3 border-t border-card-border/50 space-y-2">
+          {/* Indicator oscillator (MACD histogram + RSI) */}
+          <div className="bg-background/40 rounded p-2">
+            <IndicatorOscillator ticker={result.symbol} bars={60} />
+          </div>
           {(result.signals ?? []).map((s: any) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.triggered ? "bg-fuchsia-400" : "bg-muted-foreground/40"}`} />

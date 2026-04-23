@@ -3480,6 +3480,89 @@ export async function registerRoutes(
     }
   });
 
+  // Scanner 2.0 — indicator oscillator series (MACD histogram + RSI) for a ticker (last ~60 bars)
+  app.get("/api/scanner-v2/indicators/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = String(req.params.ticker || "").toUpperCase().trim();
+      if (!ticker) return res.status(400).json({ error: "ticker required" });
+      const bars = Number(req.query.bars) || 60;
+
+      const key = `v2:osc:${ticker}:${bars}`;
+      const cached = getCached(key);
+      if (cached) return res.json({ ticker, ...cached, cached: true });
+
+      const chart = await getChart(ticker, "6mo", "1d");
+      if (!chart?.timestamp) return res.json({ ticker, series: [], reason: "no-chart" });
+      const q = chart.indicators?.quote?.[0] || {};
+      const closes: number[] = (q.close || []).map((v: any) => Number(v) || 0).filter((n: number) => n > 0);
+      const ts: number[] = chart.timestamp || [];
+      if (closes.length < 60) return res.json({ ticker, series: [], reason: "insufficient-bars" });
+
+      // EMA helper
+      const emaSeries = (vals: number[], p: number) => {
+        const k = 2 / (p + 1);
+        const out: number[] = [];
+        let prev = vals[0];
+        for (let i = 0; i < vals.length; i++) {
+          prev = i === 0 ? vals[0] : vals[i] * k + prev * (1 - k);
+          out.push(prev);
+        }
+        return out;
+      };
+
+      // MACD(12,26,9) series
+      const emaFast = emaSeries(closes, 12);
+      const emaSlow = emaSeries(closes, 26);
+      const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
+      const signalLine = emaSeries(macdLine, 9);
+      const histogram = macdLine.map((v, i) => v - signalLine[i]);
+
+      // RSI(14) series — Wilder's smoothing
+      const rsiSeries: number[] = [];
+      const period = 14;
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 1; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1];
+        const gain = diff > 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+        if (i <= period) {
+          avgGain += gain; avgLoss += loss;
+          if (i === period) { avgGain /= period; avgLoss /= period; }
+          rsiSeries.push(NaN);
+        } else {
+          avgGain = (avgGain * (period - 1) + gain) / period;
+          avgLoss = (avgLoss * (period - 1) + loss) / period;
+          const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+          const rsi = 100 - 100 / (1 + rs);
+          rsiSeries.push(rsi);
+        }
+      }
+      rsiSeries.unshift(NaN); // align length with closes
+
+      // Build last N bars
+      const n = Math.min(bars, closes.length);
+      const start = closes.length - n;
+      const series = [];
+      for (let i = start; i < closes.length; i++) {
+        series.push({
+          t: ts[i] ? ts[i] * 1000 : 0,
+          close: closes[i],
+          macd: Number(macdLine[i]?.toFixed(4)) || 0,
+          signal: Number(signalLine[i]?.toFixed(4)) || 0,
+          hist: Number(histogram[i]?.toFixed(4)) || 0,
+          rsi: Number.isFinite(rsiSeries[i]) ? Number(rsiSeries[i].toFixed(2)) : null,
+        });
+      }
+
+      const payload = { series };
+      setCache(key, payload, TTL.watchlist); // 15min
+      res.json({ ticker, ...payload, cached: false });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to compute indicators" });
+    }
+  });
+
   // Refresh scores for all favorites in a list
   app.post("/api/favorites/:listType/refresh", async (req, res) => {
     try {
