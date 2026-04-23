@@ -6,7 +6,7 @@ import { useTicker } from "@/contexts/TickerContext";
 import {
   Radar, Search, TrendingUp, TrendingDown, Minus,
   Activity, BarChart3, Volume2, Zap, ChevronDown, ChevronUp,
-  SlidersHorizontal, Eye, EyeOff
+  SlidersHorizontal, Eye, EyeOff, Flame
 } from "lucide-react";
 import { Disclaimer } from "@/components/Disclaimer";
 
@@ -243,12 +243,102 @@ function AMCCard({ result, rank, onClick }: { result: any; rank: number; onClick
   );
 }
 
+// ─── Scanner 2.0 Explosion Card ───
+
+function ExplosionCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const score = result.score ?? 0;
+  const direction = result.direction ?? "either";
+  const triggered = (result.signals ?? []).filter((s: any) => s.triggered);
+
+  const dirStyle =
+    direction === "up" ? "bg-green-500/20 text-green-400 border-green-500/40"
+    : direction === "down" ? "bg-red-500/20 text-red-400 border-red-500/40"
+    : "bg-zinc-500/20 text-zinc-400 border-zinc-500/40";
+
+  const scoreColor =
+    score >= 30 ? "bg-fuchsia-500 text-white"
+    : score >= 20 ? "bg-fuchsia-500/80 text-white"
+    : score >= 10 ? "bg-fuchsia-500/50 text-white"
+    : "bg-muted text-muted-foreground";
+
+  const borderClass =
+    score >= 30 ? "border-fuchsia-500/50"
+    : score >= 15 ? "border-fuchsia-500/30"
+    : "border-card-border";
+
+  return (
+    <div className={`bg-card border ${borderClass} rounded-lg p-4 hover:border-fuchsia-400/60 transition-colors`}>
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 flex-shrink-0 rounded-full bg-fuchsia-500/10 text-fuchsia-400 font-bold text-sm flex items-center justify-center">
+          {rank}
+        </div>
+        <button onClick={onClick} className="flex-1 text-left min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base font-bold text-foreground tracking-tight">{result.symbol}</span>
+            <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 uppercase border ${dirStyle}`}>
+              {direction === "up" ? "↑ UP" : direction === "down" ? "↓ DOWN" : "↔ EITHER"}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">
+            {result.companyName} · {result.sector || "—"}
+          </p>
+        </button>
+        <div className="text-right flex-shrink-0">
+          <span className={`text-xs font-bold rounded px-2 py-1 ${scoreColor}`}>{score}</span>
+          <p className="text-[10px] text-muted-foreground mt-0.5">score</p>
+        </div>
+        <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {/* Signal chips — always show triggered ones compactly */}
+      {triggered.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {triggered.map((s: any) => {
+            const chipColor =
+              s.direction === "up" ? "bg-green-500/15 text-green-400 border-green-500/30"
+              : s.direction === "down" ? "bg-red-500/15 text-red-400 border-red-500/30"
+              : "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+            return (
+              <span key={s.id} className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border ${chipColor}`} title={s.detail || ""}>
+                {s.label} · {(s.strength ?? 0).toFixed(2)}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-card-border/50 space-y-1">
+          {(result.signals ?? []).map((s: any) => (
+            <div key={s.id} className="flex items-center gap-2 text-xs">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.triggered ? "bg-fuchsia-400" : "bg-muted-foreground/40"}`} />
+              <span className={`font-medium w-32 ${s.triggered ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
+              <span className="text-muted-foreground flex-1 truncate">{s.detail || "—"}</span>
+              {s.triggered && (
+                <span className="text-[10px] tabular-nums text-muted-foreground">{s.strength.toFixed(2)}</span>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-card-border/30 text-[10px] text-muted-foreground">
+            <span>Price ${result.price?.toFixed(2)}</span>
+            <span>Vol {result.volume?.toLocaleString?.()}</span>
+            <span>Mkt Cap ${((result.marketCap ?? 0) / 1e9).toFixed(1)}B</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Scanner ───
 
 export default function Scanner() {
   const { setActiveTicker } = useTicker();
   const [, navigate] = useLocation();
-  const [scanMode, setScanMode] = useState<"3strategy" | "amc">("3strategy");
+  const [scanMode, setScanMode] = useState<"3strategy" | "amc" | "v2">("3strategy");
   const [sector, setSector] = useState("All Sectors");
   const [priceRange, setPriceRange] = useState("all");
   const [marketCap, setMarketCap] = useState("all");
@@ -267,19 +357,41 @@ export default function Scanner() {
   // Scan results persisted via queryClient cache so they survive page navigation
   const [threeStratData, setThreeStratData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/3strat"]) || null);
   const [amcData, setAmcData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/amc"]) || null);
+  const [v2Data, setV2Data] = useState<any>(() => queryClient.getQueryData(["/api/scanner/v2"]) || null);
+  const [v2Direction, setV2Direction] = useState<"either" | "up" | "down">("either");
+  const [v2MinScore, setV2MinScore] = useState<number>(10);
   const [isFetching, setIsFetching] = useState(false);
 
-  const data = scanMode === "amc" ? amcData : threeStratData;
+  const data = scanMode === "amc" ? amcData : scanMode === "v2" ? v2Data : threeStratData;
 
   const refetch = async () => {
     setIsFetching(true);
     try {
-      const endpoint = scanMode === "amc" ? `/api/scanner/amc?${queryParams}` : `/api/scanner?${queryParams}`;
+      let endpoint: string;
+      if (scanMode === "amc") {
+        endpoint = `/api/scanner/amc?${queryParams}`;
+      } else if (scanMode === "v2") {
+        // Scanner 2.0: use sector + marketCap + direction + minScore; fixed 2000 universe
+        const v2Params = new URLSearchParams({
+          sector: sector === "All Sectors" ? "all" : sector,
+          marketCap,
+          direction: v2Direction,
+          minScore: String(v2MinScore),
+          universeSize: "2000",
+          count: "100",
+        }).toString();
+        endpoint = `/api/scanner/v2?${v2Params}`;
+      } else {
+        endpoint = `/api/scanner?${queryParams}`;
+      }
       const res = await apiRequest("GET", endpoint);
       const result = await res.json();
       if (scanMode === "amc") {
         setAmcData(result);
         queryClient.setQueryData(["/api/scanner/amc"], result);
+      } else if (scanMode === "v2") {
+        setV2Data(result);
+        queryClient.setQueryData(["/api/scanner/v2"], result);
       } else {
         setThreeStratData(result);
         queryClient.setQueryData(["/api/scanner/3strat"], result);
@@ -319,14 +431,24 @@ export default function Scanner() {
             <Zap className="h-4 w-4" />
             AMC Strategy
           </button>
+          <button
+            onClick={() => setScanMode("v2")}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${scanMode === "v2" ? "border-fuchsia-500 text-fuchsia-400" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            data-testid="tab-v2"
+          >
+            <Flame className="h-4 w-4" />
+            Explosion Detector
+          </button>
         </div>
 
         {/* Description */}
         <div className="text-center py-2">
           {scanMode === "3strategy" ? (
             <p className="text-xs text-muted-foreground">Scans across BBTC + VER + Triple Confluence. Finds stocks where multiple strategies agree.</p>
-          ) : (
+          ) : scanMode === "amc" ? (
             <p className="text-xs text-muted-foreground">Scores stocks 0-5 using AMC indicators: MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, trend strength.</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Explosion Detector: scans 2000 liquid US stocks for 9 signals combining technical setups and catalysts.</p>
           )}
         </div>
 
@@ -353,36 +475,66 @@ export default function Scanner() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
-                  <select value={priceRange} onChange={(e) => setPriceRange(e.target.value)} className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground" data-testid="select-price">
-                    {PRICE_RANGES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
-                  <div className="flex gap-2">
-                    {[10, 15, 25].map(n => (
-                      <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
-                    ))}
+                {scanMode !== "v2" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
+                    <select value={priceRange} onChange={(e) => setPriceRange(e.target.value)} className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground" data-testid="select-price">
+                      {PRICE_RANGES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
                   </div>
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
-                  <div className="flex gap-2">
-                    {(["both", "buy", "sell"] as const).map(sf => (
-                      <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-green-600 text-white" : sf === "sell" ? "bg-red-600 text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
-                    ))}
+                )}
+                {scanMode !== "v2" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
+                    <div className="flex gap-2">
+                      {[10, 15, 25].map(n => (
+                        <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
+                {scanMode !== "v2" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
+                    <div className="flex gap-2">
+                      {(["both", "buy", "sell"] as const).map(sf => (
+                        <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-green-600 text-white" : sf === "sell" ? "bg-red-600 text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {scanMode === "v2" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Direction</label>
+                    <div className="flex gap-2">
+                      {(["either", "up", "down"] as const).map(d => (
+                        <button key={d} onClick={() => setV2Direction(d)} data-testid={`v2-dir-${d}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${v2Direction === d ? (d === "up" ? "bg-green-600 text-white" : d === "down" ? "bg-red-600 text-white" : "bg-fuchsia-600 text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{d}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {scanMode === "v2" && (
+                  <div>
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Min Score</label>
+                    <div className="flex gap-2">
+                      {[5, 10, 20, 30].map(n => (
+                        <button key={n} onClick={() => setV2MinScore(n)} data-testid={`v2-score-${n}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${v2MinScore === n ? "bg-fuchsia-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}+</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between pt-1">
-                <button onClick={() => setShowAll(!showAll)} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors" data-testid="toggle-show-all">
-                  {showAll ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                  {showAll ? "Showing all results" : scanMode === "amc" ? "Score 3+ only" : "Score 2+ only"}
-                </button>
-                <button onClick={() => refetch()} disabled={isFetching} className={`inline-flex items-center gap-2 ${scanMode === "amc" ? "bg-purple-600 hover:bg-purple-500" : "bg-primary hover:bg-primary/90"} text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50`} data-testid="button-scan">
-                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />{data ? "New Scan" : `Scan ${scanCount} Stocks`}</>)}
+                {scanMode !== "v2" ? (
+                  <button onClick={() => setShowAll(!showAll)} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors" data-testid="toggle-show-all">
+                    {showAll ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    {showAll ? "Showing all results" : scanMode === "amc" ? "Score 3+ only" : "Score 2+ only"}
+                  </button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Scanning 2000 liquid US stocks</span>
+                )}
+                <button onClick={() => refetch()} disabled={isFetching} className={`inline-flex items-center gap-2 ${scanMode === "amc" ? "bg-purple-600 hover:bg-purple-500" : scanMode === "v2" ? "bg-fuchsia-600 hover:bg-fuchsia-500" : "bg-primary hover:bg-primary/90"} text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50`} data-testid="button-scan">
+                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />{data ? "New Scan" : scanMode === "v2" ? "Scan 2000 Stocks" : `Scan ${scanCount} Stocks`}</>)}
                 </button>
               </div>
             </div>
@@ -392,7 +544,9 @@ export default function Scanner() {
         {/* Scan status */}
         {data && !isFetching && (
           <div className="text-center text-[11px] text-muted-foreground">
-            Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} gate-ready
+            {scanMode === "v2"
+              ? <>Scanned {data.universeSize} stocks in {((data.scanDurationMs || 0) / 1000).toFixed(1)}s at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} triggered</>
+              : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} gate-ready</>}
           </div>
         )}
 
@@ -415,7 +569,30 @@ export default function Scanner() {
         )}
 
         {/* Results */}
-        {data && !isFetching && (() => {
+        {data && !isFetching && scanMode === "v2" && (
+          data.results && data.results.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  {data.results.length} Triggered
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  Ranked by signal score (0-100)
+                </span>
+              </div>
+              {data.results.map((result: any, idx: number) => (
+                <ExplosionCard key={result.symbol} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.symbol)} />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-card border border-card-border rounded-lg p-8 text-center">
+              <p className="text-muted-foreground">No explosion setups found.</p>
+              <p className="text-sm text-muted-foreground mt-1">Try lowering the min-score threshold, widening the sector/cap filter, or switching direction.</p>
+            </div>
+          )
+        )}
+
+        {data && !isFetching && scanMode !== "v2" && (() => {
           const filtered = data.results.filter((r: any) => {
             if (signalFilter === "both") return true;
             const dir = r.gates?.direction;
