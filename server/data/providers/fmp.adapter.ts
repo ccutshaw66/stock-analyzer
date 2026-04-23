@@ -77,6 +77,98 @@ function prevQuarter(year: number, quarter: number): { year: number; quarter: nu
   return { year, quarter: quarter - 1 };
 }
 
+// ─── Fundamental Screener ───────────────────────────────────────────────────
+/**
+ * Server-side screener backed by FMP /stable/company-screener.
+ *
+ * Unlike Polygon's grouped-daily + per-ticker enrichment approach, FMP filters
+ * sector, market-cap, price, and volume server-side in a single call and
+ * returns ranked, active, US-listed common stocks. No client-side enrichment.
+ */
+export interface FmpScreenerFilters {
+  minPrice?: number;
+  maxPrice?: number;
+  sector?: string;              // e.g. "Technology" — passed through as-is
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  minVolume?: number;
+  minBeta?: number;
+  maxBeta?: number;
+  minDividend?: number;
+  count?: number;               // default 100, capped by FMP at 10000 but we cap at 500
+}
+
+export interface FmpScreenerRow {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  industry: string;
+  marketCap: number;
+  price: number;
+  volume: number;
+  beta: number;
+  lastAnnualDividend: number;
+  exchangeShortName: string;
+}
+
+const US_EXCHANGES = new Set(["NYSE", "NASDAQ", "AMEX", "BATS"]);
+
+/**
+ * Call FMP company-screener with our filter set. Returns fully-shaped rows
+ * restricted to US common stocks (no ETFs, no funds, actively trading).
+ */
+export async function fmpScreener(filters: FmpScreenerFilters): Promise<FmpScreenerRow[]> {
+  const count = Math.min(filters.count ?? 100, 500);
+
+  // FMP param names are camelCase `More/LowerThan` style.
+  const params: Record<string, any> = {
+    isEtf: false,
+    isFund: false,
+    isActivelyTrading: true,
+    // Pull 3x the requested count so US-exchange filter leaves enough.
+    limit: Math.min(count * 3, 1000),
+  };
+  if (filters.minPrice != null) params.priceMoreThan = filters.minPrice;
+  if (filters.maxPrice != null) params.priceLowerThan = filters.maxPrice;
+  if (filters.minMarketCap != null) params.marketCapMoreThan = filters.minMarketCap;
+  if (filters.maxMarketCap != null) params.marketCapLowerThan = filters.maxMarketCap;
+  if (filters.minVolume != null) params.volumeMoreThan = filters.minVolume;
+  if (filters.minBeta != null) params.betaMoreThan = filters.minBeta;
+  if (filters.maxBeta != null) params.betaLowerThan = filters.maxBeta;
+  if (filters.minDividend != null) params.dividendMoreThan = filters.minDividend;
+  if (filters.sector && filters.sector.toLowerCase() !== "all") params.sector = filters.sector;
+
+  const rows = await fmpGet<any[]>(`/company-screener`, params);
+  if (!Array.isArray(rows)) return [];
+
+  // Keep US common stocks only, ranked by dollar volume desc (liquidity proxy).
+  const us = rows.filter((r) => {
+    const ex = String(r?.exchangeShortName || "").toUpperCase();
+    return US_EXCHANGES.has(ex);
+  });
+
+  us.sort((a, b) => num(b.price) * num(b.volume) - num(a.price) * num(a.volume));
+
+  return us.slice(0, count).map((r) => ({
+    symbol: String(r.symbol || ""),
+    companyName: String(r.companyName || ""),
+    sector: String(r.sector || ""),
+    industry: String(r.industry || ""),
+    marketCap: num(r.marketCap),
+    price: num(r.price),
+    volume: num(r.volume),
+    beta: num(r.beta),
+    lastAnnualDividend: num(r.lastAnnualDividend),
+    exchangeShortName: String(r.exchangeShortName || ""),
+  }));
+}
+
+/** Convenience: just the tickers, same contract as polygonScreener. */
+export async function fmpScreenerSymbols(filters: FmpScreenerFilters): Promise<string[]> {
+  const rows = await fmpScreener(filters);
+  return rows.map((r) => r.symbol).filter(Boolean);
+}
+
 // ─── Adapter ────────────────────────────────────────────────────────────────
 export const fmpAdapter: DataProvider = {
   name: "fmp",
