@@ -41,6 +41,82 @@ interface AccountSettings {
 type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
 type SortField = "tradeDate" | "symbol" | "tradeType" | "openPrice" | "profit";
 
+// ─── Position aggregation ─────────────────────────────────────────────────────
+// An open position groups one or more "lots" (individual trade rows) that share
+// the same symbol + tradeType + strikes + expiration. Closed trades are never
+// grouped — they render as flat rows.
+interface OpenPosition {
+  kind: "group";
+  key: string;
+  symbol: string;
+  tradeType: string;
+  tradeCategory: string;
+  strikes: string | null;
+  expiration: string | null;
+  creditDebit: string | null;
+  totalQty: number;
+  avgOpenPrice: number;       // weighted by qty
+  totalCommIn: number;
+  firstTradeDate: string;     // oldest lot
+  lots: Trade[];
+  totalOpenPL: number;        // sum of computeStockPL / computeOptionPL per lot
+  currentPrice: number | null;
+  totalAllocation: number;
+}
+
+/**
+ * Group open trades by (symbol, tradeType, strikes, expiration). Closed trades
+ * pass through as single-lot pseudo-groups so the table renders uniformly.
+ */
+function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
+  const openMap = new Map<string, Trade[]>();
+  const closedRows: Trade[] = [];
+  for (const t of trades) {
+    if (t.closeDate) { closedRows.push(t); continue; }
+    const key = [
+      t.symbol.toUpperCase(),
+      t.tradeType,
+      (t.strikes || "").trim(),
+      (t.expiration || "").trim(),
+    ].join("|");
+    const arr = openMap.get(key) ?? [];
+    arr.push(t);
+    openMap.set(key, arr);
+  }
+  const groups: OpenPosition[] = [];
+  openMap.forEach((lots, key) => {
+    lots.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+    const totalQty = lots.reduce((s, l) => s + l.contractsShares, 0);
+    const weighted = lots.reduce((s, l) => s + l.openPrice * l.contractsShares, 0);
+    const avgOpenPrice = totalQty > 0 ? weighted / totalQty : 0;
+    const totalCommIn = lots.reduce((s, l) => s + (l.commIn || 0), 0);
+    const totalAllocation = lots.reduce((s, l) => s + (l.allocation || 0), 0);
+    // Use most-recent known currentPrice across lots (Refresh P/L writes it to each lot)
+    const currentPrice = lots.reduce<number | null>((acc, l) => (l.currentPrice ?? acc), null);
+    const totalOpenPL = lots.reduce((s, l) => s + (l.tradeCategory === "Stock" ? computeStockPL(l) : computeOptionPL(l)), 0);
+    const first = lots[0];
+    groups.push({
+      kind: "group",
+      key,
+      symbol: first.symbol,
+      tradeType: first.tradeType,
+      tradeCategory: first.tradeCategory,
+      strikes: first.strikes,
+      expiration: first.expiration,
+      creditDebit: first.creditDebit,
+      totalQty,
+      avgOpenPrice,
+      totalCommIn,
+      firstTradeDate: first.tradeDate,
+      lots,
+      totalOpenPL,
+      currentPrice,
+      totalAllocation,
+    });
+  });
+  return groups;
+}
+
 const STOCK_TYPES: TradeTypeCode[] = ["LONG", "SHORT", "DTS"];
 const OPTION_TYPES = Object.keys(TRADE_TYPES).filter(k => !STOCK_TYPES.includes(k as TradeTypeCode)) as TradeTypeCode[];
 
@@ -631,6 +707,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
 
 export default function TradeTracker() {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addSeed, setAddSeed] = useState<Partial<Trade> | null>(null);
 
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
@@ -638,6 +715,15 @@ export default function TradeTracker() {
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
   const [sortField, setSortField] = useState<SortField>("tradeDate");
   const [sortAsc, setSortAsc] = useState(false);
+  // Expanded-state for aggregated open positions. Closed trades always render flat.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const { data: trades = [], isLoading } = useQuery<Trade[]>({
     queryKey: ["/api/trades"],
@@ -667,13 +753,29 @@ export default function TradeTracker() {
     },
   });
 
-  const filtered = useMemo(() => {
+  // Filter first, then split open vs closed so we can aggregate open.
+  const { openGroups, closedFlat } = useMemo(() => {
     let list = [...trades];
     if (filterTab === "open") list = list.filter(t => !t.closeDate);
     else if (filterTab === "closed") list = list.filter(t => !!t.closeDate);
     else if (filterTab === "stocks") list = list.filter(t => t.tradeCategory === "Stock");
     else if (filterTab === "options") list = list.filter(t => t.tradeCategory === "Option");
-    list.sort((a, b) => {
+
+    const openOnly = list.filter(t => !t.closeDate);
+    const closedOnly = list.filter(t => !!t.closeDate);
+
+    const groups = aggregateOpenPositions(openOnly);
+    groups.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === "tradeDate") cmp = a.firstTradeDate.localeCompare(b.firstTradeDate);
+      else if (sortField === "symbol") cmp = a.symbol.localeCompare(b.symbol);
+      else if (sortField === "tradeType") cmp = a.tradeType.localeCompare(b.tradeType);
+      else if (sortField === "openPrice") cmp = a.avgOpenPrice - b.avgOpenPrice;
+      else if (sortField === "profit") cmp = a.totalOpenPL - b.totalOpenPL;
+      return sortAsc ? cmp : -cmp;
+    });
+
+    closedOnly.sort((a, b) => {
       let cmp = 0;
       if (sortField === "tradeDate") cmp = a.tradeDate.localeCompare(b.tradeDate);
       else if (sortField === "symbol") cmp = a.symbol.localeCompare(b.symbol);
@@ -682,8 +784,11 @@ export default function TradeTracker() {
       else if (sortField === "profit") cmp = computeTradeProfit(a) - computeTradeProfit(b);
       return sortAsc ? cmp : -cmp;
     });
-    return list;
+
+    return { openGroups: groups, closedFlat: closedOnly };
   }, [trades, filterTab, sortField, sortAsc]);
+
+  const totalRowsInView = openGroups.length + closedFlat.length;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) setSortAsc(!sortAsc);
@@ -717,7 +822,7 @@ export default function TradeTracker() {
             <Settings className="h-3.5 w-3.5" />Settings
           </button>
 
-          <button onClick={() => setShowAddModal(true)}
+          <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
             className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
             <Plus className="h-3.5 w-3.5" />Add Trade
           </button>
@@ -832,89 +937,179 @@ export default function TradeTracker() {
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
             </tr></thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {totalRowsInView === 0 ? (
                 <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
               ) : (() => {
                 let runningTotal = 0;
-                return filtered.map(t => {
-                const profit = t.closeDate ? computeTradeProfit(t) : (t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t));
-                runningTotal += profit;
-                const isOpen = !t.closeDate;
-                const days = daysInTrade(t);
-                const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                const isWin = profit >= 0;
-                const typeDef = TRADE_TYPES[t.tradeType as TradeTypeCode];
-                const daysToExp = t.expiration && !t.closeDate ? Math.ceil((new Date(t.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                const rendered: React.ReactNode[] = [];
 
-                return (
-                  <tr key={t.id} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
-                    <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
-                    <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
-                    <td className="py-2 px-3">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                        t.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
-                      }`}>{t.tradeType}</span>
-                    </td>
-                    <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
-                    <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
-                    <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                    <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                      {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                      {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
-                    </td>
-                    <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
-                      {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
-                    </td>
-                    <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
-                      {profit !== 0 ? formatCurrency(profit) : "—"}
-                      {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                      {isOpen && t.tradeCategory === "Option" && profit !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
-                    </td>
-                    <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                      {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
-                    </td>
-                    <td className="py-2 px-3 text-center">
-                      {t.expiration ? (
-                        <span className={`text-[10px] font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-yellow-400 font-bold" : daysToExp !== null && daysToExp < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                          {t.expiration.substring(5)}
-                          {daysToExp !== null && isOpen && (
-                            <span className="text-[8px] block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                    <td className="py-2 px-3 text-center">
-                      {isOpen ? (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span>
-                      ) : (
+                // ─── Open positions (grouped) ───────────────────────────────
+                for (const g of openGroups) {
+                  runningTotal += g.totalOpenPL;
+                  const isSingleLot = g.lots.length === 1;
+                  const isExpanded = expandedGroups.has(g.key) || isSingleLot;
+                  const daysToExp = g.expiration ? Math.ceil((new Date(g.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                  const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
+                  const isWin = g.totalOpenPL >= 0;
+                  const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
+                  rendered.push(
+                    <tr key={`grp-${g.key}`}
+                      className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
+                      onClick={isSingleLot ? undefined : () => toggleGroup(g.key)}
+                      data-testid={`position-row-${g.key}`}>
+                      <td className="py-2 px-3 text-foreground tabular-nums">
+                        <div className="flex items-center gap-1.5">
+                          {!isSingleLot && (isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground rotate-180" />)}
+                          <span>{g.firstTradeDate}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 font-mono font-bold text-foreground">
+                        {g.symbol}
+                        {!isSingleLot && <span className="ml-1.5 text-[9px] font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
+                      </td>
+                      <td className="py-2 px-3"><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{g.tradeType}</span></td>
+                      <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
+                      <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${g.avgOpenPrice > 0 ? "text-green-400" : "text-red-400"}`}>
+                        {g.avgOpenPrice > 0 ? "+" : ""}{g.avgOpenPrice.toFixed(2)}
+                        {!isSingleLot && <span className="block text-[9px] opacity-60">avg</span>}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">{g.currentPrice ? `$${g.currentPrice.toFixed(2)}` : "—"}</td>
+                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                        {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
+                        {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                        {g.tradeCategory === "Option" && g.totalOpenPL !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
+                      </td>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {g.expiration ? (
+                          <span className={`text-[10px] font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-yellow-400 font-bold" : daysToExp !== null && daysToExp < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                            {g.expiration.substring(5)}
+                            {daysToExp !== null && (<span className="text-[8px] block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>)}
+                          </span>
+                        ) : (<span className="text-muted-foreground">—</span>)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
+                      <td className="py-2 px-3 text-center"><span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span></td>
+                      <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setAddSeed({ symbol: g.symbol, tradeType: g.tradeType, tradeCategory: g.tradeCategory, strikes: g.strikes, expiration: g.expiration, creditDebit: g.creditDebit, pilotOrAdd: "Add" });
+                              setShowAddModal(true);
+                            }}
+                            className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                            title="Add to this position">
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          {isSingleLot && (<>
+                            <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => setClosingTrade(g.lots[0])} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close trade"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </>)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                  if (!isSingleLot && isExpanded) {
+                    for (const t of g.lots) {
+                      const profit = t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t);
+                      const lotDays = daysInTrade(t);
+                      const lotPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                      rendered.push(
+                        <tr key={`lot-${t.id}`} className="border-b border-card-border/20 bg-background/40 text-muted-foreground" data-testid={`lot-row-${t.id}`}>
+                          <td className="py-1.5 px-3 pl-10 tabular-nums text-[11px]">└ {t.tradeDate}</td>
+                          <td className="py-1.5 px-3 text-[11px] opacity-60">—</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3"><span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.pilotOrAdd === "Pilot" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>{t.pilotOrAdd === "Pilot" ? "P" : "A"}</span></td>
+                          <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares}</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className={`py-1.5 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400/80" : "text-red-400/80"}`}>{t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className={`py-1.5 px-3 text-right tabular-nums text-[11px] ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-[9px] ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3 text-right tabular-nums text-[11px]">{lotDays}d</td>
+                          <td className="py-1.5 px-3"></td>
+                          <td className="py-1.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
+                              <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
+                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  }
+                }
+
+                // ─── Closed trades (flat) ───────────────────────────────────────
+                for (const t of closedFlat) {
+                  const profit = computeTradeProfit(t);
+                  runningTotal += profit;
+                  const days = daysInTrade(t);
+                  const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                  const isWin = profit >= 0;
+                  rendered.push(
+                    <tr key={`t-${t.id}`} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
+                      <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
+                      <td className="py-2 px-3">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                          t.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                        }`}>{t.tradeType}</span>
+                      </td>
+                      <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
+                      <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
+                      <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
+                        {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                        {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
+                        {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
+                      </td>
+                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                        {profit !== 0 ? formatCurrency(profit) : "—"}
+                        {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                      </td>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {t.expiration ? (
+                          <span className="text-[10px] font-mono tabular-nums text-muted-foreground">{t.expiration.substring(5)}</span>
+                        ) : (<span className="text-muted-foreground">—</span>)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
+                      <td className="py-2 px-3 text-center">
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${isWin ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
                           {isWin ? "WIN" : "LOSS"}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        {isOpen && (
-                          <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close trade">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
+                            <Edit2 className="h-3.5 w-3.5" />
                           </button>
-                        )}
-                        <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }); })()}
+                          <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                return rendered;
+              })()}
             </tbody>
           </table>
         </div>
@@ -936,7 +1131,7 @@ export default function TradeTracker() {
       )}
 
       {/* Modals */}
-      {showAddModal && settings && <TradeForm mode="add" settings={settings} onClose={() => setShowAddModal(false)} />}
+      {showAddModal && settings && <TradeForm mode="add" initial={addSeed as any} settings={settings} onClose={() => { setShowAddModal(false); setAddSeed(null); }} />}
 
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
       {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
