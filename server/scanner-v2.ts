@@ -16,6 +16,7 @@
  * server/scanner-v2-signals/*.ts and are wired in incrementally (3.5.2+).
  */
 import { fmpScreener, type FmpScreenerRow } from "./data/providers/fmp.adapter";
+import { fmpGet } from "./data/providers/fmp.client";
 import { getPolygonChart } from "./polygon";
 import { getCached, setCache } from "./cache";
 
@@ -119,6 +120,8 @@ import { atrExpansionDetector } from "./scanner-v2-signals/atr-expansion";
 import { relVolumeDetector } from "./scanner-v2-signals/rel-volume";
 import { breakout52wDetector } from "./scanner-v2-signals/breakout-52w";
 import { gapHoldDetector } from "./scanner-v2-signals/gap-hold";
+import { earningsSoonDetector } from "./scanner-v2-signals/earnings-soon";
+import { analystActionDetector } from "./scanner-v2-signals/analyst-action";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
@@ -126,6 +129,8 @@ const SIGNAL_DETECTORS: SignalDetector[] = [
   relVolumeDetector,
   breakout52wDetector,
   gapHoldDetector,
+  earningsSoonDetector,
+  analystActionDetector,
 ];
 
 export function registerDetector(det: SignalDetector): void {
@@ -241,6 +246,76 @@ async function loadBars(symbol: string): Promise<ScanContext["bars"] | null> {
   }
 }
 
+// ─── Catalyst Preload ───────────────────────────────────────────────────────
+/**
+ * Fetch upcoming earnings events (today → +14d) once per scan and build a
+ * Map<symbol, nearestDate>. If FMP returns multiple future dates for the same
+ * ticker (rare), we keep the soonest.
+ */
+async function preloadEarningsCalendar(): Promise<Map<string, Date>> {
+  const today = new Date();
+  const end = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  const map = new Map<string, Date>();
+  try {
+    const rows: any[] = await fmpGet<any[]>("/earnings-calendar", {
+      from: iso(today),
+      to: iso(end),
+    });
+    if (!Array.isArray(rows)) return map;
+    for (const r of rows) {
+      const sym = String(r?.symbol || "").toUpperCase();
+      const dateStr = r?.date;
+      if (!sym || !dateStr) continue;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) continue;
+      const prior = map.get(sym);
+      if (!prior || d.getTime() < prior.getTime()) {
+        map.set(sym, d);
+      }
+    }
+    console.log(`[scanner-v2] preloaded earnings calendar: ${map.size} symbols with upcoming earnings`);
+  } catch (e: any) {
+    console.warn(`[scanner-v2] earnings calendar preload failed: ${String(e?.message || e)}`);
+  }
+  return map;
+}
+
+/**
+ * Fetch recent analyst grade changes (latest 500) once per scan and build a
+ * Map<symbol, Array<{date, direction}>>. Only upgrade/downgrade actions are
+ * retained; other action types (maintain, reiterate) are ignored.
+ */
+async function preloadAnalystActions(): Promise<
+  Map<string, Array<{ date: Date; direction: "up" | "down" }>>
+> {
+  const map = new Map<string, Array<{ date: Date; direction: "up" | "down" }>>();
+  try {
+    const rows: any[] = await fmpGet<any[]>("/grades-latest-news", { limit: 500 });
+    if (!Array.isArray(rows)) return map;
+    for (const r of rows) {
+      const sym = String(r?.symbol || "").toUpperCase();
+      const action = String(r?.action || "").toLowerCase();
+      const dateStr = r?.publishedDate || r?.date;
+      if (!sym || !dateStr) continue;
+      let direction: "up" | "down";
+      if (action === "upgrade") direction = "up";
+      else if (action === "downgrade") direction = "down";
+      else continue;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) continue;
+      const arr = map.get(sym) ?? [];
+      arr.push({ date: d, direction });
+      map.set(sym, arr);
+    }
+    console.log(`[scanner-v2] preloaded analyst actions: ${map.size} symbols with recent up/downgrades`);
+  } catch (e: any) {
+    console.warn(`[scanner-v2] analyst actions preload failed: ${String(e?.message || e)}`);
+  }
+  return map;
+}
+
 /**
  * Evaluate all registered detectors against a ScanContext. Detectors that
  * return null (insufficient data) are skipped silently. Detectors that throw
@@ -264,7 +339,11 @@ function evaluateSignals(ctx: ScanContext): SignalResult[] {
  */
 export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2Response> {
   const startedAt = Date.now();
-  const universe = await fetchUniverse(filters);
+  const [universe, earningsMap, analystMap] = await Promise.all([
+    fetchUniverse(filters),
+    preloadEarningsCalendar(),
+    preloadAnalystActions(),
+  ]);
   console.log(`[scanner-v2] universe=${universe.length} (requested ${filters.universeSize ?? 2000})`);
 
   // Load bars in parallel batches so we don't melt Polygon or the event loop.
@@ -296,6 +375,9 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
           };
         }
 
+        const sym = u.symbol.toUpperCase();
+        const nextEarningsDate = earningsMap.get(sym);
+        const analystActions = analystMap.get(sym);
         const ctx: ScanContext = {
           bars,
           basics: {
@@ -304,6 +386,10 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
             marketCap: u.marketCap,
             volume: u.volume,
             sector: u.sector,
+          },
+          extras: {
+            nextEarningsDate,
+            analystActions,
           },
         };
         const signals = evaluateSignals(ctx);
