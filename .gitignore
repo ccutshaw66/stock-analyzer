@@ -9,3 +9,4 @@ vite.config.ts.*
 *.db-wal
 .env
 data.db
+data/long-range-cache/

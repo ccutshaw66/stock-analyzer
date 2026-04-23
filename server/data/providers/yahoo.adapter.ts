@@ -1,21 +1,14 @@
 /**
- * Yahoo adapter — LEGACY FALLBACK ONLY.
+ * Yahoo adapter — BUFFER / LAST-RESORT FALLBACK (Phase 3.7).
  *
- * Role: tertiary fallback for `quotes` and `aggregates` when Polygon is down
- * or rate-limited. Not used as a primary source anywhere in the registry.
- *
- * Scope deliberately narrow:
- *   - getQuote        — basic price/change snapshot
- *   - getAggregates   — OHLCV bars
- *
- * Insider / institutional / earnings / ratings are handled by FMP in Phase 3.
- * Those methods stay NotImplemented here so the facade skips past Yahoo for
- * those capabilities, even though registry.ts still lists Yahoo as a last
- * fallback entry.
+ * Role: safety net only. All production data paths are Polygon + FMP + EDGAR.
+ * Yahoo is invoked only when the primary source fails or cannot cover the
+ * requested range (e.g. Polygon Starter caps at ~5y so 10y/25y/max charts
+ * fall through to Yahoo). Never use as a primary source.
  *
  * License warning: Yahoo data is not licensed for redistribution in a paid
- * SaaS. This adapter MUST be removed before Stock Otter is generally
- * available to paying customers (tracked in Phase 7).
+ * SaaS. Acceptable for buffer use only; must be replaced with a licensed
+ * long-range provider before GA.
  */
 import type {
   DataProvider,
