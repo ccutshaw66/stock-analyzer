@@ -4326,7 +4326,7 @@ export async function registerRoutes(
       if (cachedLeaders) return res.json(cachedLeaders);
 
       // Pull ~50 largest-volume names in the sector, then score them.
-      const tickers = await screenStocks({
+      let tickers = await screenStocks({
         sector: etf.fmpSector,
         minPrice: 5,
         minMarketCap: 1_000_000_000,
@@ -4334,6 +4334,39 @@ export async function registerRoutes(
         count: 50,
         sortBy: "marketCap",
       });
+      console.log(`[sector-top] ${symbol} (${etf.fmpSector}): screener returned ${tickers.length}`);
+
+      // Fallback: loosen filters if strict query returned nothing.
+      if (!tickers.length) {
+        tickers = await screenStocks({
+          sector: etf.fmpSector,
+          minPrice: 1,
+          minMarketCap: 100_000_000,
+          minVolume: 100_000,
+          count: 50,
+          sortBy: "marketCap",
+        });
+        console.log(`[sector-top] ${symbol} loose retry returned ${tickers.length}`);
+      }
+
+      // Last resort: seed names per sector so the modal is never empty.
+      if (!tickers.length) {
+        const SEED_LEADERS: Record<string, string[]> = {
+          XLK: ["AAPL","MSFT","NVDA","AVGO","ORCL","CRM","ADBE","CSCO","AMD","QCOM","INTU","IBM","TXN","NOW","PANW"],
+          XLF: ["JPM","V","MA","BAC","WFC","GS","MS","AXP","SCHW","C","BLK","SPGI","PGR","CB","USB"],
+          XLV: ["LLY","UNH","JNJ","ABBV","MRK","TMO","ABT","PFE","DHR","AMGN","ISRG","ELV","MDT","CVS","GILD"],
+          XLE: ["XOM","CVX","COP","EOG","SLB","PSX","MPC","VLO","OXY","PXD","WMB","KMI","HES","FANG","DVN"],
+          XLY: ["AMZN","TSLA","HD","MCD","NKE","LOW","SBUX","TJX","BKNG","ABNB","CMG","MAR","GM","F","ORLY"],
+          XLP: ["PG","COST","WMT","KO","PEP","PM","MO","MDLZ","CL","TGT","KMB","GIS","STZ","KHC","HSY"],
+          XLI: ["GE","CAT","UBER","RTX","HON","UNP","BA","LMT","DE","UPS","ETN","MMM","ADP","CSX","NSC"],
+          XLU: ["NEE","SO","DUK","CEG","SRE","AEP","D","EXC","XEL","PCG","ED","WEC","ES","PEG","AWK"],
+          XLB: ["LIN","SHW","APD","FCX","ECL","NEM","DOW","DD","NUE","CTVA","VMC","MLM","PPG","IFF","ALB"],
+          XLRE: ["PLD","AMT","EQIX","WELL","SPG","PSA","O","CCI","DLR","EXR","VICI","AVB","CBRE","EQR","IRM"],
+          XLC: ["META","GOOGL","GOOG","NFLX","DIS","TMUS","VZ","T","CMCSA","EA","TTWO","CHTR","WBD","MTCH","OMC"],
+        };
+        tickers = SEED_LEADERS[symbol] || [];
+        console.log(`[sector-top] ${symbol} using ${tickers.length} seed leaders`);
+      }
 
       if (!tickers.length) {
         const empty = { sector: etf.name, etf: symbol, leaders: [] };
