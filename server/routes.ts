@@ -3109,6 +3109,56 @@ export async function registerRoutes(
   });
 
   // ============================================================
+  // Scanner 2.0 — "Explosion Detector" (3.5.1 scaffold)
+  // Signals + catalysts + scoring pipeline. Detectors land in 3.5.2+.
+  // ============================================================
+
+  app.get("/api/scanner/v2", checkFeatureAccess('scansPerDay'), async (req, res) => {
+    if (checkScanRateLimit(req, res)) return;
+    const { runScannerV2 } = await import("./scanner-v2");
+
+    const q = req.query;
+    const marketCapTier = (q.marketCap as string) || "all";
+    let minMarketCap: number | undefined = 300_000_000;
+    let maxMarketCap: number | undefined;
+    switch (marketCapTier) {
+      case "mega": minMarketCap = 200_000_000_000; break;
+      case "large": minMarketCap = 10_000_000_000; maxMarketCap = 200_000_000_000; break;
+      case "mid": minMarketCap = 2_000_000_000; maxMarketCap = 10_000_000_000; break;
+      case "small": minMarketCap = 300_000_000; maxMarketCap = 2_000_000_000; break;
+      case "all": minMarketCap = 300_000_000; break;
+    }
+
+    const filters = {
+      minPrice: q.minPrice != null ? Number(q.minPrice) : undefined,
+      maxPrice: q.maxPrice != null ? Number(q.maxPrice) : undefined,
+      sector: (q.sector as string) && q.sector !== "all" ? (q.sector as string) : undefined,
+      minMarketCap,
+      maxMarketCap,
+      minVolume: q.minVolume != null ? Number(q.minVolume) : undefined,
+      direction: (q.direction as "up" | "down" | "either") || undefined,
+      minScore: q.minScore != null ? Number(q.minScore) : undefined,
+      count: q.count != null ? Math.min(Number(q.count), 500) : 100,
+      universeSize: q.universeSize != null ? Math.min(Number(q.universeSize), 3000) : 2000,
+    };
+
+    const cacheKey = `scanner:v2:${JSON.stringify(filters)}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+      await ensureReady();
+      const out = await runScannerV2(filters);
+      setCache(cacheKey, out, 60_000); // 1-min cache
+      console.log(`[scanner-v2] scanned ${out.universeSize} tickers in ${out.scanDurationMs}ms, returned ${out.results.length}`);
+      res.json(out);
+    } catch (err: any) {
+      console.error("[scanner-v2] failed:", err?.message || err);
+      res.status(500).json({ error: err?.message || "Scanner 2.0 failed" });
+    }
+  });
+
+  // ============================================================
   // AMC Scanner Route — scores stocks using AMC strategy only
   // ============================================================
 
