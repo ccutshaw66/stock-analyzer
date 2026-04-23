@@ -41,8 +41,10 @@ import {
   Landmark,
   Crosshair,
   Trophy,
+  Bell,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
+import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
@@ -255,9 +257,16 @@ function StickyHeader({
         </div>
       )}
 
+      {/* Alerts bell */}
+      {user && (
+        <div className={`${!analysisData && !isAnalysisLoading ? "ml-auto" : "ml-2"}`}>
+          <AlertsBell />
+        </div>
+      )}
+
       {/* User dropdown menu */}
       {user && (
-        <div className={`relative shrink-0 ${!analysisData && !isAnalysisLoading ? "ml-auto" : "ml-2"}`}>
+        <div className="relative shrink-0 ml-1">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors"
@@ -530,6 +539,7 @@ function Sidebar({
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
         { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
         { path: "/track-record", label: "Track Record", icon: Trophy },
+        { path: "/alerts", label: "Alerts", icon: Bell },
       ],
     },
     {

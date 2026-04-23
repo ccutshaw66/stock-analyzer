@@ -34,6 +34,7 @@ import AdminPage from "@/pages/admin";
 import ResetPassword from "@/pages/reset-password";
 import LegalPage from "@/pages/legal";
 import TrackRecord from "@/pages/track-record";
+import AlertsPage from "@/pages/alerts";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -112,6 +113,7 @@ function AuthenticatedApp() {
             <Route path="/admin" component={AdminPage} />
             <Route path="/reset-password" component={ResetPassword} />
             <Route path="/track-record" component={TrackRecord} />
+            <Route path="/alerts" component={AlertsPage} />
             <Route path="/terms" component={LegalPage} />
             <Route path="/privacy" component={LegalPage} />
             <Route component={NotFound} />

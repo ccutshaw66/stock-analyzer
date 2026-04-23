@@ -230,6 +230,9 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
+  // Register cron jobs defined in platform/jobs/jobs (side-effect imports)
+  await import("./platform/jobs/jobs/evaluate-alerts");
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
