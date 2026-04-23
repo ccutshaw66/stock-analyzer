@@ -116,10 +116,12 @@ export type SignalDetector = (ctx: ScanContext) => SignalResult | null;
  */
 import { bbSqueezeDetector } from "./scanner-v2-signals/bb-squeeze";
 import { atrExpansionDetector } from "./scanner-v2-signals/atr-expansion";
+import { relVolumeDetector } from "./scanner-v2-signals/rel-volume";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
   atrExpansionDetector,
+  relVolumeDetector,
 ];
 
 export function registerDetector(det: SignalDetector): void {
