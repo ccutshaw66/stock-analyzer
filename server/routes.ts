@@ -1320,12 +1320,11 @@ export async function registerRoutes(
     res.json({ started: true, maxSymbols, note: "Running in background; check /api/admin/institutional-cache for progress." });
   });
 
-  // ─── MM Exposure (Phase 3.6) ────────────────────────────────────────────
-  // Per-symbol MM / gamma exposure snapshot from Polygon options chain.
-  // Expensive (1-8 Polygon pages per call) — intended for the detail view,
-  // not bulk scanning. The scanner's second-pass enrichment reuses the same
-  // computation for its top-N short list.
-  app.get("/api/mm-exposure/:ticker", async (req, res) => {
+  // ─── MM Exposure raw (Phase 3.6 diagnostic) ──────────────────────────────
+  // Returns the scanner's MMExposure shape (GEX, DEX, unusual, squeezeBias)
+  // used by Scanner 2.0 signals. Distinct from the UI page's richer
+  // /api/mm-exposure/:ticker endpoint below, which is the user-facing view.
+  app.get("/api/mm-exposure-raw/:ticker", async (req, res) => {
     const ticker = String(req.params.ticker || "").toUpperCase();
     if (!ticker) return res.status(400).json({ error: "ticker required" });
     try {
@@ -1334,7 +1333,7 @@ export async function registerRoutes(
       if (!mm) return res.status(404).json({ error: "no options data" });
       res.json(mm);
     } catch (e: any) {
-      console.error(`[mm-exposure] ${ticker} failed:`, e?.message || e);
+      console.error(`[mm-exposure-raw] ${ticker} failed:`, e?.message || e);
       res.status(500).json({ error: String(e?.message || e) });
     }
   });
