@@ -1,12 +1,14 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Trophy, TrendingUp, TrendingDown, Target, BarChart3,
   AlertTriangle, CheckCircle2, XCircle, Loader2, Activity,
-  ArrowUpRight, ArrowDownRight, Minus, Calendar,
+  ArrowUpRight, ArrowDownRight, Minus, Calendar, FlaskConical,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, Cell } from "recharts";
 import { Disclaimer } from "@/components/Disclaimer";
+import { BacktestPanel } from "@/components/BacktestPanel";
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -27,6 +29,7 @@ interface TrackRecordData {
 }
 
 export default function TrackRecord() {
+  const [tab, setTab] = useState<"live" | "backtest">("live");
   const { data, isLoading } = useQuery<TrackRecordData>({
     queryKey: ["/api/track-record"],
     queryFn: async () => {
@@ -53,7 +56,31 @@ export default function TrackRecord() {
         </div>
       </div>
 
-      {isLoading && (
+      {/* Tabs */}
+      <div className="flex border-b border-card-border">
+        <button
+          onClick={() => setTab("live")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === "live" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          data-testid="tab-live"
+        >
+          <Activity className="h-4 w-4" />
+          Live Signals
+        </button>
+        <button
+          onClick={() => setTab("backtest")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${tab === "backtest" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          data-testid="tab-backtest"
+        >
+          <FlaskConical className="h-4 w-4" />
+          Backtester
+        </button>
+      </div>
+
+      {tab === "backtest" && <BacktestPanel />}
+
+      {tab === "live" && <>
+
+      {tab === "live" && isLoading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
@@ -237,6 +264,7 @@ export default function TrackRecord() {
           </div>
         </>
       )}
+      </>}
     </div>
   );
 }
