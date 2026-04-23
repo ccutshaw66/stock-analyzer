@@ -72,6 +72,26 @@ export function BacktestPanel() {
           Forward returns calculated at +1d, +5d, +10d, +20d from actual historical prices.
         </p>
 
+        {/* How it works */}
+        <div className="mb-3 p-3 rounded-lg bg-background/60 border border-card-border text-xs space-y-2">
+          <b className="text-foreground block">How to read the results</b>
+          <p className="text-muted-foreground">
+            For each trading day in the history you pick, we pretend it’s “now” and run 6 technical scanner signals
+            (BB Squeeze, ATR Expansion, Relative Volume, 52w Breakout, Gap Hold, Fib Pullback). When a signal fires,
+            we look at what actually happened over the <b>next 1, 5, 10, and 20 trading days</b>.
+          </p>
+          <ul className="list-disc pl-4 space-y-1 text-muted-foreground">
+            <li><b className="text-foreground">Fires</b> — total times the signal triggered across all tickers/days.</li>
+            <li><b className="text-foreground">Hit%</b> — how often the move went the signal’s predicted direction. 55%+ is a meaningful edge; 45-55% is noise.</li>
+            <li><b className="text-foreground">Avg</b> — the average forward return (in %). Positive = the signal tends to precede gains in its direction; negative = loss.</li>
+            <li><b className="text-foreground">Top 20 fires</b> — biggest historical moves after a fire, so you can eyeball which signals produced big winners.</li>
+          </ul>
+          <p className="text-muted-foreground">
+            <b className="text-foreground">Catalyst signals</b> (earnings, insider, options, analyst, gamma, small-float)
+            aren’t here because they depend on point-in-time third-party feeds we can’t replay historically — those are tracked live on the Live Signals tab.
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div className="md:col-span-2">
             <label className="text-[10px] uppercase text-muted-foreground font-semibold">
