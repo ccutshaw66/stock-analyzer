@@ -648,7 +648,14 @@ export async function getInstitutionalSummary(
  * Phase 3.8: Stale-cache fallback wrapper. Use for best-effort non-blocking
  * callers (e.g. request path under time pressure). Returns disk-cached data
  * even if past TTL, rather than paying the 25-min cold path.
+ *
+ * Phase 4 fix: NEVER pay the cold path from a user-facing request. On cold
+ * miss we kick off a background fetch and return null — the UI shows a
+ * "warming" state instead of hanging for 25 minutes. Callers that genuinely
+ * need a synchronous fetch should call getInstitutionalSummary() directly.
  */
+const pendingWarms = new Set<string>();
+
 export async function getInstitutionalSummaryStaleOk(
   ticker: string,
   topN = 25
@@ -658,8 +665,20 @@ export async function getInstitutionalSummaryStaleOk(
   const stale = readInstitutionalStale(ticker);
   if (stale) {
     // Kick off a background refresh but return stale immediately.
-    getInstitutionalSummary(ticker, topN).catch(() => {/* silent */});
+    if (!pendingWarms.has(ticker)) {
+      pendingWarms.add(ticker);
+      getInstitutionalSummary(ticker, topN)
+        .catch(() => {/* silent */})
+        .finally(() => pendingWarms.delete(ticker));
+    }
     return stale;
   }
-  return getInstitutionalSummary(ticker, topN);
+  // Cold miss — kick off background warm, return null immediately.
+  if (!pendingWarms.has(ticker)) {
+    pendingWarms.add(ticker);
+    getInstitutionalSummary(ticker, topN)
+      .catch(() => {/* silent */})
+      .finally(() => pendingWarms.delete(ticker));
+  }
+  return null;
 }

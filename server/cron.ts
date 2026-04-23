@@ -91,7 +91,7 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
     preventOverrun: true,
     runOnStart: false,
     handler: async () => {
-      const res = await warmInstitutionalCache({ maxSymbols: 100 });
+      const res = await warmInstitutionalCache({ maxSymbols: 250 });
       console.log(`[CRON] institutional warmup: ${res.written} written, ${res.skipped} fresh, ${res.errors} errors`);
     },
   });
