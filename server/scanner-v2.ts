@@ -123,6 +123,7 @@ import { gapHoldDetector } from "./scanner-v2-signals/gap-hold";
 import { earningsSoonDetector } from "./scanner-v2-signals/earnings-soon";
 import { analystActionDetector } from "./scanner-v2-signals/analyst-action";
 import { insiderClusterDetector } from "./scanner-v2-signals/insider-cluster";
+import { smallFloatDetector } from "./scanner-v2-signals/small-float";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
@@ -133,7 +134,15 @@ const SIGNAL_DETECTORS: SignalDetector[] = [
   earningsSoonDetector,
   analystActionDetector,
   insiderClusterDetector,
+  smallFloatDetector,
 ];
+
+/**
+ * Context-only signal ids — these are multipliers, not standalone score
+ * contributors. They amplify score when paired with other fired signals but
+ * do not themselves add to the baseline.
+ */
+const CONTEXT_SIGNAL_IDS = new Set<string>(["small_float"]);
 
 export function registerDetector(det: SignalDetector): void {
   SIGNAL_DETECTORS.push(det);
@@ -163,24 +172,28 @@ const SIGNAL_WEIGHTS: Record<string, number> = {
 };
 
 function scoreRow(signals: SignalResult[]): { score: number; direction: SignalDirection } {
-  let totalWeight = 0;
   let weightedSum = 0;
   let upWeight = 0;
   let downWeight = 0;
+  let contextMultiplier = 1; // built up from CONTEXT_SIGNAL_IDS
 
   for (const s of signals) {
     if (!s.triggered) continue;
     const w = SIGNAL_WEIGHTS[s.id] ?? 5;
-    totalWeight += w;
+    if (CONTEXT_SIGNAL_IDS.has(s.id)) {
+      // Context multiplier: adds up to +25% at strength 1.0, scales linearly
+      contextMultiplier += 0.25 * s.strength;
+      continue;
+    }
     weightedSum += w * s.strength;
     if (s.direction === "up") upWeight += w * s.strength;
     else if (s.direction === "down") downWeight += w * s.strength;
   }
 
-  if (totalWeight === 0) return { score: 0, direction: "either" };
+  if (weightedSum === 0) return { score: 0, direction: "either" };
 
-  // Normalize to 0-100 assuming max plausible total weight is ~80 (not all fire)
-  const rawScore = (weightedSum / 80) * 100;
+  // Apply context multiplier, then normalize. Max plausible raw ~80 at strength=1.
+  const rawScore = ((weightedSum * contextMultiplier) / 80) * 100;
   const score = Math.min(100, Math.round(rawScore));
 
   let direction: SignalDirection = "either";
@@ -280,6 +293,36 @@ async function preloadEarningsCalendar(): Promise<Map<string, Date>> {
     console.log(`[scanner-v2] preloaded earnings calendar: ${map.size} symbols with upcoming earnings`);
   } catch (e: any) {
     console.warn(`[scanner-v2] earnings calendar preload failed: ${String(e?.message || e)}`);
+  }
+  return map;
+}
+
+/**
+ * Fetch the universe of free-float data from FMP and build a Map<symbol,
+ * floatShares>. The endpoint is paginated (limit=10000, up to ~9 pages for
+ * all ~45k global symbols) and cached 24h — float changes slowly. Non-US
+ * symbols (with dot-suffix exchange codes) are skipped.
+ */
+const FLOAT_PAGES = 10;
+
+async function preloadFloats(): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  try {
+    for (let page = 0; page < FLOAT_PAGES; page++) {
+      const rows: any[] = await fmpGet<any[]>("/shares-float-all", { limit: 10000, page });
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      for (const r of rows) {
+        const sym = String(r?.symbol || "");
+        if (!sym || sym.includes(".")) continue; // skip non-US listings
+        const f = Number(r?.floatShares);
+        if (!Number.isFinite(f) || f <= 0) continue;
+        map.set(sym.toUpperCase(), f);
+      }
+    }
+    const small = Array.from(map.values()).filter((f) => f < 100_000_000).length;
+    console.log(`[scanner-v2] preloaded float data: ${map.size} US symbols (${small} with float <100M)`);
+  } catch (e: any) {
+    console.warn(`[scanner-v2] float preload failed: ${String(e?.message || e)}`);
   }
   return map;
 }
@@ -416,11 +459,12 @@ function evaluateSignals(ctx: ScanContext): SignalResult[] {
  */
 export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2Response> {
   const startedAt = Date.now();
-  const [universe, earningsMap, analystMap, insiderMap] = await Promise.all([
+  const [universe, earningsMap, analystMap, insiderMap, floatMap] = await Promise.all([
     fetchUniverse(filters),
     preloadEarningsCalendar(),
     preloadAnalystActions(),
     preloadInsiderClusters(),
+    preloadFloats(),
   ]);
   console.log(`[scanner-v2] universe=${universe.length} (requested ${filters.universeSize ?? 2000})`);
 
@@ -457,6 +501,7 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
         const nextEarningsDate = earningsMap.get(sym);
         const analystActions = analystMap.get(sym);
         const insiderCluster = insiderMap.get(sym);
+        const floatShares = floatMap.get(sym);
         const ctx: ScanContext = {
           bars,
           basics: {
@@ -470,6 +515,7 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
             nextEarningsDate,
             analystActions,
             insiderCluster,
+            floatShares,
           },
         };
         const signals = evaluateSignals(ctx);
