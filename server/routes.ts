@@ -4725,6 +4725,37 @@ export async function registerRoutes(
     }
   });
 
+  // Signal-based backtester — replays technical detectors over N years of history
+  app.post("/api/track-record/backtest", async (req, res) => {
+    try {
+      const body = req.body || {};
+      let tickers: string[] = Array.isArray(body.tickers) ? body.tickers : [];
+      const years = Math.max(1, Math.min(5, Number(body.years) || 2));
+      const minStrength = Math.max(0, Math.min(1, Number(body.minStrength) || 0.25));
+
+      // If no tickers supplied, use the user's watchlist favorites
+      if (tickers.length === 0 && req.user) {
+        const favs = await storage.getFavorites(req.user.id, "watchlist");
+        tickers = favs.map((f: any) => f.ticker).slice(0, 15);
+      }
+      if (tickers.length === 0) {
+        return res.status(400).json({ error: "no tickers: supply tickers[] or add favorites to your watchlist" });
+      }
+
+      const { runBacktest } = await import("./backtest");
+      const result = await runBacktest({
+        tickers,
+        years,
+        minStrength,
+        ranBy: req.user?.email || "anonymous",
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[backtest] failed:", err?.message || err);
+      res.status(500).json({ error: err?.message || "Backtest failed" });
+    }
+  });
+
   // Manual trigger for signal logging (admin only)
   app.post("/api/track-record/log-signals", async (req, res) => {
     if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
