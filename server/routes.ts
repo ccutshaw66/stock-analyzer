@@ -455,12 +455,19 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   }
 
   // Build net-activity counts from the FMP rows so downstream scoring still works.
+  // Only count P (open-market purchase) and S (open-market sale). Ignore F/M/A/D
+  // which are administrative (tax withholding, option exercises, grants, disposals)
+  // — those are noise, not directional insider signals.
   let buyCount = 0, sellCount = 0, buyShares = 0, sellShares = 0;
   for (const tx of insiderTxns) {
-    const t = (tx.transactionText || "").toString().toUpperCase();
+    const rawType = (tx.transactionText || "").toString().toUpperCase().trim();
+    const code = rawType.split(/[\s\-]/)[0];
     const shares = tx.shares?.raw || 0;
-    if (t.includes("P") && !t.includes("S")) { buyCount++; buyShares += shares; }
-    else if (t.includes("S")) { sellCount++; sellShares += shares; }
+    if (code === "P" || rawType.includes("PURCHASE") || rawType.includes("BUY")) {
+      buyCount++; buyShares += shares;
+    } else if (code === "S" || rawType.includes("SALE") || rawType.includes("SELL")) {
+      sellCount++; sellShares += shares;
+    }
   }
 
   const result: any = {
@@ -542,14 +549,57 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   }));
 
   // Insider transactions (recent buys/sells)
-  const recentInsiderTxns = insiderTxns.slice(0, 30).map((tx: any) => ({
-    insider: tx.filerName || "Unknown",
-    relation: tx.filerRelation || "",
-    type: tx.transactionText || "Unknown",
-    shares: tx.shares?.raw || 0,
-    value: tx.value?.raw || 0,
-    date: tx.startDate?.fmt || null,
-  }));
+  //
+  // SEC Form 4 raw data comes back as single-letter codes (P/S/M/F/A/D/G...)
+  // that are meaningless to retail users. We translate each code into a
+  // plain-English label and classify whether it's directionally meaningful
+  // (an actual buy/sell decision) vs administrative (tax withholding,
+  // option exercise, grants). Admin transactions get filtered out by
+  // default on the frontend.
+  function translateFormCode(rawType: string): { label: string; meaningful: boolean; direction: "buy" | "sell" | "neutral"; explain: string } {
+    const t = (rawType || "").toString().toUpperCase().trim();
+    const code = t.split(/[\s\-]/)[0]; // "M-Exempt" -> "M", "F-InKind" -> "F"
+    const mapping: Record<string, { label: string; meaningful: boolean; direction: "buy" | "sell" | "neutral"; explain: string }> = {
+      "P": { label: "Open Market Buy", meaningful: true, direction: "buy", explain: "Insider bought shares with their own money — strongest conviction signal." },
+      "S": { label: "Open Market Sell", meaningful: true, direction: "sell", explain: "Insider sold shares on the open market." },
+      "A": { label: "Stock Grant", meaningful: false, direction: "neutral", explain: "Company-issued stock grant or award (compensation, not a decision to buy)." },
+      "D": { label: "Disposed to Issuer", meaningful: false, direction: "neutral", explain: "Shares returned to the company — often part of a buyback or corporate action." },
+      "F": { label: "Tax Withholding", meaningful: false, direction: "neutral", explain: "Shares automatically withheld to pay taxes on vesting RSUs — not a directional decision." },
+      "M": { label: "Option Exercise", meaningful: false, direction: "neutral", explain: "Insider converted options into stock — administrative, doesn't signal buy/sell intent." },
+      "X": { label: "Option Exercise", meaningful: false, direction: "neutral", explain: "Exercised an in-the-money option." },
+      "C": { label: "Derivative Conversion", meaningful: false, direction: "neutral", explain: "Converted a derivative security into stock." },
+      "G": { label: "Gift", meaningful: false, direction: "neutral", explain: "Bona fide gift — often estate planning." },
+      "V": { label: "Voluntary Report", meaningful: true, direction: "neutral", explain: "Insider voluntarily reported early — check the underlying transaction type." },
+      "I": { label: "Discretionary", meaningful: false, direction: "neutral", explain: "Broker-directed transaction within a company plan." },
+      "J": { label: "Other", meaningful: false, direction: "neutral", explain: "Other acquisition or disposition — see SEC filing for details." },
+      "K": { label: "Equity Swap", meaningful: false, direction: "neutral", explain: "Equity swap or similar derivative instrument." },
+      "L": { label: "Small Acquisition", meaningful: false, direction: "neutral", explain: "Small acquisition under SEC Rule 16a-6." },
+      "W": { label: "Inheritance", meaningful: false, direction: "neutral", explain: "Acquired by will or laws of descent." },
+      "Z": { label: "Voting Trust", meaningful: false, direction: "neutral", explain: "Deposit into or withdrawal from a voting trust." },
+      "U": { label: "Tender Offer", meaningful: true, direction: "sell", explain: "Disposed of shares in a change-of-control tender." },
+    };
+    // Fallback: if the string already contains "purchase" or "sale", detect that
+    const lower = (rawType || "").toString().toLowerCase();
+    if (lower.includes("purchase") || lower.includes("buy")) return { label: "Open Market Buy", meaningful: true, direction: "buy", explain: "Insider bought shares." };
+    if (lower.includes("sale") || lower.includes("sell")) return { label: "Open Market Sell", meaningful: true, direction: "sell", explain: "Insider sold shares." };
+    return mapping[code] || { label: rawType || "Unknown", meaningful: false, direction: "neutral", explain: "Unclassified transaction type." };
+  }
+
+  const recentInsiderTxns = insiderTxns.slice(0, 100).map((tx: any) => {
+    const translated = translateFormCode(tx.transactionText || "");
+    return {
+      insider: tx.filerName || "Unknown",
+      relation: tx.filerRelation || "",
+      type: translated.label,
+      typeCode: (tx.transactionText || "").toString().toUpperCase(),
+      meaningful: translated.meaningful,
+      direction: translated.direction,
+      explain: translated.explain,
+      shares: tx.shares?.raw || 0,
+      value: tx.value?.raw || 0,
+      date: tx.startDate?.fmt || null,
+    };
+  });
 
   // Compute money flow signals
   const insiderBuyCount = netActivity.buyInfoCount?.raw || 0;
