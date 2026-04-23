@@ -27,7 +27,7 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  console.log("\nScanner 2.0 smoke test (3.5.3 — BB squeeze + ATR + Relative Volume)\n");
+  console.log("\nScanner 2.0 smoke test (3.5.4 — BB squeeze + ATR + RelVol + 52w + Gap)\n");
 
   // 1) Small universe to keep smoke quick
   console.log("1) Small scan (200 tickers, mega-cap bias for data quality)");
@@ -46,7 +46,7 @@ async function main() {
   if (scan.results.length) {
     const r0 = scan.results[0];
     check("row-shape", !!r0.symbol && typeof r0.price === "number" && Array.isArray(r0.signals), `top=${r0.symbol} score=${r0.score}`);
-    check("row-signals-length", r0.signals.length === 3, `${r0.signals.length} signal results (expect 3: bb_squeeze + atr_expansion + rel_volume)`);
+    check("row-signals-length", r0.signals.length === 5, `${r0.signals.length} signal results (expect 5)`);
   }
 
   // At least SOME tickers should have a triggered signal in a 200-ticker mega-cap slice
