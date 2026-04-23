@@ -27,7 +27,11 @@ interface Institution {
 interface InsiderTxn {
   insider: string;
   relation: string;
-  type: string;
+  type: string;            // Plain-English label, e.g. "Open Market Buy", "Tax Withholding"
+  typeCode?: string;       // Raw SEC code, e.g. "P", "M-Exempt"
+  meaningful?: boolean;    // True for P/S (real buy/sell decisions), false for F/M/A/D admin
+  direction?: "buy" | "sell" | "neutral";
+  explain?: string;        // Tooltip text explaining what this code means
   shares: number;
   value: number;
   date: string | null;
@@ -145,20 +149,17 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
 
-        {/* Summary Cards */}
+        {/* Summary Cards — ownership + insider activity only. QoQ flow cards
+            removed because we don't yet compute QoQ changes from EDGAR data. */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 border-b border-card-border shrink-0">
-          <MiniCard label="Institutional Ownership" value={`${data.institutionPct.toFixed(1)}%`} sub={`${data.institutionCount.toLocaleString()} holders`} />
-          <MiniCard label="Insider Ownership" value={`${data.insiderPct.toFixed(1)}%`} sub={`Float: ${data.floatPct.toFixed(1)}%`} />
-          <MiniCard label="Inst. Increasing" value={`${data.instIncreased + data.instNew}`} sub={`${data.instNew} new positions`} color="text-green-400" />
-          <MiniCard label="Inst. Decreasing" value={`${data.instDecreased + data.instSoldOut}`} sub={`${data.instSoldOut} sold out`} color="text-red-400" />
-        </div>
-
-        {/* Insider Activity Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-3 border-b border-card-border shrink-0 bg-muted/20">
+          <MiniCard
+            label="Institutional Ownership"
+            value={data.institutionCount > 0 ? `${data.institutionPct.toFixed(1)}%` : "Warming"}
+            sub={data.institutionCount > 0 ? `${data.institutionCount.toLocaleString()} holders (13F)` : "Data warming — check back later"}
+          />
           <MiniCard label="Insider Buys (6mo)" value={String(data.insiderBuyCount)} sub={`${formatCompact(data.insiderBuyShares)} shares`} color="text-green-400" />
           <MiniCard label="Insider Sells (6mo)" value={String(data.insiderSellCount)} sub={`${formatCompact(data.insiderSellShares)} shares`} color="text-red-400" />
           <MiniCard label="Net Insider Shares" value={formatCompact(data.netInsiderShares)} color={data.netInsiderShares >= 0 ? "text-green-400" : "text-red-400"} />
-          <MiniCard label="Est. Inst Inflow" value={`$${formatCompact(data.instInflow)}`} sub={`Outflow: $${formatCompact(data.instOutflow)}`} color="text-primary" />
         </div>
 
         {/* Tabs */}
@@ -208,89 +209,190 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
           )}
 
           {tab === "funds" && (
-            <table className="w-full text-xs">
-              <thead><tr className="text-muted-foreground border-b border-card-border">
-                <th className="text-left py-2 font-semibold">#</th>
-                <th className="text-left py-2 font-semibold">Fund</th>
-                <th className="text-right py-2 font-semibold">Shares</th>
-                <th className="text-right py-2 font-semibold">Value</th>
-                <th className="text-right py-2 font-semibold">% Held</th>
-                <th className="text-right py-2 font-semibold">QoQ Change</th>
-              </tr></thead>
-              <tbody>
-                {data.topFunds.map((fund, i) => (
-                  <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                    <td className="py-1.5 text-muted-foreground">{i + 1}</td>
-                    <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{fund.name}</td>
-                    <td className="py-1.5 text-right tabular-nums">{formatCompact(fund.shares)}</td>
-                    <td className="py-1.5 text-right tabular-nums">${formatCompact(fund.value)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{(fund.pctHeld * 100).toFixed(2)}%</td>
-                    <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-green-400" : fund.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                      {fund.changeQoQ > 0 ? "+" : ""}{fund.changeQoQ.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            data.topFunds.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead><tr className="text-muted-foreground border-b border-card-border">
+                  <th className="text-left py-2 font-semibold">#</th>
+                  <th className="text-left py-2 font-semibold">Fund</th>
+                  <th className="text-right py-2 font-semibold">Shares</th>
+                  <th className="text-right py-2 font-semibold">Value</th>
+                  <th className="text-right py-2 font-semibold">% Held</th>
+                  <th className="text-right py-2 font-semibold">QoQ Change</th>
+                </tr></thead>
+                <tbody>
+                  {data.topFunds.map((fund, i) => (
+                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
+                      <td className="py-1.5 text-muted-foreground">{i + 1}</td>
+                      <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{fund.name}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatCompact(fund.shares)}</td>
+                      <td className="py-1.5 text-right tabular-nums">${formatCompact(fund.value)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{(fund.pctHeld * 100).toFixed(2)}%</td>
+                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-green-400" : fund.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                        {fund.changeQoQ > 0 ? "+" : ""}{fund.changeQoQ.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-center py-8 text-xs text-muted-foreground">
+                <Briefcase className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="font-semibold mb-1">Fund holder breakdown not available</p>
+                <p>Mutual fund and ETF holdings require N-PORT filings, which aren't yet integrated. See Top Institutions tab for 13F holders.</p>
+              </div>
+            )
           )}
 
           {tab === "insiders" && (
-            <table className="w-full text-xs">
-              <thead><tr className="text-muted-foreground border-b border-card-border">
-                <th className="text-left py-2 font-semibold">Name</th>
-                <th className="text-left py-2 font-semibold">Role</th>
-                <th className="text-right py-2 font-semibold">Direct Shares</th>
-                <th className="text-right py-2 font-semibold">Indirect</th>
-                <th className="text-left py-2 font-semibold">Last Action</th>
-                <th className="text-right py-2 font-semibold">Date</th>
-              </tr></thead>
-              <tbody>
-                {data.insiders.map((ins, i) => (
-                  <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                    <td className="py-1.5 font-semibold text-foreground">{ins.name}</td>
-                    <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
-                    <td className="py-1.5 text-right tabular-nums">{ins.shares > 0 ? formatCompact(ins.shares) : "—"}</td>
-                    <td className="py-1.5 text-right tabular-nums text-muted-foreground">{ins.sharesIndirect > 0 ? formatCompact(ins.sharesIndirect) : "—"}</td>
-                    <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-red-400" : ins.latestTransaction === "Purchase" ? "text-green-400" : "text-muted-foreground"}`}>
-                      {ins.latestTransaction || "—"}
-                    </td>
-                    <td className="py-1.5 text-right text-muted-foreground tabular-nums">{ins.latestDate || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            data.insiders.length > 0 ? (
+              <table className="w-full text-xs">
+                <thead><tr className="text-muted-foreground border-b border-card-border">
+                  <th className="text-left py-2 font-semibold">Name</th>
+                  <th className="text-left py-2 font-semibold">Role</th>
+                  <th className="text-right py-2 font-semibold">Direct Shares</th>
+                  <th className="text-right py-2 font-semibold">Indirect</th>
+                  <th className="text-left py-2 font-semibold">Last Action</th>
+                  <th className="text-right py-2 font-semibold">Date</th>
+                </tr></thead>
+                <tbody>
+                  {data.insiders.map((ins, i) => (
+                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
+                      <td className="py-1.5 font-semibold text-foreground">{ins.name}</td>
+                      <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
+                      <td className="py-1.5 text-right tabular-nums">{ins.shares > 0 ? formatCompact(ins.shares) : "—"}</td>
+                      <td className="py-1.5 text-right tabular-nums text-muted-foreground">{ins.sharesIndirect > 0 ? formatCompact(ins.sharesIndirect) : "—"}</td>
+                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-red-400" : ins.latestTransaction === "Purchase" ? "text-green-400" : "text-muted-foreground"}`}>
+                        {ins.latestTransaction || "—"}
+                      </td>
+                      <td className="py-1.5 text-right text-muted-foreground tabular-nums">{ins.latestDate || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-center py-8 text-xs text-muted-foreground">
+                <UserCheck className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                <p className="font-semibold mb-1">Insider roster not available</p>
+                <p>Current holdings for officers and directors aren't populated. See the Recent Txns tab for actual insider buy/sell activity from SEC Form 4 filings.</p>
+              </div>
+            )
           )}
 
           {tab === "transactions" && (
-            <table className="w-full text-xs">
-              <thead><tr className="text-muted-foreground border-b border-card-border">
-                <th className="text-left py-2 font-semibold">Date</th>
-                <th className="text-left py-2 font-semibold">Insider</th>
-                <th className="text-left py-2 font-semibold">Type</th>
-                <th className="text-right py-2 font-semibold">Shares</th>
-                <th className="text-right py-2 font-semibold">Value</th>
-              </tr></thead>
-              <tbody>
-                {data.recentInsiderTxns.map((tx, i) => {
-                  const isSale = tx.type.toLowerCase().includes("sale") || tx.type.toLowerCase().includes("sell");
-                  const isBuy = tx.type.toLowerCase().includes("purchase") || tx.type.toLowerCase().includes("buy");
-                  return (
-                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                      <td className="py-1.5 tabular-nums text-muted-foreground">{tx.date || "—"}</td>
-                      <td className="py-1.5 font-semibold text-foreground">{tx.insider}</td>
-                      <td className={`py-1.5 font-semibold ${isSale ? "text-red-400" : isBuy ? "text-green-400" : "text-yellow-400"}`}>
-                        {tx.type}
-                      </td>
-                      <td className="py-1.5 text-right tabular-nums">{formatCompact(Math.abs(tx.shares))}</td>
-                      <td className="py-1.5 text-right tabular-nums">{tx.value > 0 ? `$${formatCompact(tx.value)}` : "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <TransactionsTable txns={data.recentInsiderTxns} />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const filtered = showAll ? txns : txns.filter(t => t.meaningful === true);
+  const meaningfulCount = txns.filter(t => t.meaningful === true).length;
+  const adminCount = txns.length - meaningfulCount;
+
+  // Flag notable insiders by role
+  const isNotableRole = (relation: string) => {
+    const r = (relation || "").toLowerCase();
+    return r.includes("ceo") || r.includes("cfo") || r.includes("coo") ||
+           r.includes("chief executive") || r.includes("chief financial") ||
+           r.includes("chief operating") || r.includes("president") ||
+           r.includes("chairman") || r.includes("founder");
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="text-xs text-muted-foreground">
+          {showAll
+            ? `Showing all ${txns.length} transactions`
+            : `Showing ${meaningfulCount} meaningful buy/sell events`}
+          {!showAll && adminCount > 0 && (
+            <span className="ml-1 opacity-70">({adminCount} admin filings hidden)</span>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showAll}
+            onChange={e => setShowAll(e.target.checked)}
+            className="accent-blue-500"
+            data-testid="toggle-show-all-txns"
+          />
+          <span>Show all (incl. option exercises, tax withholding)</span>
+        </label>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-8 text-xs text-muted-foreground">
+          <p className="font-semibold mb-1">No meaningful insider buy/sell transactions in the last 6 months.</p>
+          {!showAll && txns.length > 0 && (
+            <p>There are {txns.length} administrative filings (option exercises, tax withholding, stock grants). Toggle "Show all" to view them.</p>
+          )}
+        </div>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground border-b border-card-border">
+              <th className="py-2 pr-2">Date</th>
+              <th className="py-2 pr-2">Insider</th>
+              <th className="py-2 pr-2">Type</th>
+              <th className="py-2 pr-2 text-right">Shares</th>
+              <th className="py-2 pr-2 text-right">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((tx, i) => {
+              const dirColor =
+                tx.direction === "buy" ? "text-green-400"
+                : tx.direction === "sell" ? "text-red-400"
+                : "text-muted-foreground";
+              const notable = isNotableRole(tx.relation);
+              const bigTicket = tx.value >= 10_000_000 && tx.meaningful;
+              return (
+                <tr
+                  key={i}
+                  className={`border-b border-card-border/40 ${bigTicket ? "bg-yellow-500/5" : ""}`}
+                  data-testid={`insider-txn-row-${i}`}
+                >
+                  <td className="py-2 pr-2 text-muted-foreground tabular-nums">
+                    {tx.date ? new Date(tx.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "—"}
+                  </td>
+                  <td className="py-2 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">{tx.insider}</span>
+                      {notable && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
+                          Key
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{tx.relation}</span>
+                  </td>
+                  <td className="py-2 pr-2">
+                    <div className="flex items-center gap-1.5" title={tx.explain || ""}>
+                      <span className={`font-medium ${dirColor}`}>{tx.type}</span>
+                      {tx.typeCode && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                          {tx.typeCode}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className={`py-2 pr-2 text-right tabular-nums ${dirColor}`}>
+                    {formatCompact(tx.shares)}
+                  </td>
+                  <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${dirColor}`}>
+                    {tx.value > 0 ? `$${formatCompact(tx.value)}` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
