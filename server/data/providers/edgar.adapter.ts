@@ -24,6 +24,11 @@
 
 import { edgarFetch, edgarFetchJson } from "./edgar.client";
 import { fmpGet } from "./fmp.client";
+import {
+  readInstitutionalFresh,
+  readInstitutionalStale,
+  writeInstitutional,
+} from "../../institutional-cache";
 
 // In-process cache (same pattern as fmp.adapter)
 type CacheEntry<T> = { value: T; expiresAt: number };
@@ -524,6 +529,14 @@ export async function getInstitutionalSummary(
   const cached = getCached<InstitutionalSummary>(cacheKey);
   if (cached) return cached;
 
+  // Phase 3.8: disk cache. Survives restarts so deploys don't trigger a
+  // 25-min cold path for the first user. Fresh (<3d) wins over live.
+  const diskFresh = readInstitutionalFresh(ticker);
+  if (diskFresh) {
+    setCached(cacheKey, diskFresh, TTL_HOLDINGS);
+    return diskFresh as InstitutionalSummary;
+  }
+
   const basics = await getCompanyBasics(ticker);
   if (!basics) return null;
 
@@ -627,5 +640,26 @@ export async function getInstitutionalSummary(
     source: "sec-edgar-13f",
   };
   setCached(cacheKey, summary, TTL_HOLDINGS);
+  writeInstitutional(ticker, summary); // Phase 3.8: persist so restarts warm-start
   return summary;
+}
+
+/**
+ * Phase 3.8: Stale-cache fallback wrapper. Use for best-effort non-blocking
+ * callers (e.g. request path under time pressure). Returns disk-cached data
+ * even if past TTL, rather than paying the 25-min cold path.
+ */
+export async function getInstitutionalSummaryStaleOk(
+  ticker: string,
+  topN = 25
+): Promise<InstitutionalSummary | null> {
+  const fresh = readInstitutionalFresh(ticker);
+  if (fresh) return fresh;
+  const stale = readInstitutionalStale(ticker);
+  if (stale) {
+    // Kick off a background refresh but return stale immediately.
+    getInstitutionalSummary(ticker, topN).catch(() => {/* silent */});
+    return stale;
+  }
+  return getInstitutionalSummary(ticker, topN);
 }
