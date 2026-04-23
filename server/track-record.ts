@@ -12,9 +12,35 @@
  */
 
 import { db } from "./storage";
-import { signalLog } from "@shared/schema";
+import { signalLog, favorites } from "@shared/schema";
 import { eq, and, isNull, lte, sql } from "drizzle-orm";
 import { computeRSISeries } from "./indicators";
+
+// Curated large/mid-cap universe used when the screener is unavailable
+const FALLBACK_UNIVERSE: string[] = [
+  // Mega-cap tech
+  "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "AVGO", "ORCL",
+  "CRM", "ADBE", "NFLX", "AMD", "INTC", "QCOM", "CSCO", "IBM", "NOW", "PANW",
+  "SNOW", "PLTR", "UBER", "ABNB", "SHOP", "SQ", "PYPL", "ROKU", "COIN", "MSTR",
+  // Financials
+  "JPM", "BAC", "WFC", "GS", "MS", "C", "V", "MA", "AXP", "BLK",
+  "SCHW", "SPGI", "CME", "ICE", "COF", "USB", "PNC", "TFC",
+  // Healthcare / pharma
+  "UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT", "DHR", "BMY",
+  "AMGN", "GILD", "CVS", "MDT", "ISRG", "REGN", "VRTX", "ZTS",
+  // Consumer
+  "WMT", "COST", "HD", "LOW", "PG", "KO", "PEP", "MCD", "SBUX", "NKE",
+  "TGT", "LULU", "CMG", "DIS", "BKNG", "TJX", "DG", "DLTR", "ULTA",
+  // Industrials / energy
+  "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "PSX", "MPC", "VLO",
+  "CAT", "DE", "HON", "GE", "BA", "LMT", "RTX", "NOC", "UPS", "FDX",
+  // Semis / hardware
+  "ASML", "TSM", "MU", "LRCX", "AMAT", "KLAC", "MRVL", "ARM", "ON",
+  // Communication / internet
+  "T", "VZ", "TMUS", "CMCSA", "DIS", "SPOT", "PINS", "SNAP", "RBLX",
+  // Broad ETFs (benchmark + liquid breadth)
+  "SPY", "QQQ", "IWM", "DIA", "XLK", "XLF", "XLE", "XLV", "SMH", "XLY",
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,24 +76,44 @@ export async function logSignals(
 
   await ensureReady();
 
-  // Get top stocks from screener
-  let tickers: string[] = [];
+  // Universe construction: merge (a) top ~150 from screener, (b) every
+  // ticker any user has on their watchlist/dividend list, (c) curated
+  // fallback list. Deduped, capped at 200 per run.
+  const tickerSet = new Set<string>();
+
+  // (a) Screener — top 150 liquid names
   try {
-    tickers = await screenStocks({
-      minPrice: 10, maxPrice: 5000, sector: "all",
-      marketCapTier: "all", count: 25, showAll: true,
+    const screened = await screenStocks({
+      minPrice: 5, maxPrice: 5000, sector: "all",
+      marketCapTier: "all", count: 150, showAll: true,
     });
+    for (const t of screened) tickerSet.add(t.toUpperCase());
+    console.log(`[track-record] Screener returned ${screened.length} tickers`);
   } catch (err: any) {
-    console.log("[track-record] Screener failed, using default list");
-    tickers = [
-      "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX",
-      "JPM", "V", "UNH", "HD", "PG", "JNJ", "XOM", "ABBV", "KO", "PEP", "MRK",
-      "SPY", "QQQ", "IWM",
-    ];
+    console.log("[track-record] Screener failed, will rely on fallback + watchlists");
   }
 
-  // Add SPY for benchmark
-  if (!tickers.includes("SPY")) tickers.push("SPY");
+  // (b) Every user's watchlist + dividend list
+  try {
+    const rows = await db
+      .select({ ticker: favorites.ticker })
+      .from(favorites);
+    for (const r of rows) {
+      if (r.ticker) tickerSet.add(r.ticker.toUpperCase());
+    }
+    console.log(`[track-record] Added user watchlist tickers — universe now ${tickerSet.size}`);
+  } catch (err: any) {
+    console.log("[track-record] Failed to merge watchlists:", err?.message);
+  }
+
+  // (c) Curated fallback universe (ensures coverage even if screener is down)
+  for (const t of FALLBACK_UNIVERSE) tickerSet.add(t);
+
+  // Always include SPY/QQQ/IWM as benchmarks
+  ["SPY", "QQQ", "IWM"].forEach(t => tickerSet.add(t));
+
+  const tickers = Array.from(tickerSet).slice(0, 200);
+  console.log(`[track-record] Final universe: ${tickers.length} tickers`);
 
   const entries: SignalEntry[] = [];
 
