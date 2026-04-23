@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
+import { SignalPulse } from "@/components/SignalPulse";
 
 const SECTORS = [
   "All Sectors", "Technology", "Healthcare", "Financial Services",
@@ -36,11 +37,31 @@ const PRICE_RANGES = [
 
 function SignalBadge({ signal, size = "sm" }: { signal: string; size?: "sm" | "md" }) {
   const base = size === "md" ? "px-3 py-1.5 text-sm" : "px-2 py-0.5 text-[11px]";
+  const s = (signal || "").toUpperCase();
+  const isUp = /↑/.test(signal) || /_UP$|_BUY$|BULL/.test(s);
+  const isDown = /↓/.test(signal) || /_DOWN$|_SELL$|BEAR/.test(s);
+  const isGo = s.startsWith("GO");
+  const isSet = s.startsWith("SET");
+  const isReady = s.startsWith("READY");
+  const isPullback = s.startsWith("PULLBACK");
+  const isClosed = s.includes("CLOSED") || s.includes("NO SETUP") || s === "NONE";
+
   let color = "bg-muted text-muted-foreground";
-  if (["ENTER","CONFIRMED_BUY","LEAN_BUY"].includes(signal)) color = signal === "CONFIRMED_BUY" ? "bg-green-500 text-white" : signal === "LEAN_BUY" ? "bg-green-500/20 text-green-400" : "bg-green-500/80 text-white";
-  else if (["SELL","CONFIRMED_SELL","LEAN_SELL"].includes(signal)) color = signal === "CONFIRMED_SELL" ? "bg-red-500 text-white" : signal === "LEAN_SELL" ? "bg-red-500/20 text-red-400" : "bg-red-500/80 text-white";
-  else if (["HOLD","NEUTRAL"].includes(signal)) color = "bg-yellow-500/20 text-yellow-400";
-  return <span className={`${base} font-bold rounded-md uppercase whitespace-nowrap`}>{signal.replace(/_/g, " ")}</span>;
+  if (isGo && isUp) color = "bg-green-500 text-white";
+  else if (isGo && isDown) color = "bg-red-500 text-white";
+  else if (isSet && isUp) color = "bg-green-500/70 text-white";
+  else if (isSet && isDown) color = "bg-red-500/70 text-white";
+  else if (isReady && isUp) color = "bg-green-500/30 text-green-300 border border-green-500/40";
+  else if (isReady && isDown) color = "bg-red-500/30 text-red-300 border border-red-500/40";
+  else if (isPullback) color = "bg-amber-500/30 text-amber-300 border border-amber-500/40";
+  else if (isClosed) color = "bg-zinc-700 text-zinc-400";
+  else if (["ENTER", "CONFIRMED_BUY", "LEAN_BUY"].includes(s))
+    color = s === "CONFIRMED_BUY" ? "bg-green-500 text-white" : s === "LEAN_BUY" ? "bg-green-500/20 text-green-400" : "bg-green-500/80 text-white";
+  else if (["SELL", "CONFIRMED_SELL", "LEAN_SELL"].includes(s))
+    color = s === "CONFIRMED_SELL" ? "bg-red-500 text-white" : s === "LEAN_SELL" ? "bg-red-500/20 text-red-400" : "bg-red-500/80 text-white";
+  else if (["HOLD", "NEUTRAL"].includes(s)) color = "bg-yellow-500/20 text-yellow-400";
+
+  return <span className={`${base} ${color} font-bold rounded-md uppercase whitespace-nowrap`}>{(signal || "—").replace(/_/g, " ")}</span>;
 }
 
 function ScoreBar({ score, max = 7 }: { score: number; max?: number }) {
@@ -99,7 +120,7 @@ function GatePips({ gatesCleared }: { gatesCleared: number }) {
   );
 }
 
-function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
+function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; rank: number; onClick: () => void; onAnalyze?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const g = result.gates;
   // Use gate signal directly
@@ -125,8 +146,11 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
           <span className="text-2xl font-bold text-muted-foreground/40 tabular-nums w-8">{rank}</span>
           <div>
             <div className="flex items-center gap-2">
-              <span onClick={onClick} className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
+              <span onClick={onClick} title="Load in Signal Pulse" className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
+              {onAnalyze && (
+                <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
+              )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
@@ -178,7 +202,7 @@ function ThreeStrategyCard({ result, rank, onClick }: { result: any; rank: numbe
 
 // ─── AMC Result Card ───
 
-function AMCCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
+function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: number; onClick: () => void; onAnalyze?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const labelColor = result.amcScore >= 5 ? "bg-green-500 text-white" : result.amcScore >= 4 ? "bg-green-500/70 text-white" : result.amcScore >= 3 ? "bg-yellow-400/80 text-black" : "bg-muted text-muted-foreground";
   const labelText = result.label || (result.amcScore >= 2 ? "Watch" : "Low");
@@ -189,9 +213,12 @@ function AMCCard({ result, rank, onClick }: { result: any; rank: number; onClick
           <span className="text-2xl font-bold text-muted-foreground/40 tabular-nums w-8">{rank}</span>
           <div>
             <div className="flex items-center gap-2">
-              <span onClick={onClick} className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
+              <span onClick={onClick} title="Load in Signal Pulse" className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
               <SignalBadge signal={result.signal} />
+              {onAnalyze && (
+                <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
+              )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {result.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
@@ -252,7 +279,7 @@ function AMCCard({ result, rank, onClick }: { result: any; rank: number; onClick
 
 // ─── Scanner 2.0 Explosion Card ───
 
-function ExplosionCard({ result, rank, onClick }: { result: any; rank: number; onClick: () => void }) {
+function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank: number; onClick: () => void; onAnalyze?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const score = result.score ?? 0;
   const direction = result.direction ?? "either";
@@ -280,7 +307,7 @@ function ExplosionCard({ result, rank, onClick }: { result: any; rank: number; o
         <div className="w-8 h-8 flex-shrink-0 rounded-full bg-fuchsia-500/10 text-fuchsia-400 font-bold text-sm flex items-center justify-center">
           {rank}
         </div>
-        <button onClick={onClick} className="flex-1 text-left min-w-0">
+        <button onClick={onClick} title="Load in Signal Pulse" className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-base font-bold text-foreground tracking-tight">{result.symbol}</span>
             <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 uppercase border ${dirStyle}`}>
@@ -291,6 +318,9 @@ function ExplosionCard({ result, rank, onClick }: { result: any; rank: number; o
             {result.companyName} · {result.sector || "—"}
           </p>
         </button>
+        {onAnalyze && (
+          <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold flex-shrink-0">Analyze →</button>
+        )}
         <div className="text-right flex-shrink-0">
           <span className={`text-xs font-bold rounded px-2 py-1 ${scoreColor}`}>{score}</span>
           <p className="text-[10px] text-muted-foreground mt-0.5">score</p>
@@ -357,6 +387,8 @@ export default function Scanner() {
   const [scanCount, setScanCount] = useState(25);
   const [signalFilter, setSignalFilter] = useState<"both" | "buy" | "sell">("both");
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [pulseTicker, setPulseTicker] = useState<string | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   const priceConfig = PRICE_RANGES.find(p => p.value === priceRange) || PRICE_RANGES[0];
   const queryParams = new URLSearchParams({
@@ -419,10 +451,39 @@ export default function Scanner() {
     navigate("/trade");
   };
 
+  // Click ticker on card → load it into the Signal Pulse oscillator at top of page
+  const handlePulseSelect = (ticker: string) => {
+    setPulseTicker(ticker);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
         <Disclaimer />
+
+        {/* SIGNAL PULSE — unique proprietary oscillator */}
+        <SignalPulse ticker={pulseTicker} />
+
+        {/* How it works */}
+        <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+          <button
+            onClick={() => setHowItWorksOpen(!howItWorksOpen)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-foreground hover:bg-muted/30"
+          >
+            <span>How the Scanner page works</span>
+            {howItWorksOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+          {howItWorksOpen && (
+            <div className="px-4 pb-4 text-xs text-muted-foreground space-y-2 border-t border-card-border">
+              <p className="pt-2"><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-green-400">bullish fires</span> minus <span className="text-red-400">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
+              <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-green-400">GO ↑</span>/<span className="text-red-400">GO ↓</span> (all gates clear), <span className="text-green-400">SET ↑</span>/<span className="text-red-400">SET ↓</span> (most gates clear), <span className="text-green-400">READY ↑</span>/<span className="text-red-400">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors now differentiate up vs down clearly.</p>
+              <p><b className="text-foreground">AMC Strategy:</b> Scores 0-5 using MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, and trend strength.</p>
+              <p><b className="text-foreground">Explosion Detector:</b> Scans 2000 US stocks looking for combinations of 12 signals (6 technical + 6 catalyst) that historically precede large moves. Expand any card to see per-signal breakdown and an MACD/RSI indicator chart.</p>
+              <p><b className="text-foreground">Credibility:</b> All three scanners now use the same signal engine — verdicts here match Trade Analysis, Trade Tracker, and Watchlist exactly.</p>
+            </div>
+          )}
+        </div>
 
         {/* Scan Mode Tabs */}
         <div className="flex border-b border-card-border">
@@ -592,7 +653,7 @@ export default function Scanner() {
                 </span>
               </div>
               {data.results.map((result: any, idx: number) => (
-                <ExplosionCard key={result.symbol} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.symbol)} />
+                <ExplosionCard key={result.symbol} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.symbol)} onAnalyze={() => handleTickerClick(result.symbol)} />
               ))}
             </div>
           ) : (
@@ -623,9 +684,9 @@ export default function Scanner() {
               </div>
               {filtered.map((result: any, idx: number) => (
                 scanMode === "amc" ? (
-                  <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
+                  <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
                 ) : (
-                  <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} />
+                  <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
                 )
               ))}
             </div>

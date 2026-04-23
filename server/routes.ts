@@ -3480,6 +3480,28 @@ export async function registerRoutes(
     }
   });
 
+  // Scanner 2.0 — Signal Pulse: 60-day composite oscillator from all 12 detectors
+  app.get("/api/scanner-v2/pulse/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = String(req.params.ticker || "").toUpperCase().trim();
+      if (!ticker) return res.status(400).json({ error: "ticker required" });
+
+      const key = `v2:pulse:${ticker}`;
+      const cached = getCached(key);
+      if (cached) return res.json({ ...cached, cached: true });
+
+      const { runSignalPulse } = await import("./signal-pulse");
+      const result = await runSignalPulse(ticker);
+      if (!result) return res.json({ ticker, days: [], reason: "insufficient-bars" });
+      setCache(key, result, TTL.watchlist);
+      res.json({ ...result, cached: false });
+    } catch (err: any) {
+      console.error("[pulse] failed:", err?.message || err);
+      res.status(500).json({ error: err?.message || "Failed to compute signal pulse" });
+    }
+  });
+
   // Scanner 2.0 — indicator oscillator series (MACD histogram + RSI) for a ticker (last ~60 bars)
   app.get("/api/scanner-v2/indicators/:ticker", async (req, res) => {
     try {
