@@ -15,11 +15,39 @@ import { getInstitutionalSummary } from "./data/providers/edgar.adapter";
 import { readInstitutionalFresh } from "./institutional-cache";
 import { storage } from "./storage";
 
+// Broad always-warm list — covers the institutional scan default universe.
+// The scanner only shows tickers with warm EDGAR cache, so this list directly
+// determines what users see when they hit Scan.
 const ALWAYS_WARM = [
-  "SPY", "QQQ", "DIA", "IWM", "VTI",
-  "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
-  "META", "TSLA", "BRK-B", "JPM", "V",
-  "XOM", "UNH", "HD", "PG", "MA",
+  // ETFs / benchmarks
+  "SPY", "QQQ", "DIA", "IWM", "VTI", "VOO", "XLK", "XLF", "XLV", "XLE",
+  "XLY", "XLP", "XLI", "XLU", "XLB", "XLRE", "XLC", "SMH", "ARKK",
+  // Mega-cap tech
+  "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "AVGO", "ORCL",
+  "CRM", "ADBE", "NFLX", "AMD", "INTC", "QCOM", "CSCO", "IBM", "NOW", "PANW",
+  "SNOW", "PLTR", "UBER", "ABNB", "SHOP", "PYPL", "ROKU", "COIN", "MSTR",
+  // Financials
+  "JPM", "BAC", "WFC", "GS", "MS", "C", "V", "MA", "AXP", "BLK",
+  "SCHW", "SPGI", "CME", "ICE", "COF", "USB", "PNC", "TFC", "BRK-B",
+  // Healthcare / pharma
+  "UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT", "DHR", "BMY",
+  "AMGN", "GILD", "CVS", "MDT", "ISRG", "REGN", "VRTX", "ZTS",
+  // Consumer
+  "WMT", "COST", "HD", "LOW", "PG", "KO", "PEP", "MCD", "SBUX", "NKE",
+  "TGT", "LULU", "CMG", "DIS", "BKNG", "TJX", "DG", "DLTR", "ULTA",
+  // Industrials / energy
+  "XOM", "CVX", "COP", "SLB", "EOG", "OXY", "PSX", "MPC", "VLO", "KMI", "OKE",
+  "CAT", "DE", "HON", "GE", "BA", "LMT", "RTX", "NOC", "UPS", "FDX",
+  // Semis / hardware
+  "ASML", "TSM", "MU", "LRCX", "AMAT", "KLAC", "MRVL", "ARM", "ON",
+  // Communication / internet
+  "T", "VZ", "TMUS", "CMCSA", "SPOT", "PINS", "SNAP", "RBLX",
+  // Utilities / REITs / dividends
+  "NEE", "DUK", "SO", "D", "AEP", "O", "PLD", "AMT", "CCI", "SPG",
+  "MO", "KMB", "CL", "MDLZ", "GIS", "KHC", "PM",
+  // Popular mid-caps / individual favorites
+  "F", "GM", "DAL", "AAL", "CCL", "NCLH", "MGM", "LVS", "WYNN",
+  "SOFI", "HOOD", "RIVN", "LCID", "NIO", "DKNG", "PENN",
 ];
 
 export interface WarmupResult {

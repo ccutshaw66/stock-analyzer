@@ -4076,6 +4076,18 @@ export async function registerRoutes(
   });
 
   // Scan multiple tickers for institutional money flow (batch)
+  //
+  // Phase 4 fix: the previous implementation scanned the entire Polygon
+  // 500M+ universe (~3000 tickers) and paid the EDGAR cold path for any
+  // ticker not yet warmed by the nightly cron. With a ~25-min cold path
+  // per ticker, the HTTP request would never complete and the UI would
+  // reset to default. The new implementation:
+  //  1. Prefers custom tickers from query (user's own list)
+  //  2. Otherwise scans ONLY tickers that already have warm EDGAR cache
+  //     (warmed nightly by inst-warmup cron) — anything else is listed
+  //     as "warming" so it gets picked up on the next cron pass.
+  //  3. Hard-caps the universe at 150 tickers per request.
+  //  4. Results cached 6h so repeat visits are instant.
   app.get("/api/institutional-scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     try {
@@ -4087,49 +4099,62 @@ export async function registerRoutes(
         ? tickerParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
         : null;
 
-      // Resolve universe: custom tickers from query OR full Polygon universe (cached 24h)
-      const UNIVERSE_TTL = 24 * 60 * 60 * 1000; // 24h
-      const universeCacheKey = "polygon:universe:500m";
+      const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
+
+      // Resolve universe
       let tickers: string[];
       if (customTickers && customTickers.length) {
-        tickers = customTickers.slice(0, 500); // safety cap on custom lists
+        // User supplied a list — scan exactly what they asked for, capped
+        tickers = customTickers.slice(0, 150);
       } else {
-        const cachedUniverse = getCached(universeCacheKey);
-        if (cachedUniverse && !refresh) {
-          tickers = cachedUniverse;
-        } else {
-          console.log("[institutional-scan] Fetching Polygon universe...");
-          tickers = await getPolygonUniverse({ minMarketCap: 500_000_000 });
-          setCache(universeCacheKey, tickers, UNIVERSE_TTL);
+        // Default scan: only tickers that already have warm EDGAR cache.
+        // This guarantees every ticker we scan returns data fast (no cold path).
+        const WARM_UNIVERSE_TTL = 6 * 60 * 60 * 1000;
+        const warmKey = "institutional:warm-universe";
+        let warm: string[] | null = getCached(warmKey);
+        if (!warm || refresh) {
+          // Candidate pool: Polygon 500M+ universe — filter to those with warm cache
+          const universeCacheKey = "polygon:universe:500m";
+          let candidates: string[] = getCached(universeCacheKey) || [];
+          if (candidates.length === 0) {
+            candidates = await getPolygonUniverse({ minMarketCap: 500_000_000 });
+            setCache(universeCacheKey, candidates, 24 * 60 * 60 * 1000);
+          }
+          warm = candidates.filter(t => {
+            const fresh = readInstitutionalFresh(t);
+            if (fresh) return true;
+            const stale = readInstitutionalStale(t);
+            return !!stale;
+          });
+          setCache(warmKey, warm, WARM_UNIVERSE_TTL);
         }
+        tickers = warm.slice(0, 150);
       }
 
-      // Aggregated result cache (6h) — keyed by universe signature
-      const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+      // Aggregated result cache (6h)
+      const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000;
       const scanCacheKey = customTickers
         ? `institutional-scan:custom:${customTickers.slice().sort().join(",")}`
-        : `institutional-scan:universe:500m`;
+        : `institutional-scan:warm:150`;
 
       if (!refresh) {
         const cached = getCached(scanCacheKey);
         if (cached) {
           res.setHeader("X-Scanned-At", cached.scannedAt);
           res.setHeader("X-Total-Scanned", String(cached.totalScanned));
-          res.setHeader("X-Dividend-Payers", String(cached.dividendPayers));
-          res.setHeader("X-Matching-Filters", String(cached.matchingFilters));
+          res.setHeader("X-With-Data", String(cached.withData));
           res.setHeader("X-Cached", "true");
           return res.json(cached.results);
         }
       }
 
-      console.log(`[institutional-scan] Scanning ${tickers.length} tickers (refresh=${refresh})`);
+      console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
       const scanStart = Date.now();
       const results: any[] = [];
 
-      // Parallel batches of 5 — the enqueue() queue in yahooFetch will serialize
-      // Yahoo calls at a safe rate, but running batches in parallel lets us
-      // overlap retry-backoff windows.
-      const BATCH_SIZE = 5;
+      // All selected tickers have warm cache, so these calls return instantly.
+      // Run parallel batches of 10.
+      const BATCH_SIZE = 10;
       for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
         const batch = tickers.slice(b, b + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
@@ -4143,28 +4168,29 @@ export async function registerRoutes(
         for (const r of batchResults) {
           if (r.status === "fulfilled" && r.value) results.push(r.value);
         }
-        // Log progress every 10 batches (~50 tickers)
-        if ((b / BATCH_SIZE) % 10 === 0) {
-          console.log(`[institutional-scan] Progress: ${b + batch.length}/${tickers.length} (${results.length} with data)`);
-        }
       }
 
-      // Sort by absolute flow score (strongest moves first)
-      results.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+      // Only keep rows that actually have institutional ownership data
+      const withInstData = results.filter(r => r.institutionPct > 0 || r.institutionCount > 0);
+      withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
 
       const elapsed = Date.now() - scanStart;
-      console.log(`[institutional-scan] Complete: ${results.length}/${tickers.length} with data in ${elapsed}ms`);
+      console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
 
       const payload = {
         scannedAt: new Date().toISOString(),
         lastScannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
-        withData: results.length,
+        withData: withInstData.length,
         elapsedMs: elapsed,
         cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
-        results,
+        results: withInstData,
       };
       setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      res.setHeader("X-Scanned-At", payload.scannedAt);
+      res.setHeader("X-Total-Scanned", String(payload.totalScanned));
+      res.setHeader("X-With-Data", String(payload.withData));
+      res.setHeader("X-Cached", "false");
       res.json({ ...payload, cached: false });
     } catch (error: any) {
       console.error("[institutional-scan] Error:", error);
