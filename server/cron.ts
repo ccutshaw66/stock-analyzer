@@ -3,6 +3,7 @@ import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { registerJob } from "./platform/jobs/scheduler";
 import { rankedTopFilers } from "./data/providers/edgar.adapter";
+import { warmLongRangeCache } from "./long-range-warmup";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -55,6 +56,25 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   });
 
   console.log("[CRON] EDGAR top-filers refresh registered with scheduler (0 8 * * *)");
+
+  // Phase 3.7: Long-range chart disk cache warmup. Runs nightly at 3:30am ET
+  // (07:30 UTC). Pulls 10y/25y/max bars from Yahoo for open-trade symbols +
+  // always-on floor, writes them to disk. User requests read disk cache only;
+  // Yahoo is never touched on the request path.
+  registerJob({
+    id: "long-range-chart-warmup",
+    description: "Nightly Yahoo long-range chart cache filler (disk-only; never on request path)",
+    cron: "30 7 * * *",
+    timeoutMs: 60 * 60 * 1000, // 60 min hard cap
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await warmLongRangeCache({ maxSymbols: 500 });
+      console.log(`[CRON] long-range warmup: ${res.written} written, ${res.skipped} fresh, ${res.errors} errors`);
+    },
+  });
+
+  console.log("[CRON] Long-range chart warmup registered with scheduler (30 7 * * *)");
 }
 
 function isMarketHours(): boolean {

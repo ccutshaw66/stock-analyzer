@@ -5,6 +5,7 @@ import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
+import { readLongRange, readLongRangeFresh, writeLongRange, listLongRange } from "./long-range-cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
 import { DEMO_EMAIL, DEMO_IDLE_TIMEOUT_MS, seedDemoAccount } from "./demo-seed";
 import { getUserTier, createCheckoutSession, createPortalSession, TIER_LIMITS } from "./stripe";
@@ -365,24 +366,40 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     return cached;
   }
 
-  // Polygon Stocks Starter gives ~5 years of history. For longer ranges (10y/25y/max)
-  // we fall back to Yahoo so the Verdict 25y stress test keeps working.
+  // Phase 3.7: Yahoo is a BACKGROUND cache filler only — never invoked on
+  // the request path. For long-range (10y/25y/max) we read from a disk cache
+  // that a daily cron populates from Yahoo. If the disk cache is cold we
+  // fall back to Polygon (capped ~5y) rather than hit Yahoo live.
   const isLongRange = range === "10y" || range === "25y" || range === "max";
 
   if (isLongRange) {
-    try {
-      const data = await yahooFetch(
-        `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
-      );
-      const result = data?.chart?.result?.[0] || null;
-      if (result) setCache(cacheKey, result, TTL.chart);
-      return result;
-    } catch (err) {
-      console.log(`[chart] Yahoo long-range fallback failed for ${ticker} ${range}, trying Polygon:`, (err as Error).message);
-      // Fall through to Polygon (will be capped at ~5y)
+    // 1) Disk cache (populated by the long-range cron)
+    const cached = readLongRangeFresh(ticker, range, interval);
+    if (cached) {
+      setCache(cacheKey, cached, TTL.chart);
+      return cached;
     }
+    // 2) Polygon as best-effort (capped ~5y)
+    try {
+      const result = await getPolygonChart(ticker, range, interval);
+      if (result && result.timestamp?.length) {
+        setCache(cacheKey, result, TTL.chart);
+        return result;
+      }
+    } catch (err) {
+      console.log(`[chart] Polygon long-range failed for ${ticker} ${range}:`, (err as Error).message);
+    }
+    // 3) Stale disk cache (better than null)
+    const stale = readLongRange(ticker, range, interval);
+    if (stale?.payload) {
+      console.log(`[chart] Serving stale long-range cache for ${ticker} ${range} (age ${Math.round((Date.now() - stale.fetchedAt) / 3600000)}h)`);
+      return stale.payload;
+    }
+    console.log(`[chart] Long-range miss (cold cache) for ${ticker} ${range}`);
+    return null;
   }
 
+  // Short/mid ranges: Polygon only
   try {
     const result = await getPolygonChart(ticker, range, interval);
     if (result && result.timestamp?.length) {
@@ -393,18 +410,8 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     console.log(`[chart] Polygon failed for ${ticker} ${range}:`, (err as Error).message);
   }
 
-  // Last-resort fallback: Yahoo (for any range)
-  try {
-    const data = await yahooFetch(
-      `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}&includePrePost=false`
-    );
-    const result = data?.chart?.result?.[0] || null;
-    if (result) setCache(cacheKey, result, TTL.chart);
-    return result;
-  } catch (err) {
-    console.log(`[chart] All sources failed for ${ticker} ${range}`);
-    return null;
-  }
+  console.log(`[chart] All sources failed for ${ticker} ${range}`);
+  return null;
 }
 
 // ============================================================
@@ -412,28 +419,67 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // ============================================================
 
 async function getInstitutionalData(ticker: string): Promise<any> {
-  // Phase 3.4a: migrated off Yahoo. We still fetch the Yahoo price/summary
-  // blob for price + market cap + insider modules (unchanged), but institutional
-  // ownership now comes from SEC EDGAR 13F filings in parseInstitutionalData.
+  // Phase 3.7: fully migrated off Yahoo.
+  //  - Institutional ownership: SEC EDGAR 13Fs (in parseInstitutionalData)
+  //  - Insider transactions: FMP /insider-trading/search
+  //  - Price / marketCap / volume: Polygon snapshot via getQuote, merged
+  //    into a Yahoo-shaped blob so parseInstitutionalData stays compatible.
   const cacheKey = `inst:${ticker.toUpperCase()}`;
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
-  const modules = [
-    "insiderHolders", "insiderTransactions",
-    "netSharePurchaseActivity",
-    "price", "summaryDetail"
-  ].join("%2C");
-  let result: any = null;
+
+  let quote: any = null;
   try {
-    const data = await yahooFetch(
-      `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`
-    );
-    result = data?.quoteSummary?.result?.[0] || null;
-  } catch (e) {
-    // Non-fatal: EDGAR will still provide institutional data
-    result = null;
+    quote = await getQuote(ticker);
+  } catch {
+    quote = null;
   }
-  if (result) setCache(cacheKey, result, TTL.institutional);
+
+  // FMP insider transactions (last ~50 for this symbol)
+  let insiderTxns: any[] = [];
+  try {
+    const { fmpGet } = await import("./data/providers/fmp.client");
+    const rows: any[] = await fmpGet<any[]>(`/insider-trading/search`, { symbol: ticker, page: 0, limit: 50 });
+    if (Array.isArray(rows)) {
+      insiderTxns = rows.map((r) => ({
+        filerName: r.reportingName || r.name || "Unknown",
+        filerRelation: r.typeOfOwner || r.relation || "",
+        transactionText: r.transactionType || r.acquistionOrDisposition || "Unknown",
+        shares: { raw: Number(r.securitiesTransacted ?? r.shares ?? 0) || 0 },
+        value: { raw: Number(r.price ?? 0) * Number(r.securitiesTransacted ?? 0) || 0 },
+        startDate: { fmt: r.transactionDate || r.filingDate || null },
+      }));
+    }
+  } catch (e: any) {
+    routesLog.debug?.({ ticker, err: String(e?.message || e) }, "fmp insider fetch failed; continuing without");
+  }
+
+  // Build net-activity counts from the FMP rows so downstream scoring still works.
+  let buyCount = 0, sellCount = 0, buyShares = 0, sellShares = 0;
+  for (const tx of insiderTxns) {
+    const t = (tx.transactionText || "").toString().toUpperCase();
+    const shares = tx.shares?.raw || 0;
+    if (t.includes("P") && !t.includes("S")) { buyCount++; buyShares += shares; }
+    else if (t.includes("S")) { sellCount++; sellShares += shares; }
+  }
+
+  const result: any = {
+    // Yahoo-shaped facade so parseInstitutionalData stays unchanged
+    price: quote?.price || {},
+    summaryDetail: quote?.summaryDetail || {},
+    insiderHolders: { holders: [] },
+    insiderTransactions: { transactions: insiderTxns },
+    netSharePurchaseActivity: {
+      buyInfoCount: { raw: buyCount },
+      sellInfoCount: { raw: sellCount },
+      buyInfoShares: { raw: buyShares },
+      sellInfoShares: { raw: sellShares },
+      buyPercentInsiderShares: { raw: 0 },
+      sellPercentInsiderShares: { raw: 0 },
+    },
+  };
+
+  setCache(cacheKey, result, TTL.institutional);
   return result;
 }
 
@@ -1223,6 +1269,32 @@ export async function registerRoutes(
     res.json({ ...getCacheStats(), queue: getQueueStats() });
   });
 
+  // Long-range disk cache: list contents + manual warmup trigger
+  app.get("/api/admin/long-range-cache", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    const entries = listLongRange();
+    res.json({
+      count: entries.length,
+      bySymbol: entries.reduce((acc: Record<string, number>, e) => {
+        acc[e.ticker] = (acc[e.ticker] || 0) + 1;
+        return acc;
+      }, {}),
+      entries: entries.slice(0, 200),
+    });
+  });
+
+  app.post("/api/admin/long-range-warmup", async (req, res) => {
+    if (!ADMIN_EMAILS_LIST.includes(req.user!.email)) return res.status(403).json({ error: "Admin only" });
+    const maxSymbols = Math.min(Number(req.query.max) || 50, 500);
+    // Fire and forget so the HTTP call returns immediately.
+    const { warmLongRangeCache } = await import("./long-range-warmup");
+    warmLongRangeCache({ maxSymbols }).then(
+      (r) => console.log(`[admin] long-range warmup: ${JSON.stringify(r)}`),
+      (e) => console.error(`[admin] long-range warmup failed:`, e?.message || e),
+    );
+    res.json({ started: true, maxSymbols, note: "Running in background; check /api/admin/long-range-cache for progress." });
+  });
+
   // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
 
   function extractDividendData(ticker: string, quote: any) {
@@ -1971,22 +2043,23 @@ export async function registerRoutes(
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
 
-      const { quote, financials, analystData: _yahooAnalyst, profile } = extractQuoteData(summary);
+      const { quote, financials, analystData: _polyAnalyst, profile } = extractQuoteData(summary);
 
-      // Phase 3.2: replace Yahoo analyst block with FMP. Yahoo retained only as
-      // last-resort fallback for micro-caps where FMP has no coverage.
+      // Phase 3.7: FMP is the primary source. Polygon-shaped analyst block
+      // (already present in summary) serves as a last-resort buffer when
+      // FMP has no coverage (micro-caps) or transiently fails.
       let analystData: AnalystBlock;
       try {
         const fmp = await getFmpAnalyst(ticker);
         if (fmp.analystCount > 0 || fmp.targetMean != null) {
           analystData = fmp;
         } else {
-          routesLog.info({ ticker }, "fmp has no analyst coverage; falling back to Yahoo");
-          analystData = { ..._yahooAnalyst, source: "yahoo", analystCount: (_yahooAnalyst.buy || 0) + (_yahooAnalyst.hold || 0) + (_yahooAnalyst.sell || 0) };
+          routesLog.info({ ticker }, "fmp has no analyst coverage; using buffer");
+          analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
         }
       } catch (e: any) {
-        routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; falling back to Yahoo");
-        analystData = { ..._yahooAnalyst, source: "yahoo", analystCount: (_yahooAnalyst.buy || 0) + (_yahooAnalyst.hold || 0) + (_yahooAnalyst.sell || 0) };
+        routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; using buffer");
+        analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
       }
 
       if (!quote.regularMarketPrice && !quote.marketCap) {
@@ -2510,7 +2583,7 @@ export async function registerRoutes(
         // Try to get MME data for Gate 3 (best-effort, non-blocking)
         let mmeData = null;
         try {
-          const optionsUrl = `https://query2.finance.yahoo.com/v7/finance/options/${ticker}`;
+          // MME data retired from Yahoo. Gate 3 evaluates without it (EMA-only).
           const cacheKey = `mme_gate_${ticker}`;
           const cached = getCached(cacheKey);
           if (cached) {
@@ -2721,7 +2794,7 @@ export async function registerRoutes(
   }
 
   // ============================================================
-  // Dynamic Stock Screener → fetch tickers from Yahoo screener API
+  // Dynamic Stock Screener → FMP screener (Polygon fallback)
   // ============================================================
 
   async function screenStocks(options: {
@@ -2825,7 +2898,7 @@ export async function registerRoutes(
       await ensureReady();
       console.log(`[scanner] Screening: price $${minPrice}-$${maxPrice}, sector=${sector}, cap=${marketCapTier}, count=${scanSize}`);
 
-      // Step 1: Get tickers from Yahoo screener
+      // Step 1: Get tickers from FMP screener (Polygon fallback)
       const tickers = await screenStocks({
         minPrice,
         maxPrice,
