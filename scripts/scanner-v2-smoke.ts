@@ -27,7 +27,7 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  console.log("\nScanner 2.0 smoke test (3.5.10 — all 10 signals incl. fib pullback)\n");
+  console.log("\nScanner 2.0 smoke test (3.6 — 12 signals incl. unusual_options + gamma_squeeze)\n");
 
   // 1) Small universe to keep smoke quick
   console.log("1) Small scan (200 tickers, mega-cap bias for data quality)");
@@ -36,17 +36,18 @@ async function main() {
     universeSize: 200,
     count: 200,
     minMarketCap: 5_000_000_000,
+    mmTopN: 10, // smoke: only enrich top-10 to keep options fetches bounded
   });
   const t1ms = Date.now() - t1;
   check("shape", typeof scan.scannedAt === "string" && Array.isArray(scan.results));
   check("universe", scan.universeSize >= 50 && scan.universeSize <= 200, `${scan.universeSize} tickers`);
-  check("duration", t1ms < 180_000, `${t1ms}ms`);
+  check("duration", t1ms < 300_000, `${t1ms}ms`);
 
   // Row shape
   if (scan.results.length) {
     const r0 = scan.results[0];
     check("row-shape", !!r0.symbol && typeof r0.price === "number" && Array.isArray(r0.signals), `top=${r0.symbol} score=${r0.score}`);
-    check("row-signals-length", r0.signals.length >= 3 && r0.signals.length <= 10, `${r0.signals.length} signal results (expect 3-10, catalyst detectors skip if no FMP data)`);
+    check("row-signals-length", r0.signals.length >= 3 && r0.signals.length <= 12, `${r0.signals.length} signal results (expect 3-12, catalyst detectors skip if no FMP data)`);
   }
 
   // At least SOME tickers should have a triggered signal in a 200-ticker mega-cap slice

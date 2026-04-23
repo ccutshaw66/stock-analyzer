@@ -1295,6 +1295,25 @@ export async function registerRoutes(
     res.json({ started: true, maxSymbols, note: "Running in background; check /api/admin/long-range-cache for progress." });
   });
 
+  // ─── MM Exposure (Phase 3.6) ────────────────────────────────────────────
+  // Per-symbol MM / gamma exposure snapshot from Polygon options chain.
+  // Expensive (1-8 Polygon pages per call) — intended for the detail view,
+  // not bulk scanning. The scanner's second-pass enrichment reuses the same
+  // computation for its top-N short list.
+  app.get("/api/mm-exposure/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    if (!ticker) return res.status(400).json({ error: "ticker required" });
+    try {
+      const { computeMMExposure } = await import("./mm-exposure");
+      const mm = await computeMMExposure(ticker);
+      if (!mm) return res.status(404).json({ error: "no options data" });
+      res.json(mm);
+    } catch (e: any) {
+      console.error(`[mm-exposure] ${ticker} failed:`, e?.message || e);
+      res.status(500).json({ error: String(e?.message || e) });
+    }
+  });
+
   // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
 
   function extractDividendData(ticker: string, quote: any) {

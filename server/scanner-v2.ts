@@ -78,6 +78,7 @@ export interface ScannerV2Filters {
   minScore?: number;
   count?: number;       // max rows returned
   universeSize?: number; // how many tickers to scan (default 2000)
+  mmTopN?: number;       // how many top candidates to enrich with MM exposure (default 50, max 200). 0 disables.
 }
 
 // ─── Signal Registry ────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ export interface ScanContext {
     floatShares?: number;
     iv30?: number;
     iv30RankPct?: number;
+    mmExposure?: import("./mm-exposure").MMExposure;
   };
 }
 
@@ -125,6 +127,9 @@ import { analystActionDetector } from "./scanner-v2-signals/analyst-action";
 import { insiderClusterDetector } from "./scanner-v2-signals/insider-cluster";
 import { smallFloatDetector } from "./scanner-v2-signals/small-float";
 import { fibPullbackDetector } from "./scanner-v2-signals/fib-pullback";
+import { unusualOptionsDetector } from "./scanner-v2-signals/unusual-options";
+import { gammaSqueezeDetector } from "./scanner-v2-signals/gamma-squeeze";
+import { computeMMExposure } from "./mm-exposure";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
@@ -137,6 +142,8 @@ const SIGNAL_DETECTORS: SignalDetector[] = [
   insiderClusterDetector,
   smallFloatDetector,
   fibPullbackDetector,
+  unusualOptionsDetector,
+  gammaSqueezeDetector,
 ];
 
 /**
@@ -168,6 +175,7 @@ const SIGNAL_WEIGHTS: Record<string, number> = {
   analyst_action: 6,
   unusual_options: 12,
   short_squeeze: 10,
+  gamma_squeeze: 10,
   thirteen_f_cluster: 6,
   // technical continuation
   fib_pullback: 8,
@@ -548,6 +556,55 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
       console.log(`[scanner-v2] processed ${processed}/${universe.length} (${withSignals} with triggered signals) [${elapsed}s]`);
     }
   }
+
+  // ─── MM Exposure second pass ──────────────────────────────────────────────
+  // Options chain fetch = 1-8 Polygon pages per symbol — too expensive for
+  // the full universe. Instead, enrich only the TOP-N by current score with
+  // MM exposure data, then re-evaluate unusual_options / gamma_squeeze and
+  // recompute score. This gives us options-driven signals on the "short list"
+  // without drowning the scan in 2000+ options chain calls.
+  const MM_TOP_N = Math.min(filters.mmTopN ?? 50, 200);
+  if (MM_TOP_N === 0) {
+    console.log(`[scanner-v2] MM exposure enrichment disabled (mmTopN=0)`);
+  }
+  const mmSort = MM_TOP_N === 0 ? [] : [...rows].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.price * b.volume - a.price * a.volume;
+  });
+  const mmCandidates = mmSort.slice(0, MM_TOP_N).filter((r) => r.symbol);
+  console.log(`[scanner-v2] MM exposure enrichment: ${mmCandidates.length} top candidates`);
+  const mmBatch = 10;
+  let mmEnriched = 0;
+  for (let i = 0; i < mmCandidates.length; i += mmBatch) {
+    const slice = mmCandidates.slice(i, i + mmBatch);
+    await Promise.all(slice.map(async (row) => {
+      try {
+        const mm = await computeMMExposure(row.symbol);
+        if (!mm) return;
+        mmEnriched++;
+        // Re-evaluate options signals only (the others already ran on pass 1)
+        const fakeCtx: ScanContext = {
+          bars: [],
+          basics: { symbol: row.symbol, price: row.price, marketCap: row.marketCap, volume: row.volume, sector: row.sector },
+          extras: { mmExposure: mm },
+        };
+        const mmSignals: SignalResult[] = [];
+        for (const det of [unusualOptionsDetector, gammaSqueezeDetector]) {
+          try { const r = det(fakeCtx); if (r) mmSignals.push(r); } catch {}
+        }
+        // Merge: replace any existing options signals (shouldn't exist on pass 1)
+        const keepIds = new Set(["unusual_options", "gamma_squeeze"]);
+        row.signals = row.signals.filter((s) => !keepIds.has(s.id)).concat(mmSignals);
+        const rescored = scoreRow(row.signals);
+        row.score = rescored.score;
+        row.direction = rescored.direction;
+        row.topSignals = row.signals.filter((s) => s.triggered).map((s) => s.id);
+      } catch (e: any) {
+        // silent — options data is best-effort
+      }
+    }));
+  }
+  console.log(`[scanner-v2] MM exposure enriched: ${mmEnriched}/${mmCandidates.length}`);
 
   // Apply post-scan filters
   let filtered = rows;

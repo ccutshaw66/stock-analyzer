@@ -19,13 +19,13 @@
 
 const POLY_BASE = "https://api.polygon.io";
 
-function apiKey(): string {
+export function apiKey(): string {
   const key = process.env.POLYGON_API_KEY;
   if (!key) throw new Error("POLYGON_API_KEY is not set in environment");
   return key;
 }
 
-async function pget(path: string, query: Record<string, any> = {}): Promise<any> {
+export async function pget(path: string, query: Record<string, any> = {}): Promise<any> {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== null) params.append(k, String(v));
