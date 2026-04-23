@@ -4699,5 +4699,79 @@ export async function registerRoutes(
     }
   }, 5 * 60 * 1000); // check every 5 minutes
 
+  // ─── Alerts (Phase 4.1) ──────────────────────────────────────────────────
+  app.get("/api/alerts", async (req, res) => {
+    try {
+      const unreadOnly = req.query.unreadOnly === "1" || req.query.unreadOnly === "true";
+      const limit = req.query.limit ? Math.min(500, parseInt(String(req.query.limit))) : 100;
+      const rows = await storage.getAlerts(req.user!.id, { unreadOnly, limit });
+      const unread = await storage.getAlertUnreadCount(req.user!.id);
+      res.json({ alerts: rows, unread });
+    } catch (e: any) { res.status(500).json({ error: e?.message || "Failed to load alerts" }); }
+  });
+
+  app.post("/api/alerts/:id/read", async (req, res) => {
+    try { await storage.markAlertRead(req.user!.id, parseInt(req.params.id)); res.json({ ok: true }); }
+    catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.post("/api/alerts/read-all", async (req, res) => {
+    try { await storage.markAllAlertsRead(req.user!.id); res.json({ ok: true }); }
+    catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.post("/api/alerts/:id/dismiss", async (req, res) => {
+    try { await storage.dismissAlert(req.user!.id, parseInt(req.params.id)); res.json({ ok: true }); }
+    catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.get("/api/alert-rules", async (req, res) => {
+    try { res.json(await storage.getAlertRules(req.user!.id)); }
+    catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.post("/api/alert-rules", async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!body.kind) return res.status(400).json({ error: "kind required" });
+      const row = await storage.createAlertRule({
+        userId: req.user!.id,
+        kind: body.kind,
+        enabled: body.enabled ?? true,
+        ticker: body.ticker ?? null,
+        tradeId: body.tradeId ?? null,
+        config: body.config ? JSON.stringify(body.config) : null,
+      });
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.patch("/api/alert-rules/:id", async (req, res) => {
+    try {
+      const patch: any = {};
+      if (req.body.enabled != null) patch.enabled = !!req.body.enabled;
+      if (req.body.ticker !== undefined) patch.ticker = req.body.ticker;
+      if (req.body.tradeId !== undefined) patch.tradeId = req.body.tradeId;
+      if (req.body.config !== undefined) patch.config = req.body.config ? JSON.stringify(req.body.config) : null;
+      const row = await storage.updateAlertRule(req.user!.id, parseInt(req.params.id), patch);
+      if (!row) return res.status(404).json({ error: "not found" });
+      res.json(row);
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  app.delete("/api/alert-rules/:id", async (req, res) => {
+    try { await storage.deleteAlertRule(req.user!.id, parseInt(req.params.id)); res.json({ ok: true }); }
+    catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
+  // Admin/self-test: force an alert evaluation pass now (owner only).
+  app.post("/api/alerts/evaluate-now", async (req, res) => {
+    try {
+      const { evaluateAlertsOnce } = await import("./platform/jobs/jobs/evaluate-alerts");
+      await evaluateAlertsOnce();
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e?.message }); }
+  });
+
   return httpServer;
 }

@@ -7,7 +7,8 @@ import {
   type PasswordResetToken,
   type TradePriceHistory, type InsertTradePriceHistory,
   type DividendPortfolioItem, type InsertDividendPortfolioItem,
-  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio,
+  type Alert, type InsertAlert, type AlertRule, type InsertAlertRule,
+  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio, alerts, alertRules,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -79,6 +80,19 @@ export interface IStorage {
   deleteUser(userId: number): Promise<void>;
   getUserTradeCount(userId: number): Promise<number>;
   getUserFavoriteCount(userId: number): Promise<number>;
+  // Alerts (Phase 4.1)
+  getAlerts(userId: number, opts?: { unreadOnly?: boolean; limit?: number }): Promise<Alert[]>;
+  getAlertUnreadCount(userId: number): Promise<number>;
+  createAlert(a: InsertAlert): Promise<Alert>;
+  markAlertRead(userId: number, id: number): Promise<void>;
+  markAllAlertsRead(userId: number): Promise<void>;
+  dismissAlert(userId: number, id: number): Promise<void>;
+  getAlertRules(userId: number): Promise<AlertRule[]>;
+  createAlertRule(r: InsertAlertRule): Promise<AlertRule>;
+  updateAlertRule(userId: number, id: number, data: Partial<InsertAlertRule>): Promise<AlertRule | undefined>;
+  deleteAlertRule(userId: number, id: number): Promise<void>;
+  getAllAlertRulesAllUsers(): Promise<AlertRule[]>;
+  touchAlertRule(id: number, state: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -213,6 +227,37 @@ export class DatabaseStorage implements IStorage {
           spy_return_7d DOUBLE PRECISION,
           spy_return_30d DOUBLE PRECISION,
           spy_return_90d DOUBLE PRECISION,
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS alerts (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          rule_id INTEGER,
+          kind TEXT NOT NULL,
+          ticker TEXT,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          meta TEXT,
+          severity TEXT NOT NULL DEFAULT 'info',
+          read BOOLEAN NOT NULL DEFAULT false,
+          dismissed BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP DEFAULT NOW() NOT NULL
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS alerts_user_created_idx ON alerts(user_id, created_at DESC)`);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS alert_rules (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          enabled BOOLEAN NOT NULL DEFAULT true,
+          ticker TEXT,
+          trade_id INTEGER,
+          config TEXT,
+          last_fired_at TIMESTAMP,
+          last_fired_state TEXT,
           created_at TIMESTAMP DEFAULT NOW() NOT NULL
         )
       `);
@@ -489,6 +534,52 @@ export class DatabaseStorage implements IStorage {
   async getUserFavoriteCount(userId: number): Promise<number> {
     const rows = await db.select({ count: count() }).from(favorites).where(eq(favorites.userId, userId));
     return rows[0]?.count ?? 0;
+  }
+
+  // ── Alerts (Phase 4.1) ──
+  async getAlerts(userId: number, opts?: { unreadOnly?: boolean; limit?: number }): Promise<Alert[]> {
+    const conds = [eq(alerts.userId, userId), eq(alerts.dismissed, false)];
+    if (opts?.unreadOnly) conds.push(eq(alerts.read, false));
+    const rows = await db.select().from(alerts).where(and(...conds)).orderBy(desc(alerts.createdAt)).limit(opts?.limit ?? 100);
+    return rows;
+  }
+  async getAlertUnreadCount(userId: number): Promise<number> {
+    const rows = await db.select({ count: count() }).from(alerts)
+      .where(and(eq(alerts.userId, userId), eq(alerts.read, false), eq(alerts.dismissed, false)));
+    return rows[0]?.count ?? 0;
+  }
+  async createAlert(a: InsertAlert): Promise<Alert> {
+    const [row] = await db.insert(alerts).values(a).returning();
+    return row;
+  }
+  async markAlertRead(userId: number, id: number): Promise<void> {
+    await db.update(alerts).set({ read: true }).where(and(eq(alerts.id, id), eq(alerts.userId, userId)));
+  }
+  async markAllAlertsRead(userId: number): Promise<void> {
+    await db.update(alerts).set({ read: true }).where(and(eq(alerts.userId, userId), eq(alerts.read, false)));
+  }
+  async dismissAlert(userId: number, id: number): Promise<void> {
+    await db.update(alerts).set({ dismissed: true, read: true }).where(and(eq(alerts.id, id), eq(alerts.userId, userId)));
+  }
+  async getAlertRules(userId: number): Promise<AlertRule[]> {
+    return db.select().from(alertRules).where(eq(alertRules.userId, userId)).orderBy(desc(alertRules.createdAt));
+  }
+  async createAlertRule(r: InsertAlertRule): Promise<AlertRule> {
+    const [row] = await db.insert(alertRules).values(r).returning();
+    return row;
+  }
+  async updateAlertRule(userId: number, id: number, data: Partial<InsertAlertRule>): Promise<AlertRule | undefined> {
+    const [row] = await db.update(alertRules).set(data).where(and(eq(alertRules.id, id), eq(alertRules.userId, userId))).returning();
+    return row;
+  }
+  async deleteAlertRule(userId: number, id: number): Promise<void> {
+    await db.delete(alertRules).where(and(eq(alertRules.id, id), eq(alertRules.userId, userId)));
+  }
+  async getAllAlertRulesAllUsers(): Promise<AlertRule[]> {
+    return db.select().from(alertRules).where(eq(alertRules.enabled, true));
+  }
+  async touchAlertRule(id: number, state: string): Promise<void> {
+    await db.update(alertRules).set({ lastFiredAt: new Date(), lastFiredState: state }).where(eq(alertRules.id, id));
   }
 }
 

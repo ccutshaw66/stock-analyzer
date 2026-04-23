@@ -120,6 +120,41 @@ export const signalLog = pgTable("signal_log", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Alerts (Phase 4.1) ────────────────────────────────────────────────────────────
+// Triggered alert events (shown in bell dropdown). A rule produces many alerts
+// over time; alerts have an unread flag and dismiss state. Rules are defined
+// below in alert_rules.
+export const alerts = pgTable("alerts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  ruleId: integer("rule_id"), // nullable — rule may be deleted but alert kept
+  kind: text("kind").notNull(), // SCANNER_VERDICT | PRICE_TARGET | PRICE_STOP | EARNINGS | UNUSUAL_OPTIONS
+  ticker: text("ticker"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  meta: text("meta"), // JSON string: { verdict, score, price, etc }
+  severity: text("severity").default("info").notNull(), // info | warn | critical
+  read: boolean("read").default(false).notNull(),
+  dismissed: boolean("dismissed").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// User-configured rules. Each rule emits alerts when its condition trips.
+// Scanner rules watch a ticker list; per-trade rules reference a trade id.
+export const alertRules = pgTable("alert_rules", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  kind: text("kind").notNull(), // SCANNER_VERDICT | PRICE_TARGET | PRICE_STOP | EARNINGS | UNUSUAL_OPTIONS
+  enabled: boolean("enabled").default(true).notNull(),
+  ticker: text("ticker"), // null = apply to all watchlist + open positions
+  tradeId: integer("trade_id"), // for PRICE_TARGET / PRICE_STOP bound to a position
+  // Trigger config (JSON-encoded knobs, e.g. { verdicts: ["GO ↑","SET ↑"] } or { daysBefore: 7 })
+  config: text("config"),
+  lastFiredAt: timestamp("last_fired_at"),
+  lastFiredState: text("last_fired_state"), // dedupe key (e.g. last verdict seen)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
@@ -154,6 +189,8 @@ export const insertAccountTransactionSchema = createInsertSchema(accountTransact
 
 export const insertTradePriceHistorySchema = createInsertSchema(tradePriceHistory).omit({ id: true });
 export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfolio).omit({ id: true });
+export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
+export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,6 +209,10 @@ export type InsertTradePriceHistory = z.infer<typeof insertTradePriceHistorySche
 export type DividendPortfolioItem = typeof dividendPortfolio.$inferSelect;
 export type InsertDividendPortfolioItem = z.infer<typeof insertDividendPortfolioSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type Alert = typeof alerts.$inferSelect;
+export type InsertAlert = z.infer<typeof insertAlertSchema>;
+export type AlertRule = typeof alertRules.$inferSelect;
+export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 
