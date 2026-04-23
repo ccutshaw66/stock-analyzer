@@ -1540,92 +1540,238 @@ export async function registerRoutes(
   });
 
   // ─── Weekly Dividend Strategy (Bowtie Nation-inspired) ──────────────────
+  //
+  // DYNAMIC PICKER — picks top-scoring dividend payers from the full Polygon
+  // universe scan, grouped by ex-div week-of-month (1-4) and quarterly cycle
+  // (Jan/Apr/Jul/Oct, Feb/May/Aug/Nov, Mar/Jun/Sep/Dec). Refreshes weekly.
 
   app.get("/api/dividends/weekly-strategy", async (req, res) => {
     try {
-      // Static strategy data — no Yahoo calls unless ?refresh=true
-      // All picks target dividend score 70+ (3%+ yield, sustainable payout, consistent growth)
-      const weeklyPlan = [
-        // ── Q1 Schedule: Jan, Apr, Jul, Oct ──
-        { ticker: "XOM", week: 1, months: "Jan/Apr/Jul/Oct", role: "Week 1 Quarterly", note: "Oil supermajor, 3.4% yield, 40+ years of increases, massive cash flow" },
-        { ticker: "EOG", week: 2, months: "Jan/Apr/Jul/Oct", role: "Week 2 Quarterly", note: "Natural gas leader, 3.4% yield, 20% annual dividend growth" },
-        { ticker: "ABBV", week: 3, months: "Jan/Apr/Jul/Oct", role: "Week 3 Quarterly", note: "Pharma powerhouse, 3.5% yield, 50+ year dividend streak" },
-        { ticker: "T", week: 4, months: "Jan/Apr/Jul/Oct", role: "Week 4 Quarterly", note: "Telecom giant, 4%+ yield, stabilized after restructuring" },
-        // ── Q2 Schedule: Feb, May, Aug, Nov ──
-        { ticker: "KMI", week: 1, months: "Feb/May/Aug/Nov", role: "Week 1 Quarterly", note: "Pipeline giant, 4% yield, 80K miles of infrastructure" },
-        { ticker: "DUK", week: 2, months: "Feb/May/Aug/Nov", role: "Week 2 Quarterly", note: "Utility stable income, 3.5% yield, 9M+ customers" },
-        { ticker: "VZ", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly", note: "Telecom, 5.5%+ yield, 19 consecutive years of increases" },
-        { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly", note: "Pharma giant, 6%+ yield, massive pipeline" },
-        // ── Q3 Schedule: Mar, Jun, Sep, Dec ──
-        { ticker: "CVX", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly", note: "Energy, 3.9% yield, Very Safe payout, 37 years of increases" },
-        { ticker: "OKE", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly", note: "Pipeline, 4.3% yield, 26 years of increases, 90K miles of infrastructure" },
-        { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly", note: "Highest yield in group, 7%+ yield, 50+ year payer" },
-        { ticker: "KMB", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly", note: "Consumer staples, 4.9% yield, Kleenex/Huggies, 52 year streak" },
-        // ── Monthly Payers (double up every week) ──
-        { ticker: "O", week: 0, months: "Monthly", role: "Monthly Payer", note: "The Monthly Dividend Company. REIT, 5%+ yield, Dividend Aristocrat" },
-        { ticker: "JEPI", week: 0, months: "Monthly", role: "Monthly Payer", note: "JP Morgan covered call ETF, ~8% yield, lower volatility" },
-        { ticker: "MAIN", week: 0, months: "Monthly", role: "Monthly Payer", note: "BDC king, ~6% yield + special dividends, internally managed" },
-        { ticker: "EPD", week: 0, months: "Monthly", role: "Monthly Payer", note: "MLP pipeline, 6.4% yield, 25 consecutive years of increases" },
-      ];
-
       const refreshPrices = req.query.refresh === "true";
 
-      if (refreshPrices) {
-        // Enrich with live Yahoo data (only when explicitly requested)
-        await ensureReady();
-        const results = [];
-        for (const item of weeklyPlan) {
-          try {
-            const quote = await getQuoteLight(item.ticker);
-            const divData = quote ? extractDividendData(item.ticker, quote) : null;
-            results.push({
-              ...item,
-              companyName: divData?.companyName || item.ticker,
-              price: divData?.price || 0,
-              dividendYield: divData?.dividendYield || 0,
-              dividendRate: divData?.dividendRate || 0,
-              annualDividend: divData?.annualDividend || 0,
-              exDividendDate: divData?.exDividendDate || null,
-              distributionDate: divData?.distributionDate || null,
-              frequency: divData?.frequency || (item.months === "Monthly" ? "Monthly" : "Quarterly"),
-              payoutRatio: divData?.payoutRatio || 0,
-              score: divData?.score || 0,
+      // Weekly rotation key — Monday of the current week (UTC). All picks lock
+      // in for the week so users can act on them confidently.
+      const now = new Date();
+      const monday = new Date(now);
+      monday.setUTCHours(0, 0, 0, 0);
+      const dow = monday.getUTCDay(); // 0=Sun
+      const offsetToMonday = dow === 0 ? -6 : 1 - dow;
+      monday.setUTCDate(monday.getUTCDate() + offsetToMonday);
+      const weekKey = monday.toISOString().split("T")[0];
+      const WEEKLY_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+      const cacheKey = `bowtie:weekly:${weekKey}`;
+
+      if (!refreshPrices) {
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+      }
+
+      // Pull the cached dividend-scan results (500M+ universe, scored & filtered)
+      const scanCacheKey = `dividends-scan:universe:500m:3:All:100:500`;
+      let scanResults: any[] = getCached(scanCacheKey) || [];
+
+      // If no cached scan, fall back to a broader key search
+      if (scanResults.length === 0) {
+        // Try any cached dividend scan
+        const anyScanKeys = ["dividends-scan:universe:500m:0:All:100:500", "dividends-scan:universe:500m:3:All:100:200"];
+        for (const k of anyScanKeys) {
+          const c = getCached(k);
+          if (c && c.length) { scanResults = c; break; }
+        }
+      }
+
+      // Helper: extract week-of-month (1-4) from ex-div date string
+      function weekOfMonth(dateStr: string | null): number {
+        if (!dateStr) return 0;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 0;
+        return Math.min(4, Math.ceil(d.getUTCDate() / 7));
+      }
+
+      // Helper: map month to quarterly cycle (1=Jan/Apr/Jul/Oct, 2=Feb/May/Aug/Nov, 3=Mar/Jun/Sep/Dec)
+      function cycleFor(dateStr: string | null): number {
+        if (!dateStr) return 0;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return 0;
+        const m = d.getUTCMonth(); // 0-11
+        return (m % 3) + 1;
+      }
+
+      const cycleLabels: Record<number, string> = {
+        1: "Jan/Apr/Jul/Oct",
+        2: "Feb/May/Aug/Nov",
+        3: "Mar/Jun/Sep/Dec",
+      };
+
+      type Pick = {
+        ticker: string; week: number; months: string; role: string; note: string;
+        companyName: string; price: number; dividendYield: number; dividendRate: number;
+        annualDividend: number; exDividendDate: string | null; distributionDate: string | null;
+        frequency: string; payoutRatio: number; score: number;
+      };
+
+      const weeklyPlan: Pick[] = [];
+
+      if (scanResults.length > 0) {
+        // Candidates: score >= 60, yield >= 3%, has ex-div date
+        const candidates = scanResults.filter(r =>
+          r.score >= 60 &&
+          r.dividendYield >= 3 &&
+          r.exDividendDate &&
+          r.frequency !== "Annual" &&
+          r.frequency !== "Semi-Annual"
+        );
+
+        // Deterministic weekly rotation: hash weekKey to shift candidate order
+        // so picks rotate week-to-week even when scores are similar.
+        const weekSeed = weekKey.split("-").reduce((a, p) => a + parseInt(p, 10), 0);
+
+        // ── 12 Quarterly Slots ──
+        for (let cycle = 1; cycle <= 3; cycle++) {
+          for (let week = 1; week <= 4; week++) {
+            const slotCandidates = candidates.filter(c =>
+              c.frequency === "Quarterly" &&
+              cycleFor(c.exDividendDate) === cycle &&
+              weekOfMonth(c.exDividendDate) === week
+            );
+            // Rotate the list based on weekSeed + slot position
+            const rotation = (weekSeed + cycle * 4 + week) % Math.max(1, slotCandidates.length);
+            const rotated = [...slotCandidates.slice(rotation), ...slotCandidates.slice(0, rotation)];
+            // Pick top 3 after rotation so rotation has effect but we still bias to high score
+            const top3 = rotated.slice(0, 3).sort((a, b) => b.score - a.score);
+            const pick = top3[0];
+            if (!pick) continue;
+            weeklyPlan.push({
+              ticker: pick.ticker,
+              week,
+              months: cycleLabels[cycle],
+              role: `Week ${week} Quarterly`,
+              note: `Score ${pick.score}, ${pick.dividendYield.toFixed(2)}% yield, payout ${pick.payoutRatio > 0 ? pick.payoutRatio.toFixed(0) + "%" : "n/a"}`,
+              companyName: pick.companyName || pick.ticker,
+              price: pick.price || 0,
+              dividendYield: pick.dividendYield || 0,
+              dividendRate: pick.dividendRate || 0,
+              annualDividend: pick.annualDividend || pick.dividendRate || 0,
+              exDividendDate: pick.exDividendDate || null,
+              distributionDate: pick.distributionDate || null,
+              frequency: "Quarterly",
+              payoutRatio: pick.payoutRatio || 0,
+              score: pick.score || 0,
             });
-          } catch (err: any) {
-            results.push({ ...item, companyName: item.ticker, price: 0, dividendYield: 0, dividendRate: 0, annualDividend: 0, exDividendDate: null, distributionDate: null, frequency: item.months === "Monthly" ? "Monthly" : "Quarterly", payoutRatio: 0, score: 0 });
           }
         }
-        const totalYield = results.reduce((s, r) => s + r.dividendYield, 0) / results.length;
-        res.json({
-          strategy: "Weekly Dividend Calendar",
-          description: "12 quarterly payers staggered across weeks + 4 monthly payers = dividends every single week. All picks target 70+ dividend quality score. Buy equal dollar amounts of each.",
-          weeklyPlan: results,
-          refreshed: true,
-          stats: { totalStocks: results.length, quarterlyPayers: results.filter(r => r.months !== "Monthly").length, monthlyPayers: results.filter(r => r.months === "Monthly").length, avgYield: Number(totalYield.toFixed(2)), avgScore: Math.round(results.reduce((s, r) => s + r.score, 0) / results.length) },
-        });
-      } else {
-        // Static response — no Yahoo calls, instant load
-        res.json({
-          strategy: "Weekly Dividend Calendar",
-          description: "12 quarterly payers staggered across weeks + 4 monthly payers = dividends every single week. All picks target 70+ dividend quality score. Buy equal dollar amounts of each.",
-          weeklyPlan: weeklyPlan.map(item => ({
-            ...item,
-            companyName: item.ticker,
-            price: 0,
-            dividendYield: 0,
-            dividendRate: 0,
-            annualDividend: 0,
-            exDividendDate: null,
-            distributionDate: null,
-            frequency: item.months === "Monthly" ? "Monthly" : "Quarterly",
-            payoutRatio: 0,
-            score: 0,
-          })),
-          refreshed: false,
-          stats: { totalStocks: weeklyPlan.length, quarterlyPayers: weeklyPlan.filter(r => r.months !== "Monthly").length, monthlyPayers: weeklyPlan.filter(r => r.months === "Monthly").length, avgYield: 0, avgScore: 0 },
-        });
+
+        // ── 4 Monthly Payer Slots ──
+        const monthlyCandidates = candidates
+          .filter(c => c.frequency === "Monthly")
+          .sort((a, b) => b.score - a.score);
+        const monthlyRotation = weekSeed % Math.max(1, monthlyCandidates.length);
+        const rotatedMonthly = [...monthlyCandidates.slice(monthlyRotation), ...monthlyCandidates.slice(0, monthlyRotation)];
+        const topMonthly = rotatedMonthly.slice(0, 8).sort((a, b) => b.score - a.score).slice(0, 4);
+        for (const pick of topMonthly) {
+          weeklyPlan.push({
+            ticker: pick.ticker,
+            week: 0,
+            months: "Monthly",
+            role: "Monthly Payer",
+            note: `Score ${pick.score}, ${pick.dividendYield.toFixed(2)}% yield, pays every month`,
+            companyName: pick.companyName || pick.ticker,
+            price: pick.price || 0,
+            dividendYield: pick.dividendYield || 0,
+            dividendRate: pick.dividendRate || 0,
+            annualDividend: pick.annualDividend || pick.dividendRate || 0,
+            exDividendDate: pick.exDividendDate || null,
+            distributionDate: pick.distributionDate || null,
+            frequency: "Monthly",
+            payoutRatio: pick.payoutRatio || 0,
+            score: pick.score || 0,
+          });
+        }
       }
+
+      // Fallback — if the scan cache is empty (first run, cold start), use a
+      // curated seed list so the UI isn't blank. Users can click Refresh which
+      // will warm the dividend-scan cache.
+      if (weeklyPlan.length < 12) {
+        const seeds = [
+          { ticker: "XOM", week: 1, months: "Jan/Apr/Jul/Oct", role: "Week 1 Quarterly" },
+          { ticker: "EOG", week: 2, months: "Jan/Apr/Jul/Oct", role: "Week 2 Quarterly" },
+          { ticker: "ABBV", week: 3, months: "Jan/Apr/Jul/Oct", role: "Week 3 Quarterly" },
+          { ticker: "T", week: 4, months: "Jan/Apr/Jul/Oct", role: "Week 4 Quarterly" },
+          { ticker: "KMI", week: 1, months: "Feb/May/Aug/Nov", role: "Week 1 Quarterly" },
+          { ticker: "DUK", week: 2, months: "Feb/May/Aug/Nov", role: "Week 2 Quarterly" },
+          { ticker: "VZ", week: 3, months: "Feb/May/Aug/Nov", role: "Week 3 Quarterly" },
+          { ticker: "PFE", week: 4, months: "Feb/May/Aug/Nov", role: "Week 4 Quarterly" },
+          { ticker: "CVX", week: 1, months: "Mar/Jun/Sep/Dec", role: "Week 1 Quarterly" },
+          { ticker: "OKE", week: 2, months: "Mar/Jun/Sep/Dec", role: "Week 2 Quarterly" },
+          { ticker: "MO", week: 3, months: "Mar/Jun/Sep/Dec", role: "Week 3 Quarterly" },
+          { ticker: "KMB", week: 4, months: "Mar/Jun/Sep/Dec", role: "Week 4 Quarterly" },
+          { ticker: "O", week: 0, months: "Monthly", role: "Monthly Payer" },
+          { ticker: "JEPI", week: 0, months: "Monthly", role: "Monthly Payer" },
+          { ticker: "MAIN", week: 0, months: "Monthly", role: "Monthly Payer" },
+          { ticker: "EPD", week: 0, months: "Monthly", role: "Monthly Payer" },
+        ];
+        const existingTickers = new Set(weeklyPlan.map(p => p.ticker));
+        for (const s of seeds) {
+          if (existingTickers.has(s.ticker)) continue;
+          weeklyPlan.push({
+            ...s,
+            note: "Seed pick — dynamic picker will replace once scan cache warms",
+            companyName: s.ticker,
+            price: 0, dividendYield: 0, dividendRate: 0, annualDividend: 0,
+            exDividendDate: null, distributionDate: null,
+            frequency: s.months === "Monthly" ? "Monthly" : "Quarterly",
+            payoutRatio: 0, score: 0,
+          });
+        }
+      }
+
+      // Optionally refresh live prices for displayed picks
+      if (refreshPrices) {
+        await ensureReady();
+        for (const item of weeklyPlan) {
+          if (item.price > 0 && item.score > 0) continue; // already have live data from scan
+          try {
+            const quote = await getQuoteLight(item.ticker);
+            const d = quote ? extractDividendData(item.ticker, quote) : null;
+            if (d) {
+              item.companyName = d.companyName || item.ticker;
+              item.price = d.price || 0;
+              item.dividendYield = d.dividendYield || 0;
+              item.dividendRate = d.dividendRate || 0;
+              item.annualDividend = d.annualDividend || d.dividendRate || 0;
+              item.exDividendDate = d.exDividendDate || null;
+              item.distributionDate = d.distributionDate || null;
+              item.payoutRatio = d.payoutRatio || 0;
+              item.score = d.score || 0;
+            }
+          } catch {}
+        }
+      }
+
+      const withScore = weeklyPlan.filter(p => p.score > 0);
+      const totalYield = withScore.length > 0 ? withScore.reduce((s, r) => s + r.dividendYield, 0) / withScore.length : 0;
+      const avgScore = withScore.length > 0 ? Math.round(withScore.reduce((s, r) => s + r.score, 0) / withScore.length) : 0;
+
+      const payload = {
+        strategy: "Weekly Dividend Calendar",
+        description: `Dynamic picks refreshed weekly (${weekKey}). Top-scoring dividend payers grouped by ex-div week and quarterly cycle. All picks target 60+ dividend quality score. Buy equal dollar amounts.`,
+        weekKey,
+        weeklyPlan,
+        refreshed: refreshPrices,
+        stats: {
+          totalStocks: weeklyPlan.length,
+          quarterlyPayers: weeklyPlan.filter(r => r.months !== "Monthly").length,
+          monthlyPayers: weeklyPlan.filter(r => r.months === "Monthly").length,
+          avgYield: Number(totalYield.toFixed(2)),
+          avgScore,
+        },
+      };
+
+      setCache(cacheKey, payload, WEEKLY_CACHE_TTL);
+      res.json(payload);
     } catch (error: any) {
+      console.error("[weekly-strategy] Error:", error);
       res.status(500).json({ error: error?.message || "Failed to build weekly strategy" });
     }
   });
