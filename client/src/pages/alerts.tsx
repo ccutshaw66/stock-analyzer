@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Bell, Plus, Trash2, Zap, TrendingUp, Calendar, Radio } from "lucide-react";
+import { HelpBlock } from "@/components/HelpBlock";
 
 interface AlertRule {
   id: number;
@@ -48,6 +49,19 @@ export default function AlertsPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6">
+      <HelpBlock title="How Alerts work">
+        <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
+        <p><b className="text-foreground">Rule types:</b></p>
+        <ul className="list-disc pl-4 space-y-1">
+          <li><b className="text-foreground">Scanner verdict change</b> — fires when Scanner 2.0 flips a ticker into verdicts you pick (GO ↑/↓, SET ↑/↓, READY ↑/↓, PULLBACK). Deduped so you only get one alert per change.</li>
+          <li><b className="text-foreground">Price target hit</b> — fires when an open position crosses its target price. Pulled from the trade’s own target field.</li>
+          <li><b className="text-foreground">Price stop hit</b> — fires when price crosses the stop you configured.</li>
+          <li><b className="text-foreground">Earnings within N days</b> — fires when an open position has an earnings report scheduled within your window (default 7 days).</li>
+        </ul>
+        <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
+        <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
+      </HelpBlock>
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">

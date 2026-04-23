@@ -11,6 +11,7 @@ import {
 import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { SignalPulse } from "@/components/SignalPulse";
+import { HelpBlock } from "@/components/HelpBlock";
 
 const SECTORS = [
   "All Sectors", "Technology", "Healthcare", "Financial Services",
@@ -388,7 +389,6 @@ export default function Scanner() {
   const [signalFilter, setSignalFilter] = useState<"both" | "buy" | "sell">("both");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [pulseTicker, setPulseTicker] = useState<string | null>(null);
-  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   const priceConfig = PRICE_RANGES.find(p => p.value === priceRange) || PRICE_RANGES[0];
   const queryParams = new URLSearchParams({
@@ -465,25 +465,13 @@ export default function Scanner() {
         {/* SIGNAL PULSE — unique proprietary oscillator */}
         <SignalPulse ticker={pulseTicker} />
 
-        {/* How it works */}
-        <div className="bg-card border border-card-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => setHowItWorksOpen(!howItWorksOpen)}
-            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-foreground hover:bg-muted/30"
-          >
-            <span>How the Scanner page works</span>
-            {howItWorksOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-          {howItWorksOpen && (
-            <div className="px-4 pb-4 text-xs text-muted-foreground space-y-2 border-t border-card-border">
-              <p className="pt-2"><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-green-400">bullish fires</span> minus <span className="text-red-400">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
-              <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-green-400">GO ↑</span>/<span className="text-red-400">GO ↓</span> (all gates clear), <span className="text-green-400">SET ↑</span>/<span className="text-red-400">SET ↓</span> (most gates clear), <span className="text-green-400">READY ↑</span>/<span className="text-red-400">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors now differentiate up vs down clearly.</p>
-              <p><b className="text-foreground">AMC Strategy:</b> Scores 0-5 using MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, and trend strength.</p>
-              <p><b className="text-foreground">Explosion Detector:</b> Scans 2000 US stocks looking for combinations of 12 signals (6 technical + 6 catalyst) that historically precede large moves. Expand any card to see per-signal breakdown and an MACD/RSI indicator chart.</p>
-              <p><b className="text-foreground">Credibility:</b> All three scanners now use the same signal engine — verdicts here match Trade Analysis, Trade Tracker, and Watchlist exactly.</p>
-            </div>
-          )}
-        </div>
+        <HelpBlock title="How the Scanner page works">
+          <p><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-green-400">bullish fires</span> minus <span className="text-red-400">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
+          <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-green-400">GO ↑</span>/<span className="text-red-400">GO ↓</span> (all gates clear), <span className="text-green-400">SET ↑</span>/<span className="text-red-400">SET ↓</span> (most gates clear), <span className="text-green-400">READY ↑</span>/<span className="text-red-400">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors differentiate up vs down.</p>
+          <p><b className="text-foreground">AMC Strategy:</b> Scores 0-5 using MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, and trend strength.</p>
+          <p><b className="text-foreground">Explosion Detector:</b> Scans 2000 US stocks looking for combinations of 12 signals (6 technical + 6 catalyst) that historically precede large moves. Expand any card to see per-signal breakdown and an MACD/RSI indicator chart.</p>
+          <p><b className="text-foreground">Credibility:</b> All three scanners use the same signal engine — verdicts here match Trade Analysis, Trade Tracker, and Watchlist exactly.</p>
+        </HelpBlock>
 
         {/* Scan Mode Tabs */}
         <div className="flex border-b border-card-border">

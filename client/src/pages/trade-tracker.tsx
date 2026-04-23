@@ -903,7 +903,11 @@ export default function TradeTracker() {
 
         <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
         <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
+        <p><strong className="text-foreground">Partial closes</strong> — the close modal has a <strong className="text-foreground">Qty</strong> field with All/½ helpers. Close part of a position and the tracker creates a closed child row with prorated commissions, allocation, and max profit while keeping the rest open at the original cost basis.</p>
         <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
+
+        <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
+        <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-green-400">GO ↑</span>, <span className="text-red-400">GO ↓</span>, <span className="text-green-400">SET ↑</span>, <span className="text-red-400">SET ↓</span>, <span className="text-green-400">READY ↑</span>, <span className="text-red-400">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
 
         <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
         <p><strong className="text-foreground">Account Value</strong> — Starting balance + all closed P/L + deposits/withdrawals. Set your starting balance in Settings.</p>

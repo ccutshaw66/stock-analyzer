@@ -9,6 +9,7 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, Cell } from "recharts";
 import { Disclaimer } from "@/components/Disclaimer";
 import { BacktestPanel } from "@/components/BacktestPanel";
+import { HelpBlock } from "@/components/HelpBlock";
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -76,9 +77,32 @@ export default function TrackRecord() {
         </button>
       </div>
 
-      {tab === "backtest" && <BacktestPanel />}
+      {tab === "backtest" && (
+        <>
+          <HelpBlock title="How the Backtester works">
+            <p>The <b className="text-foreground">Backtester</b> is a historical what-if. For every trading day in the period you pick, we pretend it’s “now” and run 6 technical Scanner 2.0 signals (BB Squeeze, ATR Expansion, Relative Volume, 52w Breakout, Gap Hold, Fib Pullback). Every time a signal fires we look at what actually happened over the next <b>1, 5, 10, and 20 trading days</b>.</p>
+            <p><b className="text-foreground">Columns:</b></p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li><b className="text-foreground">Fires</b> — total times this signal triggered across all tickers and days.</li>
+              <li><b className="text-foreground">Hit%</b> — percentage of fires where the move went the signal’s predicted direction. 55%+ is a meaningful edge; 45–55% is noise.</li>
+              <li><b className="text-foreground">Avg</b> — average forward return in %. Positive = signal tends to precede gains in its direction.</li>
+              <li><b className="text-foreground">Top 20 fires</b> — biggest historical moves after a fire. Useful for eyeballing which signals produced the biggest winners or losers.</li>
+            </ul>
+            <p><b className="text-foreground">Catalyst signals</b> (earnings, insider, options, analyst, gamma, small-float) aren’t here because they depend on point-in-time third-party feeds we can’t replay historically. Those are tracked on the <b>Live Signals</b> tab instead.</p>
+            <p><b className="text-foreground">vs Live Signals:</b> Backtester = hypothesis testing on historical data. Live Signals = real track record of what the scanner actually recommended in real time. Use both together.</p>
+          </HelpBlock>
+          <BacktestPanel />
+        </>
+      )}
 
       {tab === "live" && <>
+
+      <HelpBlock title="How Live Signals works">
+        <p><b className="text-foreground">Live Signals</b> is our running, real-time track record. Every trading day a cron job scans top stocks, logs every VER / AMC / BBTC signal the scanner fires, and records the price at that moment. <b>7, 30, and 90 days later</b> we fill in the actual forward return and compare against SPY.</p>
+        <p><b className="text-foreground">Why both tabs exist:</b> The Backtester shows how a signal <i>would have</i> performed on historical data — useful for validating a hypothesis but subject to survivorship bias. Live Signals is a <b>forward-looking, honest receipt</b> of what the live scanner actually called in real time, so there’s no hindsight cheating. Over time this becomes the more credible track record.</p>
+        <p><b className="text-foreground">Hit rate tables</b> show win percentage at each horizon. <b>Recent signals</b> shows individual calls with their forward returns once enough time has passed.</p>
+        <p>New signals take time to mature — a call logged today won’t have a 90-day return until 90 days from now.</p>
+      </HelpBlock>
 
       {tab === "live" && isLoading && (
         <div className="flex items-center justify-center py-16">
