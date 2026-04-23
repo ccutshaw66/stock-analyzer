@@ -101,7 +101,7 @@ export interface ScanContext {
   /** Lazy-loaded extras — populated only for candidates that pass technical gate */
   extras?: {
     nextEarningsDate?: Date;
-    insiderCluster?: { buys: number; windowDays: number };
+    insiderCluster?: { buys: number; sells: number; windowDays: number };
     analystActions?: Array<{ date: Date; direction: "up" | "down" }>;
     shortInterestPct?: number;
     floatShares?: number;
@@ -122,6 +122,7 @@ import { breakout52wDetector } from "./scanner-v2-signals/breakout-52w";
 import { gapHoldDetector } from "./scanner-v2-signals/gap-hold";
 import { earningsSoonDetector } from "./scanner-v2-signals/earnings-soon";
 import { analystActionDetector } from "./scanner-v2-signals/analyst-action";
+import { insiderClusterDetector } from "./scanner-v2-signals/insider-cluster";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
@@ -131,6 +132,7 @@ const SIGNAL_DETECTORS: SignalDetector[] = [
   gapHoldDetector,
   earningsSoonDetector,
   analystActionDetector,
+  insiderClusterDetector,
 ];
 
 export function registerDetector(det: SignalDetector): void {
@@ -283,6 +285,81 @@ async function preloadEarningsCalendar(): Promise<Map<string, Date>> {
 }
 
 /**
+ * Fetch recent insider Form-4 transactions from FMP, paginated to cover the
+ * last ~INSIDER_WINDOW_DAYS, and build a Map<symbol, {buys, sells}> counting
+ * DISTINCT insiders per direction.
+ *
+ * Only open-market transactions count:
+ *   - "P-Purchase" → buy
+ *   - "S-Sale"    → sell
+ * Awards, grants, exercises, gifts, in-kind withholdings, conversions are
+ * excluded because they don't reflect discretionary conviction.
+ *
+ * DISTINCT insiders, not transactions — one executive splitting a buy across
+ * 3 filings should count as 1, not 3. Keyed by reportingCik.
+ *
+ * Paginated: FMP returns ~1 trading day per page (limit=1000). We fetch
+ * INSIDER_PAGES pages to cover the window. Cached 1h by fmpGet.
+ */
+const INSIDER_WINDOW_DAYS = 14;
+const INSIDER_PAGES = 18; // ~14 trading days + buffer
+
+async function preloadInsiderClusters(): Promise<
+  Map<string, { buys: number; sells: number; windowDays: number }>
+> {
+  const cutoff = Date.now() - INSIDER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  // symbol -> direction -> Set<reportingCik>
+  const bySymbol = new Map<string, { buys: Set<string>; sells: Set<string> }>();
+
+  try {
+    for (let page = 0; page < INSIDER_PAGES; page++) {
+      const rows: any[] = await fmpGet<any[]>("/insider-trading/latest", { limit: 1000, page });
+      if (!Array.isArray(rows) || rows.length === 0) break;
+
+      let anyInWindow = false;
+      for (const r of rows) {
+        const dateStr = r?.filingDate || r?.transactionDate;
+        if (!dateStr) continue;
+        const t = new Date(dateStr).getTime();
+        if (isNaN(t)) continue;
+        if (t >= cutoff) anyInWindow = true;
+        if (t < cutoff) continue;
+
+        const txType = String(r?.transactionType || "");
+        let dir: "buys" | "sells" | null = null;
+        if (txType === "P-Purchase") dir = "buys";
+        else if (txType === "S-Sale") dir = "sells";
+        else continue;
+
+        const sym = String(r?.symbol || "").toUpperCase();
+        const insider = String(r?.reportingCik || r?.reportingName || "");
+        if (!sym || !insider) continue;
+
+        let entry = bySymbol.get(sym);
+        if (!entry) {
+          entry = { buys: new Set(), sells: new Set() };
+          bySymbol.set(sym, entry);
+        }
+        entry[dir].add(insider);
+      }
+
+      // If the whole page was older than the cutoff, we're past the window
+      if (!anyInWindow) break;
+    }
+  } catch (e: any) {
+    console.warn(`[scanner-v2] insider preload failed: ${String(e?.message || e)}`);
+  }
+
+  const out = new Map<string, { buys: number; sells: number; windowDays: number }>();
+  bySymbol.forEach((v, sym) => {
+    out.set(sym, { buys: v.buys.size, sells: v.sells.size, windowDays: INSIDER_WINDOW_DAYS });
+  });
+  const clusterCount = Array.from(out.values()).filter((v) => v.buys >= 3 || v.sells >= 3).length;
+  console.log(`[scanner-v2] preloaded insider activity: ${out.size} symbols (${clusterCount} with ≥3 insiders same direction)`);
+  return out;
+}
+
+/**
  * Fetch recent analyst grade changes (latest 500) once per scan and build a
  * Map<symbol, Array<{date, direction}>>. Only upgrade/downgrade actions are
  * retained; other action types (maintain, reiterate) are ignored.
@@ -339,10 +416,11 @@ function evaluateSignals(ctx: ScanContext): SignalResult[] {
  */
 export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2Response> {
   const startedAt = Date.now();
-  const [universe, earningsMap, analystMap] = await Promise.all([
+  const [universe, earningsMap, analystMap, insiderMap] = await Promise.all([
     fetchUniverse(filters),
     preloadEarningsCalendar(),
     preloadAnalystActions(),
+    preloadInsiderClusters(),
   ]);
   console.log(`[scanner-v2] universe=${universe.length} (requested ${filters.universeSize ?? 2000})`);
 
@@ -378,6 +456,7 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
         const sym = u.symbol.toUpperCase();
         const nextEarningsDate = earningsMap.get(sym);
         const analystActions = analystMap.get(sym);
+        const insiderCluster = insiderMap.get(sym);
         const ctx: ScanContext = {
           bars,
           basics: {
@@ -390,6 +469,7 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
           extras: {
             nextEarningsDate,
             analystActions,
+            insiderCluster,
           },
         };
         const signals = evaluateSignals(ctx);
