@@ -124,6 +124,7 @@ import { earningsSoonDetector } from "./scanner-v2-signals/earnings-soon";
 import { analystActionDetector } from "./scanner-v2-signals/analyst-action";
 import { insiderClusterDetector } from "./scanner-v2-signals/insider-cluster";
 import { smallFloatDetector } from "./scanner-v2-signals/small-float";
+import { fibPullbackDetector } from "./scanner-v2-signals/fib-pullback";
 
 const SIGNAL_DETECTORS: SignalDetector[] = [
   bbSqueezeDetector,
@@ -135,6 +136,7 @@ const SIGNAL_DETECTORS: SignalDetector[] = [
   analystActionDetector,
   insiderClusterDetector,
   smallFloatDetector,
+  fibPullbackDetector,
 ];
 
 /**
@@ -167,6 +169,8 @@ const SIGNAL_WEIGHTS: Record<string, number> = {
   unusual_options: 12,
   short_squeeze: 10,
   thirteen_f_cluster: 6,
+  // technical continuation
+  fib_pullback: 8,
   // context (these modulate, don't add)
   small_float: 6,
 };
