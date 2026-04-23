@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { useLocation } from "wouter";
+import { BarChart3, TrendingUp, TrendingDown, Activity, X, Loader2, ArrowRight } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { Disclaimer } from "@/components/Disclaimer";
+import { formatCompact } from "@/lib/format";
+import { useTicker } from "@/contexts/TickerContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,8 +58,28 @@ function getHeatColor(pct: number): string {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+interface SectorLeader {
+  ticker: string;
+  companyName: string;
+  price: number;
+  changePct: number;
+  return1m: number;
+  marketCap: number;
+  volume: number;
+  volSurge: number;
+  score: number;
+}
+
+interface SectorLeadersResponse {
+  sector: string;
+  etf: string;
+  leaders: SectorLeader[];
+}
+
 export default function SectorHeatmap() {
   const [timeframe, setTimeframe] = useState<Timeframe>("month1");
+  const [drillSymbol, setDrillSymbol] = useState<string | null>(null);
+  const [drillName, setDrillName] = useState<string>("");
 
   const { data: sectors, isLoading, error } = useQuery<SectorData[]>({
     queryKey: ["/api/sectors"],
@@ -139,7 +162,8 @@ export default function SectorHeatmap() {
               return (
                 <div
                   key={sector.symbol}
-                  className="border border-card-border/50 rounded-lg p-3 transition-colors"
+                  onClick={() => { setDrillSymbol(sector.symbol); setDrillName(sector.name); }}
+                  className="border border-card-border/50 rounded-lg p-3 transition-all cursor-pointer hover:border-foreground/40 hover:scale-[1.02]"
                   style={{ backgroundColor: getHeatColor(ret) }}
                   data-testid={`sector-card-${sector.symbol}`}
                 >
@@ -183,6 +207,119 @@ export default function SectorHeatmap() {
             })}
           </div>
         )}
+      </div>
+
+      {drillSymbol && (
+        <SectorLeadersModal
+          symbol={drillSymbol}
+          sectorName={drillName}
+          onClose={() => setDrillSymbol(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Sector Leaders Modal ────────────────────────────────────────────────────
+
+function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; sectorName: string; onClose: () => void }) {
+  const [, setLocation] = useLocation();
+  const { setActiveTicker } = useTicker();
+
+  const { data, isLoading, error } = useQuery<SectorLeadersResponse>({
+    queryKey: [`/api/sectors/${symbol}/top`],
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const goToTicker = (t: string) => {
+    setActiveTicker(t);
+    setLocation("/scanner");
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+      data-testid="sector-leaders-modal"
+    >
+      <div
+        className="bg-card border border-card-border rounded-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-card-border">
+          <div>
+            <h2 className="text-lg font-bold">Top 10 in {sectorName}</h2>
+            <p className="text-xs text-muted-foreground">Where the money is flowing — ranked by 1-mo momentum + volume surge ({symbol})</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-md" data-testid="close-sector-modal">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoading && (
+            <div className="flex items-center justify-center py-12 gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Ranking {sectorName} leaders…</span>
+            </div>
+          )}
+          {error && (
+            <div className="text-center py-8 text-xs text-red-400">Failed to load sector leaders.</div>
+          )}
+          {data && data.leaders.length === 0 && (
+            <div className="text-center py-8 text-xs text-muted-foreground">No leaders found for this sector right now.</div>
+          )}
+          {data && data.leaders.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-card-border">
+                  <th className="py-2 pr-2">#</th>
+                  <th className="py-2 pr-2">Ticker</th>
+                  <th className="py-2 pr-2 text-right">Price</th>
+                  <th className="py-2 pr-2 text-right">1D</th>
+                  <th className="py-2 pr-2 text-right">1M</th>
+                  <th className="py-2 pr-2 text-right">Vol Surge</th>
+                  <th className="py-2 pr-2 text-right">Mkt Cap</th>
+                  <th className="py-2 pr-1"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.leaders.map((l, i) => (
+                  <tr
+                    key={l.ticker}
+                    className="border-b border-card-border/40 hover:bg-muted/30 cursor-pointer"
+                    onClick={() => goToTicker(l.ticker)}
+                    data-testid={`sector-leader-${l.ticker}`}
+                  >
+                    <td className="py-2 pr-2 text-muted-foreground">{i + 1}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-semibold">{l.ticker}</div>
+                      <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
+                    </td>
+                    <td className="py-2 pr-2 text-right tabular-nums">${l.price.toFixed(2)}</td>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {l.changePct >= 0 ? "+" : ""}{l.changePct.toFixed(2)}%
+                    </td>
+                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {l.return1m >= 0 ? "+" : ""}{l.return1m.toFixed(1)}%
+                    </td>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-yellow-400 font-semibold" : "text-muted-foreground"}`}>
+                      {l.volSurge.toFixed(2)}x
+                    </td>
+                    <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
+                      ${formatCompact(l.marketCap)}
+                    </td>
+                    <td className="py-2 pr-1">
+                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
+        </div>
       </div>
     </div>
   );

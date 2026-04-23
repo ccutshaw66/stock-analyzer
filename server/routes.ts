@@ -4253,17 +4253,17 @@ export async function registerRoutes(
   // ================================================================
 
   const SECTOR_ETFS = [
-    { symbol: "XLK", name: "Technology" },
-    { symbol: "XLF", name: "Financials" },
-    { symbol: "XLV", name: "Healthcare" },
-    { symbol: "XLE", name: "Energy" },
-    { symbol: "XLY", name: "Consumer Discretionary" },
-    { symbol: "XLP", name: "Consumer Staples" },
-    { symbol: "XLI", name: "Industrials" },
-    { symbol: "XLU", name: "Utilities" },
-    { symbol: "XLB", name: "Materials" },
-    { symbol: "XLRE", name: "Real Estate" },
-    { symbol: "XLC", name: "Communication Services" },
+    { symbol: "XLK", name: "Technology", fmpSector: "Technology" },
+    { symbol: "XLF", name: "Financials", fmpSector: "Financial Services" },
+    { symbol: "XLV", name: "Healthcare", fmpSector: "Healthcare" },
+    { symbol: "XLE", name: "Energy", fmpSector: "Energy" },
+    { symbol: "XLY", name: "Consumer Discretionary", fmpSector: "Consumer Cyclical" },
+    { symbol: "XLP", name: "Consumer Staples", fmpSector: "Consumer Defensive" },
+    { symbol: "XLI", name: "Industrials", fmpSector: "Industrials" },
+    { symbol: "XLU", name: "Utilities", fmpSector: "Utilities" },
+    { symbol: "XLB", name: "Materials", fmpSector: "Basic Materials" },
+    { symbol: "XLRE", name: "Real Estate", fmpSector: "Real Estate" },
+    { symbol: "XLC", name: "Communication Services", fmpSector: "Communication Services" },
   ];
 
   app.get("/api/sectors", async (_req, res) => {
@@ -4307,6 +4307,86 @@ export async function registerRoutes(
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Sector data fetch failed" });
+    }
+  });
+
+  // ================================================================
+  // SECTOR TOP LEADERS — drill-in from heatmap
+  // ================================================================
+
+  app.get("/api/sectors/:symbol/top", async (req, res) => {
+    try {
+      await ensureReady();
+      const symbol = String(req.params.symbol || "").toUpperCase();
+      const etf = SECTOR_ETFS.find(s => s.symbol === symbol);
+      if (!etf) return res.status(404).json({ error: "Unknown sector ETF" });
+
+      const cacheKey = `sector:top:${symbol}`;
+      const cachedLeaders = getCached(cacheKey);
+      if (cachedLeaders) return res.json(cachedLeaders);
+
+      // Pull ~50 largest-volume names in the sector, then score them.
+      const tickers = await screenStocks({
+        sector: etf.fmpSector,
+        minPrice: 5,
+        minMarketCap: 1_000_000_000,
+        minVolume: 500_000,
+        count: 50,
+        sortBy: "marketCap",
+      });
+
+      if (!tickers.length) {
+        const empty = { sector: etf.name, etf: symbol, leaders: [] };
+        setCache(cacheKey, empty, 15 * 60 * 1000);
+        return res.json(empty);
+      }
+
+      // Score each ticker using quote + 1-month change + volume surge.
+      const leaders: any[] = [];
+      const BATCH = 8;
+      for (let i = 0; i < tickers.length; i += BATCH) {
+        const slice = tickers.slice(i, i + BATCH);
+        const results = await Promise.all(slice.map(async (t) => {
+          try {
+            const q = await getQuote(t);
+            if (!q || !q.regularMarketPrice) return null;
+            const chart = await getChart(t, "1mo", "1d");
+            const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
+            const vols: number[] = (chart?.indicators?.quote?.[0]?.volume || []).filter((v: any) => v != null);
+            if (closes.length < 5) return null;
+            const last = closes[closes.length - 1];
+            const first = closes[0];
+            const ret1m = first > 0 ? ((last - first) / first) * 100 : 0;
+            const avgVol = vols.length ? vols.reduce((a, b) => a + b, 0) / vols.length : 0;
+            const volToday = q.regularMarketVolume || vols[vols.length - 1] || 0;
+            const volSurge = avgVol > 0 ? volToday / avgVol : 1;
+            // Simple leader score: momentum weighted + volume surge bonus
+            const score = Math.round((ret1m * 2) + (Math.min(volSurge, 3) * 10));
+            return {
+              ticker: t,
+              companyName: q.longName || q.shortName || t,
+              price: Math.round((q.regularMarketPrice || 0) * 100) / 100,
+              changePct: Math.round((q.regularMarketChangePercent || 0) * 100) / 100,
+              return1m: Math.round(ret1m * 100) / 100,
+              marketCap: q.marketCap || 0,
+              volume: volToday,
+              volSurge: Math.round(volSurge * 100) / 100,
+              score,
+            };
+          } catch {
+            return null;
+          }
+        }));
+        for (const r of results) if (r) leaders.push(r);
+      }
+
+      leaders.sort((a, b) => b.score - a.score);
+      const top = leaders.slice(0, 10);
+      const payload = { sector: etf.name, etf: symbol, leaders: top };
+      setCache(cacheKey, payload, 30 * 60 * 1000); // 30-min cache
+      res.json(payload);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Sector leaders fetch failed" });
     }
   });
 
