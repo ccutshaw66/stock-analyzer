@@ -3875,7 +3875,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v3:${ticker}`; // v3: Polygon charts + rebalanced insider score
+      const verdictCacheKey = `verdict:v4:${ticker}`; // v4: FMP metals + wider insider neutral band
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -3953,20 +3953,20 @@ export async function registerRoutes(
       }));
 
       // Current metals data
-      // Metals + SPY quotes via Polygon (Yahoo futures are unreliable)
-      const [goldQ, silverQ, spyQ] = await Promise.all([
-        getPolygonQuoteSummary("GLD").catch(() => null),
-        getPolygonQuoteSummary("SLV").catch(() => null),
+      // Metals + SPY quotes. Metals come from FMP commodity quotes (GCUSD/SIUSD)
+      // which are on the existing subscription — Polygon Forex is a separate plan.
+      const { fmpGet } = await import("./data/providers/fmp.client");
+      const [goldFmpArr, silverFmpArr, spyQ] = await Promise.all([
+        fmpGet<any[]>(`/quote`, { symbol: "GCUSD" }).catch(() => null),
+        fmpGet<any[]>(`/quote`, { symbol: "SIUSD" }).catch(() => null),
         getPolygonQuoteSummary("SPY").catch(() => null),
       ]);
-      // GLD tracks ~1/10 oz of gold; SLV tracks ~1 oz of silver. Use Polygon spot
-      // forex for real metal prices so users see $2,650 gold, not $300 GLD.
-      const [xauSpot, xagSpot] = await Promise.all([
-        pget(`/v2/aggs/ticker/C:XAUUSD/prev`, { adjusted: "true" }).catch(() => null),
-        pget(`/v2/aggs/ticker/C:XAGUSD/prev`, { adjusted: "true" }).catch(() => null),
-      ]);
-      const goldSpotPrice = xauSpot?.results?.[0]?.c ?? null;
-      const silverSpotPrice = xagSpot?.results?.[0]?.c ?? null;
+      const goldRow = Array.isArray(goldFmpArr) ? goldFmpArr[0] : null;
+      const silverRow = Array.isArray(silverFmpArr) ? silverFmpArr[0] : null;
+      const goldPrice = Number(goldRow?.price) || 0;
+      const goldChange = Number(goldRow?.changePercentage) || 0;
+      const silverPrice = Number(silverRow?.price) || 0;
+      const silverChange = Number(silverRow?.changePercentage) || 0;
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
@@ -4019,20 +4019,18 @@ export async function registerRoutes(
       // insider BUYS are historically rare at mega-caps (execs tend to receive
       // shares via grants), counting a few planned 10b5-1 sells as "SELLING 0/100"
       // over-punishes. Dampen the swing and widen the NEUTRAL band.
+      // Open-market insider BUYS are historically rare at mega-caps — execs receive
+      // comp via grants and sell routinely via 10b5-1 plans. So we only punish when
+      // it's truly lopsided AND material (>=10 txns in 6mo, >=80% sells).
       if (institutional) {
-        const netBuy = institutional.insiderBuyCount - institutional.insiderSellCount;
         const totalActivity = institutional.insiderBuyCount + institutional.insiderSellCount;
         let s = 50;
-        let signal: string = "NEUTRAL";
-        if (totalActivity === 0) {
-          s = 50; signal = "NEUTRAL";
-        } else {
-          // Ratio-based: buyShare from 0..1, centered at 0.5 = neutral.
+        let signal = "NEUTRAL";
+        if (totalActivity >= 3) {
           const buyShare = institutional.insiderBuyCount / totalActivity;
-          s = Math.round(20 + buyShare * 60); // 20..80 range, never 0 or 100 on pure activity
-          if (buyShare >= 0.65) signal = "BUYING";
-          else if (buyShare <= 0.2 && totalActivity >= 5) signal = "SELLING";
-          else signal = "NEUTRAL";
+          if (buyShare >= 0.6) { s = 70; signal = "BUYING"; }
+          else if (buyShare <= 0.15 && totalActivity >= 10) { s = 35; signal = "SELLING"; }
+          else { s = 50; signal = "NEUTRAL"; }
         }
         factors.push({
           name: "Insider Confidence",
@@ -4105,25 +4103,11 @@ export async function registerRoutes(
         // Stress tests
         stressTests,
 
-        // Metals comparison
-        // Price = spot metal USD/oz (falls back to GLD*10 / SLV if spot unavailable);
-        // Change% uses the liquid ETF proxy which trades intraday.
+        // Metals comparison — FMP commodity quotes (USD/oz).
         metals: {
-          gold: {
-            price: goldSpotPrice ?? ((goldQ?.regularMarketPrice || 0) * 10),
-            change: goldQ?.regularMarketChangePercent || 0,
-            name: "Gold (spot, USD/oz)",
-          },
-          silver: {
-            price: silverSpotPrice ?? (silverQ?.regularMarketPrice || 0),
-            change: silverQ?.regularMarketChangePercent || 0,
-            name: "Silver (spot, USD/oz)",
-          },
-          spy: {
-            price: spyQ?.regularMarketPrice || 0,
-            change: spyQ?.regularMarketChangePercent || 0,
-            name: "S&P 500",
-          },
+          gold:   { price: goldPrice,   change: goldChange,   name: "Gold (USD/oz)" },
+          silver: { price: silverPrice, change: silverChange, name: "Silver (USD/oz)" },
+          spy:    { price: spyQ?.regularMarketPrice || 0, change: spyQ?.regularMarketChangePercent || 0, name: "S&P 500" },
         },
       };
       setCache(verdictCacheKey, verdictPayload, TTL.verdict);
