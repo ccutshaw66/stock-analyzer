@@ -27,7 +27,6 @@ import {
   polygonScreener,
   polygonHasOptions,
   getPolygonEarningsRow,
-  pget,
 } from "./polygon";
 import { fmpAdapter } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
@@ -3875,7 +3874,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v4:${ticker}`; // v4: FMP metals + wider insider neutral band
+      const verdictCacheKey = `verdict:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -3904,13 +3903,15 @@ export async function registerRoutes(
         })(),
       ]);
 
-      // Batch 2: Historical charts for stress test — Polygon only (Yahoo 25y unreliable).
-      const [tickerChart, spyChart, goldChart, silverChart] = await Promise.all([
-        getPolygonChart(ticker, "25y" as any, "1mo" as any).catch(() => null),
-        getPolygonChart("SPY", "25y" as any, "1mo" as any).catch(() => null),
-        getPolygonChart("GLD", "25y" as any, "1mo" as any).catch(() => null),
-        getPolygonChart("SLV", "25y" as any, "1mo" as any).catch(() => null),
-      ]);
+      // Batch 2: Historical charts for stress test (sequentially with delays)
+      await delay(500);
+      const tickerChart = await getChart(ticker, "25y", "1mo").catch(() => null);
+      await delay(400);
+      const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
+      await delay(400);
+      const goldChart = await getChart("GC=F", "25y", "1mo").catch(() => null);
+      await delay(400);
+      const silverChart = await getChart("SI=F", "25y", "1mo").catch(() => null);
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
@@ -3953,20 +3954,17 @@ export async function registerRoutes(
       }));
 
       // Current metals data
-      // Metals + SPY quotes. Metals come from FMP commodity quotes (GCUSD/SIUSD)
-      // which are on the existing subscription — Polygon Forex is a separate plan.
-      const { fmpGet } = await import("./data/providers/fmp.client");
-      const [goldFmpArr, silverFmpArr, spyQ] = await Promise.all([
-        fmpGet<any[]>(`/quote`, { symbol: "GCUSD" }).catch(() => null),
-        fmpGet<any[]>(`/quote`, { symbol: "SIUSD" }).catch(() => null),
-        getPolygonQuoteSummary("SPY").catch(() => null),
-      ]);
-      const goldRow = Array.isArray(goldFmpArr) ? goldFmpArr[0] : null;
-      const silverRow = Array.isArray(silverFmpArr) ? silverFmpArr[0] : null;
-      const goldPrice = Number(goldRow?.price) || 0;
-      const goldChange = Number(goldRow?.changePercentage) || 0;
-      const silverPrice = Number(silverRow?.price) || 0;
-      const silverChange = Number(silverRow?.changePercentage) || 0;
+      // Metals quotes (sequential to avoid rate limits)
+      await delay(400);
+      const goldQuote = await getQuote("GC=F").catch(() => null);
+      await delay(400);
+      const silverQuote = await getQuote("SI=F").catch(() => null);
+      await delay(400);
+      const spyQuote = await getQuote("SPY").catch(() => null);
+
+      const goldPrice = goldQuote?.price || null;
+      const silverPrice = silverQuote?.price || null;
+      const spyPrice = spyQuote?.price || null;
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
@@ -4014,31 +4012,10 @@ export async function registerRoutes(
       }
 
       // Insider confidence
-      // Note: insiderBuyCount/SellCount now only include P/S (real open-market trades),
-      // not F/M/A (tax withholding, option exercise, grants). Because open-market
-      // insider BUYS are historically rare at mega-caps (execs tend to receive
-      // shares via grants), counting a few planned 10b5-1 sells as "SELLING 0/100"
-      // over-punishes. Dampen the swing and widen the NEUTRAL band.
-      // Open-market insider BUYS are historically rare at mega-caps — execs receive
-      // comp via grants and sell routinely via 10b5-1 plans. So we only punish when
-      // it's truly lopsided AND material (>=10 txns in 6mo, >=80% sells).
       if (institutional) {
-        const totalActivity = institutional.insiderBuyCount + institutional.insiderSellCount;
-        let s = 50;
-        let signal = "NEUTRAL";
-        if (totalActivity >= 3) {
-          const buyShare = institutional.insiderBuyCount / totalActivity;
-          if (buyShare >= 0.6) { s = 70; signal = "BUYING"; }
-          else if (buyShare <= 0.15 && totalActivity >= 10) { s = 35; signal = "SELLING"; }
-          else { s = 50; signal = "NEUTRAL"; }
-        }
-        factors.push({
-          name: "Insider Confidence",
-          score: s,
-          weight: 0.10,
-          signal,
-          color: signal === "BUYING" ? "green" : signal === "SELLING" ? "red" : "yellow",
-        });
+        const netBuy = institutional.insiderBuyCount - institutional.insiderSellCount;
+        const s = Math.max(0, Math.min(100, 50 + netBuy * 10));
+        factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
       }
 
       // Calculate unified score. NOTE: post-Polygon migration, some factors
@@ -4103,11 +4080,23 @@ export async function registerRoutes(
         // Stress tests
         stressTests,
 
-        // Metals comparison — FMP commodity quotes (USD/oz).
+        // Metals comparison
         metals: {
-          gold:   { price: goldPrice,   change: goldChange,   name: "Gold (USD/oz)" },
-          silver: { price: silverPrice, change: silverChange, name: "Silver (USD/oz)" },
-          spy:    { price: spyQ?.regularMarketPrice || 0, change: spyQ?.regularMarketChangePercent || 0, name: "S&P 500" },
+          gold: {
+            price: goldPrice?.regularMarketPrice?.raw || 0,
+            change: goldPrice?.regularMarketChangePercent?.raw || 0,
+            name: "Gold",
+          },
+          silver: {
+            price: silverPrice?.regularMarketPrice?.raw || 0,
+            change: silverPrice?.regularMarketChangePercent?.raw || 0,
+            name: "Silver",
+          },
+          spy: {
+            price: spyPrice?.regularMarketPrice?.raw || 0,
+            change: spyPrice?.regularMarketChangePercent?.raw || 0,
+            name: "S&P 500",
+          },
         },
       };
       setCache(verdictCacheKey, verdictPayload, TTL.verdict);
