@@ -3875,7 +3875,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v2:${ticker}`; // v2: Polygon metals
+      const verdictCacheKey = `verdict:v3:${ticker}`; // v3: Polygon charts + rebalanced insider score
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -3904,16 +3904,13 @@ export async function registerRoutes(
         })(),
       ]);
 
-      // Batch 2: Historical charts for stress test (sequentially with delays)
-      await delay(500);
-      const tickerChart = await getChart(ticker, "25y", "1mo").catch(() => null);
-      await delay(400);
-      const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
-      await delay(400);
-      // Gold/silver via ETF proxies (GLD, SLV) on Polygon — Yahoo futures (GC=F/SI=F) are unreliable.
-      const goldChart = await getPolygonChart("GLD", "25y" as any, "1mo" as any).catch(() => null);
-      await delay(400);
-      const silverChart = await getPolygonChart("SLV", "25y" as any, "1mo" as any).catch(() => null);
+      // Batch 2: Historical charts for stress test — Polygon only (Yahoo 25y unreliable).
+      const [tickerChart, spyChart, goldChart, silverChart] = await Promise.all([
+        getPolygonChart(ticker, "25y" as any, "1mo" as any).catch(() => null),
+        getPolygonChart("SPY", "25y" as any, "1mo" as any).catch(() => null),
+        getPolygonChart("GLD", "25y" as any, "1mo" as any).catch(() => null),
+        getPolygonChart("SLV", "25y" as any, "1mo" as any).catch(() => null),
+      ]);
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
@@ -4017,10 +4014,33 @@ export async function registerRoutes(
       }
 
       // Insider confidence
+      // Note: insiderBuyCount/SellCount now only include P/S (real open-market trades),
+      // not F/M/A (tax withholding, option exercise, grants). Because open-market
+      // insider BUYS are historically rare at mega-caps (execs tend to receive
+      // shares via grants), counting a few planned 10b5-1 sells as "SELLING 0/100"
+      // over-punishes. Dampen the swing and widen the NEUTRAL band.
       if (institutional) {
         const netBuy = institutional.insiderBuyCount - institutional.insiderSellCount;
-        const s = Math.max(0, Math.min(100, 50 + netBuy * 10));
-        factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
+        const totalActivity = institutional.insiderBuyCount + institutional.insiderSellCount;
+        let s = 50;
+        let signal: string = "NEUTRAL";
+        if (totalActivity === 0) {
+          s = 50; signal = "NEUTRAL";
+        } else {
+          // Ratio-based: buyShare from 0..1, centered at 0.5 = neutral.
+          const buyShare = institutional.insiderBuyCount / totalActivity;
+          s = Math.round(20 + buyShare * 60); // 20..80 range, never 0 or 100 on pure activity
+          if (buyShare >= 0.65) signal = "BUYING";
+          else if (buyShare <= 0.2 && totalActivity >= 5) signal = "SELLING";
+          else signal = "NEUTRAL";
+        }
+        factors.push({
+          name: "Insider Confidence",
+          score: s,
+          weight: 0.10,
+          signal,
+          color: signal === "BUYING" ? "green" : signal === "SELLING" ? "red" : "yellow",
+        });
       }
 
       // Calculate unified score. NOTE: post-Polygon migration, some factors
