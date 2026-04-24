@@ -4325,32 +4325,43 @@ export async function registerRoutes(
       const cachedLeaders = getCached(cacheKey);
       if (cachedLeaders) return res.json(cachedLeaders);
 
-      // Pull ~50 largest-volume names in the sector, then score them.
-      let tickers = await screenStocks({
-        sector: etf.fmpSector,
-        minPrice: 5,
-        minMarketCap: 1_000_000_000,
-        minVolume: 500_000,
-        count: 50,
-        sortBy: "marketCap",
-      });
-      console.log(`[sector-top] ${symbol} (${etf.fmpSector}): screener returned ${tickers.length}`);
-
-      // Fallback: loosen filters if strict query returned nothing.
-      if (!tickers.length) {
-        tickers = await screenStocks({
+      // Pull full screener rows so we have companyName + marketCap for free.
+      const { fmpScreener } = await import("./data/providers/fmp.adapter");
+      let rows: any[] = [];
+      try {
+        rows = await fmpScreener({
           sector: etf.fmpSector,
-          minPrice: 1,
-          minMarketCap: 100_000_000,
-          minVolume: 100_000,
-          count: 50,
-          sortBy: "marketCap",
+          minPrice: 5,
+          minMarketCap: 1_000_000_000,
+          minVolume: 500_000,
+          count: 40,
         });
-        console.log(`[sector-top] ${symbol} loose retry returned ${tickers.length}`);
+      } catch (e: any) {
+        console.warn(`[sector-top] FMP screener failed: ${e?.message || e}`);
+      }
+      console.log(`[sector-top] ${symbol} (${etf.fmpSector}): screener returned ${rows.length}`);
+
+      if (!rows.length) {
+        try {
+          rows = await fmpScreener({
+            sector: etf.fmpSector,
+            minPrice: 1,
+            minMarketCap: 100_000_000,
+            minVolume: 100_000,
+            count: 40,
+          });
+        } catch {}
+        console.log(`[sector-top] ${symbol} loose retry returned ${rows.length}`);
+      }
+
+      let tickers: string[] = rows.map((r) => r.symbol).filter(Boolean);
+      const meta: Record<string, { name: string; marketCap: number }> = {};
+      for (const r of rows) {
+        if (r.symbol) meta[r.symbol] = { name: r.companyName || r.symbol, marketCap: r.marketCap || 0 };
       }
 
       // Last resort: seed names per sector so the modal is never empty.
-      if (!tickers.length) {
+      if (tickers.length < 5) {
         const SEED_LEADERS: Record<string, string[]> = {
           XLK: ["AAPL","MSFT","NVDA","AVGO","ORCL","CRM","ADBE","CSCO","AMD","QCOM","INTU","IBM","TXN","NOW","PANW"],
           XLF: ["JPM","V","MA","BAC","WFC","GS","MS","AXP","SCHW","C","BLK","SPGI","PGR","CB","USB"],
@@ -4364,8 +4375,10 @@ export async function registerRoutes(
           XLRE: ["PLD","AMT","EQIX","WELL","SPG","PSA","O","CCI","DLR","EXR","VICI","AVB","CBRE","EQR","IRM"],
           XLC: ["META","GOOGL","GOOG","NFLX","DIS","TMUS","VZ","T","CMCSA","EA","TTWO","CHTR","WBD","MTCH","OMC"],
         };
-        tickers = SEED_LEADERS[symbol] || [];
-        console.log(`[sector-top] ${symbol} using ${tickers.length} seed leaders`);
+        const seed = SEED_LEADERS[symbol] || [];
+        // Merge seed with whatever we have, dedupe
+        tickers = Array.from(new Set([...tickers, ...seed]));
+        console.log(`[sector-top] ${symbol} merged with seed, total ${tickers.length}`);
       }
 
       if (!tickers.length) {
@@ -4376,42 +4389,46 @@ export async function registerRoutes(
 
       // Score each ticker using quote + 1-month change + volume surge.
       const leaders: any[] = [];
-      const BATCH = 8;
+      const BATCH = 10;
+      let failCount = 0;
       for (let i = 0; i < tickers.length; i += BATCH) {
         const slice = tickers.slice(i, i + BATCH);
         const results = await Promise.all(slice.map(async (t) => {
           try {
-            const q = await getQuote(t);
-            if (!q || !q.regularMarketPrice) return null;
-            const chart = await getChart(t, "1mo", "1d");
+            // Polygon only — no Yahoo front-end pulls.
+            const chart = await getPolygonChart(t, "1mo" as any, "1d" as any);
             const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
             const vols: number[] = (chart?.indicators?.quote?.[0]?.volume || []).filter((v: any) => v != null);
-            if (closes.length < 5) return null;
+            if (closes.length < 3) { failCount++; return null; }
             const last = closes[closes.length - 1];
             const first = closes[0];
+            const prev = closes.length >= 2 ? closes[closes.length - 2] : first;
             const ret1m = first > 0 ? ((last - first) / first) * 100 : 0;
+            const changePct = prev > 0 ? ((last - prev) / prev) * 100 : 0;
             const avgVol = vols.length ? vols.reduce((a, b) => a + b, 0) / vols.length : 0;
-            const volToday = q.regularMarketVolume || vols[vols.length - 1] || 0;
+            const volToday = vols.length ? vols[vols.length - 1] : 0;
             const volSurge = avgVol > 0 ? volToday / avgVol : 1;
-            // Simple leader score: momentum weighted + volume surge bonus
             const score = Math.round((ret1m * 2) + (Math.min(volSurge, 3) * 10));
             return {
               ticker: t,
-              companyName: q.longName || q.shortName || t,
-              price: Math.round((q.regularMarketPrice || 0) * 100) / 100,
-              changePct: Math.round((q.regularMarketChangePercent || 0) * 100) / 100,
+              companyName: meta[t]?.name || t,
+              price: Math.round(last * 100) / 100,
+              changePct: Math.round(changePct * 100) / 100,
               return1m: Math.round(ret1m * 100) / 100,
-              marketCap: q.marketCap || 0,
+              marketCap: meta[t]?.marketCap || 0,
               volume: volToday,
               volSurge: Math.round(volSurge * 100) / 100,
               score,
             };
-          } catch {
+          } catch (e: any) {
+            failCount++;
+            if (failCount <= 3) console.warn(`[sector-top] ${t} polygon chart failed:`, e?.message || e);
             return null;
           }
         }));
         for (const r of results) if (r) leaders.push(r);
       }
+      console.log(`[sector-top] ${symbol} scored ${leaders.length}/${tickers.length} (${failCount} failed)`);
 
       leaders.sort((a, b) => b.score - a.score);
       const top = leaders.slice(0, 10);
