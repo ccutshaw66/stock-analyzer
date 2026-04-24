@@ -27,6 +27,7 @@ import {
   polygonScreener,
   polygonHasOptions,
   getPolygonEarningsRow,
+  pget,
 } from "./polygon";
 import { fmpAdapter } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
@@ -3909,9 +3910,10 @@ export async function registerRoutes(
       await delay(400);
       const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
       await delay(400);
-      const goldChart = await getChart("GC=F", "25y", "1mo").catch(() => null);
+      // Gold/silver via ETF proxies (GLD, SLV) on Polygon — Yahoo futures (GC=F/SI=F) are unreliable.
+      const goldChart = await getPolygonChart("GLD", "25y" as any, "1mo" as any).catch(() => null);
       await delay(400);
-      const silverChart = await getChart("SI=F", "25y", "1mo").catch(() => null);
+      const silverChart = await getPolygonChart("SLV", "25y" as any, "1mo" as any).catch(() => null);
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
@@ -3954,17 +3956,20 @@ export async function registerRoutes(
       }));
 
       // Current metals data
-      // Metals quotes (sequential to avoid rate limits)
-      await delay(400);
-      const goldQuote = await getQuote("GC=F").catch(() => null);
-      await delay(400);
-      const silverQuote = await getQuote("SI=F").catch(() => null);
-      await delay(400);
-      const spyQuote = await getQuote("SPY").catch(() => null);
-
-      const goldPrice = goldQuote?.price || null;
-      const silverPrice = silverQuote?.price || null;
-      const spyPrice = spyQuote?.price || null;
+      // Metals + SPY quotes via Polygon (Yahoo futures are unreliable)
+      const [goldQ, silverQ, spyQ] = await Promise.all([
+        getPolygonQuoteSummary("GLD").catch(() => null),
+        getPolygonQuoteSummary("SLV").catch(() => null),
+        getPolygonQuoteSummary("SPY").catch(() => null),
+      ]);
+      // GLD tracks ~1/10 oz of gold; SLV tracks ~1 oz of silver. Use Polygon spot
+      // forex for real metal prices so users see $2,650 gold, not $300 GLD.
+      const [xauSpot, xagSpot] = await Promise.all([
+        pget(`/v2/aggs/ticker/C:XAUUSD/prev`, { adjusted: "true" }).catch(() => null),
+        pget(`/v2/aggs/ticker/C:XAGUSD/prev`, { adjusted: "true" }).catch(() => null),
+      ]);
+      const goldSpotPrice = xauSpot?.results?.[0]?.c ?? null;
+      const silverSpotPrice = xagSpot?.results?.[0]?.c ?? null;
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
@@ -4081,20 +4086,22 @@ export async function registerRoutes(
         stressTests,
 
         // Metals comparison
+        // Price = spot metal USD/oz (falls back to GLD*10 / SLV if spot unavailable);
+        // Change% uses the liquid ETF proxy which trades intraday.
         metals: {
           gold: {
-            price: goldPrice?.regularMarketPrice?.raw || 0,
-            change: goldPrice?.regularMarketChangePercent?.raw || 0,
-            name: "Gold",
+            price: goldSpotPrice ?? ((goldQ?.regularMarketPrice || 0) * 10),
+            change: goldQ?.regularMarketChangePercent || 0,
+            name: "Gold (spot, USD/oz)",
           },
           silver: {
-            price: silverPrice?.regularMarketPrice?.raw || 0,
-            change: silverPrice?.regularMarketChangePercent?.raw || 0,
-            name: "Silver",
+            price: silverSpotPrice ?? (silverQ?.regularMarketPrice || 0),
+            change: silverQ?.regularMarketChangePercent || 0,
+            name: "Silver (spot, USD/oz)",
           },
           spy: {
-            price: spyPrice?.regularMarketPrice?.raw || 0,
-            change: spyPrice?.regularMarketChangePercent?.raw || 0,
+            price: spyQ?.regularMarketPrice || 0,
+            change: spyQ?.regularMarketChangePercent || 0,
             name: "S&P 500",
           },
         },
