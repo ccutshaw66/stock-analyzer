@@ -101,7 +101,7 @@ export interface CompanyBasics {
 }
 
 export async function getCompanyBasics(ticker: string): Promise<CompanyBasics | null> {
-  const key = `basics:${ticker.toUpperCase()}`;
+  const key = `basics:v2:${ticker.toUpperCase()}`; // v2: added FMP mcap/price fallback
   const cached = getCached<CompanyBasics>(key);
   if (cached) return cached;
 
@@ -132,12 +132,21 @@ export async function getCompanyBasics(ticker: string): Promise<CompanyBasics | 
     // non-fatal; basics is still usable without shares
   }
 
-  // CUSIP from FMP profile (already on premium, no extra cost)
+  // CUSIP from FMP profile (already on premium, no extra cost).
+  // Also use FMP as FALLBACK for sharesOutstanding when XBRL didn't return one
+  // (some issuers don't file CommonStockSharesOutstanding via us-gaap/dei consistently).
   let cusip: string | null = null;
   try {
     const profile: any = await fmpGet(`/profile`, { symbol: ticker });
     const row = Array.isArray(profile) ? profile[0] : profile;
     cusip = (row?.cusip ?? null) || null;
+    if ((!sharesOutstanding || sharesOutstanding <= 0) && row?.marketCap && row?.price) {
+      const derived = Number(row.marketCap) / Number(row.price);
+      if (derived > 0 && isFinite(derived)) {
+        sharesOutstanding = Math.round(derived);
+        sharesAsOf = sharesAsOf || "FMP profile (mcap/price)";
+      }
+    }
   } catch {
     // non-fatal
   }
@@ -525,13 +534,14 @@ export async function getInstitutionalSummary(
   ticker: string,
   topN = 25
 ): Promise<InstitutionalSummary | null> {
-  const cacheKey = `inst:${ticker.toUpperCase()}`;
+  const cacheKey = `inst:v2:${ticker.toUpperCase()}`; // v2: ownership pct fallback
   const cached = getCached<InstitutionalSummary>(cacheKey);
   if (cached) return cached;
 
   // Phase 3.8: disk cache. Survives restarts so deploys don't trigger a
   // 25-min cold path for the first user. Fresh (<3d) wins over live.
-  const diskFresh = readInstitutionalFresh(ticker);
+  const diskFreshRaw = readInstitutionalFresh(ticker);
+  const diskFresh = isSummaryCorrupt(diskFreshRaw) ? null : diskFreshRaw;
   if (diskFresh) {
     setCached(cacheKey, diskFresh, TTL_HOLDINGS);
     return diskFresh as InstitutionalSummary;
@@ -656,12 +666,31 @@ export async function getInstitutionalSummary(
  */
 const pendingWarms = new Set<string>();
 
+// Treat a cached summary as corrupt when we have holders but 0% ownership —
+// that's the signature of the old sharesOutstanding=null bug.
+function isSummaryCorrupt(s: any): boolean {
+  if (!s) return false;
+  const holders = s?.topHolders?.length || 0;
+  const pct = Number(s?.institutionPct || 0);
+  return holders > 0 && pct === 0;
+}
+
 export async function getInstitutionalSummaryStaleOk(
   ticker: string,
   topN = 25
 ): Promise<InstitutionalSummary | null> {
   const fresh = readInstitutionalFresh(ticker);
-  if (fresh) return fresh;
+  if (fresh && !isSummaryCorrupt(fresh)) return fresh;
+  if (fresh && isSummaryCorrupt(fresh)) {
+    // Kick a warm to overwrite, but don't block the user on it.
+    if (!pendingWarms.has(ticker)) {
+      pendingWarms.add(ticker);
+      getInstitutionalSummary(ticker, topN)
+        .catch(() => {})
+        .finally(() => pendingWarms.delete(ticker));
+    }
+    return null;
+  }
   const stale = readInstitutionalStale(ticker);
   if (stale) {
     // Kick off a background refresh but return stale immediately.
