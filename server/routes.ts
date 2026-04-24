@@ -3874,7 +3874,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:${ticker}`;
+      const verdictCacheKey = `verdict:v3:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -3909,9 +3909,24 @@ export async function registerRoutes(
       await delay(400);
       const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
       await delay(400);
-      const goldChart = await getChart("GC=F", "25y", "1mo").catch(() => null);
-      await delay(400);
-      const silverChart = await getChart("SI=F", "25y", "1mo").catch(() => null);
+      // Metals via FMP (Yahoo GC=F/SI=F unreliable). Adapt to Yahoo chart shape.
+      async function fmpMetalChart(sym: string): Promise<any> {
+        try {
+          const to = new Date().toISOString().slice(0, 10);
+          const from = "2000-01-01";
+          const rows: any = await fmpGet(`/historical-price-eod/full?symbol=${sym}&from=${from}&to=${to}`);
+          const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
+          if (!arr.length) return null;
+          const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
+          return {
+            timestamp: asc.map((r: any) => Math.floor(new Date(r.date).getTime() / 1000)),
+            indicators: { quote: [{ close: asc.map((r: any) => r.close) }] },
+          };
+        } catch { return null; }
+      }
+      const goldChart = await fmpMetalChart("GCUSD");
+      await delay(200);
+      const silverChart = await fmpMetalChart("SIUSD");
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
@@ -3953,17 +3968,21 @@ export async function registerRoutes(
         hasData: getReturnDuringPeriod(tickerChart, event.start, event.end) !== null,
       }));
 
-      // Current metals data
-      // Metals quotes (sequential to avoid rate limits)
-      await delay(400);
-      const goldQuote = await getQuote("GC=F").catch(() => null);
-      await delay(400);
-      const silverQuote = await getQuote("SI=F").catch(() => null);
-      await delay(400);
+      // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
+      async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
+        try {
+          const rows: any = await fmpGet(`/quote?symbol=${sym}`);
+          const row = Array.isArray(rows) ? rows[0] : rows;
+          if (!row?.price) return null;
+          return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };
+        } catch { return null; }
+      }
+      const goldSpot = await fmpSpotQuote("GCUSD");
+      await delay(200);
+      const silverSpot = await fmpSpotQuote("SIUSD");
+      await delay(200);
       const spyQuote = await getQuote("SPY").catch(() => null);
 
-      const goldPrice = goldQuote?.price || null;
-      const silverPrice = silverQuote?.price || null;
       const spyPrice = spyQuote?.price || null;
 
       // Compute unified verdict score (0-100)
@@ -4083,13 +4102,13 @@ export async function registerRoutes(
         // Metals comparison
         metals: {
           gold: {
-            price: goldPrice?.regularMarketPrice?.raw || 0,
-            change: goldPrice?.regularMarketChangePercent?.raw || 0,
+            price: goldSpot?.price || 0,
+            change: goldSpot?.changePct || 0,
             name: "Gold",
           },
           silver: {
-            price: silverPrice?.regularMarketPrice?.raw || 0,
-            change: silverPrice?.regularMarketChangePercent?.raw || 0,
+            price: silverSpot?.price || 0,
+            change: silverSpot?.changePct || 0,
             name: "Silver",
           },
           spy: {
