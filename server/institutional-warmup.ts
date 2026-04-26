@@ -12,6 +12,7 @@
  * Never spawn parallel EDGAR fetches — SEC rate limits are 10 req/s.
  */
 import { getInstitutionalSummary } from "./data/providers/edgar.adapter";
+import { isEdgarCircuitOpen, getEdgarCircuitStatus } from "./data/providers/edgar.client";
 import { readInstitutionalFresh } from "./institutional-cache";
 import { storage } from "./storage";
 
@@ -99,6 +100,20 @@ export async function warmInstitutionalCache(opts: { maxSymbols?: number } = {})
     errorSymbols: [],
   };
 
+  // If EDGAR circuit is already open from a previous run, don't even try.
+  // Every additional request while blocked may extend the Akamai cooldown.
+  if (isEdgarCircuitOpen()) {
+    const s = getEdgarCircuitStatus();
+    console.warn(
+      `[inst-warmup] aborting: EDGAR circuit breaker open ` +
+      `(${s.minutesUntilRetry}min until retry). Skipping warmup entirely.`
+    );
+    res.errors = symbols.length;
+    res.errorSymbols = symbols;
+    res.durationMs = Date.now() - startedAt;
+    return res;
+  }
+
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i];
     if (readInstitutionalFresh(sym)) {
@@ -118,6 +133,22 @@ export async function warmInstitutionalCache(opts: { maxSymbols?: number } = {})
       res.errors++;
       res.errorSymbols.push(sym);
       console.warn(`[inst-warmup] ${sym} failed: ${String(e?.message || e)}`);
+      // If a 403 just tripped the circuit breaker, stop the loop
+      // immediately. Continuing through the remaining symbols would
+      // queue more EDGAR calls (some of which short-circuit, but the
+      // first call per ticker still increments cumulative pressure).
+      if (isEdgarCircuitOpen()) {
+        const remaining = symbols.length - i - 1;
+        console.warn(
+          `[inst-warmup] EDGAR circuit opened mid-run; aborting with ` +
+          `${remaining} symbols unprocessed.`
+        );
+        for (let j = i + 1; j < symbols.length; j++) {
+          res.errors++;
+          res.errorSymbols.push(symbols[j]);
+        }
+        break;
+      }
     }
     if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
       const elapsed = Math.round((Date.now() - startedAt) / 1000);
