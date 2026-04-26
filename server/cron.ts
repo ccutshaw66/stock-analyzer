@@ -5,6 +5,7 @@ import { registerJob } from "./platform/jobs/scheduler";
 import { rankedTopFilers } from "./data/providers/edgar.adapter";
 import { warmLongRangeCache } from "./long-range-warmup";
 import { warmInstitutionalCache } from "./institutional-warmup";
+import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -76,6 +77,33 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   });
 
   console.log("[CRON] Long-range chart warmup registered with scheduler (30 7 * * *)");
+
+  // Yahoo ownership cache warmup. Runs at 4:30am ET (08:30 UTC), between
+  // the long-range chart warmup at 3:30am ET and the EDGAR institutional
+  // warmup at 5am ET. Pre-fills the in-memory ownership cache for the
+  // always-warm symbol set + open-trade symbols so the institutional page's
+  // Fund Holders tab and money-flow score serve from RAM rather than
+  // hitting Yahoo live during user requests.
+  //
+  // 250 symbols * ~400ms inter-call delay + ~1s avg per fetch ≈ 6 minutes.
+  // 30-min timeout gives generous headroom for Yahoo slowness without ever
+  // overlapping the 5am institutional job.
+  registerJob({
+    id: "yahoo-ownership-warmup",
+    description: "Nightly Yahoo institution + fund ownership cache filler (Fund Holders tab, money-flow score)",
+    cron: "30 8 * * *",
+    timeoutMs: 30 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await warmYahooOwnershipCache({ maxSymbols: 250 });
+      console.log(
+        `[CRON] yahoo ownership warmup: ${res.written} written, ${res.errors} errors`
+      );
+    },
+  });
+
+  console.log("[CRON] Yahoo ownership warmup registered with scheduler (30 8 * * *)");
 
   // Phase 3.8: Institutional (EDGAR 13F) disk cache warmup. Runs at 5am ET
   // (09:00 UTC), after the top-filers refresh at 3am ET so the filer list

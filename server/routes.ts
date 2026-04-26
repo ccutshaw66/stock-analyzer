@@ -339,6 +339,63 @@ async function yahooFetch(url: string, retries = 3): Promise<any> {
 // Use query1 as primary (better compatibility with cloud server IPs)
 const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
 
+/**
+ * Fetch institutional / mutual-fund ownership and the holder-breakdown
+ * percentages from Yahoo's quoteSummary endpoint.
+ *
+ * Architecture: this function is BOTH the request-path fallback (used by
+ * the institutional route when a ticker hasn't been warmed yet) AND the
+ * primitive that the nightly Yahoo-ownership warmup cron calls to keep
+ * the cache fresh for the always-warm symbol set + open-trade symbols.
+ *
+ * TTL is 23h so the daily cron at 04:30 ET refreshes everything just
+ * before it expires. 13F filings are quarterly and fund holdings monthly,
+ * so daily refresh is overkill in terms of underlying data freshness but
+ * matches the cadence of your other warmup jobs and keeps the in-memory
+ * cache warm across the whole trading day.
+ *
+ * TODO(Phase 3.4b / N-PORT): replace with EDGAR N-PORT (mutual-fund / ETF
+ * holdings) plus 13F QoQ change deltas so this Yahoo dependency can be
+ * retired in line with the Master Pathway architectural rule.
+ */
+export async function getYahooOwnership(ticker: string): Promise<any> {
+  const T = ticker.toUpperCase();
+  const cacheKey = `yahoo:ownership:${T}`;
+  const cached = getCached(cacheKey);
+  if (cached !== undefined && cached !== null) {
+    recordCacheHit();
+    return cached;
+  }
+  const url =
+    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(T)}` +
+    `?modules=fundOwnership,institutionOwnership,majorHoldersBreakdown,insiderHolders`;
+  try {
+    const json = await yahooFetch(url, 2);
+    const block = json?.quoteSummary?.result?.[0] || {};
+    const out = {
+      institutionOwnership: block.institutionOwnership || null,
+      fundOwnership: block.fundOwnership || null,
+      majorHoldersBreakdown: block.majorHoldersBreakdown || null,
+      insiderHolders: block.insiderHolders || null,
+    };
+    // 23h: just under the warmup cadence so the cron always refreshes
+    // before expiry. Data underneath is filed quarterly (13F) / monthly
+    // (N-PORT) so even a stale-by-a-day value is still meaningful.
+    setCache(cacheKey, out, 23 * 60 * 60 * 1000);
+    return out;
+  } catch (e: any) {
+    routesLog.debug?.(
+      { ticker: T, err: String(e?.message || e) },
+      "yahoo ownership fetch failed; returning empty"
+    );
+    const empty = { institutionOwnership: null, fundOwnership: null, majorHoldersBreakdown: null, insiderHolders: null };
+    // Cache empty for only 5 minutes on failure so the next request retries
+    // soon (e.g. transient 429) instead of being stuck for the full window.
+    setCache(cacheKey, empty, 5 * 60 * 1000);
+    return empty;
+  }
+}
+
 async function getQuote(ticker: string): Promise<any> {
   const cacheKey = `quote:${ticker.toUpperCase()}`;
   const cached = getCached(cacheKey);
@@ -470,11 +527,18 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
+  // Yahoo ownership modules (fund holders + 13F QoQ change deltas).
+  // Fetched in parallel with the rest above would be ideal, but keeping it
+  // sequential here avoids reordering the existing FMP/Polygon flow. The
+  // helper is internally cached and fails open (returns nulls) so a Yahoo
+  // outage degrades to the prior empty-tab behaviour rather than 500ing.
+  const yahooOwnership = await getYahooOwnership(ticker);
+
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
     price: quote?.price || {},
     summaryDetail: quote?.summaryDetail || {},
-    insiderHolders: { holders: [] },
+    insiderHolders: yahooOwnership.insiderHolders || { holders: [] },
     insiderTransactions: { transactions: insiderTxns },
     netSharePurchaseActivity: {
       buyInfoCount: { raw: buyCount },
@@ -484,6 +548,10 @@ async function getInstitutionalData(ticker: string): Promise<any> {
       buyPercentInsiderShares: { raw: 0 },
       sellPercentInsiderShares: { raw: 0 },
     },
+    // Restored ownership modules — read by parseInstitutionalData below.
+    institutionOwnership: yahooOwnership.institutionOwnership,
+    fundOwnership: yahooOwnership.fundOwnership,
+    majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
   };
 
   setCache(cacheKey, result, TTL.institutional);
@@ -511,30 +579,63 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     edgar = null;
   }
 
-  // Back-compat stubs (no longer Yahoo-sourced)
-  const instOwnership: any[] = [];
-  const fundOwnership: any[] = [];
-  const majorBreakdown: any = {};
+  // Yahoo-sourced ownership data, attached by getInstitutionalData. If the
+  // Yahoo fetch failed (network, rate limit, captcha) these come back null
+  // and the page degrades to the same empty state as before — no crash.
+  const instOwnership: any[] = raw?.institutionOwnership?.ownershipList || [];
+  const fundOwnership: any[] = raw?.fundOwnership?.ownershipList || [];
+  const majorBreakdown: any = raw?.majorHoldersBreakdown || {};
 
-  // Top institutional holders (EDGAR 13F)
+  // Build a name -> pctChange index from Yahoo's institutionOwnership so we
+  // can merge real QoQ changes into the EDGAR-sourced rows. EDGAR has the
+  // authoritative shares/value/% held figures (more recent and complete than
+  // Yahoo) but does not expose quarter-over-quarter delta — that comes from
+  // Yahoo. Names rarely match exactly across the two sources (EDGAR uses
+  // legal entity names with full corp suffixes, Yahoo trims), so we
+  // normalize both sides before joining.
+  const normalizeOrgName = (s: string): string =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/[.,&'/]/g, " ")
+      .replace(/\b(inc|incorporated|corp|corporation|ltd|limited|llc|lp|llp|plc|the)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const yahooQoQByName = new Map<string, number>();
+  for (const inst of instOwnership) {
+    const key = normalizeOrgName(inst.organization || "");
+    if (!key) continue;
+    const pct = Number(inst.pctChange?.raw);
+    if (Number.isFinite(pct)) yahooQoQByName.set(key, pct);
+  }
+
+  // Top institutional holders (EDGAR 13F + Yahoo QoQ delta where available)
   const topInstitutions = (edgar?.topHolders ?? []).map(h => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
     pctHeld: h.pctHeld,
-    changeQoQ: 0, // Phase 3.4b will populate
+    // changeQoQ: Yahoo's pctChange is a fraction (0.05 = 5%); convert to
+    // the percent the frontend renders. Falls back to 0 when no match,
+    // which is preferable to omitting the column entirely.
+    changeQoQ: (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
     reportDate: h.reportDate,
     accession: h.accession,
     cik: h.cik,
   }));
 
-  // Top fund holders (mutual funds / ETFs)
+  // Top fund holders (mutual funds / ETFs).
+  // Yahoo's pctHeld and pctChange both come in as fractions (0.05 = 5%).
+  // Frontend convention is split: pctHeld is rendered with `(v*100).toFixed(2)%`
+  // (so we send the raw fraction), while changeQoQ is rendered with
+  // `v.toFixed(1)%` (so we convert to percent here, matching the
+  // topInstitutions row above).
   const topFunds = fundOwnership.slice(0, 15).map((fund: any) => ({
     name: fund.organization || "Unknown",
     shares: fund.position?.raw || 0,
     value: fund.value?.raw || 0,
     pctHeld: fund.pctHeld?.raw || 0,
-    changeQoQ: fund.pctChange?.raw || 0,
+    changeQoQ: (fund.pctChange?.raw || 0) * 100,
     reportDate: fund.reportDate?.fmt || null,
   }));
 
@@ -649,7 +750,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     avgVolume: summary.averageVolume?.raw || 0,
 
     // Ownership breakdown (EDGAR-sourced)
-    insiderPct: 0, // retired from Yahoo majorHoldersBreakdown; frontend tolerates 0
+    insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
     institutionPct: edgar?.institutionPct ?? 0,
     institutionCount: edgar?.institutionCount ?? 0,
     floatPct: edgar?.institutionPct ?? 0,
