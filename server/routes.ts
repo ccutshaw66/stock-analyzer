@@ -1158,6 +1158,89 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 }
 
 // ============================================================
+// Shared analysis pipeline
+// ============================================================
+//
+// Single source of truth for the verdict/score pipeline. Both /api/analyze
+// and /api/verdict route through this so the same ticker always produces the
+// same score regardless of which page surfaced it.
+//
+// Returns null only on conditions that should 404 the calling endpoint:
+//   - quoteSummary returned no data
+//   - quote has no price AND no market cap (delisted / typo)
+//
+// Anything else (chart fetches failing, FMP analyst failing, missing 3y/5y)
+// degrades gracefully with nulls — but every callsite gets the SAME degraded
+// result, so the verdict still matches between pages.
+
+interface AnalysisCore {
+  quote: any;
+  financials: any;
+  analystData: AnalystBlock;
+  profile: any;
+  rawChartData: any[];
+  historicalReturns: { oneYear: number | null; threeYear: number | null; fiveYear: number | null };
+  scoring: ScoringCategory[];
+  score: number;
+  verdict: string;
+  ruling: string;
+}
+
+async function computeAnalysisCore(ticker: string): Promise<AnalysisCore | null> {
+  const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
+    getQuote(ticker),
+    getChart(ticker, "1y", "1d"),
+    getChart(ticker, "3y", "1wk"),
+    getChart(ticker, "5y", "1wk"),
+  ]);
+
+  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+  if (!summary) {
+    routesLog.info({ ticker, summary_status: summaryResult.status }, "analysis-core: quoteSummary unavailable");
+    return null;
+  }
+
+  const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+  const chart3Y = chart3YResult.status === "fulfilled" ? chart3YResult.value : null;
+  const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
+
+  const { quote, financials, analystData: _polyAnalyst, profile } = extractQuoteData(summary);
+
+  if (!quote.regularMarketPrice && !quote.marketCap) {
+    routesLog.info({ ticker }, "analysis-core: quote has neither price nor market cap");
+    return null;
+  }
+
+  // FMP is primary; Polygon-shaped block in the Yahoo summary is the buffer.
+  let analystData: AnalystBlock;
+  try {
+    const fmp = await getFmpAnalyst(ticker);
+    if (fmp.analystCount > 0 || fmp.targetMean != null) {
+      analystData = fmp;
+    } else {
+      routesLog.info({ ticker }, "fmp has no analyst coverage; using buffer");
+      analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
+    }
+  } catch (e: any) {
+    routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; using buffer");
+    analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
+  }
+
+  const { chartData: rawChartData, computedReturn: ret1Y } = extractChartData(chart1Y);
+  const { computedReturn: ret3Y } = extractChartData(chart3Y);
+  const { computedReturn: ret5Y } = extractChartData(chart5Y);
+
+  const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: ret5Y };
+  const fullData = { quote, financials, historicalReturns };
+
+  const scoring = computeScoring(fullData);
+  const score = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+  const { verdict, ruling } = computeVerdict(score);
+
+  return { quote, financials, analystData, profile, rawChartData, historicalReturns, scoring, score, verdict, ruling };
+}
+
+// ============================================================
 // Routes
 // ============================================================
 
@@ -2365,51 +2448,12 @@ export async function registerRoutes(
 
     try {
       await ensureReady();
-      // Fetch all data in parallel
-      const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
-        getQuote(ticker),
-        getChart(ticker, "1y", "1d"),
-        getChart(ticker, "3y", "1wk"),
-        getChart(ticker, "5y", "1wk"),
-      ]);
 
-      const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
-      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
-      const chart3Y = chart3YResult.status === "fulfilled" ? chart3YResult.value : null;
-      const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
-
-      if (!summary) {
-        console.log(`[analyze] ${ticker}: quoteSummary returned null. summaryResult status: ${summaryResult.status}, reason: ${summaryResult.status === 'rejected' ? (summaryResult as any).reason?.message : 'fulfilled but null'}`);
+      const core = await computeAnalysisCore(ticker);
+      if (!core) {
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
-
-      const { quote, financials, analystData: _polyAnalyst, profile } = extractQuoteData(summary);
-
-      // Phase 3.7: FMP is the primary source. Polygon-shaped analyst block
-      // (already present in summary) serves as a last-resort buffer when
-      // FMP has no coverage (micro-caps) or transiently fails.
-      let analystData: AnalystBlock;
-      try {
-        const fmp = await getFmpAnalyst(ticker);
-        if (fmp.analystCount > 0 || fmp.targetMean != null) {
-          analystData = fmp;
-        } else {
-          routesLog.info({ ticker }, "fmp has no analyst coverage; using buffer");
-          analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
-        }
-      } catch (e: any) {
-        routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; using buffer");
-        analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
-      }
-
-      if (!quote.regularMarketPrice && !quote.marketCap) {
-        console.log(`[analyze] ${ticker}: No price or market cap in quote data. Keys: ${Object.keys(quote).filter(k => quote[k] != null).join(',')}`);
-        return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
-      }
-
-      const { chartData: rawChartData, computedReturn: ret1Y } = extractChartData(chart1Y);
-      const { computedReturn: ret3Y } = extractChartData(chart3Y);
-      const { computedReturn: ret5Y } = extractChartData(chart5Y);
+      const { quote, financials, analystData, profile, rawChartData, historicalReturns, scoring, score: weightedScore, verdict, ruling } = core;
 
       // Add EMA 9/21/50 + SMA 200 overlays to chart data
       const chartCloses = rawChartData.map((d: any) => d.close);
@@ -2425,18 +2469,7 @@ export async function registerRoutes(
         sma200: !isNaN(sma200Arr[i]) ? Number(sma200Arr[i].toFixed(2)) : null,
       }));
 
-      const historicalReturns = {
-        oneYear: ret1Y,
-        threeYear: ret3Y,
-        fiveYear: ret5Y,
-      };
-
       const fullData = { quote, financials, historicalReturns };
-
-      // Compute scoring
-      const scoring = computeScoring(fullData);
-      const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-      const { verdict, ruling } = computeVerdict(weightedScore);
       const { positives, risks } = generateBullBear(fullData);
       const redFlags = generateRedFlags(fullData);
       const decisionShortcut = generateDecisionShortcut(fullData);
@@ -3837,27 +3870,8 @@ export async function registerRoutes(
       const signalLine = emaSeries(macdLine, 9);
       const histogram = macdLine.map((v, i) => v - signalLine[i]);
 
-      // RSI(14) series — Wilder's smoothing
-      const rsiSeries: number[] = [];
-      const period = 14;
-      let avgGain = 0, avgLoss = 0;
-      for (let i = 1; i < closes.length; i++) {
-        const diff = closes[i] - closes[i - 1];
-        const gain = diff > 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-        if (i <= period) {
-          avgGain += gain; avgLoss += loss;
-          if (i === period) { avgGain /= period; avgLoss /= period; }
-          rsiSeries.push(NaN);
-        } else {
-          avgGain = (avgGain * (period - 1) + gain) / period;
-          avgLoss = (avgLoss * (period - 1) + loss) / period;
-          const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-          const rsi = 100 - 100 / (1 + rs);
-          rsiSeries.push(rsi);
-        }
-      }
-      rsiSeries.unshift(NaN); // align length with closes
+      // RSI(14) series — Wilder's smoothing, canonical implementation.
+      const rsiSeries = computeRSISeries(closes, { period: 14 });
 
       // Build last N bars
       const n = Math.min(bars, closes.length);
@@ -3975,28 +3989,20 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v3:${ticker}`;
+      // v4: bumped after extracting computeAnalysisCore. Score now includes
+      // 3y/5y returns (previously hardcoded null), so old v3 entries would
+      // serve stale lower scores until natural eviction.
+      const verdictCacheKey = `verdict:v4:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
       const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-      // Batch 1: Core ticker data (analysis + institutional)
+      // Batch 1: Core ticker data (analysis + institutional).
+      // Analysis runs through the shared computeAnalysisCore so the verdict
+      // page and the trade-analysis header always agree on the same ticker.
       const [analysisRes, instRes] = await Promise.allSettled([
-        (async () => {
-          const summary = await getQuote(ticker);
-          if (!summary) return null;
-          const { quote, financials } = extractQuoteData(summary);
-          await delay(300);
-          const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
-          const { computedReturn: ret1Y } = extractChartData(chart1Y);
-          const historicalReturns = { oneYear: ret1Y, threeYear: null, fiveYear: null };
-          const fullData = { quote, financials, historicalReturns };
-          const scoring = computeScoring(fullData);
-          const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-          const { verdict, ruling } = computeVerdict(weightedScore);
-          return { score: weightedScore, verdict, ruling, scoring, quote, financials };
-        })(),
+        computeAnalysisCore(ticker),
         (async () => {
           await delay(500);
           const raw = await getInstitutionalData(ticker);
@@ -4015,7 +4021,7 @@ export async function registerRoutes(
         try {
           const to = new Date().toISOString().slice(0, 10);
           const from = "2000-01-01";
-          const rows: any = await fmpGet(`/historical-price-eod/full?symbol=${sym}&from=${from}&to=${to}`);
+          const rows: any = await fmpGet(`/historical-price-eod/full`, { symbol: sym, from, to });
           const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
           if (!arr.length) return null;
           const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -4072,7 +4078,7 @@ export async function registerRoutes(
       // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
       async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
         try {
-          const rows: any = await fmpGet(`/quote?symbol=${sym}`);
+          const rows: any = await fmpGet(`/quote`, { symbol: sym });
           const row = Array.isArray(rows) ? rows[0] : rows;
           if (!row?.price) return null;
           return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };

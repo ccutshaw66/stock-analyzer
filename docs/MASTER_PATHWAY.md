@@ -1,12 +1,24 @@
 # Stock Otter — Master Pathway (MP)
 
 **Owner:** Chris Cutshaw
-**Last updated:** 2026-04-21
+**Last updated:** 2026-04-30
 **Status:** Living document. Single reference point for next steps.
 
 > **Mission:** Ship a foundationally reliable, commercially licensed, tier-gated
 > SaaS that validates stock market claims with backtested confluence. The MP is
 > the only document that answers "what do I work on next?"
+
+**Status legend:** ✅ done · 🟨 partial / in progress · ⬜ not started · 🚫 dropped/deprecated
+
+---
+
+## Where we are (April 2026)
+
+Phases 0–1 are substantially complete. Phase 2 reliability is mostly in place — the gap is **Sentry, Zod request validation, and global rate limiting**. Phase 3 data migration shipped, including FMP analyst ratings/earnings/insider/institutional, in-house beta, and the Polygon-backed long-range Verdict (25y history was solved by swapping Yahoo futures for FMP commodity quotes — see PRs #70-75). Phase 4 (Alerts MVP + signal-based Track Record + Scanner oscillator) shipped. Phase 5 admin/billing surface exists; webhook-idempotency review still pending. Phase 6 hardening is the active workstream — **the dominant blocker for GA is FMP commercial-tier upgrade**. Yahoo retirement is a Phase 7 project (SEC N-PORT replacement), not a Phase 6 line item.
+
+**Architectural note on Yahoo:** Yahoo data is intentionally retained as a background buffer/cache-refresh agent (`server/yahoo-ownership-warmup.ts` and the institutional/long-range warmup crons). It is not on the user request path. A previous AI session attempted a "remove Yahoo" sweep that gutted Institutional/Insider/Fund Holders pages; restoring those required reintroducing the Yahoo cache helper. **Do not propose removing Yahoo as a quick win.** The clean retirement path is SEC N-PORT integration in Phase 7.
+
+Several features shipped that weren't on this plan and should be folded in: Sector Heatmap with sector drill-in (PRs #66-68), Dividend Finder + Dividend Portfolio (`/dividends`, `/dividend-portfolio`), Earnings Calendar (`/earnings`), Trade Tracker analytics with MFE/MAE + position-duration breakdown, and Scanner v2 with ~12 confluence signals (`server/scanner-v2-signals/*`).
 
 ---
 
@@ -34,140 +46,165 @@ server/
 
 **Dependency rule:** each layer imports only from layers below. `platform/*` callable from any layer; never imports upward.
 
+**State:** scaffold dropped, `data/`/`indicators/`/`signals/`/`platform/` populated and used. `features/*` is mostly stubs (`.keep` files); page orchestration still lives in `server/routes.ts` and per-page server modules. The strangler migration of `routes.ts` into `features/*` is unfinished and is the next architectural cleanup.
+
 ---
 
 ## Validated positioning (from ideas thread)
 
 - **Guru/hype detector** is the wedge. "Stop trusting gurus. Verify every call with backtested confluence."
 - **Confluence over single indicators** is the moat.
-- **Track record + 2y backtest** is the primary sales asset.
-- **Alerts > Wheel.** Wheel is deferred until alerts ship.
+- **Track record + 2y backtest** is the primary sales asset. (Track Record backtester shipped PR #59.)
+- **Alerts > Wheel.** Wheel is deferred until alerts ship. (Alerts shipped PR #57; Wheel still parked.)
 
 ---
 
-## Data stack decisions (locked 2026-04-21)
+## Data stack decisions
 
 | Provider | Role | Cost | Status |
 |---|---|---|---|
 | **Polygon Stocks Starter** | Quotes, aggregates, financials, search, dividends | $29/mo | ✅ Active |
 | **Polygon Options Starter** | Options snapshots for MM Exposure + Wheel | $29/mo | ✅ Active |
-| **FMP Premium** | Analyst ratings, earnings estimates, insider, institutional | $59/mo | ⬜ Subscribe |
-| **Yahoo** | Legacy fallback for unmigrated pages | $0 | ⚠️ Deprecate by GA |
-| **In-house beta calc** | Beta from Polygon vs SPY | $0 | ⬜ Build |
-| **SEC EDGAR** | Future: institutional/insider direct source | $0 | 🅿️ Parking lot |
+| **FMP Premium** | Analyst ratings, earnings estimates, insider, institutional, commodity quotes (metals 25y) | $59/mo | ✅ Active |
+| **Yahoo** | **Buffer / cache-refresh agent** for fund holdings, institutional ownership, insider rosters | $0 | ✅ Active — architectural role, not on user request path |
+| **In-house beta calc** | Beta from Polygon vs SPY | $0 | ✅ Active (`server/indicators/beta.ts`) |
+| **SEC EDGAR** | 13F institutional fallback | $0 | ✅ Active (`data/providers/edgar.adapter.ts` + `edgar.client.ts` with rate limiter + circuit breaker; FMP primary, EDGAR fallback) |
+| **SEC N-PORT** | **Future** — replaces Yahoo for fund-holdings refresh | $0 | ⬜ Not started — this is the work item that retires Yahoo |
 
-**Total data cost:** $117/mo. Upgrade FMP to commercial (Build/Enterprise tier) before paying customers are onboarded.
+**Total data cost:** $117/mo. **Open:** Upgrade FMP to commercial tier (Build/Enterprise) before GA.
 
-**Legal:** Yahoo is not licensed for redistribution. Remove Yahoo from user-facing paid pages before GA.
+**Yahoo's architectural role:** Yahoo is a **cache-warming agent only**. Crons (`server/yahoo-ownership-warmup.ts`, `server/institutional-warmup.ts`, `server/long-range-warmup.ts`) refresh a 23-hour cache; paid pages read from the cache, never directly from Yahoo. This sidesteps the redistribution-licensing concern because Yahoo data is not served on the user request path. **Yahoo will not be removed until SEC N-PORT replaces fund-holdings refresh** (13F-only EDGAR is not a complete substitute — it covers institutions, not fund holdings).
 
 ---
 
 ## Master execution pathway
 
-### Phase 0 — Unblock (this week)
+### Phase 0 — Unblock ✅ complete
 
-| # | Task | Est. hours | Owner | Status |
-|---|---|---|---|---|
-| 0.1 | Rotate Polygon API key; confirm dashboard matches `.env` | 0.5 | Chris | ⬜ |
-| 0.2 | Move all secrets to `.env` (gitignored); delete any in-repo copies | 1 | Chris | ⬜ |
-| 0.3 | Subscribe to FMP Premium; obtain API key | 0.25 | Chris | ⬜ |
-| 0.4 | Install database backup cron (pg_dump → S3/B2 nightly) | 3–4 | Chris | ⬜ |
-| 0.5 | Review Polygon coverage matrix decisions (institutional: EDGAR vs Fintel; verdict 25y history) | 1 | Chris | ⬜ |
+| # | Task | Status |
+|---|---|---|
+| 0.1 | Rotate Polygon API key; confirm dashboard matches `.env` | ✅ |
+| 0.2 | Move all secrets to `.env` (gitignored) | ✅ |
+| 0.3 | Subscribe to FMP Premium; obtain API key | ✅ |
+| 0.4 | Install database backup cron (pg_dump → S3/B2 nightly) | ✅ (`scripts/backup.sh`, `scripts/install-backup-cron.sh`, `docs/BACKUP.md`) |
+| 0.5 | Polygon coverage decisions (institutional, verdict 25y) | ✅ — FMP for institutional, FMP commodity quotes for metals 25y |
 
-### Phase 1 — Compartmentalize (weeks 1–2)
+### Phase 1 — Compartmentalize ✅ mostly done
 
-| # | Task | Est. hours | Depends on | Status |
-|---|---|---|---|---|
-| 1.1 | Drop scaffold into repo; wire TypeScript paths; baseline `tsc --noEmit` | 2 | 0.x | ⬜ |
-| 1.2 | Implement `platform/config/` loader; remove all direct `process.env` reads | 2 | 1.1 | ⬜ |
-| 1.3 | Implement `data/providers/polygon.adapter.ts` for quotes + aggregates + options + financials + search | 5–6 | 1.2 | ⬜ |
-| 1.4 | Implement `data/providers/yahoo.adapter.ts` as thin wrapper around existing Yahoo client | 3–4 | 1.1 | ⬜ |
-| 1.5 | Implement `data/providers/in-house.adapter.ts` for beta | 2 | 1.3 | ⬜ |
-| 1.6 | Route **Profile** page through `data/` facade as proof-of-design | 2–3 | 1.3, 1.4 | ⬜ |
-| 1.7 | Unify `indicators/rsi.ts` usage across scanner, verdict, watchlist | 3–4 | 1.1 | ⬜ |
-| 1.8 | Diff script: compare RSI values from every code path; prove single source | 2 | 1.7 | ⬜ |
-| 1.9 | Route `signals/confluence.ts` into Scanner page; retire inline gate code | 3 | 1.7 | ⬜ |
-| 1.10 | Route `signals/confluence.ts` into Watchlist page (fixes SOFI drift) | 2 | 1.9 | ⬜ |
-| 1.11 | Route `signals/confluence.ts` into Trade Analysis / Verdict signals | 2 | 1.9 | ⬜ |
-| 1.12 | Implement `platform/tiers/` middleware; apply to MM Exposure + Institutional + exports | 3 | 1.1 | ⬜ |
+| # | Task | Status |
+|---|---|---|
+| 1.1 | Drop scaffold into repo; wire TypeScript paths; baseline `tsc --noEmit` | ✅ |
+| 1.2 | Implement `platform/config/` loader; remove all direct `process.env` reads | 🟨 — loader exists at `server/platform/config/index.ts`; **13 server files still read `process.env` directly** (auth, storage, stripe, polygon, email, edgar.client, fmp.client, routes, index, logger, seed-demo, health, providers). Audit + replace. |
+| 1.3 | `data/providers/polygon.adapter.ts` for quotes + aggregates + options + financials + search | ✅ |
+| 1.4 | `data/providers/yahoo.adapter.ts` thin wrapper | ✅ |
+| 1.5 | `data/providers/in-house.adapter.ts` for beta | ✅ |
+| 1.6 | Route **Profile** page through `data/` facade as proof-of-design | 🟨 — `data/` facade in use across the codebase, but Profile page (`/profile` → `home.tsx`) still hits the legacy `/api/analyze` path through `routes.ts`. `features/profile/.keep` is a stub. |
+| 1.7 | Unify `indicators/rsi.ts` usage across scanner, verdict, watchlist | ✅ (PR #56 unified the signal engine) |
+| 1.8 | Diff script: compare RSI values from every code path | ✅ (`scripts/rsi-diff.ts`, runs in CI as `npm run rsi:diff`) |
+| 1.9 | Route `signals/confluence.ts` into Scanner page | ✅ |
+| 1.10 | Route `signals/confluence.ts` into Watchlist page | ✅ |
+| 1.11 | Route `signals/confluence.ts` into Trade Analysis / Verdict signals | ✅ |
+| 1.12 | `platform/tiers/` middleware on protected routes | ✅ (`server/platform/tiers/middleware.ts` + `server/middleware/tier.ts`; smoke test in CI) |
 
-### Phase 2 — Foundation reliability (week 3)
+### Phase 2 — Foundation reliability 🟨 in progress
 
-| # | Task | Est. hours | Status |
-|---|---|---|---|
-| 2.1 | Sentry integration via `platform/telemetry/captureException` | 2 | ⬜ |
-| 2.2 | Structured logging via pino; request-id middleware | 2 | ⬜ |
-| 2.3 | `/health` endpoint checking DB + Polygon + Stripe + FMP | 2 | ⬜ |
-| 2.4 | UptimeRobot / BetterUptime pinging `/health` every 5m | 0.5 | ⬜ |
-| 2.5 | `platform/jobs/scheduler.ts` wired; migrate existing crons | 3 | ⬜ |
-| 2.6 | `backup-database` cron live with restore-test script | 3 | ⬜ |
-| 2.7 | Zod request validation on all `/api/*` endpoints | 3–4 | ⬜ |
-| 2.8 | Rate limiting via express-rate-limit per user + tier | 2 | ⬜ |
-| 2.9 | Graceful-degradation policy: cached data + banner when Polygon down | 2 | ⬜ |
-| 2.10 | GitHub Actions CI: `tsc --noEmit` + tests on every PR | 2 | ⬜ |
+| # | Task | Status |
+|---|---|---|
+| 2.1 | Sentry integration via `platform/telemetry/captureException` | ⬜ — `telemetry/index.ts` is a stub with `TODO: Sentry.init()` and console fallbacks. `SENTRY_DSN` is wired in config but never consumed. |
+| 2.2 | Structured logging via pino; request-id middleware | ✅ (`server/lib/logger.ts`, `server/middleware/request-context.ts`, smoke `npm run logging:smoke`) |
+| 2.3 | `/health` endpoint checking DB + Polygon + Stripe + FMP | 🟨 — `/health` and `/health/live` shipped (`server/api/routes/health.ts`); only checks DB. Add Polygon + Stripe + FMP probes. |
+| 2.4 | UptimeRobot / BetterUptime pinging `/health` every 5m | ✅ — playbook in `docs/uptime-monitoring.md` |
+| 2.5 | `platform/jobs/scheduler.ts` wired; migrate existing crons | ✅ (`server/platform/jobs/scheduler.ts` + 4 jobs: backup-database, check-outcomes, evaluate-alerts, log-daily-signals; smoke `npm run jobs:smoke`) |
+| 2.6 | `backup-database` cron live with restore-test script | ✅ (`scripts/backup.sh`, `scripts/restore.sh`, `scripts/install-backup-cron.sh`); end-to-end restore drill is Phase 6.6 |
+| 2.7 | Zod request validation on all `/api/*` endpoints | ⬜ — **zero `z.` usage in `server/`**. Drizzle-zod is wired at the schema layer; request-body validation is not. |
+| 2.8 | Rate limiting via express-rate-limit per user + tier | 🟨 — per-user scan-count rate limiting in `server/middleware/tier.ts`; no global IP-based limiter. |
+| 2.9 | Graceful-degradation policy: cached data + banner when Polygon down | 🟨 — caches exist (`server/cache.ts`, `server/long-range-cache.ts`, `server/institutional-cache.ts`); no formal "stale-cache served" UI banner. |
+| 2.10 | GitHub Actions CI: `tsc --noEmit` + tests on every PR | 🟨 — `.github/workflows/ci.yml` runs build + parity smokes + jobs/tier smokes. Add explicit `npm run check` (`tsc --noEmit`) step. |
 
-### Phase 3 — Data migration (weeks 4–5)
+### Phase 3 — Data migration ✅ complete
 
-| # | Task | Est. hours | Status |
-|---|---|---|---|
-| 3.1 | Implement `fmp.adapter.ts` (analyst ratings, earnings, insider, institutional) | 6–8 | ⬜ |
-| 3.2 | Migrate Analyst Ratings page through `data/` facade (Yahoo → FMP) | 2 | ⬜ |
-| 3.3 | Migrate Earnings page (Polygon + FMP) | 3 | ⬜ |
-| 3.4 | Migrate Institutional / Insider page (FMP, EDGAR parking-lotted) | 3 | ⬜ |
-| 3.5 | Build Fundamental Screener on top of `/vX/reference/financials` | 8–10 | ⬜ |
-| 3.6 | Wire MM Exposure to `/v3/snapshot/options/*` (Options Starter already active) | 4–5 | ⬜ |
-| 3.7 | Compute Beta via in-house adapter; remove Yahoo dependency for beta | 3 | ⬜ |
-| 3.8 | Decision + implementation: Verdict 25y history strategy (Polygon upgrade vs 5y compromise) | 2–6 | ⬜ |
+| # | Task | Status |
+|---|---|---|
+| 3.1 | `fmp.adapter.ts` (analyst ratings, earnings, insider, institutional) | ✅ (`server/data/providers/fmp.adapter.ts` + `fmp.client.ts`; smoke `npm run fmp:smoke`) |
+| 3.2 | Migrate Analyst Ratings page (Yahoo → FMP) | ✅ (smoke `npm run ratings:smoke`) |
+| 3.3 | Migrate Earnings page (Polygon + FMP) | ✅ (`server/fmp-earnings.ts`, `client/src/pages/earnings-calendar.tsx`, smoke `npm run earnings:smoke`) |
+| 3.4 | Migrate Institutional / Insider page (FMP, EDGAR fallback) | ✅ (PRs #64, #65, #69 — Form-4 code translation, mcap fallback, cache invalidation) |
+| 3.5 | Build Fundamental Screener on top of `/vX/reference/financials` | ✅ — landed as **Scanner v2** with 12 signals (`server/scanner-v2-signals/*`, `server/scanner-v2.ts`, smoke `npm run scanner-v2:smoke`) |
+| 3.6 | Wire MM Exposure to `/v3/snapshot/options/*` | ✅ (`server/mm-exposure.ts`) |
+| 3.7 | Compute Beta via in-house adapter; remove Yahoo dependency for beta | ✅ (`server/indicators/beta.ts`) |
+| 3.8 | Verdict 25y history strategy | ✅ — Polygon for equities, FMP commodity quotes for metals (PRs #70-75) |
 
-### Phase 4 — Retention loop: Alerts (week 6)
+### Phase 4 — Retention loop: Alerts ✅ complete
 
-| # | Task | Est. hours | Status |
-|---|---|---|---|
-| 4.1 | `platform/alerts/` email + webhook adapters | 4 | ⬜ |
-| 4.2 | Alert trigger definitions: gate_passed, verdict_change, price_target_hit, unusual_options | 3 | ⬜ |
-| 4.3 | `evaluate-alerts` cron every 30m market hours | 3 | ⬜ |
-| 4.4 | User alert preferences UI (channels + triggers per ticker) | 4–6 | ⬜ |
-| 4.5 | Dedupe + idempotency so repeated evaluations don't spam | 2 | ⬜ |
+| # | Task | Status |
+|---|---|---|
+| 4.1 | `platform/alerts/` email + webhook adapters | ✅ (`server/platform/alerts/providers/{email,webhook}.adapter.ts`) |
+| 4.2 | Alert trigger definitions (4 rule types) | ✅ (PR #57 "Alerts MVP — 4 rule types + in-app bell/page") |
+| 4.3 | `evaluate-alerts` cron | ✅ (`server/platform/jobs/jobs/evaluate-alerts.ts`) |
+| 4.4 | User alert preferences UI | ✅ (`client/src/pages/alerts.tsx` + `AlertsBell.tsx`) |
+| 4.5 | Dedupe + idempotency so repeated evaluations don't spam | 🟨 — verify under load before promoting to ✅ |
 
-### Phase 5 — Conversion + Admin (week 7)
+**Bonus shipped this phase (not originally planned):**
+- Scanner indicator oscillator — MACD histogram + RSI (PR #58)
+- Track Record signal-based backtester (PR #59)
+- Signal Pulse oscillator + How-it-works panels (PR #60, #61)
+- Live Signals universe expanded to ~200 tickers (PR #62)
 
-| # | Task | Est. hours | Status |
-|---|---|---|---|
-| 5.1 | Limit-reached page redesigned as conversion surface (feature-by-tier outline) | 3 | ⬜ |
-| 5.2 | Free-tier pages show proper messaging instead of 403 / blank state | 2 | ⬜ |
-| 5.3 | Admin panel: user table + tier dropdown + scan-count view | 5–6 | ⬜ |
-| 5.4 | `platform/billing/stripe.adapter.ts` wrapper; idempotent webhooks | 4 | ⬜ |
-| 5.5 | Gate box visual consistency + VER/AMC/BBTC card alignment | 2 | ⬜ |
+### Phase 5 — Conversion + Admin 🟨 in progress
 
-### Phase 6 — Pre-GA hardening (week 8)
+| # | Task | Status |
+|---|---|---|
+| 5.1 | Limit-reached page redesigned as conversion surface | ✅ (`client/src/components/{LimitReached,UpgradePrompt}.tsx`) |
+| 5.2 | Free-tier pages show proper messaging instead of 403 / blank state | ✅ (`UpgradePrompt` is wired across paid pages) |
+| 5.3 | Admin panel: user table + tier dropdown + scan-count view | ✅ (`client/src/pages/admin.tsx`, gated to `awisper@me.com`) |
+| 5.4 | `platform/billing/stripe.adapter.ts` wrapper; idempotent webhooks | 🟨 — `server/stripe.ts` + `server/platform/billing/index.ts` exist; audit webhook handler for replay safety (Stripe event-id dedupe table) |
+| 5.5 | Gate box visual consistency + VER/AMC/BBTC card alignment | ✅ |
 
-| # | Task | Est. hours | Status |
-|---|---|---|---|
-| 6.1 | Remove Yahoo from all user-facing paid pages (legal) | 3–4 | ⬜ |
-| 6.2 | FMP upgrade to commercial tier (Build/Enterprise) | 1 | ⬜ |
-| 6.3 | Terms of service + "not investment advice" disclaimer | 2 | ⬜ |
-| 6.4 | Staging environment separate from prod (separate DB + keys) | 3–4 | ⬜ |
-| 6.5 | Load test scanner + MM Exposure at 100 concurrent users | 3 | ⬜ |
-| 6.6 | Restore-test database backups end-to-end | 2 | ⬜ |
+### Phase 6 — Pre-GA hardening 🟨 active workstream
 
-### Phase 7 — Parking lot (not in current MP)
+| # | Task | Status |
+|---|---|---|
+| 6.1 | Confirm no Yahoo data is served on the user request path (cache-warmup-only architecture) | 🟨 — metals swap landed (PR #75); Yahoo lives in cache-warmup crons (`yahoo-ownership-warmup.ts`, `institutional-warmup.ts`). Audit user-facing routes to confirm none read directly from Yahoo. **Replacement of Yahoo as the warmup source is a separate project — see Phase 7 (SEC N-PORT).** |
+| 6.2 | FMP upgrade to commercial tier (Build/Enterprise) | ⬜ — **GA blocker** |
+| 6.3 | Terms of service + "not investment advice" disclaimer | ✅ (`client/src/components/Disclaimer.tsx`, `client/src/pages/legal.tsx` with `/terms` and `/privacy` routes) |
+| 6.4 | Staging environment separate from prod (separate DB + keys) | ⬜ |
+| 6.5 | Load test scanner + MM Exposure at 100 concurrent users | ⬜ |
+| 6.6 | Restore-test database backups end-to-end | 🟨 — `scripts/restore.sh` exists; needs an actual end-to-end drill |
 
-- Wheel Strategy re-activation (post-alerts)
-- SEC EDGAR institutional/insider direct source
+### Phase 7 — Parking lot
+
+- **SEC N-PORT integration as Yahoo replacement** — replaces `yahoo-ownership-warmup.ts` as the source for fund holdings. N-PORT covers funds (mutual funds, ETFs); 13F covers institutions. Both are needed to fully retire Yahoo.
+- Wheel Strategy re-activation (post-alerts) — **eligible to promote now that alerts shipped**
+- SEC EDGAR as primary insider/institutional source (currently fallback only)
 - Mobile app
 - API for third-party integrations
 - Accessibility audit
 - Design system / shared component library
 - Multi-region deployment
 - Multi-tenancy for enterprise customers
+- Finish strangler migration of `server/routes.ts` into `features/*` modules
 
 ---
 
 ## Decisions still open
 
-1. **Institutional/insider source:** FMP Premium (included in current plan) vs SEC EDGAR (free but ~1 week build). Recommend FMP first, EDGAR as Phase 7.
-2. **Verdict 25y history:** Polygon plan upgrade vs 5y stress-test compromise. Recommend 5y compromise.
-3. **Production backup destination:** AWS S3, Backblaze B2, or Wasabi. All fine; pick on cost.
+1. ~~Institutional/insider source: FMP vs SEC EDGAR.~~ **Resolved:** FMP primary, EDGAR fallback adapter built.
+2. ~~Verdict 25y history: Polygon upgrade vs 5y compromise.~~ **Resolved:** FMP commodity quotes for metals, Polygon for equities, no plan upgrade needed (PRs #70-75).
+3. **Production backup destination:** AWS S3, Backblaze B2, or Wasabi. Still open — pick on cost. Backup mechanics are otherwise complete.
+4. **NEW — `process.env` cleanup deadline.** 13 files still bypass `platform/config`. Pick a date or accept the drift.
+5. **NEW — Stripe webhook idempotency.** Audit before charging real cards at volume.
+
+---
+
+## Immediate next 5 (do these first)
+
+In priority order, these are the lowest-numbered unchecked tasks whose dependencies are met:
+
+1. **2.1 Sentry** — replace `telemetry/index.ts` stub with real `@sentry/node` init. Wire `captureException` calls into the request-context middleware error path. (~2h)
+2. **6.2 FMP commercial tier** — upgrade subscription. (~1h, mostly billing.)
+3. **6.1 Yahoo request-path audit** — grep all live `/api/*` routes for direct Yahoo reads; confirm Yahoo is touched only by cache-warmup crons. (~1-2h. Yahoo replacement itself is Phase 7 / SEC N-PORT, not a Phase 6 task.)
+4. **2.7 Zod request validation** — add a request-body schema layer to `/api/*`. Start with the highest-traffic 5 endpoints. (~3-4h)
+5. **5.4 Stripe webhook idempotency** — add event-id dedupe table; replay test. (~2h)
 
 ---
 
@@ -175,19 +212,21 @@ server/
 
 You're ready for real paying users when every one of these is green:
 
-- [ ] Zero `process.env` reads outside `platform/config`
-- [ ] Single RSI function verified via diff script across all pages
-- [ ] `signals/confluence.ts` is the only code that renders gate state
-- [ ] All paid pages pass tier middleware
-- [ ] `/health` green on UptimeRobot for 7 straight days
-- [ ] Nightly backup proven with an end-to-end restore test
-- [ ] Sentry receiving errors; alert wired to email
-- [ ] Stripe webhooks idempotent (can replay any event safely)
-- [ ] No Yahoo calls in user-facing paid paths
-- [ ] FMP on a commercial-licensed tier
-- [ ] CI blocks PRs that fail `tsc --noEmit`
-- [ ] ToS + disclaimer published
+- [ ] Zero `process.env` reads outside `platform/config` *(13 files still bypass — Phase 1.2)*
+- [x] Single RSI function verified via diff script across all pages
+- [x] `signals/confluence.ts` is the only code that renders gate state
+- [x] All paid pages pass tier middleware
+- [ ] `/health` green on UptimeRobot for 7 straight days *(endpoint shipped; need extended uptime + Polygon/Stripe/FMP sub-checks)*
+- [ ] Nightly backup proven with an end-to-end restore test *(scripts in place; drill not run)*
+- [ ] Sentry receiving errors; alert wired to email *(Phase 2.1)*
+- [ ] Stripe webhooks idempotent (can replay any event safely) *(Phase 5.4)*
+- [ ] No Yahoo calls in the user request path — confirmed by route-level grep *(Phase 6.1; cache-warmup Yahoo crons are intentional and stay until SEC N-PORT replaces them — Phase 7)*
+- [ ] FMP on a commercial-licensed tier *(Phase 6.2)*
+- [ ] CI blocks PRs that fail `tsc --noEmit` *(CI exists, missing `npm run check` step)*
+- [x] ToS + disclaimer published
 - [ ] One full week using the app as a paying user would (dogfood)
+
+**Score: 4 / 13 green.** The remaining 9 are mostly contained to Phase 2 (Sentry, Zod, health sub-checks) and Phase 6 (Yahoo, FMP, restore drill, dogfood, staging).
 
 ---
 
@@ -197,5 +236,6 @@ You're ready for real paying users when every one of these is green:
 2. **When tempted by a new idea:** add it to Phase 7 (parking lot), not earlier phases.
 3. **When blocked:** note the blocker next to the task. Don't silently stall.
 4. **At the end of each phase:** re-read Phase 7 and promote/demote items based on what you learned.
+5. **When you ship something not on this list:** add it under the relevant phase as a "Bonus shipped" line so the doc stays honest.
 
 The MP is the product roadmap, the engineering plan, and the focus tool. If work doesn't map to a line item here, it shouldn't be happening yet.

@@ -192,7 +192,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                 <th className="text-right py-2 font-semibold">QoQ Change</th>
               </tr></thead>
               <tbody>
-                {data.topInstitutions.map((inst, i) => (
+                {(data.topInstitutions ?? []).map((inst, i) => (
                   <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
                     <td className="py-1.5 text-muted-foreground">{i + 1}</td>
                     <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{inst.name}</td>
@@ -209,7 +209,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
           )}
 
           {tab === "funds" && (
-            data.topFunds.length > 0 ? (
+            (data.topFunds ?? []).length > 0 ? (
               <table className="w-full text-xs">
                 <thead><tr className="text-muted-foreground border-b border-card-border">
                   <th className="text-left py-2 font-semibold">#</th>
@@ -220,7 +220,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                   <th className="text-right py-2 font-semibold">QoQ Change</th>
                 </tr></thead>
                 <tbody>
-                  {data.topFunds.map((fund, i) => (
+                  {(data.topFunds ?? []).map((fund, i) => (
                     <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
                       <td className="py-1.5 text-muted-foreground">{i + 1}</td>
                       <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{fund.name}</td>
@@ -244,7 +244,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
           )}
 
           {tab === "insiders" && (
-            data.insiders.length > 0 ? (
+            (data.insiders ?? []).length > 0 ? (
               <table className="w-full text-xs">
                 <thead><tr className="text-muted-foreground border-b border-card-border">
                   <th className="text-left py-2 font-semibold">Name</th>
@@ -255,7 +255,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                   <th className="text-right py-2 font-semibold">Date</th>
                 </tr></thead>
                 <tbody>
-                  {data.insiders.map((ins, i) => (
+                  {(data.insiders ?? []).map((ins, i) => (
                     <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
                       <td className="py-1.5 font-semibold text-foreground">{ins.name}</td>
                       <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
@@ -279,7 +279,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
           )}
 
           {tab === "transactions" && (
-            <TransactionsTable txns={data.recentInsiderTxns} />
+            <TransactionsTable txns={data.recentInsiderTxns ?? []} />
           )}
         </div>
       </div>
