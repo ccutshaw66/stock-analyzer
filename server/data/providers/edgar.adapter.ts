@@ -666,13 +666,30 @@ export async function getInstitutionalSummary(
  */
 const pendingWarms = new Set<string>();
 
-// Treat a cached summary as corrupt when we have holders but 0% ownership —
-// that's the signature of the old sharesOutstanding=null bug.
+// Treat a cached summary as corrupt in three patterns:
+//   1. Holders > 0 but 0% ownership — old sharesOutstanding=null bug.
+//   2. Zero holders for a company with sharesOutstanding > 0 — empty-cache
+//      poisoning (CUSIP lookup or 13F search transiently failed and the
+//      empty result got persisted as if it were valid). AAPL/MSFT/PLTR
+//      have thousands of institutional holders; an empty list for them
+//      is impossible, not "no coverage." Forcing a refresh here is the
+//      ONLY way poisoned caches recover without manual disk-cache deletion.
+//   3. Holders > 0 but every holder has zero shares — partial parse failure.
 function isSummaryCorrupt(s: any): boolean {
   if (!s) return false;
   const holders = s?.topHolders?.length || 0;
   const pct = Number(s?.institutionPct || 0);
-  return holders > 0 && pct === 0;
+  const sharesOut = Number(s?.sharesOutstanding || 0);
+
+  if (holders > 0 && pct === 0) return true;
+  if (holders === 0 && sharesOut > 0) return true;
+  if (holders > 0) {
+    const totalShares = (s?.topHolders ?? []).reduce(
+      (a: number, h: any) => a + (Number(h?.shares) || 0), 0,
+    );
+    if (totalShares === 0) return true;
+  }
+  return false;
 }
 
 export async function getInstitutionalSummaryStaleOk(

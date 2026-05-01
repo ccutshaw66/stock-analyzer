@@ -33,6 +33,7 @@ import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
 import { getCompanySnapshot, snapshotHealth } from "./snapshot";
+import { projectInstitutional } from "./snapshot/projection-institutional";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -4245,15 +4246,22 @@ export async function registerRoutes(
   // INSTITUTIONAL / MONEY FLOW API ROUTES
   // ================================================================
 
-  // Get institutional data for a single ticker
+  // Get institutional data for a single ticker.
+  //
+  // Phase 2 cutover (first route migrated): reads through getCompanySnapshot
+  // + projectInstitutional instead of the legacy parseInstitutionalData.
+  // The snapshot's ownership adapter has EDGAR → Yahoo fallback, so a
+  // poisoned EDGAR cache or open circuit breaker no longer renders the
+  // page blank — Yahoo's institutionOwnership list takes over while EDGAR
+  // re-warms in the background.
   app.get("/api/institutional/:ticker", async (req, res) => {
     try {
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
-      const raw = await getInstitutionalData(ticker);
-      const parsed = await parseInstitutionalData(raw, ticker);
-      if (!parsed) return res.status(404).json({ error: `No institutional data for ${ticker}` });
-      res.json(parsed);
+      const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+      const projected = projectInstitutional(snap);
+      if (!projected) return res.status(404).json({ error: `No institutional data for ${ticker}` });
+      res.json(projected);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch institutional data" });
     }
