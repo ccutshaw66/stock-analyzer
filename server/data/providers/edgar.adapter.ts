@@ -28,6 +28,8 @@ import {
   readInstitutionalFresh,
   readInstitutionalStale,
   writeInstitutional,
+  readTickerMapFresh,
+  writeTickerMap,
 } from "../../institutional-cache";
 
 // In-process cache (same pattern as fmp.adapter)
@@ -63,26 +65,54 @@ const TTL_HOLDINGS = 12 * 60 * 60 * 1000;      // 12h per ticker
 interface CompanyTicker { cik_str: number; ticker: string; title: string; }
 interface TickerMap { [ticker: string]: { cik: string; title: string } }
 
-let tickerMapPromise: Promise<TickerMap> | null = null;
+let tickerMapPromise: Promise<TickerMap | null> | null = null;
+let lastTickerMapFailureAt = 0;
+const TICKER_MAP_FAILURE_BACKOFF_MS = 60 * 1000; // 60s — don't retry-storm SEC
 
-export async function getTickerMap(): Promise<TickerMap> {
+export async function getTickerMap(): Promise<TickerMap | null> {
+  // 1. In-process cache (fast path)
   const cached = getCached<TickerMap>("ticker_map");
   if (cached) return cached;
+
+  // 2. In-flight dedupe — if another caller is mid-fetch, await the same promise
   if (tickerMapPromise) return tickerMapPromise;
 
+  // 3. Disk cache (survives restarts) — read fresh entries (within 7d TTL)
+  const disk = readTickerMapFresh();
+  if (disk) {
+    setCached("ticker_map", disk, TTL_TICKER_MAP);
+    return disk;
+  }
+
+  // 4. Recent failure backoff — if we just failed, don't retry-storm
+  if (Date.now() - lastTickerMapFailureAt < TICKER_MAP_FAILURE_BACKOFF_MS) {
+    return null;
+  }
+
+  // 5. Network fetch — single-flight via tickerMapPromise
   tickerMapPromise = (async () => {
-    const raw = await edgarFetchJson<Record<string, CompanyTicker>>(
-      "https://www.sec.gov/files/company_tickers.json"
-    );
-    const map: TickerMap = {};
-    for (const row of Object.values(raw)) {
-      map[row.ticker.toUpperCase()] = {
-        cik: String(row.cik_str).padStart(10, "0"),
-        title: row.title,
-      };
+    try {
+      const raw = await edgarFetchJson<Record<string, CompanyTicker>>(
+        "https://www.sec.gov/files/company_tickers.json"
+      );
+      const map: TickerMap = {};
+      for (const row of Object.values(raw)) {
+        map[row.ticker.toUpperCase()] = {
+          cik: String(row.cik_str).padStart(10, "0"),
+          title: row.title,
+        };
+      }
+      setCached("ticker_map", map, TTL_TICKER_MAP);
+      writeTickerMap(map); // persist to disk for next deploy/restart
+      return map;
+    } catch (err) {
+      lastTickerMapFailureAt = Date.now();
+      // If disk has any entry (even past TTL), return that as last-resort
+      // fallback rather than failing entirely. Better stale CIKs than dead
+      // pipeline.
+      const stale = readTickerMapFresh();
+      return stale ?? null;
     }
-    setCached("ticker_map", map, TTL_TICKER_MAP);
-    return map;
   })();
 
   try {
@@ -92,9 +122,44 @@ export async function getTickerMap(): Promise<TickerMap> {
   }
 }
 
+/**
+ * Resolve a ticker to its CIK + company title.
+ *
+ * Provider chain:
+ *   1. EDGAR ticker map (with in-process + 7-day disk cache)
+ *   2. FMP /profile (already paid for; returns the `cik` field directly)
+ *
+ * The FMP fallback means a brief Akamai block on company_tickers.json
+ * doesn't kill the entire EDGAR pipeline — we resolve the CIK from FMP
+ * and continue. Once SEC unblocks us, the EDGAR map repopulates on its
+ * own schedule.
+ */
 export async function tickerToCik(ticker: string): Promise<{ cik: string; title: string } | null> {
+  const T = ticker.toUpperCase();
+
   const map = await getTickerMap();
-  return map[ticker.toUpperCase()] ?? null;
+  if (map) {
+    const fromMap = map[T];
+    if (fromMap) return fromMap;
+  }
+
+  // FMP fallback — handles both "EDGAR map fetch failed entirely" and
+  // "EDGAR map is stale and missing a recent IPO" cases.
+  try {
+    const profile: any = await fmpGet(`/profile`, { symbol: T });
+    const row = Array.isArray(profile) ? profile[0] : profile;
+    const cik = row?.cik;
+    if (cik) {
+      return {
+        cik: String(cik).padStart(10, "0"),
+        title: row?.companyName || row?.symbol || T,
+      };
+    }
+  } catch {
+    // fall through
+  }
+
+  return null;
 }
 
 // ------------------------------------------------------------

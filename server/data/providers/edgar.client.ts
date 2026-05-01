@@ -20,8 +20,18 @@ const UA = process.env.SEC_USER_AGENT || "StockOtter SaaS superotter@stockotter.
 // SEC's stated cap is 10/sec, but Akamai blocks have been observed at lower
 // effective rates when bursty. 4/sec leaves headroom even if multiple crons
 // run concurrently and share this throttle.
+//
+// Critical: the throttle MUST serialize across concurrent callers, not just
+// delay each individually. The previous implementation read lastRequestAt
+// synchronously, computed `wait`, then awaited setTimeout — which meant N
+// concurrent callers all read the same lastRequestAt, all slept the same
+// duration, and all woke up together to fire N simultaneous requests. That
+// burst is exactly what Akamai 429s. The Promise-chain pattern below
+// guarantees only one slot executes the lastRequestAt update at a time, so
+// the spacing actually holds at 4 req/sec regardless of concurrency.
 const MIN_INTERVAL_MS = 250;
 let lastRequestAt = 0;
+let throttleChain: Promise<void> = Promise.resolve();
 
 // Akamai-block circuit breaker. Once we see N consecutive 403s, we stop
 // making requests for a cooldown period — every additional request while
@@ -64,14 +74,16 @@ export function forceCloseEdgarCircuit(): void {
   console.log("[edgar] circuit breaker manually reset");
 }
 
-async function throttle() {
-  const now = Date.now();
-  // Add small jitter (0-50ms) so multiple concurrent callers don't lockstep
-  // and produce a visible burst pattern to Akamai.
-  const jitter = Math.floor(Math.random() * 50);
-  const wait = Math.max(0, lastRequestAt + MIN_INTERVAL_MS + jitter - now);
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastRequestAt = Date.now();
+async function throttle(): Promise<void> {
+  const slot = throttleChain.then(async () => {
+    const now = Date.now();
+    const jitter = Math.floor(Math.random() * 50);
+    const wait = Math.max(0, lastRequestAt + MIN_INTERVAL_MS + jitter - now);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastRequestAt = Date.now();
+  });
+  throttleChain = slot;
+  await slot;
 }
 
 export interface EdgarFetchOptions {

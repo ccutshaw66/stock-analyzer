@@ -121,3 +121,60 @@ export function clearInstitutional(ticker: string): boolean {
   }
   return false;
 }
+
+// ─── Ticker → CIK map disk cache ────────────────────────────────────────────
+//
+// SEC's company_tickers.json is the entry-point lookup for every EDGAR call.
+// At ~2MB it would refetch in seconds, but it's also THE first URL Akamai
+// 429s when the cloud IP is being throttled — and once it 429s, the entire
+// EDGAR pipeline can't even resolve a CIK. Persisting it to disk means a
+// deploy/restart can run for 7 days without ever re-fetching, and even if
+// SEC blocks us briefly we still serve cached lookups.
+//
+// SEC updates company_tickers.json roughly monthly, so a 7-day TTL is
+// conservative — we only see new IPOs and ticker-symbol changes one week
+// late at worst.
+
+const TICKER_MAP_FILE = path.join(CACHE_DIR, "ticker_map.json");
+const TICKER_MAP_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export interface TickerMapDiskEntry {
+  fetchedAt: number;
+  map: Record<string, { cik: string; title: string }>;
+}
+
+/** Read the disk-cached ticker map. Returns null on miss / parse error.
+ *  Does NOT check TTL — caller decides whether stale is acceptable. */
+export function readTickerMap(): TickerMapDiskEntry | null {
+  try {
+    if (!fs.existsSync(TICKER_MAP_FILE)) return null;
+    const raw = fs.readFileSync(TICKER_MAP_FILE, "utf8");
+    const parsed = JSON.parse(raw) as TickerMapDiskEntry;
+    if (!parsed?.fetchedAt || !parsed?.map) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Read disk-cached ticker map only if fresh (within TTL). */
+export function readTickerMapFresh(): TickerMapDiskEntry["map"] | null {
+  const entry = readTickerMap();
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > TICKER_MAP_TTL_MS) return null;
+  return entry.map;
+}
+
+/** Atomic write. */
+export function writeTickerMap(map: TickerMapDiskEntry["map"]): void {
+  if (!map || typeof map !== "object") return;
+  ensureDir();
+  const tmp = `${TICKER_MAP_FILE}.tmp`;
+  const body: TickerMapDiskEntry = { fetchedAt: Date.now(), map };
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(body));
+    fs.renameSync(tmp, TICKER_MAP_FILE);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
