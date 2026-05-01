@@ -34,6 +34,7 @@ import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
 import { getCompanySnapshot, snapshotHealth, getInstitutionalScanSnapshot } from "./snapshot";
 import { projectInstitutional } from "./snapshot/projection-institutional";
+import { getConvictionCompass } from "./conviction/pipeline";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -4313,6 +4314,27 @@ export async function registerRoutes(
       res.json(snap);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to build snapshot", stack: error?.stack });
+    }
+  });
+
+  // ─── Conviction Compass ─────────────────────────────────────────────────
+  // Single-ticker conviction signal that fuses four orthogonal categories:
+  // smart money flow, dealer positioning, technical momentum, and
+  // fundamental quality. Returns axis scores + confluence + plain-language
+  // verdict for the /conviction page's radar visualization.
+  app.get("/api/conviction/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = req.params.ticker.toUpperCase();
+      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+      const compass = await getConvictionCompass(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      res.json(compass);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build conviction compass" });
     }
   });
 

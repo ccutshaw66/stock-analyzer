@@ -42,6 +42,7 @@ import {
   Crosshair,
   Trophy,
   Bell,
+  Compass,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { AlertsBell } from "@/components/AlertsBell";
@@ -528,6 +529,7 @@ function Sidebar({
         { path: "/trade", label: "Trade Analysis", icon: Activity },
         ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
         { path: "/institutional", label: "Institutions", icon: Building2 },
+        { path: "/conviction", label: "Conviction Compass", icon: Compass },
         { path: "/verdict", label: "Long-Term Outlook", icon: Award },
       ],
     },
