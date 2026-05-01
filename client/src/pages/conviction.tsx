@@ -100,7 +100,17 @@ function scoreColor(score: number): string {
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
   if (n == null || isNaN(n)) return "—";
-  return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+  const num = Number(n);
+  const abs = Math.abs(num);
+  // Compact format for large magnitudes — GEX in particular comes in as
+  // dollar dealer-gamma-per-1%-move which can run into the billions and
+  // blow out the row layout. Same K/M/B/T pattern used elsewhere in the
+  // app for shares, market cap, etc.
+  if (abs >= 1e12) return (num / 1e12).toFixed(2) + "T";
+  if (abs >= 1e9)  return (num / 1e9).toFixed(2) + "B";
+  if (abs >= 1e6)  return (num / 1e6).toFixed(2) + "M";
+  if (abs >= 1e3)  return (num / 1e3).toFixed(2) + "K";
+  return num.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 }
 
 // ─── Radar chart ──────────────────────────────────────────────────────────────
@@ -226,15 +236,17 @@ function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon:
       {axis.weight === 0 && (
         <div className="text-xs italic text-muted-foreground">No data — axis unscored.</div>
       )}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 overflow-hidden">
         {axis.components.map((c, i) => (
-          <div key={i} className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5 min-w-0">
+          <div key={i} className="flex items-center justify-between text-xs gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
               {dirIcon(c.direction)}
               <span className="text-muted-foreground truncate">{c.label}</span>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-muted-foreground tabular-nums">{c.value === null ? "—" : fmtNum(c.value)}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-muted-foreground tabular-nums w-14 text-right truncate" title={c.value === null ? "" : String(c.value)}>
+                {c.value === null ? "—" : fmtNum(c.value)}
+              </span>
               <span className={`tabular-nums font-semibold w-10 text-right ${scoreColor(c.contribution)}`}>
                 {c.contribution > 0 ? "+" : ""}{c.contribution}
               </span>
