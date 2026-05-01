@@ -246,18 +246,50 @@ export async function listThirteenFFilingsInWindow(
   const pageSize = 100;
   const refs: FilingRef[] = [];
   const seenAccession = new Set<string>();
+  let pagesAttempted = 0;
+  let pagesSkipped = 0;
+  let consecutivePageFailures = 0;
+
+  // EFTS pagination is flaky — individual pages can fail (Akamai throttle,
+  // transient 5xx, connection reset) without anything being globally wrong.
+  // Previously a single failed page broke the whole loop, leaving us with a
+  // partial filer list (e.g. only the latest filers from page 0-1, missing
+  // every megabank that filed mid-window). Now: retry the failing page
+  // inline, then if still failing log + skip + continue. Bail only if many
+  // consecutive pages fail (whole endpoint is down).
+  const MAX_CONSECUTIVE_FAILURES = 5;
 
   for (let from = 0; from < maxResults; from += pageSize) {
+    pagesAttempted++;
     const url =
       `https://efts.sec.gov/LATEST/search-index?q=&forms=13F-HR` +
       `&dateRange=custom&startdt=${startStr}&enddt=${endStr}` +
       `&from=${from}`;
-    let data: EftsResponse;
-    try {
-      data = await edgarFetchJson<EftsResponse>(url);
-    } catch {
-      break;
+    let data: EftsResponse | null = null;
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        data = await edgarFetchJson<EftsResponse>(url);
+        break;
+      } catch (err: any) {
+        lastErr = err;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+      }
     }
+    if (!data) {
+      pagesSkipped++;
+      consecutivePageFailures++;
+      console.warn(
+        `[edgar] EFTS page from=${from} failed after retries: ${String(lastErr?.message || lastErr).substring(0, 120)} ` +
+        `(skipped, ${consecutivePageFailures} consecutive)`
+      );
+      if (consecutivePageFailures >= MAX_CONSECUTIVE_FAILURES) {
+        console.error(`[edgar] EFTS: ${MAX_CONSECUTIVE_FAILURES} consecutive page failures, aborting pagination`);
+        break;
+      }
+      continue;
+    }
+    consecutivePageFailures = 0;
     const hits = data?.hits?.hits ?? [];
     if (!hits.length) break;
     for (const h of hits) {
@@ -274,6 +306,9 @@ export async function listThirteenFFilingsInWindow(
       });
     }
     if (hits.length < pageSize) break;
+  }
+  if (pagesSkipped > 0) {
+    console.warn(`[edgar] EFTS pagination complete: ${pagesAttempted} attempted, ${pagesSkipped} skipped, ${refs.length} refs collected`);
   }
 
   const byCik = new Map<string, FilingRef>();
@@ -335,9 +370,115 @@ export async function getFilerAum(ref: FilingRef): Promise<number> {
 }
 
 /**
+ * Curated list of CIKs for major 13F filers. EFTS pagination is unreliable
+ * (one bad page can drop every filer beyond it), so we hard-anchor the most
+ * important AUM filers here — verified live against data.sec.gov/submissions
+ * 2026-05-01 — and merge them with whatever EFTS returns.
+ *
+ * If EFTS fails entirely, we still cover ~60-70% of institutional ownership
+ * for any megacap because these names are the long tail of "big money."
+ *
+ * To extend: hit `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={NAME}&type=13F-HR&output=atom`
+ * and confirm the CIK has recent 13F-HR filings via the submissions endpoint.
+ */
+export const KNOWN_MAJOR_FILER_CIKS: ReadonlyArray<string> = [
+  "0000102909", // Vanguard Group
+  "0001364742", // BlackRock Finance
+  "0000093751", // State Street Corp
+  "0000315066", // FMR LLC (Fidelity)
+  "0001214717", // Geode Capital Management
+  "0000019617", // JPMorgan Chase & Co
+  "0000080255", // T. Rowe Price Associates
+  "0000895421", // Morgan Stanley
+  "0000902219", // Wellington Management Group
+  "0001067983", // Berkshire Hathaway
+  "0000886982", // Goldman Sachs Group
+  "0000914208", // Invesco Ltd
+  "0000316709", // Charles Schwab Corp
+  "0001374170", // Norges Bank (Norway sovereign wealth)
+  "0000354204", // Dimensional Fund Advisors
+  "0001422849", // Capital World Investors
+  "0000073124", // Northern Trust Corp
+  "0001656456", // Appaloosa LP (Tepper)
+  "0001029160", // Soros Fund Management
+];
+
+interface SecSubmissions {
+  name?: string;
+  filings?: { recent?: { form?: string[]; accessionNumber?: string[]; filingDate?: string[]; }; };
+}
+
+/**
+ * For a single CIK, fetch its most recent 13F-HR (or 13F-HR/A) filing from
+ * the SEC submissions endpoint and convert into a FilingRef.
+ * Returns null if no recent 13F-HR exists.
+ */
+async function fetchLatestThirteenFForFiler(cik: string): Promise<FilingRef | null> {
+  const padded = cik.padStart(10, "0");
+  const url = `https://data.sec.gov/submissions/CIK${padded}.json`;
+  try {
+    const data = await edgarFetchJson<SecSubmissions>(url);
+    const recent = data?.filings?.recent;
+    if (!recent?.form?.length) return null;
+    const forms = recent.form ?? [];
+    const accs = recent.accessionNumber ?? [];
+    const dates = recent.filingDate ?? [];
+    for (let i = 0; i < forms.length; i++) {
+      const f = forms[i];
+      if (f === "13F-HR" || f === "13F-HR/A") {
+        const acc = accs[i];
+        if (!acc) continue;
+        return {
+          accession: acc,
+          accessionNoDashes: acc.replace(/-/g, ""),
+          cik: padded,
+          filerName: data?.name ?? "Unknown",
+          filedAt: dates[i] ?? "",
+          form: f,
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the most recent 13F-HR filing for every CIK in KNOWN_MAJOR_FILER_CIKS.
+ * Cached 24h. Resilient: any individual CIK that fails just gets skipped.
+ */
+export async function getKnownMajorFilers(): Promise<FilingRef[]> {
+  const cacheKey = "known_major_filers";
+  const cached = getCached<FilingRef[]>(cacheKey);
+  if (cached) return cached;
+
+  const results: FilingRef[] = [];
+  // Conservative concurrency since these are independent CIK lookups against
+  // data.sec.gov which shares throttle with the rest of EDGAR.
+  const CONCURRENCY = 5;
+  for (let i = 0; i < KNOWN_MAJOR_FILER_CIKS.length; i += CONCURRENCY) {
+    const slice = KNOWN_MAJOR_FILER_CIKS.slice(i, i + CONCURRENCY);
+    const refs = await Promise.all(slice.map(c => fetchLatestThirteenFForFiler(c)));
+    for (const r of refs) if (r) results.push(r);
+  }
+  console.log(`[edgar] known-major-filers fetched: ${results.length}/${KNOWN_MAJOR_FILER_CIKS.length}`);
+  setCached(cacheKey, results, TTL_FILING_LIST);
+  return results;
+}
+
+/**
  * Rank recent 13F filers by AUM (tableValueTotal from primary_doc.xml).
  * Cached 24h at the module level — ticker-independent, so one cold fetch
  * per day serves every institutional lookup.
+ *
+ * Resilience strategy:
+ *   1. Always seed with KNOWN_MAJOR_FILER_CIKS so megacap holders are
+ *      covered even when EFTS pagination fails or returns only the latest
+ *      tiny family-office filers.
+ *   2. Augment with EFTS-discovered filers in the recent deadline window.
+ *   3. Dedupe by CIK (keep the latest filing per filer).
+ *   4. Rank everything by AUM, return top N.
  */
 export async function rankedTopFilers(topN = 500): Promise<FilingRef[]> {
   const cacheKey = `ranked_top_filers:${topN}`;
@@ -345,8 +486,26 @@ export async function rankedTopFilers(topN = 500): Promise<FilingRef[]> {
   if (cached) return cached;
 
   const { startStr, endStr } = recentDeadlineWindow(new Date());
-  const refs = await listThirteenFFilingsInWindow(startStr, endStr, 8000);
-  console.log(`[edgar] ranking ${refs.length} filers by AUM...`);
+  // Run both sources in parallel; fail-soft on either.
+  const [eftsRefs, knownRefs] = await Promise.all([
+    listThirteenFFilingsInWindow(startStr, endStr, 8000).catch((e: any) => {
+      console.warn(`[edgar] EFTS filing-list call failed: ${String(e?.message || e).substring(0, 120)}`);
+      return [] as FilingRef[];
+    }),
+    getKnownMajorFilers().catch((e: any) => {
+      console.warn(`[edgar] known-major-filers fetch failed: ${String(e?.message || e).substring(0, 120)}`);
+      return [] as FilingRef[];
+    }),
+  ]);
+
+  // Dedupe by CIK; if both sources have the same filer, keep the latest filing
+  const byCik = new Map<string, FilingRef>();
+  for (const r of [...eftsRefs, ...knownRefs]) {
+    const existing = byCik.get(r.cik);
+    if (!existing || r.filedAt > existing.filedAt) byCik.set(r.cik, r);
+  }
+  const refs = Array.from(byCik.values());
+  console.log(`[edgar] ranking ${refs.length} filers by AUM (EFTS=${eftsRefs.length}, known=${knownRefs.length}, unique=${refs.length})...`);
 
   // Fetch tableValueTotal in parallel batches of 10
   const CONCURRENCY = 10;
@@ -638,6 +797,33 @@ export async function getInstitutionalSummary(
   const topHolders = allHolders.slice(0, topN);
   const totalShares = allHolders.reduce((acc, h) => acc + h.shares, 0);
   const institutionPct = sharesOut > 0 ? Math.min(100, (totalShares / sharesOut) * 100) : 0;
+
+  // Refuse to cache suspiciously-empty results.
+  //
+  // We just verified upstream that EFTS pagination can fail partway through
+  // and leave us with a tiny filer list (e.g. 100 of the latest filers, all
+  // small family offices). Aggregating against that list produces zero
+  // matches for megacap tickers like AAPL — but it's not "no holders," it's
+  // "we didn't process the right filers." Persisting that result poisons
+  // the cache for 12 hours in-process and 3 days on disk.
+  //
+  // Heuristic: if we processed fewer than 200 filers AND found zero holders,
+  // do NOT cache. Return null so the caller falls through to the snapshot's
+  // Yahoo fallback, and the next read retries the warm fresh.
+  //
+  // 200 is well below any healthy 13F-HR window count (real windows return
+  // ~2000-5000+ filers). Real "no coverage" tickers exist (micro-caps,
+  // ADRs, recent IPOs) but they would still process the full filer list,
+  // so they hit the `topHolders.length === 0` case with a HIGH filerRefs
+  // count, which is genuinely a confirmed-empty result and we cache that.
+  const suspiciouslyIncomplete = filerRefs.length < 200 && topHolders.length === 0;
+  if (suspiciouslyIncomplete) {
+    console.warn(
+      `[edgar] ${ticker} produced empty result with only ${filerRefs.length} filers processed — ` +
+      `not caching (likely EFTS pagination failure). Next read will retry.`
+    );
+    return null;
+  }
 
   const summary: InstitutionalSummary = {
     ticker: ticker.toUpperCase(),
