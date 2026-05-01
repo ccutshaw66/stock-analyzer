@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { LimitReached } from "@/components/LimitReached";
@@ -130,8 +130,50 @@ function FlowBar({ score }: { score: number }) {
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
+// EDGAR cold-warm time after a manual refresh: ~30-60s for a previously-warmed
+// ticker, longer for a fresh cold start. 60s is a reasonable user-facing
+// promise — the underlying ?refresh=1 returns immediately with whatever's
+// available (Yahoo fallback) and the EDGAR re-warm completes in the
+// background, so refetching after 60s reliably picks up the fresh result.
+const REFRESH_COUNTDOWN_SECONDS = 60;
+
 function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () => void }) {
   const [tab, setTab] = useState<"institutions" | "funds" | "insiders" | "transactions">("institutions");
+  const [refreshSecsLeft, setRefreshSecsLeft] = useState<number>(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cleanup the countdown timer if the modal closes mid-refresh
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const isRefreshing = refreshSecsLeft > 0;
+
+  async function handleRefresh() {
+    if (isRefreshing) return;
+    try {
+      // Fire-and-forget: this triggers EDGAR cache clear + background re-warm.
+      // Response comes back immediately with whatever's currently available.
+      apiRequest("GET", `/api/institutional/${data.ticker}?refresh=1`).catch(() => {});
+    } catch {
+      // ignore — the countdown still runs and we still invalidate at the end
+    }
+    setRefreshSecsLeft(REFRESH_COUNTDOWN_SECONDS);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setRefreshSecsLeft(prev => {
+        if (prev <= 1) {
+          if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+          // Pull fresh data from the server now that EDGAR has had time to warm.
+          queryClient.invalidateQueries({ queryKey: ["/api/institutional", data.ticker] });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -146,7 +188,23 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{data.companyName} · {formatCurrency(data.currentPrice)} · MCap {formatCompact(data.marketCap)}</p>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title={isRefreshing ? `Refreshing — fresh data in ${refreshSecsLeft}s` : "Force-refresh from SEC EDGAR (clears cache, fetches fresh)"}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                isRefreshing
+                  ? "bg-muted/30 text-muted-foreground cursor-not-allowed"
+                  : "bg-muted/50 text-foreground hover:bg-muted"
+              }`}
+              data-testid="institutional-refresh-button"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+              {isRefreshing ? `${refreshSecsLeft}s` : "Refresh"}
+            </button>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+          </div>
         </div>
 
         {/* Summary Cards — ownership + insider activity only. QoQ flow cards
@@ -485,6 +543,17 @@ export default function Institutional() {
     enabled: !!activeTicker,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Keep the modal in sync with fresh fetches (e.g. after the user hits the
+  // Refresh button inside the modal, the underlying React Query cache
+  // invalidates and singleData updates — push that into selectedData so the
+  // open modal reflects the new numbers without forcing a close+reopen).
+  useEffect(() => {
+    if (selectedData && singleData && selectedData.ticker === singleData.ticker) {
+      setSelectedData(singleData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleData]);
 
   // Batch scan — persisted via queryClient cache
   const [scanData, setScanData] = useState<ScanResult | null>(() => queryClient.getQueryData(["/api/institutional-scan"]) || null);
