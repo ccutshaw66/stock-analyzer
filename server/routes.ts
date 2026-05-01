@@ -32,6 +32,7 @@ import { fmpAdapter } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
+import { getCompanySnapshot, snapshotHealth } from "./snapshot";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -332,7 +333,7 @@ async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
 }
 
 // Queued Yahoo fetch — all requests go through the global rate limiter
-async function yahooFetch(url: string, retries = 3): Promise<any> {
+export async function yahooFetch(url: string, retries = 3): Promise<any> {
   return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
 }
 
@@ -4248,6 +4249,30 @@ export async function registerRoutes(
       res.json(parsed);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch institutional data" });
+    }
+  });
+
+  // ─── Unified snapshot diagnostic ─────────────────────────────────────────
+  // Read-only endpoint for verifying every data field for a ticker, with
+  // per-field provenance (which provider answered, fallbacks attempted,
+  // latency, errors). Does NOT change any existing page behavior — this is
+  // additive infrastructure for the architectural rebuild. ?refresh=1
+  // bypasses the orchestrator-level cache.
+  app.get("/api/diag/snapshot/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = req.params.ticker.toUpperCase();
+      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+      const view = String(req.query.view || "full");
+      const snap = await getCompanySnapshot(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      if (view === "health") return res.json(snapshotHealth(snap));
+      res.json(snap);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build snapshot", stack: error?.stack });
     }
   });
 
