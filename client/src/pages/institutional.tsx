@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { LimitReached } from "@/components/LimitReached";
@@ -130,49 +130,27 @@ function FlowBar({ score }: { score: number }) {
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
-// EDGAR cold-warm time after a manual refresh: ~30-60s for a previously-warmed
-// ticker, longer for a fresh cold start. 60s is a reasonable user-facing
-// promise — the underlying ?refresh=1 returns immediately with whatever's
-// available (Yahoo fallback) and the EDGAR re-warm completes in the
-// background, so refetching after 60s reliably picks up the fresh result.
-const REFRESH_COUNTDOWN_SECONDS = 60;
-
 function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () => void }) {
   const [tab, setTab] = useState<"institutions" | "funds" | "insiders" | "transactions">("institutions");
-  const [refreshSecsLeft, setRefreshSecsLeft] = useState<number>(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Cleanup the countdown timer if the modal closes mid-refresh
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  const isRefreshing = refreshSecsLeft > 0;
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   async function handleRefresh() {
     if (isRefreshing) return;
+    setIsRefreshing(true);
     try {
-      // Fire-and-forget: this triggers EDGAR cache clear + background re-warm.
-      // Response comes back immediately with whatever's currently available.
-      apiRequest("GET", `/api/institutional/${data.ticker}?refresh=1`).catch(() => {});
+      // Server-side: clears EDGAR disk + in-process caches, bypasses the
+      // snapshot orchestrator cache, and returns whatever the live providers
+      // can give us right now. Typically resolves in 1-2 seconds.
+      await apiRequest("GET", `/api/institutional/${data.ticker}?refresh=1`);
+      // Force the React Query cache to drop its copy and refetch via the
+      // normal endpoint, so singleData updates and the parent's useEffect
+      // syncs the open modal's selectedData to the new values.
+      await queryClient.invalidateQueries({ queryKey: ["/api/institutional", data.ticker] });
     } catch {
-      // ignore — the countdown still runs and we still invalidate at the end
+      // surface nothing — if the request errored the user can click again
+    } finally {
+      setIsRefreshing(false);
     }
-    setRefreshSecsLeft(REFRESH_COUNTDOWN_SECONDS);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => {
-      setRefreshSecsLeft(prev => {
-        if (prev <= 1) {
-          if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-          // Pull fresh data from the server now that EDGAR has had time to warm.
-          queryClient.invalidateQueries({ queryKey: ["/api/institutional", data.ticker] });
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
   }
 
   return (
@@ -192,7 +170,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              title={isRefreshing ? `Refreshing — fresh data in ${refreshSecsLeft}s` : "Force-refresh from SEC EDGAR (clears cache, fetches fresh)"}
+              title="Force-refresh from SEC EDGAR (clears cache, fetches fresh)"
               className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
                 isRefreshing
                   ? "bg-muted/30 text-muted-foreground cursor-not-allowed"
@@ -201,7 +179,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
               data-testid="institutional-refresh-button"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-              {isRefreshing ? `${refreshSecsLeft}s` : "Refresh"}
+              {isRefreshing ? "Refreshing…" : "Refresh"}
             </button>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
           </div>
@@ -634,8 +612,10 @@ export default function Institutional() {
         <p><strong className="text-foreground">Insider Buys / Sells</strong> — Net insider transaction count over the past 6 months. Insider buying is one of the strongest bullish signals because they know the company best.</p>
       </HelpBlock>
 
-      {/* Active Ticker Detail (if one is selected) */}
-      {activeTicker && singleData && !singleFetching && (
+      {/* Active Ticker Detail (if one is selected). Keep showing the previous
+          data during a re-fetch (don't gate on !singleFetching) so a manual
+          Refresh doesn't blink the whole section out for a second. */}
+      {activeTicker && singleData && (
         <div className="bg-card border border-card-border rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
