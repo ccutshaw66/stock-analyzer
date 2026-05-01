@@ -32,7 +32,7 @@ import { fmpAdapter } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
-import { getCompanySnapshot, snapshotHealth } from "./snapshot";
+import { getCompanySnapshot, snapshotHealth, getInstitutionalScanSnapshot } from "./snapshot";
 import { projectInstitutional } from "./snapshot/projection-institutional";
 
 const routesLog = rootLogger.child({ module: "routes" });
@@ -4403,11 +4403,17 @@ export async function registerRoutes(
 
       const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
 
+      // Default scan size: keep total request well under nginx's 60s proxy
+      // limit. With the slim per-ticker fetcher (3 adapters) and serialized
+      // Yahoo + EDGAR rate limits, ~50 tickers fits comfortably in 30-40s
+      // on a cold-cache scan; warm-cache scans return in seconds.
+      const DEFAULT_SCAN_LIMIT = 50;
+
       // Resolve universe
       let tickers: string[];
       if (customTickers && customTickers.length) {
         // User supplied a list — scan exactly what they asked for, capped
-        tickers = customTickers.slice(0, 150);
+        tickers = customTickers.slice(0, DEFAULT_SCAN_LIMIT);
       } else {
         // Default scan: only tickers that already have warm EDGAR cache.
         // This guarantees every ticker we scan returns data fast (no cold path).
@@ -4430,84 +4436,111 @@ export async function registerRoutes(
           });
           setCache(warmKey, warm, WARM_UNIVERSE_TTL);
         }
-        tickers = warm.slice(0, 150);
+        tickers = warm.slice(0, DEFAULT_SCAN_LIMIT);
       }
 
-      // Aggregated result cache (6h)
+      // Aggregated result cache (6h fresh, but stale-while-revalidate
+      // means we serve any prior result instantly and refresh in the
+      // background).
       const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000;
+      const SCAN_STALE_TTL = 24 * 60 * 60 * 1000; // serve stale up to 24h
       const scanCacheKey = customTickers
         ? `institutional-scan:custom:${customTickers.slice().sort().join(",")}`
-        : `institutional-scan:warm:150`;
+        : `institutional-scan:warm:${DEFAULT_SCAN_LIMIT}`;
+      const scanStaleKey = `${scanCacheKey}:stale`;
 
-      if (!refresh) {
-        const cached = getCached(scanCacheKey);
-        if (cached) {
-          res.setHeader("X-Scanned-At", cached.scannedAt);
-          res.setHeader("X-Total-Scanned", String(cached.totalScanned));
-          res.setHeader("X-With-Data", String(cached.withData));
-          res.setHeader("X-Cached", "true");
-          // Pre-existing bug: previous code returned `cached.results` (just
-          // the array). Frontend expects the full payload object — reads
-          // .totalScanned, .scannedAt, .results.length etc. Returning a
-          // bare array makes scanData.results undefined and .length crashes
-          // the page. Return the same shape as the live path.
-          return res.json({ ...cached, cached: true });
+      // Stale-while-revalidate: if there's any prior result (fresh or stale),
+      // return it immediately. If it's stale (or refresh was requested),
+      // kick off a background scan to update it. Repeat scan-button clicks
+      // are instant; freshness improves on its own.
+      const cached = getCached<any>(scanCacheKey);
+      const stale = !cached ? getCached<any>(scanStaleKey) : null;
+      const haveAnyResult = cached || stale;
+      const needsRefresh = refresh || !cached;
+
+      if (haveAnyResult && !refresh) {
+        const payloadOut = cached || stale;
+        res.setHeader("X-Scanned-At", payloadOut.scannedAt);
+        res.setHeader("X-Total-Scanned", String(payloadOut.totalScanned));
+        res.setHeader("X-With-Data", String(payloadOut.withData));
+        res.setHeader("X-Cached", cached ? "fresh" : "stale");
+        res.json({ ...payloadOut, cached: true, stale: !cached });
+        // If stale, kick off a background re-scan and return without awaiting.
+        if (!cached && stale) {
+          runBackgroundScan(tickers, scanCacheKey, scanStaleKey, SCAN_CACHE_TTL, SCAN_STALE_TTL).catch(() => {});
         }
+        return;
       }
 
-      console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
-      const scanStart = Date.now();
-      const results: any[] = [];
+      // Helper that runs the actual scan loop. Defined inline so it can be
+      // invoked synchronously OR asynchronously (background re-warm).
+      async function runScan(): Promise<{ payload: any; withInstData: any[] }> {
+        console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
+        const scanStart = Date.now();
+        const results: any[] = [];
 
-      // Phase 2 cutover: scanner reads through the snapshot pipeline now,
-      // same path as /api/institutional/:ticker. Picks up the EDGAR → Yahoo
-      // fallback automatically, so a poisoned EDGAR cache no longer drops
-      // tickers off the scan — Yahoo's institutionOwnership list keeps them
-      // visible while EDGAR re-warms.
-      //
-      // Parallel batches of 10. Each getCompanySnapshot call has a 5-min
-      // orchestrator cache + per-adapter caching, so a fully-warm scan is
-      // memory-fast.
-      const BATCH_SIZE = 10;
-      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
-        const batch = tickers.slice(b, b + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
-          try {
-            const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
-            return projectInstitutional(snap);
-          } catch {
-            return null;
+        // Slim per-ticker work: only ownership + insider + quote (the three
+        // adapters the scan UI consumes). Skipping fundamentals, profile,
+        // chart, returns, analyst, earnings — those aren't surfaced in the
+        // scan table and were the dominant cost on the previous (8-adapter)
+        // path that pushed us past nginx's 60s timeout.
+        const BATCH_SIZE = 10;
+        for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+          const batch = tickers.slice(b, b + BATCH_SIZE);
+          const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+            try {
+              const snap = await getInstitutionalScanSnapshot(ticker, { yahooFetch, getYahooOwnership });
+              return projectInstitutional(snap);
+            } catch {
+              return null;
+            }
+          }));
+          for (const r of batchResults) {
+            if (r.status === "fulfilled" && r.value) results.push(r.value);
           }
-        }));
-        for (const r of batchResults) {
-          if (r.status === "fulfilled" && r.value) results.push(r.value);
+        }
+
+        const withInstData = results.filter(r =>
+          r.institutionPct > 0 ||
+          r.institutionCount > 0 ||
+          (Array.isArray(r.topInstitutions) && r.topInstitutions.length > 0)
+        );
+        withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+
+        const elapsed = Date.now() - scanStart;
+        console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
+
+        const payload = {
+          scannedAt: new Date().toISOString(),
+          lastScannedAt: new Date().toISOString(),
+          totalScanned: tickers.length,
+          withData: withInstData.length,
+          elapsedMs: elapsed,
+          cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
+          results: withInstData,
+        };
+        setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+        setCache(scanStaleKey, payload, SCAN_STALE_TTL);
+        return { payload, withInstData };
+      }
+
+      // Background scan helper. Used for stale-while-revalidate refreshes.
+      const _bgScansInProgress = (global as any).__bgScansInProgress ||= new Set<string>();
+      async function runBackgroundScan(
+        _tickers: string[], _key: string, _staleKey: string,
+        _ttl: number, _staleTtl: number,
+      ): Promise<void> {
+        if (_bgScansInProgress.has(_key)) return;
+        _bgScansInProgress.add(_key);
+        try {
+          await runScan();
+        } finally {
+          _bgScansInProgress.delete(_key);
         }
       }
 
-      // Keep rows that have ANY ownership signal — institutionPct, holder
-      // count, OR a populated topInstitutions list. The third condition
-      // matters during EDGAR re-warm: Yahoo fallback gives us a visible
-      // holder list before the percent/count fields are authoritative.
-      const withInstData = results.filter(r =>
-        r.institutionPct > 0 ||
-        r.institutionCount > 0 ||
-        (Array.isArray(r.topInstitutions) && r.topInstitutions.length > 0)
-      );
-      withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
-
-      const elapsed = Date.now() - scanStart;
-      console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
-
-      const payload = {
-        scannedAt: new Date().toISOString(),
-        lastScannedAt: new Date().toISOString(),
-        totalScanned: tickers.length,
-        withData: withInstData.length,
-        elapsedMs: elapsed,
-        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
-        results: withInstData,
-      };
-      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      // No prior result OR ?refresh=1 — run scan synchronously and return.
+      const { payload } = await runScan();
       res.setHeader("X-Scanned-At", payload.scannedAt);
       res.setHeader("X-Total-Scanned", String(payload.totalScanned));
       res.setHeader("X-With-Data", String(payload.withData));

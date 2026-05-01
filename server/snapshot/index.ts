@@ -147,3 +147,47 @@ export function snapshotHealth(snap: CompanySnapshot) {
 }
 
 export type { CompanySnapshot } from "./types";
+
+/**
+ * Lite snapshot for the institutional scanner — fetches only the three
+ * adapters the scan UI actually consumes (quote, ownership, insider activity).
+ * Skips fundamentals, profile, chart, returns, analyst, earnings.
+ *
+ * The scan endpoint runs this for ~50 tickers in batches; a full snapshot
+ * per ticker (8 adapters) was multiplying the network work by ~2.7× and
+ * pushing total scan time past nginx's 60-second proxy limit. This wrapper
+ * keeps the projector compatible — the unused fields stay null but
+ * projectInstitutional already tolerates that.
+ */
+export async function getInstitutionalScanSnapshot(
+  ticker: string,
+  opts: GetCompanySnapshotOpts,
+): Promise<CompanySnapshot> {
+  const T = ticker.toUpperCase();
+  const [quote, ownership, insiderActivity] = await Promise.all([
+    getQuoteSnapshot(T, opts.yahooFetch),
+    getOwnershipSnapshot(T, opts.getYahooOwnership),
+    getInsiderActivitySnapshot(T),
+  ]);
+  const empty = <T,>(): FieldHealth<T> => ({
+    value: null,
+    source: null,
+    attempts: [],
+    fetchedAt: 0,
+    ttlMs: 0,
+    cached: false,
+  });
+  return {
+    ticker: T,
+    asOf: Date.now(),
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    quote,
+    fundamentals: empty(),
+    profile: empty(),
+    returns: empty(),
+    ownership,
+    insiderActivity,
+    analyst: empty(),
+    earnings: empty(),
+  };
+}
