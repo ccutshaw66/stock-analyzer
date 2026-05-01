@@ -1,4 +1,4 @@
-import { pgTable, text, integer, serial, doublePrecision, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, serial, doublePrecision, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -161,6 +161,58 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   token: text("token").notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Conviction Compass forward-tracking ────────────────────────────────────
+//
+// Daily snapshot of the compass output for a curated ticker universe, plus
+// forward returns at 1/5/30/90-day windows filled in by a separate cron.
+// Used to backtest whether ALL_ALIGNED_BULLISH (etc) signals actually predict
+// forward returns. Kept denormalized so aggregations are pure SQL — group by
+// verdict, average each forward-return column.
+export const compassSnapshots = pgTable("compass_snapshots", {
+  id: serial("id").primaryKey(),
+  ticker: text("ticker").notNull(),
+  takenAt: timestamp("taken_at").notNull().defaultNow(),
+  takenDate: text("taken_date").notNull(), // YYYY-MM-DD for easy date filtering
+  spotPrice: doublePrecision("spot_price"),
+
+  // Compass output (denormalized for fast aggregation)
+  verdict: text("verdict").notNull(),
+  confidence: text("confidence").notNull(),
+  confluence: integer("confluence").notNull(),
+  alignment: doublePrecision("alignment").notNull(),
+  smartMoneyFlow: integer("smart_money_flow"),
+  dealerPositioning: integer("dealer_positioning"),
+  technicalMomentum: integer("technical_momentum"),
+  fundamentalQuality: integer("fundamental_quality"),
+  axesAvailable: integer("axes_available").notNull(), // 0..4
+
+  // Forward returns — filled in by the updater cron once each window closes.
+  // null while still pending. Stored as percent (e.g. 5.23 for +5.23%).
+  return1d: doublePrecision("return_1d"),
+  return5d: doublePrecision("return_5d"),
+  return30d: doublePrecision("return_30d"),
+  return90d: doublePrecision("return_90d"),
+
+  // Full compass JSON for auditability / future re-aggregation
+  compassJson: jsonb("compass_json"),
+}, (t) => ({
+  byTickerDate: index("compass_ticker_date_idx").on(t.ticker, t.takenDate),
+  byTakenAt: index("compass_taken_at_idx").on(t.takenAt),
+  byVerdict: index("compass_verdict_idx").on(t.verdict),
+}));
+
+// SPY baseline series — used by the backtest aggregator to compare
+// per-verdict returns against "what SPY did over the same window."
+// Same 1d/5d/30d/90d forward returns anchored on each takenDate.
+export const spyBaselineReturns = pgTable("spy_baseline_returns", {
+  takenDate: text("taken_date").primaryKey(), // YYYY-MM-DD
+  spotPrice: doublePrecision("spot_price"),
+  return1d: doublePrecision("return_1d"),
+  return5d: doublePrecision("return_5d"),
+  return30d: doublePrecision("return_30d"),
+  return90d: doublePrecision("return_90d"),
 });
 
 // ─── Insert schemas ───────────────────────────────────────────────────────────

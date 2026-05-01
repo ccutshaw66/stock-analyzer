@@ -6,14 +6,25 @@ import { rankedTopFilers } from "./data/providers/edgar.adapter";
 import { warmLongRangeCache } from "./long-range-warmup";
 import { warmInstitutionalCache } from "./institutional-warmup";
 import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
+import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
+import type { GetCompanySnapshotOpts } from "./snapshot";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
 let _ensureReady: (() => Promise<void>) | null = null;
+let _yahooFetch: ((url: string, retries?: number) => Promise<any>) | null = null;
+let _getYahooOwnership: ((ticker: string) => Promise<any>) | null = null;
 
-export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady: () => Promise<void>) {
+export function initCron(
+  getQuote: (ticker: string) => Promise<any>,
+  ensureReady: () => Promise<void>,
+  yahooFetch?: (url: string, retries?: number) => Promise<any>,
+  getYahooOwnership?: (ticker: string) => Promise<any>,
+) {
   _getQuote = getQuote;
   _ensureReady = ensureReady;
+  _yahooFetch = yahooFetch ?? null;
+  _getYahooOwnership = getYahooOwnership ?? null;
 
   // Register the price-snapshot job with the Phase 2.5 scheduler.
   // Runs every hour at :00. The handler itself checks market hours so weekends
@@ -125,6 +136,53 @@ export function initCron(getQuote: (ticker: string) => Promise<any>, ensureReady
   });
 
   console.log("[CRON] Institutional cache warmup registered with scheduler (0 9 * * *)");
+
+  // ─── Conviction Compass forward-tracker ───────────────────────────────────
+  //
+  // Daily snapshot at 21:30 UTC (5:30pm ET, 30 min after market close) so
+  // we capture the day's full close. The handler iterates the tracked
+  // universe (~100 megacaps in conviction/tracker.ts), runs each through
+  // the compass pipeline, and writes a row to compass_snapshots.
+  //
+  // Forward-returns updater runs at 21:45 UTC, 15 minutes later. It walks
+  // every snapshot whose forward window has just closed and fills in the
+  // matching return_Nd column. After ~30 days you have meaningful 1d/5d/30d
+  // return data per verdict class; after 90 days the dataset is complete.
+  registerJob({
+    id: "conviction-snapshot",
+    description: "Daily Conviction Compass snapshot for the tracked universe (post-close)",
+    cron: "30 21 * * 1-5", // 5:30pm ET, weekdays only
+    timeoutMs: 30 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      if (!_yahooFetch || !_getYahooOwnership) {
+        console.warn("[CRON] conviction-snapshot: yahoo helpers not initialized, skipping");
+        return;
+      }
+      const opts: GetCompanySnapshotOpts = {
+        yahooFetch: _yahooFetch,
+        getYahooOwnership: _getYahooOwnership,
+      };
+      const res = await snapshotConvictionForUniverse(opts);
+      console.log(`[CRON] conviction-snapshot: ${res.written} written, ${res.skipped} skipped (already today), ${res.errors} errors`);
+    },
+  });
+  console.log("[CRON] Conviction snapshot registered (30 21 * * 1-5)");
+
+  registerJob({
+    id: "conviction-forward-returns",
+    description: "Daily Conviction Compass forward-returns update (1d/5d/30d/90d)",
+    cron: "45 21 * * 1-5", // 5:45pm ET, weekdays only
+    timeoutMs: 30 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await updateForwardReturns();
+      console.log(`[CRON] conviction-forward-returns: ${res.updated} rows updated, ${res.errors} errors`);
+    },
+  });
+  console.log("[CRON] Conviction forward-returns updater registered (45 21 * * 1-5)");
 }
 
 function isMarketHours(): boolean {

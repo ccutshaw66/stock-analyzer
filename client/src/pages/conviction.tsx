@@ -265,6 +265,156 @@ function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon:
   );
 }
 
+// ─── Backtest panel ──────────────────────────────────────────────────────────
+//
+// Live forward-tracking stats. We snapshot the compass for ~100 megacaps
+// every weekday at market close, then fill in 1d/5d/30d/90d forward
+// returns as each window completes. This panel renders the running
+// per-verdict averages compared against SPY over the same dates.
+//
+// In the early days the dataset is small and most cells will be null —
+// we show "still collecting" rather than misleading numbers under N=10.
+
+interface VerdictStats {
+  verdict: string;
+  count: number;
+  avgReturn1d: number | null;
+  avgReturn5d: number | null;
+  avgReturn30d: number | null;
+  avgReturn90d: number | null;
+  winRate30d: number | null;
+}
+interface BacktestData {
+  totalSnapshots: number;
+  earliestDate: string | null;
+  latestDate: string | null;
+  byVerdict: VerdictStats[];
+  spy: { avgReturn1d: number | null; avgReturn5d: number | null; avgReturn30d: number | null; avgReturn90d: number | null };
+  pendingForwardReturns: { d1: number; d5: number; d30: number; d90: number };
+}
+
+const VERDICT_DISPLAY_ORDER: string[] = [
+  "ALL_ALIGNED_BULLISH", "MOSTLY_BULLISH", "WEAK_SIGNAL", "DIVERGENT", "MOSTLY_BEARISH", "ALL_ALIGNED_BEARISH",
+];
+
+const MIN_SAMPLES_FOR_DISPLAY = 5;
+
+function fmtPct(n: number | null, samples: number): string {
+  if (n === null || samples < MIN_SAMPLES_FOR_DISPLAY) return "—";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function pctTone(n: number | null, samples: number): string {
+  if (n === null || samples < MIN_SAMPLES_FOR_DISPLAY) return "text-muted-foreground";
+  if (n > 0.5) return "text-green-400";
+  if (n < -0.5) return "text-red-400";
+  return "text-yellow-400/80";
+}
+
+function BacktestPanel() {
+  const { data, isLoading } = useQuery<BacktestData>({
+    queryKey: ["/api/diag/conviction/backtest"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/diag/conviction/backtest");
+      return res.json();
+    },
+    staleTime: 15 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-card border border-card-border rounded-xl p-5">
+        <div className="text-xs text-muted-foreground">Loading forward-tracking results…</div>
+      </div>
+    );
+  }
+
+  if (!data || data.totalSnapshots === 0) {
+    return (
+      <div className="bg-card border border-card-border rounded-xl p-5 space-y-2">
+        <div className="text-sm font-semibold text-foreground">Live Forward-Tracking</div>
+        <p className="text-xs text-muted-foreground">
+          Daily snapshots of every tracked ticker's compass start collecting at market close
+          today, then we fill in 1d/5d/30d/90d forward returns as each window closes.
+          Results appear here once we have at least {MIN_SAMPLES_FOR_DISPLAY} datapoints
+          per verdict class — meaningful stats land in 1–2 weeks.
+        </p>
+      </div>
+    );
+  }
+
+  const verdictRows = VERDICT_DISPLAY_ORDER
+    .map(v => data.byVerdict.find(r => r.verdict === v))
+    .filter((r): r is VerdictStats => !!r);
+
+  return (
+    <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-sm font-semibold text-foreground">Live Forward-Tracking</div>
+          <div className="text-[11px] text-muted-foreground">
+            Real performance of each verdict class since tracking started.
+            Averaged across all tickers in the tracked universe (~100 megacaps).
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-foreground text-right">
+          {data.totalSnapshots.toLocaleString()} snapshots
+          {data.earliestDate && data.latestDate && (
+            <> · {data.earliestDate} → {data.latestDate}</>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted-foreground border-b border-card-border">
+              <th className="text-left py-2 font-semibold">Verdict</th>
+              <th className="text-right py-2 font-semibold">N</th>
+              <th className="text-right py-2 font-semibold">1d</th>
+              <th className="text-right py-2 font-semibold">5d</th>
+              <th className="text-right py-2 font-semibold">30d</th>
+              <th className="text-right py-2 font-semibold">90d</th>
+              <th className="text-right py-2 font-semibold">Win 30d</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verdictRows.map((r) => (
+              <tr key={r.verdict} className="border-b border-card-border/30">
+                <td className="py-1.5 font-mono text-[11px] text-foreground">{r.verdict.replace(/_/g, " ")}</td>
+                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{r.count}</td>
+                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn1d, r.count)}`}>{fmtPct(r.avgReturn1d, r.count)}</td>
+                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn5d, r.count)}`}>{fmtPct(r.avgReturn5d, r.count)}</td>
+                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn30d, r.count)}`}>{fmtPct(r.avgReturn30d, r.count)}</td>
+                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn90d, r.count)}`}>{fmtPct(r.avgReturn90d, r.count)}</td>
+                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{r.winRate30d !== null && r.count >= MIN_SAMPLES_FOR_DISPLAY ? `${(r.winRate30d * 100).toFixed(0)}%` : "—"}</td>
+              </tr>
+            ))}
+            {/* SPY baseline row */}
+            <tr className="border-t-2 border-card-border">
+              <td className="py-1.5 font-mono text-[11px] text-muted-foreground italic">SPY (baseline)</td>
+              <td className="py-1.5 text-right text-muted-foreground tabular-nums">—</td>
+              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn30d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn30d, MIN_SAMPLES_FOR_DISPLAY)}</td>
+              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn90d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn90d, MIN_SAMPLES_FOR_DISPLAY)}</td>
+              <td className="py-1.5 text-right text-muted-foreground">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {(data.pendingForwardReturns.d30 > 0 || data.pendingForwardReturns.d90 > 0) && (
+        <div className="text-[11px] text-amber-400/80">
+          Pending forward returns: {data.pendingForwardReturns.d1} 1d · {data.pendingForwardReturns.d5} 5d · {data.pendingForwardReturns.d30} 30d · {data.pendingForwardReturns.d90} 90d.
+          Filled in once each window closes.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function ConvictionPage() {
@@ -384,6 +534,9 @@ export default function ConvictionPage() {
           icon={<BarChart3 className="h-4 w-4 text-primary" />}
         />
       </div>
+
+      {/* Live forward-tracking results */}
+      <BacktestPanel />
 
       {/* Methodology */}
       <HelpBlock title="How the Conviction Compass works">

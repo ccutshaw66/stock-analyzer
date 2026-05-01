@@ -4317,6 +4317,20 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Conviction Compass backtest aggregation ────────────────────────────
+  // Returns per-verdict forward-return stats from compass_snapshots, plus
+  // SPY baseline averaged over the same dates. Frontend renders the table
+  // on the conviction page. Public (no auth) — read-only aggregates.
+  app.get("/api/diag/conviction/backtest", async (_req, res) => {
+    try {
+      const { getBacktestResults } = await import("./conviction/backtest");
+      const result = await getBacktestResults();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build backtest results" });
+    }
+  });
+
   // ─── Conviction Compass ─────────────────────────────────────────────────
   // Single-ticker conviction signal that fuses four orthogonal categories:
   // smart money flow, dealer positioning, technical momentum, and
@@ -5412,7 +5426,7 @@ export async function registerRoutes(
 
   // Initialize background price snapshot cron job
   const { initCron } = await import("./cron");
-  initCron(getQuote, ensureReady);
+  initCron(getQuote, ensureReady, yahooFetch, getYahooOwnership);
 
   // ─── Track Record API ────────────────────────────────────────────────
   app.get("/api/track-record", async (_req, res) => {
