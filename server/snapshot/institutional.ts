@@ -163,7 +163,7 @@ export async function getOwnershipSnapshot(
     name: fund.organization || "Unknown",
     shares: num(fund.position),
     value: num(fund.value),
-    pctHeld: num(fund.pctHeld), // already a fraction; UI multiplies again. Match existing convention.
+    pctHeld: num(fund.pctHeld) * 100, // snapshot canonical = percent (0..100)
     changeQoQ: num(fund.pctChange) * 100,
     reportDate: fund.reportDate?.fmt ?? null,
   }));
@@ -199,8 +199,19 @@ export async function getOwnershipSnapshot(
     ? Math.round(((instInflow - instOutflow) / totalFlow) * 100)
     : 0;
 
+  // institutionPct: EDGAR is authoritative when present. When EDGAR is empty
+  // and we're falling back to Yahoo, derive the percent from Yahoo's
+  // majorHoldersBreakdown.institutionsPercentHeld (the same number Yahoo
+  // shows on its own holders page). Without this, the summary card displays
+  // 0.0% even when the table below clearly has ~70% of float in the visible
+  // holders — exactly the inconsistency we're trying to kill.
+  const yahooInstPct = num(yahoo.majorHoldersBreakdown?.institutionsPercentHeld) * 100;
+  const institutionPct = hasEdgar
+    ? (edgar?.institutionPct ?? 0)
+    : yahooInstPct;
+
   const value: CompanyOwnership = {
-    institutionPct: edgar?.institutionPct ?? 0,
+    institutionPct,
     institutionCount: edgar?.institutionCount ?? topInstitutions.length,
     sharesOutstanding: edgar?.sharesOutstanding ?? null,
     asOf: edgar?.asOf ?? null,

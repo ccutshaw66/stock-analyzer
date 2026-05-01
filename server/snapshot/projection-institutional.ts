@@ -123,8 +123,17 @@ export function projectInstitutional(snap: CompanySnapshot): LegacyInstitutional
     insiderBuyPct: 0,
     insiderSellPct: 0,
 
-    topInstitutions: ownership?.topInstitutions ?? [],
-    topFunds: ownership?.topFunds ?? [],
+    // Snapshot canonical = percent (0..100). Legacy institutional.tsx
+    // expects a fraction (0..1) for pctHeld and multiplies by 100 in the
+    // render. Convert here so we don't end up displaying "972%".
+    topInstitutions: (ownership?.topInstitutions ?? []).map(i => ({
+      ...i,
+      pctHeld: i.pctHeld / 100,
+    })),
+    topFunds: (ownership?.topFunds ?? []).map(f => ({
+      ...f,
+      pctHeld: f.pctHeld / 100,
+    })),
     insiders: (ownership?.insiderHolders ?? []).map(h => ({
       name: h.name,
       relation: h.relation,
