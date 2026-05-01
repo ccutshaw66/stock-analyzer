@@ -120,6 +120,14 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
+/** Round a number to at most 2 decimal places, preserving null. We send
+ *  pre-rounded values so the UI layer never has to deal with full-precision
+ *  doubles cluttering the table cells. */
+function r2(n: number | null | undefined): number | null {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return null;
+  return Number(Number(n).toFixed(2));
+}
+
 function dirOf(score: number): "bullish" | "bearish" | "neutral" {
   if (score >= 15) return "bullish";
   if (score <= -15) return "bearish";
@@ -219,8 +227,8 @@ function computeDealerPositioning(mm: MmExposureInput | null): AxisScore {
     const v = clamp(((mm.spotPrice - (mm.callWall + mm.putWall) / 2) / range) * 200, -100, 100);
     components.push({
       label: "Spot vs gamma walls",
-      value: v,
-      contribution: v,
+      value: r2(v),
+      contribution: Math.round(v),
       direction: dirOf(v),
     });
     parts.push({ value: v, weight: 0.35 });
@@ -234,8 +242,8 @@ function computeDealerPositioning(mm: MmExposureInput | null): AxisScore {
     const v = clamp((1.0 - mm.putCallOi) * 120, -100, 100);
     components.push({
       label: "Put/Call OI ratio",
-      value: mm.putCallOi,
-      contribution: v,
+      value: r2(mm.putCallOi),
+      contribution: Math.round(v),
       direction: dirOf(v),
     });
     parts.push({ value: v, weight: 0.3 });
@@ -272,8 +280,8 @@ function computeTechnicalMomentum(tech: TechnicalInput | null): AxisScore {
     const v = clamp((tech.rsi14 - 50) * 2, -100, 100);
     components.push({
       label: "RSI(14)",
-      value: tech.rsi14,
-      contribution: v,
+      value: r2(tech.rsi14),
+      contribution: Math.round(v),
       direction: dirOf(v),
     });
     parts.push({ value: v, weight: 0.25 });
@@ -286,8 +294,8 @@ function computeTechnicalMomentum(tech: TechnicalInput | null): AxisScore {
     const v = clamp(pct * 50, -100, 100); // 2% histogram → ±100
     components.push({
       label: "MACD histogram",
-      value: tech.macdHistogram,
-      contribution: v,
+      value: r2(tech.macdHistogram),
+      contribution: Math.round(v),
       direction: dirOf(v),
     });
     parts.push({ value: v, weight: 0.3 });
@@ -312,8 +320,8 @@ function computeTechnicalMomentum(tech: TechnicalInput | null): AxisScore {
     const v = clamp((tech.bollingerPctB - 0.5) * 200, -100, 100);
     components.push({
       label: "Bollinger %B",
-      value: tech.bollingerPctB,
-      contribution: v,
+      value: r2(tech.bollingerPctB),
+      contribution: Math.round(v),
       direction: dirOf(v),
     });
     parts.push({ value: v, weight: 0.2 });
