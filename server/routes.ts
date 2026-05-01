@@ -1291,7 +1291,14 @@ export async function registerRoutes(
   app.get("/api/auth/me", requireAuth, meHandler);
 
   // ─── Protect all other API routes ─────────────────────────────────────────
-  app.use("/api", requireAuth);
+  // /api/diag/* is intentionally exempt: read-only health/provenance endpoints
+  // for the snapshot pipeline. They expose nothing a logged-in user can't
+  // already see, and need to be reachable for scheduled verification jobs
+  // and external monitoring without a session cookie.
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/diag/")) return next();
+    return requireAuth(req, res, next);
+  });
 
   // ─── Track demo user activity ──────────────────────────────────────────────
   app.use("/api", (req, _res, next) => {
