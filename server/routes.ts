@@ -4446,7 +4446,12 @@ export async function registerRoutes(
           res.setHeader("X-Total-Scanned", String(cached.totalScanned));
           res.setHeader("X-With-Data", String(cached.withData));
           res.setHeader("X-Cached", "true");
-          return res.json(cached.results);
+          // Pre-existing bug: previous code returned `cached.results` (just
+          // the array). Frontend expects the full payload object — reads
+          // .totalScanned, .scannedAt, .results.length etc. Returning a
+          // bare array makes scanData.results undefined and .length crashes
+          // the page. Return the same shape as the live path.
+          return res.json({ ...cached, cached: true });
         }
       }
 
