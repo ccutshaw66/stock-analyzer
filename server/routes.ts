@@ -4383,15 +4383,22 @@ export async function registerRoutes(
       const scanStart = Date.now();
       const results: any[] = [];
 
-      // All selected tickers have warm cache, so these calls return instantly.
-      // Run parallel batches of 10.
+      // Phase 2 cutover: scanner reads through the snapshot pipeline now,
+      // same path as /api/institutional/:ticker. Picks up the EDGAR → Yahoo
+      // fallback automatically, so a poisoned EDGAR cache no longer drops
+      // tickers off the scan — Yahoo's institutionOwnership list keeps them
+      // visible while EDGAR re-warms.
+      //
+      // Parallel batches of 10. Each getCompanySnapshot call has a 5-min
+      // orchestrator cache + per-adapter caching, so a fully-warm scan is
+      // memory-fast.
       const BATCH_SIZE = 10;
       for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
         const batch = tickers.slice(b, b + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
           try {
-            const raw = await getInstitutionalData(ticker);
-            return parseInstitutionalData(raw, ticker);
+            const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+            return projectInstitutional(snap);
           } catch {
             return null;
           }
@@ -4401,8 +4408,15 @@ export async function registerRoutes(
         }
       }
 
-      // Only keep rows that actually have institutional ownership data
-      const withInstData = results.filter(r => r.institutionPct > 0 || r.institutionCount > 0);
+      // Keep rows that have ANY ownership signal — institutionPct, holder
+      // count, OR a populated topInstitutions list. The third condition
+      // matters during EDGAR re-warm: Yahoo fallback gives us a visible
+      // holder list before the percent/count fields are authoritative.
+      const withInstData = results.filter(r =>
+        r.institutionPct > 0 ||
+        r.institutionCount > 0 ||
+        (Array.isArray(r.topInstitutions) && r.topInstitutions.length > 0)
+      );
       withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
 
       const elapsed = Date.now() - scanStart;
