@@ -4294,6 +4294,16 @@ export async function registerRoutes(
       const ticker = req.params.ticker.toUpperCase();
       const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
       const view = String(req.query.view || "full");
+      // ?refresh=1 on diag also clears the EDGAR disk + in-process caches so
+      // the next read goes all the way back to the network (otherwise the
+      // snapshot orchestrator's forceRefresh only bypasses its own 5-min
+      // cache and still hits the poisoned EDGAR layer).
+      if (forceRefresh) {
+        const { clearInstitutional } = await import("./institutional-cache");
+        const { clearEdgarTickerCache } = await import("./data/providers/edgar.adapter");
+        clearInstitutional(ticker);
+        clearEdgarTickerCache(ticker);
+      }
       const snap = await getCompanySnapshot(ticker, {
         yahooFetch,
         getYahooOwnership,
@@ -4303,6 +4313,37 @@ export async function registerRoutes(
       res.json(snap);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to build snapshot", stack: error?.stack });
+    }
+  });
+
+  // ─── EDGAR direct re-fetch diagnostic ───────────────────────────────────
+  // Bypasses every cache layer. Calls getInstitutionalSummary() (the cold
+  // path) and returns whatever it produces — including any failure. This
+  // is how we tell whether EDGAR's empty results are cache poisoning OR a
+  // real fetch-path bug. If this returns real holders, the cache was the
+  // problem and we just clear it. If it returns empty here too, the EDGAR
+  // fetch path itself is broken and that's where the fix needs to land.
+  app.get("/api/diag/edgar/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const ticker = req.params.ticker.toUpperCase();
+      const { clearInstitutional } = await import("./institutional-cache");
+      const { clearEdgarTickerCache, getInstitutionalSummary, getCompanyBasics } = await import("./data/providers/edgar.adapter");
+      clearInstitutional(ticker);
+      clearEdgarTickerCache(ticker);
+      const t0 = Date.now();
+      const basics = await getCompanyBasics(ticker).catch((e: any) => ({ error: String(e?.message || e) }));
+      const basicsMs = Date.now() - t0;
+      const t1 = Date.now();
+      const summary = await getInstitutionalSummary(ticker, 25).catch((e: any) => ({ error: String(e?.message || e) }));
+      const summaryMs = Date.now() - t1;
+      res.json({
+        ticker,
+        basics: { value: basics, ms: basicsMs },
+        summary: { value: summary, ms: summaryMs },
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed", stack: error?.stack });
     }
   });
 
