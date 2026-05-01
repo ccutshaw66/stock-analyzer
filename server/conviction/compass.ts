@@ -144,13 +144,22 @@ function weightedAvg(parts: Array<{ value: number; weight: number }>): number {
 
 function computeSmartMoneyFlow(snap: CompanySnapshot): AxisScore {
   const ownership = snap.ownership.value;
+  const ownershipSource = snap.ownership.source;
   const insider = snap.insiderActivity.value;
   const components: AxisComponent[] = [];
   const notes: string[] = [];
   const parts: Array<{ value: number; weight: number }> = [];
 
-  // Institutional QoQ flow score (already -100..+100 in snapshot)
-  if (ownership && typeof ownership.flowScore === "number") {
+  // Institutional QoQ flow score is only trustworthy when EDGAR is the
+  // authoritative source. On Yahoo fallback the snapshot suppresses
+  // flowScore to 0 to avoid publishing fake STRONG OUTFLOW signals from
+  // Yahoo's name-matching artifacts — so the value is meaningless to the
+  // compass as well. Drop the component from the weighted average
+  // entirely instead of letting a suppressed-zero dilute the axis toward
+  // neutral. This way an insider-driven signal of -90 reads as -90, not
+  // as -36 (60% diluted with a fake zero).
+  const qoqAuthoritative = ownershipSource === "edgar";
+  if (qoqAuthoritative && ownership && typeof ownership.flowScore === "number") {
     const v = clamp(ownership.flowScore, -100, 100);
     components.push({
       label: "Institutional QoQ flow",
@@ -161,7 +170,11 @@ function computeSmartMoneyFlow(snap: CompanySnapshot): AxisScore {
     parts.push({ value: v, weight: 0.6 });
   } else {
     components.push({ label: "Institutional QoQ flow", value: null, contribution: 0, direction: "neutral" });
-    notes.push("Institutional flow unavailable — axis weight reduced.");
+    if (ownership && ownershipSource && ownershipSource !== "edgar") {
+      notes.push(`QoQ flow unavailable while EDGAR re-warms (currently via ${ownershipSource}) — axis based on insider activity only.`);
+    } else {
+      notes.push("Institutional flow unavailable — axis weight reduced.");
+    }
   }
 
   // Insider net activity, normalized: each net buy/sell action ±10, capped ±100
