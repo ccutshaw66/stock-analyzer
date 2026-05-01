@@ -183,26 +183,22 @@ export async function getOwnershipSnapshot(
 
   // ─── Flow score (institutional inflow vs outflow QoQ) ────────────────────
   //
-  // Trust gate: the QoQ deltas come from Yahoo's institutionOwnership.pctChange
-  // field, which uses NAME-MATCHING to align this quarter's holders with last
-  // quarter's. That math is unreliable for filers with multiple subsidiary
-  // CIKs (e.g. JPMorgan Chase + JPM Investment Management). When one
-  // subsidiary skips a quarter or files under a different name, Yahoo reads
-  // the gap as "the holder dumped ~50% of the position." We confirmed this
-  // signature on AAPL/PLTR/MSFT — JPM showed exactly -52% on all three.
+  // Compute flow from raw QoQ data — no silent filtering. If a holder shows
+  // a -52% drop, that drop is in the aggregate, full stop. The user sees
+  // both the row and its impact on the score, and can judge for themselves
+  // whether the underlying filing is real or an artifact.
   //
-  // Two protections:
-  //   1. Per-holder filter: ignore drops <= -50% on positions > $1B. Real
-  //      half-position exits by megacap holders are rare and newsworthy;
-  //      the artifact is common and silent. Filtering gets a closer-to-truth
-  //      flow estimate even when EDGAR is helping.
-  //   2. Provider gate: when EDGAR is fully empty (Yahoo wholesale fallback),
-  //      we have NO authoritative cross-check at all. Suppress flow score
-  //      entirely instead of publishing a number we can't defend. Better
-  //      to render NEUTRAL than fake STRONG OUTFLOW.
+  // Single trust gate: when EDGAR is fully empty (Yahoo wholesale fallback),
+  // there is NO authoritative cross-check on the entire holder list. In that
+  // state we publish flowScore=0 / signal=NEUTRAL because we'd rather show
+  // no signal than one we can't defend. Once EDGAR re-warms with real data,
+  // the score reflects raw math from authoritative-list + Yahoo-QoQ.
+  //
+  // The proper long-term fix is to compute QoQ ourselves from two consecutive
+  // EDGAR 13F filings (Phase 3.4b in the master plan). Until that lands,
+  // Yahoo's name-matched QoQ is what we've got and we report it honestly.
   let instInflow = 0, instOutflow = 0;
   let instIncreased = 0, instDecreased = 0, instNew = 0, instSoldOut = 0;
-  let suppressedSuspect = 0;
   for (const inst of instOwnership) {
     const chg = num(inst.pctChange);
     const value = num(inst.value);
@@ -210,12 +206,6 @@ export async function getOwnershipSnapshot(
     else if (chg > 0) instIncreased++;
     if (chg < -0.9) instSoldOut++;
     else if (chg < 0) instDecreased++;
-    // Suspect-drop filter: -50%+ drop on a position bigger than $1B.
-    const isSuspectDrop = chg <= -0.5 && value > 1e9;
-    if (isSuspectDrop) {
-      suppressedSuspect++;
-      continue;
-    }
     if (chg > 0) instInflow += value * chg;
     if (chg < 0) instOutflow += Math.abs(value * chg);
   }
@@ -223,9 +213,6 @@ export async function getOwnershipSnapshot(
   const rawFlowScore = totalFlow > 0
     ? Math.round(((instInflow - instOutflow) / totalFlow) * 100)
     : 0;
-  // When we don't have EDGAR backing, even the per-holder filter isn't
-  // enough — the entire holder list is Yahoo-sourced and the QoQ math is
-  // suspect across the board. Render NEUTRAL until EDGAR re-warms.
   const flowScore = hasEdgar ? rawFlowScore : 0;
 
   // institutionPct: EDGAR is authoritative when present. When EDGAR is empty
