@@ -35,14 +35,33 @@ export function isEdgarCircuitOpen(): boolean {
   return Date.now() < blockedUntil;
 }
 
+let lastSuccessAt = 0;
+let totalSuccesses = 0;
+let totalFailures = 0;
+
 export function getEdgarCircuitStatus() {
   return {
     consecutive403s,
     blockedUntil,
+    blockedUntilIso: blockedUntil > 0 ? new Date(blockedUntil).toISOString() : null,
     minutesUntilRetry: blockedUntil > Date.now()
       ? Math.ceil((blockedUntil - Date.now()) / 60000)
       : 0,
+    open: Date.now() < blockedUntil,
+    lastSuccessAt,
+    lastSuccessIso: lastSuccessAt > 0 ? new Date(lastSuccessAt).toISOString() : null,
+    totalSuccesses,
+    totalFailures,
   };
+}
+
+/** Manual circuit reset. Use when SEC has confirmed unblock and we know
+ *  the previous 403s aren't recurring. Doesn't override rate limiting —
+ *  subsequent requests still go through throttle(). */
+export function forceCloseEdgarCircuit(): void {
+  consecutive403s = 0;
+  blockedUntil = 0;
+  console.log("[edgar] circuit breaker manually reset");
 }
 
 async function throttle() {
@@ -121,17 +140,20 @@ export async function edgarFetch(url: string, opts: EdgarFetchOptions = {}): Pro
       }
       // Success — reset the 403 counter.
       consecutive403s = 0;
+      lastSuccessAt = Date.now();
+      totalSuccesses++;
       return await res.text();
     } catch (err: any) {
       clearTimeout(timer);
       lastErr = err;
       // Don't retry on Akamai blocks — they don't time out, they need cooldown.
-      if (err?.isEdgarBlock) throw err;
+      if (err?.isEdgarBlock) { totalFailures++; throw err; }
       if (attempt < retries) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
       }
     }
   }
+  totalFailures++;
   throw lastErr ?? new Error(`EDGAR fetch failed: ${url}`);
 }
 

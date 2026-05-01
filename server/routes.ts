@@ -4316,6 +4316,36 @@ export async function registerRoutes(
     }
   });
 
+  // ─── EDGAR circuit-breaker health + manual reset ────────────────────────
+  // /api/diag/edgar/health — returns the current circuit-breaker state and
+  // success/failure counters since process start. Use this to confirm
+  // whether the EDGAR layer is blocked (Akamai 403s) or just slow.
+  app.get("/api/diag/edgar/health", async (_req, res) => {
+    try {
+      const { getEdgarCircuitStatus } = await import("./data/providers/edgar.client");
+      res.json(getEdgarCircuitStatus());
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed" });
+    }
+  });
+
+  // /api/diag/edgar/reset — manually close the circuit. Use after SEC has
+  // confirmed an unblock or when the 1-hour cooldown is unnecessarily long.
+  // Idempotent — safe to call repeatedly. GET (not POST) for browser ease;
+  // exposure is already gated by being under /api/diag/* and changes only
+  // in-process state, no destructive disk writes.
+  app.get("/api/diag/edgar/reset", async (_req, res) => {
+    try {
+      const { forceCloseEdgarCircuit, getEdgarCircuitStatus } = await import("./data/providers/edgar.client");
+      const before = getEdgarCircuitStatus();
+      forceCloseEdgarCircuit();
+      const after = getEdgarCircuitStatus();
+      res.json({ ok: true, before, after });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed" });
+    }
+  });
+
   // ─── EDGAR direct re-fetch diagnostic ───────────────────────────────────
   // Bypasses every cache layer. Calls getInstitutionalSummary() (the cold
   // path) and returns whatever it produces — including any failure. This

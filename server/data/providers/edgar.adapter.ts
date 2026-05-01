@@ -562,22 +562,15 @@ export async function getInstitutionalSummary(
   const targetCusip = basics.cusip?.replace(/\s+/g, "").toUpperCase();
   const sharesOut = basics.sharesOutstanding || 0;
 
-  // If no CUSIP, we cannot match filings. Return empty but valid shape.
+  // If no CUSIP, we cannot match filings. Previously we cached an empty
+  // result here, which meant a single transient FMP /profile failure (the
+  // CUSIP source) poisoned the cache for 12h in-process and 3 days on disk
+  // — every subsequent read served the empty result. Now we return null
+  // WITHOUT caching, so the next read after FMP recovers fetches fresh.
+  // Real CUSIP-less securities (rare) just retry harmlessly each call.
   if (!targetCusip) {
-    const empty: InstitutionalSummary = {
-      ticker: ticker.toUpperCase(),
-      cik: basics.cik,
-      companyName: basics.title,
-      sharesOutstanding: basics.sharesOutstanding,
-      sharesAsOf: basics.sharesAsOf,
-      institutionPct: 0,
-      institutionCount: 0,
-      topHolders: [],
-      asOf: getEndDate(),
-      source: "sec-edgar-13f",
-    };
-    setCached(cacheKey, empty, TTL_HOLDINGS);
-    return empty;
+    console.warn(`[edgar] ${ticker}: no CUSIP available (FMP /profile empty?). Skipping cache write so next read retries.`);
+    return null;
   }
 
   // Use the globally-cached top-AUM filer list. First cold call (once per day)
@@ -712,7 +705,16 @@ export async function getInstitutionalSummaryStaleOk(
     if (!pendingWarms.has(ticker)) {
       pendingWarms.add(ticker);
       getInstitutionalSummary(ticker, topN)
-        .catch(() => {})
+        .catch((err: any) => {
+          // Surface warm-path failures so we can see when EDGAR is blocked,
+          // FMP CUSIP is failing, or the parser hits an unrecoverable issue.
+          // Previously this was silently swallowed, leaving the cache poisoned
+          // forever with no diagnostic.
+          console.error(
+            `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
+            err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
+          );
+        })
         .finally(() => pendingWarms.delete(ticker));
     }
     return null;
@@ -723,7 +725,12 @@ export async function getInstitutionalSummaryStaleOk(
     if (!pendingWarms.has(ticker)) {
       pendingWarms.add(ticker);
       getInstitutionalSummary(ticker, topN)
-        .catch(() => {/* silent */})
+        .catch((err: any) => {
+          console.error(
+            `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
+            err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
+          );
+        })
         .finally(() => pendingWarms.delete(ticker));
     }
     return stale;
@@ -732,7 +739,12 @@ export async function getInstitutionalSummaryStaleOk(
   if (!pendingWarms.has(ticker)) {
     pendingWarms.add(ticker);
     getInstitutionalSummary(ticker, topN)
-      .catch(() => {/* silent */})
+      .catch((err: any) => {
+        console.error(
+          `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
+          err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
+        );
+      })
       .finally(() => pendingWarms.delete(ticker));
   }
   return null;
