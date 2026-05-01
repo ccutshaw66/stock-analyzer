@@ -43,6 +43,15 @@ function setCached<T>(k: string, v: T, ttlMs: number) {
   cache.set(k, { value: v, expiresAt: Date.now() + ttlMs });
 }
 
+/** Drop every in-process cache entry for a ticker. Used by manual refresh
+ *  endpoints so the next read goes all the way back to the network. */
+export function clearEdgarTickerCache(ticker: string): void {
+  const T = ticker.toUpperCase();
+  for (const key of Array.from(cache.keys())) {
+    if (key.includes(T)) cache.delete(key);
+  }
+}
+
 const TTL_TICKER_MAP = 24 * 60 * 60 * 1000;    // 24h
 const TTL_FILING_LIST = 24 * 60 * 60 * 1000;   // 24h (13Fs only update quarterly)
 const TTL_HOLDINGS = 12 * 60 * 60 * 1000;      // 12h per ticker

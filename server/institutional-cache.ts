@@ -105,3 +105,19 @@ export function readInstitutionalStale(ticker: string): any | null {
   const entry = readInstitutional(ticker);
   return entry?.summary ?? null;
 }
+
+/** Delete the cache entry for a ticker. Used by manual refresh endpoints
+ *  to force a fresh EDGAR fetch on the next read. Returns true if a file
+ *  existed and was removed, false otherwise. */
+export function clearInstitutional(ticker: string): boolean {
+  const fp = keyFile(ticker);
+  try {
+    if (fs.existsSync(fp)) {
+      fs.unlinkSync(fp);
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}

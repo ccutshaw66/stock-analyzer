@@ -4254,11 +4254,26 @@ export async function registerRoutes(
   // poisoned EDGAR cache or open circuit breaker no longer renders the
   // page blank — Yahoo's institutionOwnership list takes over while EDGAR
   // re-warms in the background.
+  //
+  // ?refresh=1 forces a clean re-fetch:
+  //   - deletes the EDGAR disk cache file for this ticker
+  //   - clears the EDGAR in-process cache for this ticker
+  //   - bypasses the snapshot orchestrator's 5-min cache
+  //   The first response after a refresh will likely come from Yahoo (fast)
+  //   while EDGAR re-warms in the background. Reload again ~1 minute later
+  //   to see the EDGAR-authoritative version.
   app.get("/api/institutional/:ticker", async (req, res) => {
     try {
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
-      const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+      if (forceRefresh) {
+        const { clearInstitutional } = await import("./institutional-cache");
+        const { clearEdgarTickerCache } = await import("./data/providers/edgar.adapter");
+        clearInstitutional(ticker);
+        clearEdgarTickerCache(ticker);
+      }
+      const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership, forceRefresh });
       const projected = projectInstitutional(snap);
       if (!projected) return res.status(404).json({ error: `No institutional data for ${ticker}` });
       res.json(projected);
