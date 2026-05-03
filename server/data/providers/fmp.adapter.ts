@@ -304,3 +304,36 @@ export const fmpAdapter: DataProvider = {
     }));
   },
 };
+
+/**
+ * Lightweight beta lookup from FMP's /profile endpoint.
+ *
+ * Returns the company's beta coefficient (vs. SPY by default in FMP).
+ * Returns null if FMP has no value, the call fails, or the symbol is
+ * unknown — caller should treat null as "no beta available" and render
+ * an N/A in the UI.
+ *
+ * Why this lives outside the providerFmp object: beta is needed by
+ * verdict / outlook scoring as a *fallback* when the primary quote
+ * pipeline (Polygon-shaped Yahoo facade) doesn't supply it. Polygon
+ * itself does not expose beta on any tier as of 2026-04, and the
+ * Yahoo defaultKeyStatistics.beta path was retired in the Phase 3.7
+ * migration. Pulling from FMP /profile here keeps the failure mode
+ * graceful (one extra HTTP call, cached upstream by fmpGet).
+ *
+ * Endpoint cost: 1 call to /profile per ticker. Comfortably inside the
+ * Premium plan's 750 req/min budget.
+ */
+export async function getFmpProfileBeta(symbol: string): Promise<number | null> {
+  try {
+    const rows = await fmpGet<any[]>(`/profile`, { symbol });
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const b = num(rows[0].beta);
+    return Number.isFinite(b) && b !== 0 ? b : null;
+  } catch (_e) {
+    // Fail silently — the verdict / outlook UI tolerates a null beta and
+    // shows "N/A" rather than crashing. Logging here would create a lot
+    // of noise for tickers without FMP coverage (delisted, micro-caps).
+    return null;
+  }
+}
