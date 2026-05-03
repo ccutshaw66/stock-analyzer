@@ -260,15 +260,18 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
+  //
+  // Cross-platform listen: SO_REUSEPORT is a Linux-only socket option (kernel
+  // ≥ 3.9). Node 24 on Windows throws ENOTSUP when reusePort is set, instead
+  // of silently ignoring it. Gate it on platform so prod (Linux) keeps the
+  // option for graceful pm2 reloads while Windows / Mac dev just work.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  const host = process.env.HOST || "0.0.0.0";
+  const listenOpts: { port: number; host: string; reusePort?: boolean } = { port, host };
+  if (process.platform === "linux") {
+    listenOpts.reusePort = true;
+  }
+  httpServer.listen(listenOpts, () => {
+    log(`serving on port ${port}`);
+  });
 })();

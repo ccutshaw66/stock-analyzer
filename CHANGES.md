@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-03 (late evening) — Cross-platform `httpServer.listen` (Windows fix)
+
+**Issue:** After fixing the `dev` script earlier (cross-env), `npm run dev`
+got further but then died with `Error: listen ENOTSUP: operation not
+supported on socket 0.0.0.0:5000` on Node 24 / Windows.
+
+**Root cause:** `server/index.ts` passed `reusePort: true` to
+`httpServer.listen()`. `SO_REUSEPORT` is a Linux-only socket option
+(kernel ≥ 3.9). Node 24 on Windows throws `ENOTSUP` when it sees the
+option, instead of silently ignoring it the way older Node versions
+sometimes did.
+
+**Fix:** `server/index.ts` — gate `reusePort` on `process.platform === "linux"`.
+Production (Ubuntu) keeps the option for clean pm2 reloads; Windows and
+Mac dev environments just work. Also extracted `host` to a `HOST` env var
+override (defaults to `0.0.0.0`), so a developer can lock the dev server
+to `127.0.0.1` if they want LAN to not see it.
+
+Commit: `<this commit>`. Rollback tag: `safe/2026-05-03-listen`.
+
+---
 ## 2026-05-03 (evening) — Cross-platform `npm run dev` (Windows fix)
 
 **Issue:** Setting up the project on a Windows laptop, `npm run dev`
