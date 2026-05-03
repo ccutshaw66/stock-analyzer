@@ -883,4 +883,3 @@ export async function getPolygonUniverse(opts: { minMarketCap?: number } = {}): 
   console.log(`[polygon] Universe fetched: ${tickers.length} tickers (minCap=$${minCap})`);
   return tickers;
 }
-
