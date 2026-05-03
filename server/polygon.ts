@@ -224,6 +224,12 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
   // Polygon snapshot doesn't include 52w; fetch a 1Y daily aggregate separately and compute.
   let fiftyTwoWeekHigh: number | null = null;
   let fiftyTwoWeekLow: number | null = null;
+  // Average volumes computed from the same daily-bar array as the 52w range
+  // below. Avoids a second /v2/aggs round trip — Polygon Stocks Starter has
+  // sufficient quota for one daily-bars call per analyzed ticker, so we just
+  // mine the existing payload for everything we need.
+  let avgVolume3M: number | null = null;
+  let avgVolume10D: number | null = null;
   try {
     const today = new Date();
     const from = new Date(today.getTime() - 365 * 24 * 3600 * 1000);
@@ -237,6 +243,24 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
     if (bars.length) {
       fiftyTwoWeekHigh = Math.max(...bars.map((b: any) => b.h));
       fiftyTwoWeekLow = Math.min(...bars.map((b: any) => b.l));
+
+      // Yahoo's averageDailyVolume3Month is the rolling mean of ~63 trading
+      // days (≈ 3 calendar months of US trading sessions). Bars are sorted
+      // ascending, so the last 63 entries are the most recent. We accept
+      // shorter windows for newly-listed names — better to show an estimate
+      // than render "0" and have the verdict-page snapshot card flag the
+      // ticker as illiquid by default.
+      const recent3M = bars.slice(-63);
+      if (recent3M.length > 0) {
+        const sum = recent3M.reduce((acc: number, b: any) => acc + (b.v || 0), 0);
+        avgVolume3M = Math.round(sum / recent3M.length);
+      }
+
+      const recent10D = bars.slice(-10);
+      if (recent10D.length > 0) {
+        const sum10 = recent10D.reduce((acc: number, b: any) => acc + (b.v || 0), 0);
+        avgVolume10D = Math.round(sum10 / recent10D.length);
+      }
     }
   } catch { /* ignore */ }
 
@@ -257,8 +281,8 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
       regularMarketChangePercent: yf(changePctYahoo),
       regularMarketVolume: yf(volume),
       marketCap: yf(marketCap),
-      averageDailyVolume3Month: null, // filled below if possible
-      averageDailyVolume10Day: null,
+      averageDailyVolume3Month: yf(avgVolume3M),
+      averageDailyVolume10Day: yf(avgVolume10D),
     },
     summaryDetail: {
       trailingPE: yf(trailingPE),

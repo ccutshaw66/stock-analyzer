@@ -28,13 +28,10 @@ import {
   polygonHasOptions,
   getPolygonEarningsRow,
 } from "./polygon";
-import { fmpAdapter } from "./data/providers/fmp.adapter";
+import { fmpAdapter, getFmpProfileBeta } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
-import { getCompanySnapshot, snapshotHealth, getInstitutionalScanSnapshot } from "./snapshot";
-import { projectInstitutional } from "./snapshot/projection-institutional";
-import { getConvictionCompass } from "./conviction/pipeline";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -335,7 +332,7 @@ async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
 }
 
 // Queued Yahoo fetch — all requests go through the global rate limiter
-export async function yahooFetch(url: string, retries = 3): Promise<any> {
+async function yahooFetch(url: string, retries = 3): Promise<any> {
   return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
 }
 
@@ -1161,89 +1158,6 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 }
 
 // ============================================================
-// Shared analysis pipeline
-// ============================================================
-//
-// Single source of truth for the verdict/score pipeline. Both /api/analyze
-// and /api/verdict route through this so the same ticker always produces the
-// same score regardless of which page surfaced it.
-//
-// Returns null only on conditions that should 404 the calling endpoint:
-//   - quoteSummary returned no data
-//   - quote has no price AND no market cap (delisted / typo)
-//
-// Anything else (chart fetches failing, FMP analyst failing, missing 3y/5y)
-// degrades gracefully with nulls — but every callsite gets the SAME degraded
-// result, so the verdict still matches between pages.
-
-interface AnalysisCore {
-  quote: any;
-  financials: any;
-  analystData: AnalystBlock;
-  profile: any;
-  rawChartData: any[];
-  historicalReturns: { oneYear: number | null; threeYear: number | null; fiveYear: number | null };
-  scoring: ScoringCategory[];
-  score: number;
-  verdict: string;
-  ruling: string;
-}
-
-async function computeAnalysisCore(ticker: string): Promise<AnalysisCore | null> {
-  const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
-    getQuote(ticker),
-    getChart(ticker, "1y", "1d"),
-    getChart(ticker, "3y", "1wk"),
-    getChart(ticker, "5y", "1wk"),
-  ]);
-
-  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
-  if (!summary) {
-    routesLog.info({ ticker, summary_status: summaryResult.status }, "analysis-core: quoteSummary unavailable");
-    return null;
-  }
-
-  const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
-  const chart3Y = chart3YResult.status === "fulfilled" ? chart3YResult.value : null;
-  const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
-
-  const { quote, financials, analystData: _polyAnalyst, profile } = extractQuoteData(summary);
-
-  if (!quote.regularMarketPrice && !quote.marketCap) {
-    routesLog.info({ ticker }, "analysis-core: quote has neither price nor market cap");
-    return null;
-  }
-
-  // FMP is primary; Polygon-shaped block in the Yahoo summary is the buffer.
-  let analystData: AnalystBlock;
-  try {
-    const fmp = await getFmpAnalyst(ticker);
-    if (fmp.analystCount > 0 || fmp.targetMean != null) {
-      analystData = fmp;
-    } else {
-      routesLog.info({ ticker }, "fmp has no analyst coverage; using buffer");
-      analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
-    }
-  } catch (e: any) {
-    routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; using buffer");
-    analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
-  }
-
-  const { chartData: rawChartData, computedReturn: ret1Y } = extractChartData(chart1Y);
-  const { computedReturn: ret3Y } = extractChartData(chart3Y);
-  const { computedReturn: ret5Y } = extractChartData(chart5Y);
-
-  const historicalReturns = { oneYear: ret1Y, threeYear: ret3Y, fiveYear: ret5Y };
-  const fullData = { quote, financials, historicalReturns };
-
-  const scoring = computeScoring(fullData);
-  const score = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-  const { verdict, ruling } = computeVerdict(score);
-
-  return { quote, financials, analystData, profile, rawChartData, historicalReturns, scoring, score, verdict, ruling };
-}
-
-// ============================================================
 // Routes
 // ============================================================
 
@@ -1293,14 +1207,7 @@ export async function registerRoutes(
   app.get("/api/auth/me", requireAuth, meHandler);
 
   // ─── Protect all other API routes ─────────────────────────────────────────
-  // /api/diag/* is intentionally exempt: read-only health/provenance endpoints
-  // for the snapshot pipeline. They expose nothing a logged-in user can't
-  // already see, and need to be reachable for scheduled verification jobs
-  // and external monitoring without a session cookie.
-  app.use("/api", (req, res, next) => {
-    if (req.path.startsWith("/diag/")) return next();
-    return requireAuth(req, res, next);
-  });
+  app.use("/api", requireAuth);
 
   // ─── Track demo user activity ──────────────────────────────────────────────
   app.use("/api", (req, _res, next) => {
@@ -2458,12 +2365,66 @@ export async function registerRoutes(
 
     try {
       await ensureReady();
+      // Fetch all data in parallel
+      const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
+        getQuote(ticker),
+        getChart(ticker, "1y", "1d"),
+        getChart(ticker, "3y", "1wk"),
+        getChart(ticker, "5y", "1wk"),
+      ]);
 
-      const core = await computeAnalysisCore(ticker);
-      if (!core) {
+      const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+      const chart3Y = chart3YResult.status === "fulfilled" ? chart3YResult.value : null;
+      const chart5Y = chart5YResult.status === "fulfilled" ? chart5YResult.value : null;
+
+      if (!summary) {
+        console.log(`[analyze] ${ticker}: quoteSummary returned null. summaryResult status: ${summaryResult.status}, reason: ${summaryResult.status === 'rejected' ? (summaryResult as any).reason?.message : 'fulfilled but null'}`);
         return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
       }
-      const { quote, financials, analystData, profile, rawChartData, historicalReturns, scoring, score: weightedScore, verdict, ruling } = core;
+
+      const { quote, financials, analystData: _polyAnalyst, profile } = extractQuoteData(summary);
+
+      // Beta fallback. Polygon does not expose beta on any tier as of
+      // 2026-04 (see polygon.ts where it's hardcoded null), and the
+      // Yahoo defaultKeyStatistics.beta path was retired in Phase 3.7.
+      // FMP /profile carries beta and is already a Premium-tier dependency
+      // for analyst data, so the marginal cost is one extra cached call.
+      // Failure is non-fatal — UI tolerates a null beta and renders N/A.
+      if (quote.beta == null) {
+        try {
+          const fmpBeta = await getFmpProfileBeta(ticker);
+          if (fmpBeta != null) quote.beta = fmpBeta;
+        } catch (e: any) {
+          routesLog.debug?.({ ticker, err: String(e?.message || e) }, "fmp beta fallback failed");
+        }
+      }
+
+      // Phase 3.7: FMP is the primary source. Polygon-shaped analyst block
+      // (already present in summary) serves as a last-resort buffer when
+      // FMP has no coverage (micro-caps) or transiently fails.
+      let analystData: AnalystBlock;
+      try {
+        const fmp = await getFmpAnalyst(ticker);
+        if (fmp.analystCount > 0 || fmp.targetMean != null) {
+          analystData = fmp;
+        } else {
+          routesLog.info({ ticker }, "fmp has no analyst coverage; using buffer");
+          analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
+        }
+      } catch (e: any) {
+        routesLog.warn({ ticker, err: String(e?.message || e) }, "fmp analyst fetch failed; using buffer");
+        analystData = { ..._polyAnalyst, source: "buffer", analystCount: (_polyAnalyst.buy || 0) + (_polyAnalyst.hold || 0) + (_polyAnalyst.sell || 0) };
+      }
+
+      if (!quote.regularMarketPrice && !quote.marketCap) {
+        console.log(`[analyze] ${ticker}: No price or market cap in quote data. Keys: ${Object.keys(quote).filter(k => quote[k] != null).join(',')}`);
+        return res.status(404).json({ error: `Ticker "${ticker}" not found or no data available.` });
+      }
+
+      const { chartData: rawChartData, computedReturn: ret1Y } = extractChartData(chart1Y);
+      const { computedReturn: ret3Y } = extractChartData(chart3Y);
+      const { computedReturn: ret5Y } = extractChartData(chart5Y);
 
       // Add EMA 9/21/50 + SMA 200 overlays to chart data
       const chartCloses = rawChartData.map((d: any) => d.close);
@@ -2479,7 +2440,18 @@ export async function registerRoutes(
         sma200: !isNaN(sma200Arr[i]) ? Number(sma200Arr[i].toFixed(2)) : null,
       }));
 
+      const historicalReturns = {
+        oneYear: ret1Y,
+        threeYear: ret3Y,
+        fiveYear: ret5Y,
+      };
+
       const fullData = { quote, financials, historicalReturns };
+
+      // Compute scoring
+      const scoring = computeScoring(fullData);
+      const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+      const { verdict, ruling } = computeVerdict(weightedScore);
       const { positives, risks } = generateBullBear(fullData);
       const redFlags = generateRedFlags(fullData);
       const decisionShortcut = generateDecisionShortcut(fullData);
@@ -3880,8 +3852,27 @@ export async function registerRoutes(
       const signalLine = emaSeries(macdLine, 9);
       const histogram = macdLine.map((v, i) => v - signalLine[i]);
 
-      // RSI(14) series — Wilder's smoothing, canonical implementation.
-      const rsiSeries = computeRSISeries(closes, { period: 14 });
+      // RSI(14) series — Wilder's smoothing
+      const rsiSeries: number[] = [];
+      const period = 14;
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 1; i < closes.length; i++) {
+        const diff = closes[i] - closes[i - 1];
+        const gain = diff > 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+        if (i <= period) {
+          avgGain += gain; avgLoss += loss;
+          if (i === period) { avgGain /= period; avgLoss /= period; }
+          rsiSeries.push(NaN);
+        } else {
+          avgGain = (avgGain * (period - 1) + gain) / period;
+          avgLoss = (avgLoss * (period - 1) + loss) / period;
+          const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+          const rsi = 100 - 100 / (1 + rs);
+          rsiSeries.push(rsi);
+        }
+      }
+      rsiSeries.unshift(NaN); // align length with closes
 
       // Build last N bars
       const n = Math.min(bars, closes.length);
@@ -3999,20 +3990,35 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      // v4: bumped after extracting computeAnalysisCore. Score now includes
-      // 3y/5y returns (previously hardcoded null), so old v3 entries would
-      // serve stale lower scores until natural eviction.
-      const verdictCacheKey = `verdict:v4:${ticker}`;
+      const verdictCacheKey = `verdict:v3:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
       const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-      // Batch 1: Core ticker data (analysis + institutional).
-      // Analysis runs through the shared computeAnalysisCore so the verdict
-      // page and the trade-analysis header always agree on the same ticker.
+      // Batch 1: Core ticker data (analysis + institutional)
       const [analysisRes, instRes] = await Promise.allSettled([
-        computeAnalysisCore(ticker),
+        (async () => {
+          const summary = await getQuote(ticker);
+          if (!summary) return null;
+          const { quote, financials } = extractQuoteData(summary);
+          // Beta fallback — see verdict route comment above for rationale.
+          if (quote.beta == null) {
+            try {
+              const fmpBeta = await getFmpProfileBeta(ticker);
+              if (fmpBeta != null) quote.beta = fmpBeta;
+            } catch { /* tolerate; UI shows N/A */ }
+          }
+          await delay(300);
+          const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
+          const { computedReturn: ret1Y } = extractChartData(chart1Y);
+          const historicalReturns = { oneYear: ret1Y, threeYear: null, fiveYear: null };
+          const fullData = { quote, financials, historicalReturns };
+          const scoring = computeScoring(fullData);
+          const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+          const { verdict, ruling } = computeVerdict(weightedScore);
+          return { score: weightedScore, verdict, ruling, scoring, quote, financials };
+        })(),
         (async () => {
           await delay(500);
           const raw = await getInstitutionalData(ticker);
@@ -4031,7 +4037,7 @@ export async function registerRoutes(
         try {
           const to = new Date().toISOString().slice(0, 10);
           const from = "2000-01-01";
-          const rows: any = await fmpGet(`/historical-price-eod/full`, { symbol: sym, from, to });
+          const rows: any = await fmpGet(`/historical-price-eod/full?symbol=${sym}&from=${from}&to=${to}`);
           const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
           if (!arr.length) return null;
           const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -4088,7 +4094,7 @@ export async function registerRoutes(
       // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
       async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
         try {
-          const rows: any = await fmpGet(`/quote`, { symbol: sym });
+          const rows: any = await fmpGet(`/quote?symbol=${sym}`);
           const row = Array.isArray(rows) ? rows[0] : rows;
           if (!row?.price) return null;
           return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };
@@ -4247,169 +4253,17 @@ export async function registerRoutes(
   // INSTITUTIONAL / MONEY FLOW API ROUTES
   // ================================================================
 
-  // Get institutional data for a single ticker.
-  //
-  // Phase 2 cutover (first route migrated): reads through getCompanySnapshot
-  // + projectInstitutional instead of the legacy parseInstitutionalData.
-  // The snapshot's ownership adapter has EDGAR → Yahoo fallback, so a
-  // poisoned EDGAR cache or open circuit breaker no longer renders the
-  // page blank — Yahoo's institutionOwnership list takes over while EDGAR
-  // re-warms in the background.
-  //
-  // ?refresh=1 forces a clean re-fetch:
-  //   - deletes the EDGAR disk cache file for this ticker
-  //   - clears the EDGAR in-process cache for this ticker
-  //   - bypasses the snapshot orchestrator's 5-min cache
-  //   The first response after a refresh will likely come from Yahoo (fast)
-  //   while EDGAR re-warms in the background. Reload again ~1 minute later
-  //   to see the EDGAR-authoritative version.
+  // Get institutional data for a single ticker
   app.get("/api/institutional/:ticker", async (req, res) => {
     try {
       await ensureReady();
       const ticker = req.params.ticker.toUpperCase();
-      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
-      if (forceRefresh) {
-        const { clearInstitutional } = await import("./institutional-cache");
-        const { clearEdgarTickerCache } = await import("./data/providers/edgar.adapter");
-        clearInstitutional(ticker);
-        clearEdgarTickerCache(ticker);
-      }
-      const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership, forceRefresh });
-      const projected = projectInstitutional(snap);
-      if (!projected) return res.status(404).json({ error: `No institutional data for ${ticker}` });
-      res.json(projected);
+      const raw = await getInstitutionalData(ticker);
+      const parsed = await parseInstitutionalData(raw, ticker);
+      if (!parsed) return res.status(404).json({ error: `No institutional data for ${ticker}` });
+      res.json(parsed);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch institutional data" });
-    }
-  });
-
-  // ─── Unified snapshot diagnostic ─────────────────────────────────────────
-  // Read-only endpoint for verifying every data field for a ticker, with
-  // per-field provenance (which provider answered, fallbacks attempted,
-  // latency, errors). Does NOT change any existing page behavior — this is
-  // additive infrastructure for the architectural rebuild. ?refresh=1
-  // bypasses the orchestrator-level cache.
-  app.get("/api/diag/snapshot/:ticker", async (req, res) => {
-    try {
-      await ensureReady();
-      const ticker = req.params.ticker.toUpperCase();
-      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
-      const view = String(req.query.view || "full");
-      // ?refresh=1 on diag also clears the EDGAR disk + in-process caches so
-      // the next read goes all the way back to the network (otherwise the
-      // snapshot orchestrator's forceRefresh only bypasses its own 5-min
-      // cache and still hits the poisoned EDGAR layer).
-      if (forceRefresh) {
-        const { clearInstitutional } = await import("./institutional-cache");
-        const { clearEdgarTickerCache } = await import("./data/providers/edgar.adapter");
-        clearInstitutional(ticker);
-        clearEdgarTickerCache(ticker);
-      }
-      const snap = await getCompanySnapshot(ticker, {
-        yahooFetch,
-        getYahooOwnership,
-        forceRefresh,
-      });
-      if (view === "health") return res.json(snapshotHealth(snap));
-      res.json(snap);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to build snapshot", stack: error?.stack });
-    }
-  });
-
-  // ─── Conviction Compass backtest aggregation ────────────────────────────
-  // Returns per-verdict forward-return stats from compass_snapshots, plus
-  // SPY baseline averaged over the same dates. Frontend renders the table
-  // on the conviction page. Public (no auth) — read-only aggregates.
-  app.get("/api/diag/conviction/backtest", async (_req, res) => {
-    try {
-      const { getBacktestResults } = await import("./conviction/backtest");
-      const result = await getBacktestResults();
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to build backtest results" });
-    }
-  });
-
-  // ─── Conviction Compass ─────────────────────────────────────────────────
-  // Single-ticker conviction signal that fuses four orthogonal categories:
-  // smart money flow, dealer positioning, technical momentum, and
-  // fundamental quality. Returns axis scores + confluence + plain-language
-  // verdict for the /conviction page's radar visualization.
-  app.get("/api/conviction/:ticker", async (req, res) => {
-    try {
-      await ensureReady();
-      const ticker = req.params.ticker.toUpperCase();
-      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
-      const compass = await getConvictionCompass(ticker, {
-        yahooFetch,
-        getYahooOwnership,
-        forceRefresh,
-      });
-      res.json(compass);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to build conviction compass" });
-    }
-  });
-
-  // ─── EDGAR circuit-breaker health + manual reset ────────────────────────
-  // /api/diag/edgar/health — returns the current circuit-breaker state and
-  // success/failure counters since process start. Use this to confirm
-  // whether the EDGAR layer is blocked (Akamai 403s) or just slow.
-  app.get("/api/diag/edgar/health", async (_req, res) => {
-    try {
-      const { getEdgarCircuitStatus } = await import("./data/providers/edgar.client");
-      res.json(getEdgarCircuitStatus());
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed" });
-    }
-  });
-
-  // /api/diag/edgar/reset — manually close the circuit. Use after SEC has
-  // confirmed an unblock or when the 1-hour cooldown is unnecessarily long.
-  // Idempotent — safe to call repeatedly. GET (not POST) for browser ease;
-  // exposure is already gated by being under /api/diag/* and changes only
-  // in-process state, no destructive disk writes.
-  app.get("/api/diag/edgar/reset", async (_req, res) => {
-    try {
-      const { forceCloseEdgarCircuit, getEdgarCircuitStatus } = await import("./data/providers/edgar.client");
-      const before = getEdgarCircuitStatus();
-      forceCloseEdgarCircuit();
-      const after = getEdgarCircuitStatus();
-      res.json({ ok: true, before, after });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed" });
-    }
-  });
-
-  // ─── EDGAR direct re-fetch diagnostic ───────────────────────────────────
-  // Bypasses every cache layer. Calls getInstitutionalSummary() (the cold
-  // path) and returns whatever it produces — including any failure. This
-  // is how we tell whether EDGAR's empty results are cache poisoning OR a
-  // real fetch-path bug. If this returns real holders, the cache was the
-  // problem and we just clear it. If it returns empty here too, the EDGAR
-  // fetch path itself is broken and that's where the fix needs to land.
-  app.get("/api/diag/edgar/:ticker", async (req, res) => {
-    try {
-      await ensureReady();
-      const ticker = req.params.ticker.toUpperCase();
-      const { clearInstitutional } = await import("./institutional-cache");
-      const { clearEdgarTickerCache, getInstitutionalSummary, getCompanyBasics } = await import("./data/providers/edgar.adapter");
-      clearInstitutional(ticker);
-      clearEdgarTickerCache(ticker);
-      const t0 = Date.now();
-      const basics = await getCompanyBasics(ticker).catch((e: any) => ({ error: String(e?.message || e) }));
-      const basicsMs = Date.now() - t0;
-      const t1 = Date.now();
-      const summary = await getInstitutionalSummary(ticker, 25).catch((e: any) => ({ error: String(e?.message || e) }));
-      const summaryMs = Date.now() - t1;
-      res.json({
-        ticker,
-        basics: { value: basics, ms: basicsMs },
-        summary: { value: summary, ms: summaryMs },
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed", stack: error?.stack });
     }
   });
 
@@ -4439,17 +4293,11 @@ export async function registerRoutes(
 
       const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
 
-      // Default scan size: keep total request well under nginx's 60s proxy
-      // limit. With the slim per-ticker fetcher (3 adapters) and serialized
-      // Yahoo + EDGAR rate limits, ~50 tickers fits comfortably in 30-40s
-      // on a cold-cache scan; warm-cache scans return in seconds.
-      const DEFAULT_SCAN_LIMIT = 50;
-
       // Resolve universe
       let tickers: string[];
       if (customTickers && customTickers.length) {
         // User supplied a list — scan exactly what they asked for, capped
-        tickers = customTickers.slice(0, DEFAULT_SCAN_LIMIT);
+        tickers = customTickers.slice(0, 150);
       } else {
         // Default scan: only tickers that already have warm EDGAR cache.
         // This guarantees every ticker we scan returns data fast (no cold path).
@@ -4472,111 +4320,65 @@ export async function registerRoutes(
           });
           setCache(warmKey, warm, WARM_UNIVERSE_TTL);
         }
-        tickers = warm.slice(0, DEFAULT_SCAN_LIMIT);
+        tickers = warm.slice(0, 150);
       }
 
-      // Aggregated result cache (6h fresh, but stale-while-revalidate
-      // means we serve any prior result instantly and refresh in the
-      // background).
+      // Aggregated result cache (6h)
       const SCAN_CACHE_TTL = 6 * 60 * 60 * 1000;
-      const SCAN_STALE_TTL = 24 * 60 * 60 * 1000; // serve stale up to 24h
       const scanCacheKey = customTickers
         ? `institutional-scan:custom:${customTickers.slice().sort().join(",")}`
-        : `institutional-scan:warm:${DEFAULT_SCAN_LIMIT}`;
-      const scanStaleKey = `${scanCacheKey}:stale`;
+        : `institutional-scan:warm:150`;
 
-      // Stale-while-revalidate: if there's any prior result (fresh or stale),
-      // return it immediately. If it's stale (or refresh was requested),
-      // kick off a background scan to update it. Repeat scan-button clicks
-      // are instant; freshness improves on its own.
-      const cached = getCached<any>(scanCacheKey);
-      const stale = !cached ? getCached<any>(scanStaleKey) : null;
-      const haveAnyResult = cached || stale;
-      const needsRefresh = refresh || !cached;
-
-      if (haveAnyResult && !refresh) {
-        const payloadOut = cached || stale;
-        res.setHeader("X-Scanned-At", payloadOut.scannedAt);
-        res.setHeader("X-Total-Scanned", String(payloadOut.totalScanned));
-        res.setHeader("X-With-Data", String(payloadOut.withData));
-        res.setHeader("X-Cached", cached ? "fresh" : "stale");
-        res.json({ ...payloadOut, cached: true, stale: !cached });
-        // If stale, kick off a background re-scan and return without awaiting.
-        if (!cached && stale) {
-          runBackgroundScan(tickers, scanCacheKey, scanStaleKey, SCAN_CACHE_TTL, SCAN_STALE_TTL).catch(() => {});
+      if (!refresh) {
+        const cached = getCached(scanCacheKey);
+        if (cached) {
+          res.setHeader("X-Scanned-At", cached.scannedAt);
+          res.setHeader("X-Total-Scanned", String(cached.totalScanned));
+          res.setHeader("X-With-Data", String(cached.withData));
+          res.setHeader("X-Cached", "true");
+          return res.json(cached.results);
         }
-        return;
       }
 
-      // Helper that runs the actual scan loop. Defined inline so it can be
-      // invoked synchronously OR asynchronously (background re-warm).
-      async function runScan(): Promise<{ payload: any; withInstData: any[] }> {
-        console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
-        const scanStart = Date.now();
-        const results: any[] = [];
+      console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
+      const scanStart = Date.now();
+      const results: any[] = [];
 
-        // Slim per-ticker work: only ownership + insider + quote (the three
-        // adapters the scan UI consumes). Skipping fundamentals, profile,
-        // chart, returns, analyst, earnings — those aren't surfaced in the
-        // scan table and were the dominant cost on the previous (8-adapter)
-        // path that pushed us past nginx's 60s timeout.
-        const BATCH_SIZE = 10;
-        for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
-          const batch = tickers.slice(b, b + BATCH_SIZE);
-          const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
-            try {
-              const snap = await getInstitutionalScanSnapshot(ticker, { yahooFetch, getYahooOwnership });
-              return projectInstitutional(snap);
-            } catch {
-              return null;
-            }
-          }));
-          for (const r of batchResults) {
-            if (r.status === "fulfilled" && r.value) results.push(r.value);
+      // All selected tickers have warm cache, so these calls return instantly.
+      // Run parallel batches of 10.
+      const BATCH_SIZE = 10;
+      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+        const batch = tickers.slice(b, b + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+          try {
+            const raw = await getInstitutionalData(ticker);
+            return parseInstitutionalData(raw, ticker);
+          } catch {
+            return null;
           }
-        }
-
-        const withInstData = results.filter(r =>
-          r.institutionPct > 0 ||
-          r.institutionCount > 0 ||
-          (Array.isArray(r.topInstitutions) && r.topInstitutions.length > 0)
-        );
-        withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
-
-        const elapsed = Date.now() - scanStart;
-        console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
-
-        const payload = {
-          scannedAt: new Date().toISOString(),
-          lastScannedAt: new Date().toISOString(),
-          totalScanned: tickers.length,
-          withData: withInstData.length,
-          elapsedMs: elapsed,
-          cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
-          results: withInstData,
-        };
-        setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
-        setCache(scanStaleKey, payload, SCAN_STALE_TTL);
-        return { payload, withInstData };
-      }
-
-      // Background scan helper. Used for stale-while-revalidate refreshes.
-      const _bgScansInProgress = (global as any).__bgScansInProgress ||= new Set<string>();
-      async function runBackgroundScan(
-        _tickers: string[], _key: string, _staleKey: string,
-        _ttl: number, _staleTtl: number,
-      ): Promise<void> {
-        if (_bgScansInProgress.has(_key)) return;
-        _bgScansInProgress.add(_key);
-        try {
-          await runScan();
-        } finally {
-          _bgScansInProgress.delete(_key);
+        }));
+        for (const r of batchResults) {
+          if (r.status === "fulfilled" && r.value) results.push(r.value);
         }
       }
 
-      // No prior result OR ?refresh=1 — run scan synchronously and return.
-      const { payload } = await runScan();
+      // Only keep rows that actually have institutional ownership data
+      const withInstData = results.filter(r => r.institutionPct > 0 || r.institutionCount > 0);
+      withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+
+      const elapsed = Date.now() - scanStart;
+      console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
+
+      const payload = {
+        scannedAt: new Date().toISOString(),
+        lastScannedAt: new Date().toISOString(),
+        totalScanned: tickers.length,
+        withData: withInstData.length,
+        elapsedMs: elapsed,
+        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
+        results: withInstData,
+      };
+      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
       res.setHeader("X-Scanned-At", payload.scannedAt);
       res.setHeader("X-Total-Scanned", String(payload.totalScanned));
       res.setHeader("X-With-Data", String(payload.withData));
@@ -5426,7 +5228,7 @@ export async function registerRoutes(
 
   // Initialize background price snapshot cron job
   const { initCron } = await import("./cron");
-  initCron(getQuote, ensureReady, yahooFetch, getYahooOwnership);
+  initCron(getQuote, ensureReady);
 
   // ─── Track Record API ────────────────────────────────────────────────
   app.get("/api/track-record", async (_req, res) => {

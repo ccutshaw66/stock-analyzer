@@ -1,0 +1,339 @@
+/**
+ * FMP adapter — normalizes Financial Modeling Prep responses into our
+ * domain types. Uses server/data/providers/fmp.client.ts for the HTTP layer
+ * (retry, cache, logging).
+ *
+ * Tier assumed: Premium ($59/mo). Rate limit: 750/min.
+ *
+ * API STYLE: Uses FMP's STABLE API (post-August 31, 2025 migration).
+ * Legacy /v3 and /v4 endpoints are no longer available.
+ *
+ * Capabilities implemented:
+ *   - analyst_ratings       (price-target-consensus + grades-consensus + ratings-snapshot)
+ *   - earnings              (earnings per symbol)
+ *   - insider_transactions  (insider-trading/search)
+ *   - institutional_holdings (institutional-ownership/extract-analytics/holder)
+ *   - financials            (income-statement + ratios-ttm)
+ */
+import type {
+  DataProvider,
+  AnalystRating,
+  EarningsEvent,
+  InsiderTransaction,
+  InstitutionalHolding,
+  FinancialSnapshot,
+  Symbol,
+} from "../types";
+import { fmpGet } from "./fmp.client";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function toDate(s: string | number | Date | undefined): Date {
+  if (!s) return new Date(NaN);
+  if (s instanceof Date) return s;
+  return new Date(s);
+}
+
+function num(x: any): number {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeConsensus(raw: any): AnalystRating["consensus"] {
+  const s = String(raw || "").toLowerCase().trim();
+  if (s.includes("strong") && s.includes("buy")) return "strong_buy";
+  if (s === "buy" || s.includes("outperform") || s.includes("overweight")) return "buy";
+  if (s === "hold" || s.includes("neutral") || s.includes("equal")) return "hold";
+  if (s.includes("strong") && s.includes("sell")) return "strong_sell";
+  if (s === "sell" || s.includes("underperform") || s.includes("underweight")) return "sell";
+  return "hold";
+}
+
+function normalizeInsiderType(raw: any): InsiderTransaction["transactionType"] {
+  const s = String(raw || "").toLowerCase();
+  if (s.includes("p-purchase") || s.includes("buy") || s === "p") return "buy";
+  if (s.includes("s-sale") || s.includes("sell") || s === "s") return "sell";
+  if (s.includes("award") || s.includes("grant")) return "award";
+  if (s.includes("exercise") || s.includes("m-")) return "exercise";
+  return "sell"; // conservative default
+}
+
+/**
+ * Return the most recently completed 13F filing quarter. 13F filings are due
+ * 45 days after quarter end, so we step back one full quarter from "now" to be
+ * safe. If the latest quarter has no data yet, the caller can retry with a
+ * fallback (handled below in getInstitutionalHoldings).
+ */
+function latestFiledQuarter(now = new Date()): { year: number; quarter: number } {
+  // Step back ~90 days to ensure the quarter has been filed
+  const d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const m = d.getUTCMonth(); // 0-11
+  const quarter = Math.floor(m / 3) + 1; // 1-4
+  const year = d.getUTCFullYear();
+  return { year, quarter };
+}
+
+function prevQuarter(year: number, quarter: number): { year: number; quarter: number } {
+  if (quarter === 1) return { year: year - 1, quarter: 4 };
+  return { year, quarter: quarter - 1 };
+}
+
+// ─── Fundamental Screener ───────────────────────────────────────────────────
+/**
+ * Server-side screener backed by FMP /stable/company-screener.
+ *
+ * Unlike Polygon's grouped-daily + per-ticker enrichment approach, FMP filters
+ * sector, market-cap, price, and volume server-side in a single call and
+ * returns ranked, active, US-listed common stocks. No client-side enrichment.
+ */
+export interface FmpScreenerFilters {
+  minPrice?: number;
+  maxPrice?: number;
+  sector?: string;              // e.g. "Technology" — passed through as-is
+  minMarketCap?: number;
+  maxMarketCap?: number;
+  minVolume?: number;
+  minBeta?: number;
+  maxBeta?: number;
+  minDividend?: number;
+  count?: number;               // default 100, capped by FMP at 10000 but we cap at 500
+}
+
+export interface FmpScreenerRow {
+  symbol: string;
+  companyName: string;
+  sector: string;
+  industry: string;
+  marketCap: number;
+  price: number;
+  volume: number;
+  beta: number;
+  lastAnnualDividend: number;
+  exchangeShortName: string;
+}
+
+const US_EXCHANGES = new Set(["NYSE", "NASDAQ", "AMEX", "BATS"]);
+
+/**
+ * Call FMP company-screener with our filter set. Returns fully-shaped rows
+ * restricted to US common stocks (no ETFs, no funds, actively trading).
+ */
+export async function fmpScreener(filters: FmpScreenerFilters): Promise<FmpScreenerRow[]> {
+  const count = Math.min(filters.count ?? 100, 3000);
+
+  // FMP param names are camelCase `More/LowerThan` style.
+  // FMP screener supports up to 10000 rows per call; we pull 2x count so the
+  // US-exchange + liquidity post-filter leaves enough headroom.
+  const params: Record<string, any> = {
+    isEtf: false,
+    isFund: false,
+    isActivelyTrading: true,
+    limit: Math.min(Math.max(count * 2, 300), 6000),
+  };
+  if (filters.minPrice != null) params.priceMoreThan = filters.minPrice;
+  if (filters.maxPrice != null) params.priceLowerThan = filters.maxPrice;
+  if (filters.minMarketCap != null) params.marketCapMoreThan = filters.minMarketCap;
+  if (filters.maxMarketCap != null) params.marketCapLowerThan = filters.maxMarketCap;
+  if (filters.minVolume != null) params.volumeMoreThan = filters.minVolume;
+  if (filters.minBeta != null) params.betaMoreThan = filters.minBeta;
+  if (filters.maxBeta != null) params.betaLowerThan = filters.maxBeta;
+  if (filters.minDividend != null) params.dividendMoreThan = filters.minDividend;
+  if (filters.sector && filters.sector.toLowerCase() !== "all") params.sector = filters.sector;
+
+  const rows = await fmpGet<any[]>(`/company-screener`, params);
+  if (!Array.isArray(rows)) return [];
+
+  // Keep US common stocks only, ranked by dollar volume desc (liquidity proxy).
+  const us = rows.filter((r) => {
+    const ex = String(r?.exchangeShortName || "").toUpperCase();
+    return US_EXCHANGES.has(ex);
+  });
+
+  us.sort((a, b) => num(b.price) * num(b.volume) - num(a.price) * num(a.volume));
+
+  return us.slice(0, count).map((r) => ({
+    symbol: String(r.symbol || ""),
+    companyName: String(r.companyName || ""),
+    sector: String(r.sector || ""),
+    industry: String(r.industry || ""),
+    marketCap: num(r.marketCap),
+    price: num(r.price),
+    volume: num(r.volume),
+    beta: num(r.beta),
+    lastAnnualDividend: num(r.lastAnnualDividend),
+    exchangeShortName: String(r.exchangeShortName || ""),
+  }));
+}
+
+/** Convenience: just the tickers, same contract as polygonScreener. */
+export async function fmpScreenerSymbols(filters: FmpScreenerFilters): Promise<string[]> {
+  const rows = await fmpScreener(filters);
+  return rows.map((r) => r.symbol).filter(Boolean);
+}
+
+// ─── Adapter ────────────────────────────────────────────────────────────────
+export const fmpAdapter: DataProvider = {
+  name: "fmp",
+  capabilities: [
+    "analyst_ratings",
+    "earnings",
+    "insider_transactions",
+    // NOTE: "institutional_holdings" is NOT listed here on purpose.
+    // FMP's 13F endpoints require the Ultimate tier ($99–249/mo).
+    // Our current Premium plan returns HTTP 402 on every
+    // /institutional-ownership/* path. Capability is intentionally disabled
+    // so the provider registry falls through to another source.
+    // See getInstitutionalHoldings() below — it throws a clear error.
+    "financials",
+  ],
+
+  async getAnalystRatings(symbol: Symbol): Promise<AnalystRating> {
+    // Compose: price-target-consensus (targets) + grades-consensus (buy/hold/sell counts).
+    const [targets, grades] = await Promise.all([
+      fmpGet<any[]>(`/price-target-consensus`, { symbol }),
+      fmpGet<any[]>(`/grades-consensus`, { symbol }),
+    ]);
+
+    const t = Array.isArray(targets) && targets.length ? targets[0] : {};
+    const g = Array.isArray(grades) && grades.length ? grades[0] : {};
+
+    // Analyst count = sum of strongBuy + buy + hold + sell + strongSell
+    const analystCount =
+      num(g.strongBuy) + num(g.buy) + num(g.hold) + num(g.sell) + num(g.strongSell);
+
+    return {
+      symbol,
+      asOf: new Date(),
+      consensus: normalizeConsensus(g.consensus),
+      priceTargetLow: num(t.targetLow),
+      priceTargetAvg: num(t.targetConsensus ?? t.targetMedian),
+      priceTargetHigh: num(t.targetHigh),
+      analystCount,
+      source: "fmp",
+    };
+  },
+
+  async getEarnings(symbol: Symbol, limit = 8): Promise<EarningsEvent[]> {
+    // Per-symbol historical+upcoming earnings.
+    const rows = await fmpGet<any[]>(`/earnings`, { symbol, limit });
+    if (!Array.isArray(rows)) return [];
+
+    return rows.map((r) => {
+      const epsEst = r.epsEstimated != null ? num(r.epsEstimated) : undefined;
+      const epsAct = r.epsActual != null ? num(r.epsActual) : undefined;
+      const revEst = r.revenueEstimated != null ? num(r.revenueEstimated) : undefined;
+      const revAct = r.revenueActual != null ? num(r.revenueActual) : undefined;
+      let surprisePct: number | undefined = undefined;
+      if (epsEst != null && epsAct != null && epsEst !== 0) {
+        surprisePct = ((epsAct - epsEst) / Math.abs(epsEst)) * 100;
+      }
+      return {
+        symbol,
+        reportDate: toDate(r.date),
+        fiscalPeriod: r.fiscalDateEnding ? String(r.fiscalDateEnding) : "",
+        epsEstimate: epsEst,
+        epsActual: epsAct,
+        revenueEstimate: revEst,
+        revenueActual: revAct,
+        surprisePct,
+        source: "fmp",
+      };
+    });
+  },
+
+  async getInsiderTransactions(symbol: Symbol, limit = 50): Promise<InsiderTransaction[]> {
+    // Stable search endpoint. `page` defaults to 0.
+    const rows = await fmpGet<any[]>(`/insider-trading/search`, { symbol, page: 0, limit });
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r) => {
+      const shares = num(r.securitiesTransacted);
+      const price = num(r.price);
+      return {
+        symbol,
+        insiderName: String(r.reportingName || r.name || ""),
+        role: String(r.typeOfOwner || r.relationship || ""),
+        transactionDate: toDate(r.transactionDate || r.filingDate),
+        transactionType: normalizeInsiderType(r.transactionType),
+        shares,
+        pricePerShare: price,
+        totalValue: shares * price,
+        source: "fmp",
+      };
+    });
+  },
+
+  async getInstitutionalHoldings(_symbol: Symbol): Promise<InstitutionalHolding[]> {
+    // FMP's Form 13F endpoints are Ultimate-tier only. On our Premium plan
+    // every /institutional-ownership/* path returns HTTP 402 "Restricted
+    // Endpoint". Throw a clear error so the registry can route to another
+    // provider (or the caller can decide whether to retain the Yahoo path
+    // until we upgrade the plan).
+    throw new Error(
+      "FMP institutional holdings require the Ultimate tier — not available on Premium. " +
+      "Use a different provider or upgrade the FMP plan (Phase 6 consideration).",
+    );
+  },
+
+  async getFinancials(symbol: Symbol, limit = 8): Promise<FinancialSnapshot[]> {
+    // Stable paths: /income-statement?symbol=AAPL, /ratios-ttm?symbol=AAPL
+    const [income, ratiosTtm] = await Promise.all([
+      fmpGet<any[]>(`/income-statement`, { symbol, limit }),
+      fmpGet<any[]>(`/ratios-ttm`, { symbol }),
+    ]);
+    if (!Array.isArray(income)) return [];
+    const ratios = Array.isArray(ratiosTtm) && ratiosTtm.length ? ratiosTtm[0] : {};
+    return income.map((r, idx) => ({
+      symbol,
+      asOf: toDate(r.date),
+      revenue: num(r.revenue),
+      netIncome: num(r.netIncome),
+      eps: num(r.eps ?? r.epsdiluted),
+      // TTM ratios are a single snapshot — attach to the most recent period only
+      peRatio: idx === 0
+        ? num(ratios.priceToEarningsRatioTTM ?? ratios.peRatioTTM) || undefined
+        : undefined,
+      pbRatio: idx === 0
+        ? num(ratios.priceToBookRatioTTM) || undefined
+        : undefined,
+      debtToEquity: idx === 0
+        ? num(ratios.debtToEquityTTM ?? ratios.debtEquityRatioTTM) || undefined
+        : undefined,
+      roe: idx === 0
+        ? num(ratios.returnOnEquityTTM) || undefined
+        : undefined,
+      source: "fmp",
+    }));
+  },
+};
+
+/**
+ * Lightweight beta lookup from FMP's /profile endpoint.
+ *
+ * Returns the company's beta coefficient (vs. SPY by default in FMP).
+ * Returns null if FMP has no value, the call fails, or the symbol is
+ * unknown — caller should treat null as "no beta available" and render
+ * an N/A in the UI.
+ *
+ * Why this lives outside the providerFmp object: beta is needed by
+ * verdict / outlook scoring as a *fallback* when the primary quote
+ * pipeline (Polygon-shaped Yahoo facade) doesn't supply it. Polygon
+ * itself does not expose beta on any tier as of 2026-04, and the
+ * Yahoo defaultKeyStatistics.beta path was retired in the Phase 3.7
+ * migration. Pulling from FMP /profile here keeps the failure mode
+ * graceful (one extra HTTP call, cached upstream by fmpGet).
+ *
+ * Endpoint cost: 1 call to /profile per ticker. Comfortably inside the
+ * Premium plan's 750 req/min budget.
+ */
+export async function getFmpProfileBeta(symbol: string): Promise<number | null> {
+  try {
+    const rows = await fmpGet<any[]>(`/profile`, { symbol });
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const b = num(rows[0].beta);
+    return Number.isFinite(b) && b !== 0 ? b : null;
+  } catch (_e) {
+    // Fail silently — the verdict / outlook UI tolerates a null beta and
+    // shows "N/A" rather than crashing. Logging here would create a lot
+    // of noise for tickers without FMP coverage (delisted, micro-caps).
+    return null;
+  }
+}
