@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-03 (evening) — Cross-platform `npm run dev` (Windows fix)
+
+**Issue:** Setting up the project on a Windows laptop, `npm run dev`
+failed with `'NODE_ENV' is not recognized as an internal or external
+command`.
+
+**Root cause:** The `dev` and `start` scripts in package.json used
+Mac/Linux inline env-var syntax (`NODE_ENV=development tsx server/index.ts`).
+PowerShell doesn't parse that — it treats `NODE_ENV=development` as a
+command, which doesn't exist.
+
+**Fix:**
+- `package.json` — wrapped the `dev` and `start` scripts with `cross-env`,
+  the standard cross-platform env-var wrapper. No-op on Linux/Mac (passes
+  the var through to the wrapped command), so the prod deploy on
+  imt-uv-helpdesk behaves identically. Now `npm run dev` works on
+  Windows / Mac / Linux without any per-session `$env:` setup.
+- Added `cross-env@^7.0.3` to `devDependencies`. Run `npm install` once
+  after pulling to pick it up.
+
+Commit: `40e239e`. Rollback tag: `safe/2026-05-03-pkgxenv`.
+
+---
 ## 2026-05-03 (later) — EDGAR burst-detection fix + Akamai re-block
 
 Issue: Today's 5am ET institutional warmup completed in 14 seconds with 163 errors and 0 successful writes. Curl confirmed SEC IP block re-tripped. ~219 corrupt cache files showing 0 holders for valid tickers.
@@ -76,6 +99,305 @@ pattern as `yahoo-ownership-warmup.ts`) for resilience.
 - `server/polygon.ts`
 - `server/routes.ts`
 - `server/data/providers/fmp.adapter.ts`
+
+---
+
+## 2026-05-02 (evening) — Conviction Compass forward-tracker
+
+**Why:** Added the new Conviction Compass indicator earlier the same day
+(see entry below). Owner asked: "How can we backtest this?" Answer: only
+3 of 4 axes are historically reconstructable cheaply (smart money,
+technicals, fundamentals); the dealer-positioning axis needs historical
+options data we don't currently buy. So instead of a backward backtest,
+we ship a **forward paper-trader** that snapshots the live compass for a
+curated universe daily, then fills in 1d/5d/30d/90d returns as each
+window closes. Real performance data accumulates without paying for
+historical options data.
+
+**Implementation:**
+
+- **`shared/schema.ts`** — added two tables:
+  - `compass_snapshots` — denormalized daily reading per ticker
+    (verdict, axis scores, confluence, alignment, confidence) plus
+    `return_1d`/`5d`/`30d`/`90d` columns that start null and get filled
+    in. Full compass JSON also stored for audit. Indexes on
+    `(ticker, taken_date)`, `taken_at`, and `verdict`.
+  - `spy_baseline_returns` — same forward-return columns anchored on
+    each tracked date so the aggregator can show "ALL_ALIGNED_BULLISH
+    30d return: +X% vs SPY +Y% on the same dates."
+
+- **`server/conviction/tracker.ts`** (new) — exports
+  `snapshotConvictionForUniverse()` and `updateForwardReturns()`.
+  `TRACKED_UNIVERSE` is a hardcoded ~100-ticker S&P-100-ish list spanning
+  sectors with options coverage so all four axes can score. Snapshot
+  function is idempotent (skips tickers already snapshotted today).
+
+- **`server/conviction/backtest.ts`** (new) — pure SQL aggregations
+  grouped by verdict — count, avg per forward window, win rate at 30d.
+  Plus SPY baseline averaged over the same date set.
+
+- **`server/cron.ts`** — registered two jobs:
+  - `conviction-snapshot` at 21:30 UTC weekdays (5:30pm ET, 30 min after
+    close)
+  - `conviction-forward-returns` at 21:45 UTC weekdays (15 min later)
+  - `initCron()` signature extended to accept `yahooFetch` +
+    `getYahooOwnership` for the snapshot pipeline.
+
+- **`server/routes.ts`** — `GET /api/diag/conviction/backtest` returns
+  the per-verdict aggregates. Public via the existing `/api/diag/*`
+  auth bypass (read-only aggregates).
+
+- **`client/src/pages/conviction.tsx`** — added a `BacktestPanel`
+  below the radar. Per-verdict performance table + SPY baseline row.
+  Suppresses cells with N < 5 datapoints so we never show misleading
+  early numbers. Friendly "still collecting" empty state on day 1.
+
+**Timeline expectations:**
+- Day 0: empty-state panel
+- +1 day: 1d returns populate
+- +5 days: 5d returns populate; panel becomes meaningfully useful
+- +30 days: real backtest data per verdict including 30d win rate
+- +90 days: complete dataset, marketing-ready
+
+**Files touched:**
+- `shared/schema.ts`
+- `server/conviction/tracker.ts` (new)
+- `server/conviction/backtest.ts` (new)
+- `server/cron.ts`
+- `server/routes.ts`
+- `client/src/pages/conviction.tsx`
+
+Commit: `7d09039`. Rollback tag: `safe/2026-05-01-1745`.
+
+---
+
+## 2026-05-02 — Conviction Compass — new fused multi-stream indicator + page
+
+**Why:** Owner asked for a brand-new indicator with its own page. Audit
+of existing indicators showed StockOtter has access to four orthogonal
+signal categories that no popular retail tool combines today: smart
+money flow, dealer positioning, technical momentum, fundamental quality.
+Most "composite" indicators just stack TA components (MACD + RSI + BB)
+which is one category of signal pretending to be many. The novelty is
+fusing *independent* data streams — institutions can't manipulate
+gamma exposure AND analyst consensus AND your moving averages
+simultaneously, so when all four agree the signal is structurally much
+stronger than four correlated TA signals agreeing.
+
+**Backed by 2026 research:** retail traders using >5 indicators get
+*worse* returns than those using 2-3 (analysis paralysis). So the
+indicator must COMPRESS into one readable signal, not pile on another
+chart. The radar visualization makes "everything aligned" vs "internal
+contradiction" readable in one glance.
+
+**Backend:**
+
+- **`server/conviction/compass.ts`** (new) — pure compute function.
+  `computeConvictionCompass(inputs)` produces four axis scores
+  (-100..+100), a confluence score that penalizes divergence, an
+  alignment 0..1, a plain-language verdict
+  (`ALL_ALIGNED_BULLISH` / `MOSTLY_BULLISH` / `DIVERGENT` / etc.),
+  and confidence (HIGH/MODERATE/LOW based on data completeness).
+  Each axis fail-soft — missing data shrinks that axis's weight without
+  failing the rest.
+
+- **`server/conviction/pipeline.ts`** (new) — data orchestrator. Fetches
+  CompanySnapshot + `computeMMExposure()` (gamma/dex/walls from Polygon
+  Options) + 1y daily chart in parallel. Derives technicals (RSI(14),
+  MACD histogram, EMA(9/21/50), Bollinger %B) via the existing indicators
+  package. Mirrors the 8-factor verdict score from the snapshot.
+  Cached 5 min in-process.
+
+- **`server/routes.ts`** — `GET /api/conviction/:ticker` reads through
+  this. `?refresh=1` supported.
+
+**Frontend:**
+
+- **`client/src/pages/conviction.tsx`** (new) — Recharts radar with
+  two-polygon visualization (green for bullish magnitude per axis, red
+  for bearish magnitude). Plain-language verdict pill at top.
+  Bidirectional confluence gauge in side panel showing axis-alignment
+  percentage. Per-axis cards below with every input that contributed to
+  the score, signed contribution, direction icon. Educational HelpBlock
+  explains methodology.
+
+- **`client/src/App.tsx`** — added `/conviction` route.
+
+- **`client/src/components/AppLayout.tsx`** — added "Conviction Compass"
+  entry in the Company Research nav section between Institutions and
+  Long-Term Outlook (logical grouping — they all read the snapshot).
+
+**Follow-up fixes:**
+- `51d097e` — round displayed values to 2 decimals at the backend source
+  (defense in depth on top of frontend fmtNum).
+- `54dc13b` — axis-card row overflow fix: GEX dollar values were running
+  off the card. Compact K/M/B/T format in fmtNum + fixed widths on the
+  value/contribution cells + truncation on long labels.
+- `2f2ffbd` — drop QoQ from axis math when EDGAR is unavailable. The
+  60%-weighted Institutional QoQ flow component was contributing 0
+  during Yahoo fallback, diluting the Smart Money Flow score. Now drops
+  out of the weighted average entirely so insider data drives the axis
+  alone when QoQ isn't trustworthy.
+
+Commits: `db0b8c2`, `51d097e`, `54dc13b`, `2f2ffbd`.
+
+---
+
+## 2026-05-01 — Architectural rebuild: unified snapshot pipeline + EDGAR resilience
+
+Multi-day push to fix the long-running "follow the money" data quality
+problems. Owner explicitly asked for "no patches" — replace patterns,
+not symptoms. Roughly 20 commits across the day.
+
+### Phase 1 — Snapshot pipeline foundation (`0de1864`)
+
+**Why:** Three providers (Polygon, FMP, Yahoo, EDGAR), each silently
+failing in different ways, each plumbed into different code paths.
+Verdict route claimed it weights Institutional Flow at 25% but the
+underlying `computeScoring()` ignored institutional data entirely.
+Pages rendered blank when one provider failed because there was no
+fallback. No way to see *which* provider answered.
+
+**What:** New `server/snapshot/` directory — 12 files. `getCompanySnapshot()`
+orchestrator + per-field `FieldHealth<T>` provenance (source / attempts /
+latency / errors). Provider-fallback chains: quote (Polygon→FMP→Yahoo),
+chart (Polygon→FMP→Yahoo), institutional (EDGAR→Yahoo), insider (FMP,
+EDGAR slot reserved), analyst (FMP), earnings (FMP→Polygon),
+fundamentals (Polygon→FMP), profile (FMP→Polygon→EDGAR). Diagnostic
+route `/api/diag/snapshot/:ticker[?view=health|?refresh=1]`.
+
+**Critical:** additive only. No existing route touched in Phase 1.
+
+### Auth bypass for diagnostic endpoints (`9634ac7`)
+
+`/api/diag/*` exempted from `requireAuth` so scheduled verification
+agents and external monitoring can hit it without a session cookie.
+Diag endpoints expose nothing a logged-in user can't see; the
+ergonomics win.
+
+### Phase 2 cutover — institutional page (`8527739`, `ff19938`)
+
+`/api/institutional/:ticker` migrated to `getCompanySnapshot` +
+`projectInstitutional` (legacy-shape projector). Frontend unchanged.
+Picks up EDGAR→Yahoo fallback automatically. Also fixed:
+- EDGAR `isSummaryCorrupt()` extended from one corruption pattern to
+  three (the megacap empty-cache poison case where holders=0 but
+  sharesOutstanding>0).
+- `% Held` displayed as 972% instead of 9.72% (double *100 bug between
+  snapshot and frontend).
+- INSTITUTIONAL OWNERSHIP card showed 0.0% while the table showed
+  ~70% of float — now derives institutionPct from Yahoo
+  `majorHoldersBreakdown.institutionsPercentHeld` when EDGAR is empty.
+
+### Yahoo QoQ artifact handling (`01fee32`, `1ee452e`)
+
+Verified via direct EDGAR query: JPMorgan files 13Fs under multiple
+subsidiary CIKs (`0000019617` JPM Chase + `0000919185` JPM Investment
+Mgmt). When one subsidiary skips a quarter, Yahoo's name-matching
+shows fake -52% drops on every megacap (we observed identical -52%
+across AAPL/PLTR/MSFT — impossible as a real investment decision).
+
+Initial fix `01fee32` did two things: (1) Yahoo-fallback gate to
+suppress flow score when EDGAR was empty, (2) per-holder filter
+ignoring -50%+ drops on $1B+ positions. Owner correctly flagged the
+filter as data manipulation. `1ee452e` reverted the silent filter
+but kept the Yahoo-fallback gate (honest disclosure of uncertainty,
+not a hidden filter).
+
+### On-demand refresh (`057f6e4`, `e6d2023`, `8ac2da6`)
+
+`?refresh=1` on `/api/institutional/:ticker` clears EDGAR disk + in-process
+caches, bypasses the snapshot orchestrator cache, returns whatever is
+available immediately while EDGAR re-warms in background. Refresh
+button added to the institutional detail modal. Initial 60s countdown
+removed after testing — endpoint actually returns in 1-2s, owner
+correctly pointed out the countdown was bad UX.
+
+### Scanner cutover + slim version (`38c66d6`, `26dc23e`, `10d5ed4`)
+
+`/api/institutional-scan` migrated to snapshot pipeline. Pre-existing
+bug surfaced: cached scan response was returning bare array instead of
+the wrapper object frontend expected — fixed.
+
+Then realized 8-adapter snapshot per ticker × 150 tickers was timing
+out at nginx's 60s proxy limit (took 133s). Slimmed to:
+- `getInstitutionalScanSnapshot()` — only quote + ownership + insider
+  (3 adapters not 8, ~62% reduction in network work).
+- Default scan reduced 150 → 50 tickers.
+- Stale-while-revalidate cache so repeat scans are instant.
+
+### EDGAR fetch path resilience (`f630836`, `2f69577`, `64dc433`, `93a47dc`)
+
+Diagnostic endpoint `/api/diag/edgar/:ticker` for true cache-bypassing
+fetches.
+
+`2f69577` — three changes: stop caching empty results when CUSIP is
+missing (single FMP outage was poisoning cache for 12h in-process /
+3 days on disk); replace silent `.catch(() => {})` swallows in
+`getInstitutionalSummaryStaleOk` with logged errors; added
+`forceCloseEdgarCircuit()` + `/api/diag/edgar/health` + reset
+endpoints so circuit state is observable.
+
+`64dc433` — three more: EFTS pagination retry + skip-on-page-failure
+(was breaking out on first page error, leaving us with ~136 of ~5000
+filers); `KNOWN_MAJOR_FILER_CIKS` list of 19 verified megacap filers
+(Vanguard, BlackRock, State Street, etc.) fetched directly from SEC
+submissions API regardless of EFTS health; refuse to cache
+suspiciously-empty summaries (filerRefs.length < 200 + zero holders =
+likely partial-pagination failure, don't cache).
+
+`93a47dc` — root-cause fix for 429 storm. Three pieces:
+1. **Throttle race condition** in `edgar.client.ts` — old throttle let
+   N concurrent callers all read the same `lastRequestAt`, sleep the
+   same duration, wake up together, and burst together. Replaced with
+   a Promise chain that serializes — only one slot updates
+   `lastRequestAt` at a time. True 4 req/sec regardless of concurrency.
+2. **Disk cache for `company_tickers.json`** (7-day TTL) — the entry-
+   point lookup was getting 429-blocked on every restart. Now persists
+   across deploys.
+3. **FMP CIK fallback** in `tickerToCik()` — verified live for AAPL
+   (cik: '0000320193'). EDGAR pipeline keeps working through Akamai
+   outages.
+
+### Files touched across Phase 2 / EDGAR resilience
+
+- `server/snapshot/` — 12 new files: types, fallback, quote, chart,
+  institutional, insiders, insider-codes, analyst, earnings,
+  fundamentals, profile, index
+- `server/snapshot/projection-institutional.ts` — legacy-shape projector
+- `server/data/providers/edgar.client.ts` — throttle + circuit reset
+- `server/data/providers/edgar.adapter.ts` — corruption check, known
+  filers, suspicious-empty refusal, FMP CIK fallback, ticker-map disk
+  cache integration
+- `server/institutional-cache.ts` — `clearInstitutional()` + ticker-map
+  disk persistence functions
+- `server/routes.ts` — diagnostic endpoints + cutover of
+  `/api/institutional/:ticker` and `/api/institutional-scan`
+- `client/src/pages/institutional.tsx` — refresh button, layout fixes
+
+Many rollback tags were created across these commits. Most recent:
+`safe/2026-05-01-1709`.
+
+---
+
+## 2026-04-30 — Unified analysis pipeline + metals fix + institutional UI guards (`cc0c8ac`)
+
+Prior session work, included for completeness:
+- Extracted `computeAnalysisCore()` so `/api/analyze` and `/api/verdict`
+  both route through the same scoring path. Verdict had been hardcoding
+  `threeYear`/`fiveYear` to null, producing a ~0.15 score gap that
+  flipped borderline tickers. Bumped verdict cache key v3 → v4.
+- Replaced inline Wilder's RSI in scanner oscillator endpoint with
+  canonical `computeRSISeries` (was 1-bar lagged + capped at 99.01
+  vs 100).
+- Fixed metals fmpGet calls (gold/silver spot + 25y history): query
+  params were embedded in path, producing malformed URLs with two `?`
+  separators.
+- `?? []` defensive guards in `client/src/pages/institutional.tsx` to
+  stop the TypeError crash when API payload is partial.
+- README.md and docs/MASTER_PATHWAY.md — reframed Yahoo as
+  buffer/cache-refresh agent (not deprecated, replacement is SEC N-PORT
+  in Phase 7).
 
 ---
 
