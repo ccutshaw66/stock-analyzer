@@ -28,8 +28,6 @@ import {
   readInstitutionalFresh,
   readInstitutionalStale,
   writeInstitutional,
-  readTickerMapFresh,
-  writeTickerMap,
 } from "../../institutional-cache";
 
 // In-process cache (same pattern as fmp.adapter)
@@ -45,15 +43,6 @@ function setCached<T>(k: string, v: T, ttlMs: number) {
   cache.set(k, { value: v, expiresAt: Date.now() + ttlMs });
 }
 
-/** Drop every in-process cache entry for a ticker. Used by manual refresh
- *  endpoints so the next read goes all the way back to the network. */
-export function clearEdgarTickerCache(ticker: string): void {
-  const T = ticker.toUpperCase();
-  for (const key of Array.from(cache.keys())) {
-    if (key.includes(T)) cache.delete(key);
-  }
-}
-
 const TTL_TICKER_MAP = 24 * 60 * 60 * 1000;    // 24h
 const TTL_FILING_LIST = 24 * 60 * 60 * 1000;   // 24h (13Fs only update quarterly)
 const TTL_HOLDINGS = 12 * 60 * 60 * 1000;      // 12h per ticker
@@ -65,54 +54,26 @@ const TTL_HOLDINGS = 12 * 60 * 60 * 1000;      // 12h per ticker
 interface CompanyTicker { cik_str: number; ticker: string; title: string; }
 interface TickerMap { [ticker: string]: { cik: string; title: string } }
 
-let tickerMapPromise: Promise<TickerMap | null> | null = null;
-let lastTickerMapFailureAt = 0;
-const TICKER_MAP_FAILURE_BACKOFF_MS = 60 * 1000; // 60s — don't retry-storm SEC
+let tickerMapPromise: Promise<TickerMap> | null = null;
 
-export async function getTickerMap(): Promise<TickerMap | null> {
-  // 1. In-process cache (fast path)
+export async function getTickerMap(): Promise<TickerMap> {
   const cached = getCached<TickerMap>("ticker_map");
   if (cached) return cached;
-
-  // 2. In-flight dedupe — if another caller is mid-fetch, await the same promise
   if (tickerMapPromise) return tickerMapPromise;
 
-  // 3. Disk cache (survives restarts) — read fresh entries (within 7d TTL)
-  const disk = readTickerMapFresh();
-  if (disk) {
-    setCached("ticker_map", disk, TTL_TICKER_MAP);
-    return disk;
-  }
-
-  // 4. Recent failure backoff — if we just failed, don't retry-storm
-  if (Date.now() - lastTickerMapFailureAt < TICKER_MAP_FAILURE_BACKOFF_MS) {
-    return null;
-  }
-
-  // 5. Network fetch — single-flight via tickerMapPromise
   tickerMapPromise = (async () => {
-    try {
-      const raw = await edgarFetchJson<Record<string, CompanyTicker>>(
-        "https://www.sec.gov/files/company_tickers.json"
-      );
-      const map: TickerMap = {};
-      for (const row of Object.values(raw)) {
-        map[row.ticker.toUpperCase()] = {
-          cik: String(row.cik_str).padStart(10, "0"),
-          title: row.title,
-        };
-      }
-      setCached("ticker_map", map, TTL_TICKER_MAP);
-      writeTickerMap(map); // persist to disk for next deploy/restart
-      return map;
-    } catch (err) {
-      lastTickerMapFailureAt = Date.now();
-      // If disk has any entry (even past TTL), return that as last-resort
-      // fallback rather than failing entirely. Better stale CIKs than dead
-      // pipeline.
-      const stale = readTickerMapFresh();
-      return stale ?? null;
+    const raw = await edgarFetchJson<Record<string, CompanyTicker>>(
+      "https://www.sec.gov/files/company_tickers.json"
+    );
+    const map: TickerMap = {};
+    for (const row of Object.values(raw)) {
+      map[row.ticker.toUpperCase()] = {
+        cik: String(row.cik_str).padStart(10, "0"),
+        title: row.title,
+      };
     }
+    setCached("ticker_map", map, TTL_TICKER_MAP);
+    return map;
   })();
 
   try {
@@ -122,44 +83,9 @@ export async function getTickerMap(): Promise<TickerMap | null> {
   }
 }
 
-/**
- * Resolve a ticker to its CIK + company title.
- *
- * Provider chain:
- *   1. EDGAR ticker map (with in-process + 7-day disk cache)
- *   2. FMP /profile (already paid for; returns the `cik` field directly)
- *
- * The FMP fallback means a brief Akamai block on company_tickers.json
- * doesn't kill the entire EDGAR pipeline — we resolve the CIK from FMP
- * and continue. Once SEC unblocks us, the EDGAR map repopulates on its
- * own schedule.
- */
 export async function tickerToCik(ticker: string): Promise<{ cik: string; title: string } | null> {
-  const T = ticker.toUpperCase();
-
   const map = await getTickerMap();
-  if (map) {
-    const fromMap = map[T];
-    if (fromMap) return fromMap;
-  }
-
-  // FMP fallback — handles both "EDGAR map fetch failed entirely" and
-  // "EDGAR map is stale and missing a recent IPO" cases.
-  try {
-    const profile: any = await fmpGet(`/profile`, { symbol: T });
-    const row = Array.isArray(profile) ? profile[0] : profile;
-    const cik = row?.cik;
-    if (cik) {
-      return {
-        cik: String(cik).padStart(10, "0"),
-        title: row?.companyName || row?.symbol || T,
-      };
-    }
-  } catch {
-    // fall through
-  }
-
-  return null;
+  return map[ticker.toUpperCase()] ?? null;
 }
 
 // ------------------------------------------------------------
@@ -311,50 +237,18 @@ export async function listThirteenFFilingsInWindow(
   const pageSize = 100;
   const refs: FilingRef[] = [];
   const seenAccession = new Set<string>();
-  let pagesAttempted = 0;
-  let pagesSkipped = 0;
-  let consecutivePageFailures = 0;
-
-  // EFTS pagination is flaky — individual pages can fail (Akamai throttle,
-  // transient 5xx, connection reset) without anything being globally wrong.
-  // Previously a single failed page broke the whole loop, leaving us with a
-  // partial filer list (e.g. only the latest filers from page 0-1, missing
-  // every megabank that filed mid-window). Now: retry the failing page
-  // inline, then if still failing log + skip + continue. Bail only if many
-  // consecutive pages fail (whole endpoint is down).
-  const MAX_CONSECUTIVE_FAILURES = 5;
 
   for (let from = 0; from < maxResults; from += pageSize) {
-    pagesAttempted++;
     const url =
       `https://efts.sec.gov/LATEST/search-index?q=&forms=13F-HR` +
       `&dateRange=custom&startdt=${startStr}&enddt=${endStr}` +
       `&from=${from}`;
-    let data: EftsResponse | null = null;
-    let lastErr: any = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        data = await edgarFetchJson<EftsResponse>(url);
-        break;
-      } catch (err: any) {
-        lastErr = err;
-        if (attempt < 2) await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
-      }
+    let data: EftsResponse;
+    try {
+      data = await edgarFetchJson<EftsResponse>(url);
+    } catch {
+      break;
     }
-    if (!data) {
-      pagesSkipped++;
-      consecutivePageFailures++;
-      console.warn(
-        `[edgar] EFTS page from=${from} failed after retries: ${String(lastErr?.message || lastErr).substring(0, 120)} ` +
-        `(skipped, ${consecutivePageFailures} consecutive)`
-      );
-      if (consecutivePageFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.error(`[edgar] EFTS: ${MAX_CONSECUTIVE_FAILURES} consecutive page failures, aborting pagination`);
-        break;
-      }
-      continue;
-    }
-    consecutivePageFailures = 0;
     const hits = data?.hits?.hits ?? [];
     if (!hits.length) break;
     for (const h of hits) {
@@ -371,9 +265,6 @@ export async function listThirteenFFilingsInWindow(
       });
     }
     if (hits.length < pageSize) break;
-  }
-  if (pagesSkipped > 0) {
-    console.warn(`[edgar] EFTS pagination complete: ${pagesAttempted} attempted, ${pagesSkipped} skipped, ${refs.length} refs collected`);
   }
 
   const byCik = new Map<string, FilingRef>();
@@ -435,115 +326,9 @@ export async function getFilerAum(ref: FilingRef): Promise<number> {
 }
 
 /**
- * Curated list of CIKs for major 13F filers. EFTS pagination is unreliable
- * (one bad page can drop every filer beyond it), so we hard-anchor the most
- * important AUM filers here — verified live against data.sec.gov/submissions
- * 2026-05-01 — and merge them with whatever EFTS returns.
- *
- * If EFTS fails entirely, we still cover ~60-70% of institutional ownership
- * for any megacap because these names are the long tail of "big money."
- *
- * To extend: hit `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company={NAME}&type=13F-HR&output=atom`
- * and confirm the CIK has recent 13F-HR filings via the submissions endpoint.
- */
-export const KNOWN_MAJOR_FILER_CIKS: ReadonlyArray<string> = [
-  "0000102909", // Vanguard Group
-  "0001364742", // BlackRock Finance
-  "0000093751", // State Street Corp
-  "0000315066", // FMR LLC (Fidelity)
-  "0001214717", // Geode Capital Management
-  "0000019617", // JPMorgan Chase & Co
-  "0000080255", // T. Rowe Price Associates
-  "0000895421", // Morgan Stanley
-  "0000902219", // Wellington Management Group
-  "0001067983", // Berkshire Hathaway
-  "0000886982", // Goldman Sachs Group
-  "0000914208", // Invesco Ltd
-  "0000316709", // Charles Schwab Corp
-  "0001374170", // Norges Bank (Norway sovereign wealth)
-  "0000354204", // Dimensional Fund Advisors
-  "0001422849", // Capital World Investors
-  "0000073124", // Northern Trust Corp
-  "0001656456", // Appaloosa LP (Tepper)
-  "0001029160", // Soros Fund Management
-];
-
-interface SecSubmissions {
-  name?: string;
-  filings?: { recent?: { form?: string[]; accessionNumber?: string[]; filingDate?: string[]; }; };
-}
-
-/**
- * For a single CIK, fetch its most recent 13F-HR (or 13F-HR/A) filing from
- * the SEC submissions endpoint and convert into a FilingRef.
- * Returns null if no recent 13F-HR exists.
- */
-async function fetchLatestThirteenFForFiler(cik: string): Promise<FilingRef | null> {
-  const padded = cik.padStart(10, "0");
-  const url = `https://data.sec.gov/submissions/CIK${padded}.json`;
-  try {
-    const data = await edgarFetchJson<SecSubmissions>(url);
-    const recent = data?.filings?.recent;
-    if (!recent?.form?.length) return null;
-    const forms = recent.form ?? [];
-    const accs = recent.accessionNumber ?? [];
-    const dates = recent.filingDate ?? [];
-    for (let i = 0; i < forms.length; i++) {
-      const f = forms[i];
-      if (f === "13F-HR" || f === "13F-HR/A") {
-        const acc = accs[i];
-        if (!acc) continue;
-        return {
-          accession: acc,
-          accessionNoDashes: acc.replace(/-/g, ""),
-          cik: padded,
-          filerName: data?.name ?? "Unknown",
-          filedAt: dates[i] ?? "",
-          form: f,
-        };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Fetch the most recent 13F-HR filing for every CIK in KNOWN_MAJOR_FILER_CIKS.
- * Cached 24h. Resilient: any individual CIK that fails just gets skipped.
- */
-export async function getKnownMajorFilers(): Promise<FilingRef[]> {
-  const cacheKey = "known_major_filers";
-  const cached = getCached<FilingRef[]>(cacheKey);
-  if (cached) return cached;
-
-  const results: FilingRef[] = [];
-  // Conservative concurrency since these are independent CIK lookups against
-  // data.sec.gov which shares throttle with the rest of EDGAR.
-  const CONCURRENCY = 5;
-  for (let i = 0; i < KNOWN_MAJOR_FILER_CIKS.length; i += CONCURRENCY) {
-    const slice = KNOWN_MAJOR_FILER_CIKS.slice(i, i + CONCURRENCY);
-    const refs = await Promise.all(slice.map(c => fetchLatestThirteenFForFiler(c)));
-    for (const r of refs) if (r) results.push(r);
-  }
-  console.log(`[edgar] known-major-filers fetched: ${results.length}/${KNOWN_MAJOR_FILER_CIKS.length}`);
-  setCached(cacheKey, results, TTL_FILING_LIST);
-  return results;
-}
-
-/**
  * Rank recent 13F filers by AUM (tableValueTotal from primary_doc.xml).
  * Cached 24h at the module level — ticker-independent, so one cold fetch
  * per day serves every institutional lookup.
- *
- * Resilience strategy:
- *   1. Always seed with KNOWN_MAJOR_FILER_CIKS so megacap holders are
- *      covered even when EFTS pagination fails or returns only the latest
- *      tiny family-office filers.
- *   2. Augment with EFTS-discovered filers in the recent deadline window.
- *   3. Dedupe by CIK (keep the latest filing per filer).
- *   4. Rank everything by AUM, return top N.
  */
 export async function rankedTopFilers(topN = 500): Promise<FilingRef[]> {
   const cacheKey = `ranked_top_filers:${topN}`;
@@ -551,26 +336,8 @@ export async function rankedTopFilers(topN = 500): Promise<FilingRef[]> {
   if (cached) return cached;
 
   const { startStr, endStr } = recentDeadlineWindow(new Date());
-  // Run both sources in parallel; fail-soft on either.
-  const [eftsRefs, knownRefs] = await Promise.all([
-    listThirteenFFilingsInWindow(startStr, endStr, 8000).catch((e: any) => {
-      console.warn(`[edgar] EFTS filing-list call failed: ${String(e?.message || e).substring(0, 120)}`);
-      return [] as FilingRef[];
-    }),
-    getKnownMajorFilers().catch((e: any) => {
-      console.warn(`[edgar] known-major-filers fetch failed: ${String(e?.message || e).substring(0, 120)}`);
-      return [] as FilingRef[];
-    }),
-  ]);
-
-  // Dedupe by CIK; if both sources have the same filer, keep the latest filing
-  const byCik = new Map<string, FilingRef>();
-  for (const r of [...eftsRefs, ...knownRefs]) {
-    const existing = byCik.get(r.cik);
-    if (!existing || r.filedAt > existing.filedAt) byCik.set(r.cik, r);
-  }
-  const refs = Array.from(byCik.values());
-  console.log(`[edgar] ranking ${refs.length} filers by AUM (EFTS=${eftsRefs.length}, known=${knownRefs.length}, unique=${refs.length})...`);
+  const refs = await listThirteenFFilingsInWindow(startStr, endStr, 8000);
+  console.log(`[edgar] ranking ${refs.length} filers by AUM...`);
 
   // Fetch tableValueTotal in parallel batches of 10
   const CONCURRENCY = 10;
@@ -786,15 +553,22 @@ export async function getInstitutionalSummary(
   const targetCusip = basics.cusip?.replace(/\s+/g, "").toUpperCase();
   const sharesOut = basics.sharesOutstanding || 0;
 
-  // If no CUSIP, we cannot match filings. Previously we cached an empty
-  // result here, which meant a single transient FMP /profile failure (the
-  // CUSIP source) poisoned the cache for 12h in-process and 3 days on disk
-  // — every subsequent read served the empty result. Now we return null
-  // WITHOUT caching, so the next read after FMP recovers fetches fresh.
-  // Real CUSIP-less securities (rare) just retry harmlessly each call.
+  // If no CUSIP, we cannot match filings. Return empty but valid shape.
   if (!targetCusip) {
-    console.warn(`[edgar] ${ticker}: no CUSIP available (FMP /profile empty?). Skipping cache write so next read retries.`);
-    return null;
+    const empty: InstitutionalSummary = {
+      ticker: ticker.toUpperCase(),
+      cik: basics.cik,
+      companyName: basics.title,
+      sharesOutstanding: basics.sharesOutstanding,
+      sharesAsOf: basics.sharesAsOf,
+      institutionPct: 0,
+      institutionCount: 0,
+      topHolders: [],
+      asOf: getEndDate(),
+      source: "sec-edgar-13f",
+    };
+    setCached(cacheKey, empty, TTL_HOLDINGS);
+    return empty;
   }
 
   // Use the globally-cached top-AUM filer list. First cold call (once per day)
@@ -804,10 +578,18 @@ export async function getInstitutionalSummary(
   const startMs = Date.now();
   console.log(`[edgar] ${ticker} aggregating ${filerRefs.length} filers against CUSIP ${targetCusip}`);
 
-  // Parse information tables with bounded concurrency (8 parallel)
+  // Parse information tables sequentially (not parallel).
+  //
+  // Why CONCURRENCY=1: the edgar.client.ts rate limiter throttles individual
+  // requests to ~4 req/sec, but Promise.all() with N=8 was queueing up 8
+  // requests then releasing them as fast as the throttle could fire — which
+  // produced visible bursts that Akamai pattern-detected and blocked. Going
+  // single-file is slower per-ticker but keeps the actual request rate flat
+  // and well under the trip wire. The warmup cron tolerates the longer run
+  // time; users hitting cold-cache tickers get the existing "warming" UX.
   const byFiler = new Map<string, TopHolder>();
   let latest = "";
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 1;
   let processed = 0;
   let matched = 0;
 
@@ -863,33 +645,6 @@ export async function getInstitutionalSummary(
   const totalShares = allHolders.reduce((acc, h) => acc + h.shares, 0);
   const institutionPct = sharesOut > 0 ? Math.min(100, (totalShares / sharesOut) * 100) : 0;
 
-  // Refuse to cache suspiciously-empty results.
-  //
-  // We just verified upstream that EFTS pagination can fail partway through
-  // and leave us with a tiny filer list (e.g. 100 of the latest filers, all
-  // small family offices). Aggregating against that list produces zero
-  // matches for megacap tickers like AAPL — but it's not "no holders," it's
-  // "we didn't process the right filers." Persisting that result poisons
-  // the cache for 12 hours in-process and 3 days on disk.
-  //
-  // Heuristic: if we processed fewer than 200 filers AND found zero holders,
-  // do NOT cache. Return null so the caller falls through to the snapshot's
-  // Yahoo fallback, and the next read retries the warm fresh.
-  //
-  // 200 is well below any healthy 13F-HR window count (real windows return
-  // ~2000-5000+ filers). Real "no coverage" tickers exist (micro-caps,
-  // ADRs, recent IPOs) but they would still process the full filer list,
-  // so they hit the `topHolders.length === 0` case with a HIGH filerRefs
-  // count, which is genuinely a confirmed-empty result and we cache that.
-  const suspiciouslyIncomplete = filerRefs.length < 200 && topHolders.length === 0;
-  if (suspiciouslyIncomplete) {
-    console.warn(
-      `[edgar] ${ticker} produced empty result with only ${filerRefs.length} filers processed — ` +
-      `not caching (likely EFTS pagination failure). Next read will retry.`
-    );
-    return null;
-  }
-
   const summary: InstitutionalSummary = {
     ticker: ticker.toUpperCase(),
     cik: basics.cik,
@@ -902,6 +657,22 @@ export async function getInstitutionalSummary(
     asOf: latest || getEndDate(),
     source: "sec-edgar-13f",
   };
+
+  // Don't persist empty results. A 0-holder summary almost always means the
+  // EDGAR aggregation got blocked / rate-limited mid-run (not that the
+  // ticker genuinely has no institutional ownership) — caching the empty
+  // shape would mask the underlying failure for the full TTL and prevent
+  // the next warmup from retrying. We still return the empty summary so
+  // the caller can fall through to its own degraded-state behavior, but
+  // the disk + memory caches stay clean.
+  if (allHolders.length === 0) {
+    console.warn(
+      `[edgar] ${ticker}: aggregation produced 0 holders; skipping cache write ` +
+      `(likely upstream block / rate-limit, will retry on next request)`
+    );
+    return summary;
+  }
+
   setCached(cacheKey, summary, TTL_HOLDINGS);
   writeInstitutional(ticker, summary); // Phase 3.8: persist so restarts warm-start
   return summary;
@@ -919,30 +690,13 @@ export async function getInstitutionalSummary(
  */
 const pendingWarms = new Set<string>();
 
-// Treat a cached summary as corrupt in three patterns:
-//   1. Holders > 0 but 0% ownership — old sharesOutstanding=null bug.
-//   2. Zero holders for a company with sharesOutstanding > 0 — empty-cache
-//      poisoning (CUSIP lookup or 13F search transiently failed and the
-//      empty result got persisted as if it were valid). AAPL/MSFT/PLTR
-//      have thousands of institutional holders; an empty list for them
-//      is impossible, not "no coverage." Forcing a refresh here is the
-//      ONLY way poisoned caches recover without manual disk-cache deletion.
-//   3. Holders > 0 but every holder has zero shares — partial parse failure.
+// Treat a cached summary as corrupt when we have holders but 0% ownership —
+// that's the signature of the old sharesOutstanding=null bug.
 function isSummaryCorrupt(s: any): boolean {
   if (!s) return false;
   const holders = s?.topHolders?.length || 0;
   const pct = Number(s?.institutionPct || 0);
-  const sharesOut = Number(s?.sharesOutstanding || 0);
-
-  if (holders > 0 && pct === 0) return true;
-  if (holders === 0 && sharesOut > 0) return true;
-  if (holders > 0) {
-    const totalShares = (s?.topHolders ?? []).reduce(
-      (a: number, h: any) => a + (Number(h?.shares) || 0), 0,
-    );
-    if (totalShares === 0) return true;
-  }
-  return false;
+  return holders > 0 && pct === 0;
 }
 
 export async function getInstitutionalSummaryStaleOk(
@@ -956,16 +710,7 @@ export async function getInstitutionalSummaryStaleOk(
     if (!pendingWarms.has(ticker)) {
       pendingWarms.add(ticker);
       getInstitutionalSummary(ticker, topN)
-        .catch((err: any) => {
-          // Surface warm-path failures so we can see when EDGAR is blocked,
-          // FMP CUSIP is failing, or the parser hits an unrecoverable issue.
-          // Previously this was silently swallowed, leaving the cache poisoned
-          // forever with no diagnostic.
-          console.error(
-            `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
-            err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
-          );
-        })
+        .catch(() => {})
         .finally(() => pendingWarms.delete(ticker));
     }
     return null;
@@ -976,12 +721,7 @@ export async function getInstitutionalSummaryStaleOk(
     if (!pendingWarms.has(ticker)) {
       pendingWarms.add(ticker);
       getInstitutionalSummary(ticker, topN)
-        .catch((err: any) => {
-          console.error(
-            `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
-            err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
-          );
-        })
+        .catch(() => {/* silent */})
         .finally(() => pendingWarms.delete(ticker));
     }
     return stale;
@@ -990,12 +730,7 @@ export async function getInstitutionalSummaryStaleOk(
   if (!pendingWarms.has(ticker)) {
     pendingWarms.add(ticker);
     getInstitutionalSummary(ticker, topN)
-      .catch((err: any) => {
-        console.error(
-          `[edgar] background warm failed for ${ticker}: ${String(err?.message || err).substring(0, 200)}`,
-          err?.isEdgarBlock ? "(EDGAR circuit breaker active)" : ""
-        );
-      })
+      .catch(() => {/* silent */})
       .finally(() => pendingWarms.delete(ticker));
   }
   return null;
