@@ -8,7 +8,20 @@ up the project later has the context to keep moving.
 For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
+---
+## 2026-05-03 (later) — EDGAR burst-detection fix + Akamai re-block
 
+Issue: Today's 5am ET institutional warmup completed in 14 seconds with 163 errors and 0 successful writes. Curl confirmed SEC IP block re-tripped. ~219 corrupt cache files showing 0 holders for valid tickers.
+
+Root cause: `aggregateFilers()` in edgar.adapter.ts was using Promise.all() with CONCURRENCY=8. The client-level rate limiter throttles individual requests, but parallel queueing produced visible bursts to Akamai. Cumulatively this re-tripped the auto-block we resolved on April 29.
+
+Secondary: empty (0-holder) aggregation results were being written to cache as if valid, masking the failure for the full TTL.
+
+Fix:
+- server/data/providers/edgar.adapter.ts — CONCURRENCY lowered from 8 to 1
+- Added empty-result guard before cache write
+
+Operational: deleted all 219 corrupt cache files; sent follow-up to webmaster@sec.gov; waiting on unblock before re-warming.
 ---
 
 ## 2026-05-03 — Verdict snapshot card: Avg Volume + Beta restored
