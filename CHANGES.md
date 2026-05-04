@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Market Pulse: Yahoo fallback for VIX term structure
+
+Owner: a "data not available" placeholder is dumb. VIX9D and VIX3M
+don't move fast enough to cause provider blocks; pull them from Yahoo
+when FMP doesn't have them.
+
+`server/data/providers/market-pulse.adapter.ts`:
+  - Added `yahooLatestClose(symbol)` helper hitting Yahoo's chart
+    endpoint (`/v8/finance/chart`) with a browser User-Agent. Returns
+    the meta.regularMarketPrice scalar.
+  - `getVolatility()` now does FMP first, falls back to Yahoo for any
+    of `^VIX`, `^VIX9D`, `^VIX3M` that came back null.
+  - Cron-only path — the architectural "no Yahoo on the request path"
+    rule still holds because the route serves the disk-cached snapshot.
+
+`client/src/pages/market-pulse.tsx`:
+  - Reverted the wordy "data not available" copy back to a simple "—"
+    placeholder for the rare case both FMP and Yahoo are dark.
+
+---
 ## 2026-05-04 (dev branch) — Market Pulse v0.1 polish
 
 Three follow-ups after first hands-on test:

@@ -124,17 +124,45 @@ async function fmpQuotePrice(symbol: string): Promise<number | null> {
   }
 }
 
+/** Yahoo chart endpoint, latest regular-market price. Used as a fallback
+ *  for tickers FMP/Polygon don't carry on our tier — notably the VIX9D
+ *  and VIX3M cash indices. Cron-only path, not on user requests. */
+async function yahooLatestClose(symbol: string): Promise<number | null> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+      },
+    });
+    if (!res.ok) return null;
+    const json: any = await res.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    return num(meta?.regularMarketPrice);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Group 1: Volatility ──────────────────────────────────────────────────
 
 export async function getVolatility(): Promise<VolatilityMetrics> {
-  // VIX, VIX9D, VIX3M live on FMP via /quote with the ^VIX-family tickers.
-  // Polygon Stocks Starter doesn't include cash indices.
-  const [vix, vix9d, vix3m, vixHistory] = await Promise.all([
+  // Provider chain: FMP /quote → Yahoo /chart for the cash-index tickers.
+  // Polygon Stocks Starter doesn't include cash indices at all. FMP's
+  // /quote covers ^VIX reliably but is hit-or-miss on ^VIX9D / ^VIX3M
+  // depending on the trading session and tier; Yahoo's chart endpoint
+  // covers all three. Cron-only path so the Yahoo call is fine.
+  let [vix, vix9d, vix3m, vixHistory] = await Promise.all([
     fmpQuotePrice("^VIX"),
     fmpQuotePrice("^VIX9D"),
     fmpQuotePrice("^VIX3M"),
     fmpHistoricalCloses("^VIX", 25),
   ]);
+
+  if (vix === null)   vix   = await yahooLatestClose("^VIX");
+  if (vix9d === null) vix9d = await yahooLatestClose("^VIX9D");
+  if (vix3m === null) vix3m = await yahooLatestClose("^VIX3M");
 
   const vixPercentile20d = vix !== null && vixHistory.length > 0
     ? rankPercentile(vix, vixHistory.slice(-20))

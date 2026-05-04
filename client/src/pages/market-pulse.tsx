@@ -228,17 +228,11 @@ export default function MarketPulse() {
             value={dash(v.vix, 2)}
             sub={v.vixPercentile20d !== null ? `${v.vixPercentile20d.toFixed(0)}th %ile (20d)` : "—"}
           />
-          {v.vixTermRatio !== null ? (
-            <MetricBlock
-              label="VIX Term"
-              value={v.vixTermRatio < 1 ? "Contango" : "Backwardation"}
-              sub={`VIX9D / VIX3M = ${v.vixTermRatio.toFixed(2)}`}
-            />
-          ) : (
-            <div className="text-[11px] text-muted-foreground italic">
-              VIX9D/VIX3M term-structure data not available from current providers — score still computed from VIX level + percentile.
-            </div>
-          )}
+          <MetricBlock
+            label="VIX Term"
+            value={v.vixTermRatio !== null ? (v.vixTermRatio < 1 ? "Contango" : "Backwardation") : "—"}
+            sub={v.vixTermRatio !== null ? `VIX9D / VIX3M = ${v.vixTermRatio.toFixed(2)}` : "—"}
+          />
         </div>
 
         {/* Breadth */}
