@@ -4293,34 +4293,25 @@ export async function registerRoutes(
 
       const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
 
-      // Resolve universe
+      // Hardcoded universe of large-cap, liquid tickers spanning sectors.
+      // Replaces the previous "filter by warm institutional cache" approach
+      // which collapsed to ~1 ticker on fresh databases (only tickers that
+      // had been manually warmed had cache files). The snapshot pipeline's
+      // EDGAR → Yahoo fallback handles tickers without an EDGAR cache, so
+      // pre-filtering on cache state was redundant and brittle.
+      const DEFAULT_SCAN_UNIVERSE: string[] = [
+        "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","AVGO","ORCL","ADBE",
+        "CRM","AMD","INTC","CSCO","QCOM","TXN","IBM","MU","AMAT","LRCX",
+        "JPM","BAC","WFC","GS","MS","C","BLK","V","MA","BRK.B",
+        "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","DHR",
+        "WMT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX",
+        "PG","KO","PEP","XOM","CVX","CAT","BA","GE","HON",
+      ];
       let tickers: string[];
       if (customTickers && customTickers.length) {
-        // User supplied a list — scan exactly what they asked for, capped
-        tickers = customTickers.slice(0, 150);
+        tickers = customTickers.slice(0, 50);
       } else {
-        // Default scan: only tickers that already have warm EDGAR cache.
-        // This guarantees every ticker we scan returns data fast (no cold path).
-        const WARM_UNIVERSE_TTL = 6 * 60 * 60 * 1000;
-        const warmKey = "institutional:warm-universe";
-        let warm: string[] | null = getCached(warmKey);
-        if (!warm || refresh) {
-          // Candidate pool: Polygon 500M+ universe — filter to those with warm cache
-          const universeCacheKey = "polygon:universe:500m";
-          let candidates: string[] = getCached(universeCacheKey) || [];
-          if (candidates.length === 0) {
-            candidates = await getPolygonUniverse({ minMarketCap: 500_000_000 });
-            setCache(universeCacheKey, candidates, 24 * 60 * 60 * 1000);
-          }
-          warm = candidates.filter(t => {
-            const fresh = readInstitutionalFresh(t);
-            if (fresh) return true;
-            const stale = readInstitutionalStale(t);
-            return !!stale;
-          });
-          setCache(warmKey, warm, WARM_UNIVERSE_TTL);
-        }
-        tickers = warm.slice(0, 150);
+        tickers = DEFAULT_SCAN_UNIVERSE.slice(0, 50);
       }
 
       // Aggregated result cache (6h)
