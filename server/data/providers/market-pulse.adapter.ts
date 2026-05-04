@@ -126,21 +126,35 @@ async function fmpQuotePrice(symbol: string): Promise<number | null> {
 
 /** Yahoo chart endpoint, latest regular-market price. Used as a fallback
  *  for tickers FMP/Polygon don't carry on our tier — notably the VIX9D
- *  and VIX3M cash indices. Cron-only path, not on user requests. */
+ *  and VIX3M cash indices. Cron-only path, not on user requests.
+ *  Logs failures so cron diagnostics show exactly which step broke. */
 async function yahooLatestClose(symbol: string): Promise<number | null> {
+  // Yahoo accepts both raw and encoded `^`; raw is more reliable across
+  // some intermediate proxies / ISPs that mangle %5E. Use raw.
+  const rawSymbol = symbol.startsWith("^") ? symbol : encodeURIComponent(symbol);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${rawSymbol}?range=5d&interval=1d`;
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(`[market-pulse] Yahoo ${symbol} HTTP ${res.status}: ${body.substring(0, 160)}`);
+      return null;
+    }
     const json: any = await res.json();
     const meta = json?.chart?.result?.[0]?.meta;
-    return num(meta?.regularMarketPrice);
-  } catch {
+    const price = num(meta?.regularMarketPrice);
+    if (price === null) {
+      console.warn(`[market-pulse] Yahoo ${symbol} parsed but no regularMarketPrice: ${JSON.stringify(json).substring(0, 240)}`);
+    }
+    return price;
+  } catch (err: any) {
+    console.warn(`[market-pulse] Yahoo ${symbol} fetch threw: ${String(err?.message || err).substring(0, 200)}`);
     return null;
   }
 }
