@@ -65,11 +65,6 @@ export const accountSettings = pgTable("account_settings", {
   commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
   maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
   totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
-  // Brokerage cash balance — manually entered to match the user's actual
-  // brokerage account (Schwab / Fidelity / etc). Combined with open
-  // position market value to produce the "Total Portfolio" figure that
-  // matches what they see on their broker's app.
-  cashBalance: doublePrecision("cash_balance").default(0),
 });
 
 export const accountTransactions = pgTable("account_transactions", {

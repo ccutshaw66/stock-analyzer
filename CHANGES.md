@@ -9,7 +9,49 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
-## 2026-05-03 (dev branch) — Brokerage cash balance + Total Portfolio card
+## 2026-05-03 (dev branch, v2) — Trade Tracker portfolio model: derived cash + correct Account Value
+
+**Why the redesign:** First version (v1, see entry below) asked the user
+to manually enter a "Brokerage Cash Balance" and showed both an "Account
+Value" AND a "Total Portfolio" card. Owner correctly pointed out:
+1. User shouldn't enter cash directly — Starting Account Value already
+   IS your starting cash; opening positions should debit it automatically.
+2. Two separate "Total Portfolio" and "Account Value" cards is confusing
+   duplication — they should be the same number.
+3. The math wasn't adding up because the existing Account Value formula
+   didn't include unrealized P/L from open positions.
+
+**New model (matches how a brokerage account actually works):**
+- Starting Account Value = your initial cash deposit.
+- Open positions DEBIT cash by their cost basis (allocation).
+- Closed trades CREDIT cash with realized P/L.
+- Deposits/withdrawals adjust cash directly.
+- Cash Available = starting + realized P/L + transactions − allocated.
+- Account Value = cash available + open position market value.
+  (Equivalent to: starting + realized P/L + transactions + unrealized P/L.
+  This is what should match Schwab.)
+
+**Fix:**
+- `shared/schema.ts` — removed the `cashBalance` column added in v1.
+  No longer manually entered.
+- `server/routes.ts` — account-summary route rewritten to compute
+  `cashAvailable` and `accountValue` correctly (now includes unrealized
+  P/L). Returns `cashAvailable`, `openPositionMarketValue`, `accountValue`.
+  Removes `cashBalance` and `totalPortfolioValue` fields.
+- `client/src/pages/trade-tracker.tsx` — Settings drawer no longer has
+  the Brokerage Cash input (Starting Account Value relabeled to clarify
+  it's the starting cash). Top row of cards is now: Account Value (one,
+  prominent) | Cash Available | Open Positions. Bottom row drops the
+  duplicate Account Value card; remaining: Total P/L | Open P/L | Win
+  Rate | Open Trades | Allocated.
+
+**Migration:** local Postgres has the old `cash_balance` column from
+v1's db:push. After pulling, `npm run db:push` may prompt about
+dropping the column. Drop it (or leave it; harmless). Production
+isn't affected — v1 was rolled back from main before merging.
+
+---
+## 2026-05-03 (dev branch) — Brokerage cash balance + Total Portfolio card (v1, superseded)
 
 **Why:** Owner wants the Trade Tracker portfolio figures to match what
 he sees in Schwab. The existing "Account Value" is a derived equity-

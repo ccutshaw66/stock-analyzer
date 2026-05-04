@@ -4928,9 +4928,18 @@ export async function registerRoutes(
       const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
-      // Account value
+      // Cash + account value:
+      //   Starting Account Value = initial cash.
+      //   Cash debits when positions open (allocation), credits when they
+      //     close (close price + realized P/L), tracks deposits/withdrawals.
+      //   Account Value = cash + current market value of open positions.
+      //
+      // Equivalent reformulation we use here (less arithmetic, same result):
+      //   cashAvailable  = starting + realizedPL + transactions − openAllocated
+      //   accountValue   = starting + realizedPL + transactions + unrealizedPL
+      // where unrealizedPL is the openPL computed below for stocks (options
+      // assumed at allocation cost since we don't have live premiums).
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
-      const accountValue = settings.startingAccountValue + totalProfit + txTotal;
 
       // Open P/L (stocks only — we have stock price for both open and current)
       // Options are excluded: currentPrice is the STOCK price, not the option premium,
@@ -4947,15 +4956,10 @@ export async function registerRoutes(
         return s + pl - (t.commIn || 0);
       }, 0);
 
-      // Allocated $
+      // Allocated $ (cost basis of open positions — what's tied up)
       const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
-      const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
 
-      // Open position market value — combined with cashBalance to produce
-      // a "Total Portfolio" figure that matches what the user sees on
-      // their broker's app.
-      // - Stocks: currentPrice × shares (live price × position size)
-      // - Options: allocation (best proxy without live option premiums)
+      // Open position MARKET VALUE (live for stocks, allocation proxy for options)
       const openPositionMarketValue = openTrades.reduce((s, t) => {
         if (t.tradeCategory === "Stock" && t.currentPrice) {
           return s + (t.currentPrice * t.contractsShares);
@@ -4966,8 +4970,14 @@ export async function registerRoutes(
         return s;
       }, 0);
 
-      const cashBalance = (settings as any).cashBalance ?? 0;
-      const totalPortfolioValue = cashBalance + openPositionMarketValue;
+      // Cash available = starting + realized P/L + transactions − money tied
+      // up in open positions. This is what's actually free in the account.
+      const cashAvailable = settings.startingAccountValue + totalProfit + txTotal - allocated;
+
+      // Account Value = cash + open position market value. Should match Schwab.
+      const accountValue = cashAvailable + openPositionMarketValue;
+
+      const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
 
       // Equity curve data points
       const equityCurve: { date: string; value: number }[] = [];
@@ -4997,9 +5007,8 @@ export async function registerRoutes(
         totalWins,
         winRate: closedTrades.length > 0 ? totalWins / closedTrades.length : 0,
         accountValue,
-        cashBalance,
+        cashAvailable,
         openPositionMarketValue,
-        totalPortfolioValue,
         openPL,
         allocated,
         allocatedPct,

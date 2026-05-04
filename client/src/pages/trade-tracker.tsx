@@ -70,7 +70,7 @@ interface Trade {
 interface Summary {
   totalTrades: number; openTrades: number; totalProfit: number;
   totalWins: number; winRate: number; accountValue: number; openPL: number;
-  cashBalance?: number; openPositionMarketValue?: number; totalPortfolioValue?: number;
+  cashAvailable?: number; openPositionMarketValue?: number;
   allocated: number; allocatedPct: number;
   byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }>;
   equityCurve: { date: string; value: number }[];
@@ -80,7 +80,6 @@ interface Summary {
 interface AccountSettings {
   id: number; startingAccountValue: number; commPerSharesTrade: number;
   commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
-  cashBalance?: number;
 }
 
 type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
@@ -745,8 +744,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
-            ["startingAccountValue", "Starting Account Value ($)"],
-            ["cashBalance", "Brokerage Cash Balance ($) — set this to match Schwab"],
+            ["startingAccountValue", "Starting Account Value ($) — set this to your total starting cash"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
@@ -927,15 +925,14 @@ export default function TradeTracker() {
       {/* Summary Cards */}
       {summary && (
         <>
-          {/* Top row — broker-matching figures (cash + positions = total) */}
+          {/* Top row — account snapshot (matches what the broker shows) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <SC label="Total Portfolio" value={formatCurrency(summary.totalPortfolioValue ?? 0)} icon={<DollarSign className="h-4 w-4" />} color="text-primary" />
-            <SC label="Brokerage Cash" value={formatCurrency(summary.cashBalance ?? 0)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
+            <SC label="Account Value" value={formatCurrency(summary.accountValue)} icon={<DollarSign className="h-4 w-4" />} color="text-primary" />
+            <SC label="Cash Available" value={formatCurrency(summary.cashAvailable ?? 0)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
             <SC label="Open Positions" value={formatCurrency(summary.openPositionMarketValue ?? 0)} icon={<BarChart3 className="h-4 w-4" />} color="text-foreground" />
           </div>
           {/* Bottom row — performance + activity figures */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <SC label="Account Value" value={formatCurrency(summary.accountValue)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"} />
             <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
             <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
