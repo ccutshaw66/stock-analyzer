@@ -732,7 +732,7 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
 
 // ─── Settings Panel ───────────────────────────────────────────────────────────
 
-function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClose: () => void }) {
+function SettingsPanel({ settings, summaryAccountValue, onClose }: { settings: AccountSettings; summaryAccountValue?: number; onClose: () => void }) {
   const [vals, setVals] = useState(settings);
   const saveMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("PATCH", "/api/account/settings", data); return res.json(); },
@@ -748,11 +748,9 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
-            ["startingAccountValue", "Starting Account Value ($) — set this to your total starting cash"],
+            ["startingAccountValue", "Beginning Cash ($) — your current cash in the broker (update when it changes)"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
-            ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
-            ["totalAllocatedLimit", "Total Allocated Limit (decimal)"],
           ] as const).map(([key, label]) => (
             <div key={key}>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
@@ -762,32 +760,23 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
             </div>
           ))}
 
-          {/* Allocation Rule (per-position risk reminder, not used in math) */}
+          {/* Proposed Allocation Limit (per-position risk reminder, percent of portfolio) */}
           <div className="border-t border-card-border pt-3 mt-3">
-            <div className="text-xs font-semibold text-foreground mb-2">Allocation Rule per Position</div>
+            <div className="text-xs font-semibold text-foreground mb-2">Proposed Allocation Limit</div>
             <div className="text-[11px] text-muted-foreground mb-2">
-              A reference limit. Future indicator will flag positions that exceed it.
+              Maximum % of total portfolio you want to risk in any single position.
+              Future indicator will flag positions that exceed it.
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Mode</label>
-                <select
-                  value={vals.allocationRuleMode ?? "dollar"}
-                  onChange={e => setVals(v => ({ ...v, allocationRuleMode: e.target.value }))}
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
-                >
-                  <option value="dollar">Dollar amount</option>
-                  <option value="percent">Percent of portfolio</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  {vals.allocationRuleMode === "percent" ? "Max % per position" : "Max $ per position"}
-                </label>
-                <input type="number" step="0.01" value={vals.allocationRuleValue ?? ""}
-                  onChange={e => setVals(v => ({ ...v, allocationRuleValue: parseFloat(e.target.value) || 0 }))}
-                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
-              </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Max % per position</label>
+              <input type="number" step="0.1" value={vals.allocationRuleValue ?? ""}
+                onChange={e => setVals(v => ({ ...v, allocationRuleValue: parseFloat(e.target.value) || 0, allocationRuleMode: "percent" }))}
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
+              {summaryAccountValue !== undefined && summaryAccountValue > 0 && vals.allocationRuleValue && (
+                <div className="mt-2 px-3 py-2 bg-muted/30 rounded-md text-xs text-muted-foreground">
+                  = <span className="text-foreground font-semibold tabular-nums">{formatCurrency(summaryAccountValue * (Number(vals.allocationRuleValue) / 100))}</span> based on current Account Value of <span className="tabular-nums">{formatCurrency(summaryAccountValue)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -971,7 +960,7 @@ export default function TradeTracker() {
             <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
             <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
             <SC label="Open Trades" value={String(summary.openTrades)} icon={<BarChart3 className="h-4 w-4" />} color="text-primary" />
-            <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-red-400" : "text-foreground"} />
+            <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
           </div>
         </>
       )}
@@ -1235,7 +1224,7 @@ export default function TradeTracker() {
 
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
       {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
-      {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
+      {showSettings && settings && <SettingsPanel settings={settings} summaryAccountValue={summary?.accountValue} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

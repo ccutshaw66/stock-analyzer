@@ -4929,18 +4929,18 @@ export async function registerRoutes(
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
       // Cash + account value (owner-defined model):
-      //   Starting Account Value is treated as a CURRENT cash snapshot the
-      //   user updates to match their broker (not a historical baseline).
-      //   Cash = Starting Account Value − cost basis of open positions.
-      //   Account Value = Cash + open position market value.
-      //                 = Starting + (marketValue − costBasis)
-      //                 = Starting + unrealized P/L
+      //   Starting Account Value = "Beginning Cash" — the cash portion of
+      //   the broker account at the moment the user is looking at it. User
+      //   maintains it: when broker cash changes (trades, deposits), they
+      //   update the setting. We do NOT auto-debit cash for opens because
+      //   pre-loaded existing positions would double-count.
       //
-      // Realized P/L from closed trades and recorded deposits/withdrawals
-      // are NOT included here — the user is expected to bake them into the
-      // Starting Account Value setting when their broker balance changes.
-      // We still compute totalProfit + txTotal above for the P/L cards
-      // and equity curve, but they don't affect Cash or Account Value.
+      //   Cash Available = Beginning Cash (passes through)
+      //   Open Positions = sum of current market values
+      //   Account Value  = Cash + Open Positions = should match broker total
+      //
+      // Realized P/L and transactions stay computed for the P/L cards and
+      // equity curve but don't affect Cash or Account Value.
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
 
       // Open P/L (stocks only — we have stock price for both open and current)
@@ -4979,9 +4979,9 @@ export async function registerRoutes(
         return s;
       }, 0);
 
-      // Cash available = starting account value − cost of open positions.
-      // (Owner's model: starting value is the current snapshot, not historical.)
-      const cashAvailable = settings.startingAccountValue - openPositionCostBasis;
+      // Cash available = Beginning Cash (the user-entered cash setting).
+      // No automatic debit/credit on opens/closes — user maintains it.
+      const cashAvailable = settings.startingAccountValue;
 
       // Account Value = cash + open position market value. Should match Schwab.
       const accountValue = cashAvailable + openPositionMarketValue;

@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch, late) — Beginning Cash + Proposed Allocation Limit settings cleanup
+
+**Cash model finalized:**
+- Setting renamed "Starting Account Value" → "Beginning Cash" — the cash
+  portion of the broker account at the moment the user enters it.
+- Cash Available = Beginning Cash (no auto-debit from open positions).
+  User maintains it: when broker cash changes (new trades, deposits,
+  closes), they update the setting.
+- Account Value = Cash + Open Positions Market Value = matches broker total.
+- Reasoning: auto-debit would double-count when the user pre-loads
+  existing positions into Stock Otter (those positions were already paid
+  for before the user started tracking).
+
+**Settings cleanup:**
+- Removed the old `Max Allocation per Trade ($)` and `Total Allocated
+  Limit (decimal)` inputs from the Settings drawer. They were redundant
+  with the new allocation rule.
+- New "Proposed Allocation Limit" section is now percent-only (no
+  Dollar/Percent dropdown). Single % input.
+- Live calculated dollar value shown directly below the input:
+  `= $X.XX based on current Account Value of $YYY`. Updates as the user
+  types or as Account Value changes.
+- `allocationRuleMode` always set to "percent" when the user edits.
+- "Allocated" summary card no longer color-thresholds against the removed
+  `totalAllocatedLimit`. Neutral color always.
+
+Files: `server/routes.ts`, `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-04 (dev branch) — Remove Total column + simplify cash math
 
 **Why:** Owner clarified the cash model and asked to drop the running-total
