@@ -4412,6 +4412,35 @@ export async function registerRoutes(
   // Reads from the disk cache populated by the market-pulse-intraday cron
   // (every 5 min during market hours) and the market-pulse-breadth cron
   // (once daily). No live API calls in the request path — instant read.
+  // Diag: read raw cached snapshot (no auth, no error wrapping). Useful
+  // for pasting into a debug session when something looks wrong on the
+  // /market-pulse page.
+  app.get("/api/diag/market-pulse", async (_req, res) => {
+    try {
+      const { readMarketPulseSnapshot } = await import("./market-pulse-cache");
+      const snap = readMarketPulseSnapshot();
+      res.json({ cached: !!snap, snapshot: snap });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed", stack: error?.stack });
+    }
+  });
+
+  // Diag: force the intraday Market Pulse cron handler to run NOW. Returns
+  // when the snapshot has been re-written. Useful when you don't want to
+  // wait for the next */5 cron tick or restart the server. The breadth
+  // walk only re-runs if the cached breadth is missing/empty.
+  app.get("/api/diag/market-pulse/refresh", async (_req, res) => {
+    try {
+      const { warmIntradaySnapshot } = await import("./market-pulse-warmup");
+      const t0 = Date.now();
+      const result = await warmIntradaySnapshot();
+      const ms = Date.now() - t0;
+      res.json({ ok: true, durationMs: ms, ...result });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed", stack: error?.stack });
+    }
+  });
+
   app.get("/api/market-pulse", async (_req, res) => {
     try {
       const { readMarketPulseSnapshot } = await import("./market-pulse-cache");
