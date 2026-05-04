@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Institutional scan: hardcoded universe instead of cache-state filter
+
+**Issue:** Owner's laptop scan returned only AAPL after extended testing.
+Root cause: previous scan filtered the Polygon 500M+ universe down to
+"tickers with a warm or stale local institutional cache file." On a
+fresh local database, only the tickers the owner had manually warmed
+(typically just AAPL from earlier debugging) had cache files, so the
+scan collapsed to one ticker.
+
+**Fix:** replaced the cache-state filter with a hardcoded ~50-ticker
+megacap universe spanning tech / financials / healthcare / consumer /
+industrials / energy. Same list pattern used elsewhere in the app
+(conviction tracker). The snapshot pipeline's EDGAR → Yahoo fallback
+handles tickers without a warm EDGAR cache, so pre-filtering on cache
+state was redundant and brittle.
+
+This is a dev-laptop / fresh-DB resilience fix — production behavior
+is the same on a populated DB, but no longer depends on cache state.
+
+`server/routes.ts` only.
+
+---
 ## 2026-05-04 (dev branch) — Market Pulse is the home page
 
 Owner: Market Pulse should be what loads when a user opens the site.
