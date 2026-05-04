@@ -132,7 +132,10 @@ function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
   openMap.forEach((lots, key) => {
     lots.sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
     const totalQty = lots.reduce((s, l) => s + l.contractsShares, 0);
-    const weighted = lots.reduce((s, l) => s + l.openPrice * l.contractsShares, 0);
+    // Weighted average uses Math.abs because openPrice is stored signed
+    // (negative = debit / money out) for the internal profit math, but
+    // here we want the per-share entry PRICE — always positive.
+    const weighted = lots.reduce((s, l) => s + Math.abs(l.openPrice) * l.contractsShares, 0);
     const avgOpenPrice = totalQty > 0 ? weighted / totalQty : 0;
     const totalCommIn = lots.reduce((s, l) => s + (l.commIn || 0), 0);
     const totalAllocation = lots.reduce((s, l) => s + (l.allocation || 0), 0);
@@ -1079,9 +1082,9 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
                       <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${g.avgOpenPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {g.avgOpenPrice > 0 ? "+" : ""}{g.avgOpenPrice.toFixed(2)}
-                        {!isSingleLot && <span className="block text-[9px] opacity-60">avg</span>}
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                        ${g.avgOpenPrice.toFixed(2)}
+                        {!isSingleLot && <span className="block text-[9px] opacity-60 text-muted-foreground">avg</span>}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">{g.currentPrice ? `$${g.currentPrice.toFixed(2)}` : "—"}</td>
@@ -1136,7 +1139,7 @@ export default function TradeTracker() {
                           <td className="py-1.5 px-3"><span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.pilotOrAdd === "Pilot" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>{t.pilotOrAdd === "Pilot" ? "P" : "A"}</span></td>
                           <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares}</td>
                           <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400/80" : "text-red-400/80"}`}>{t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums font-mono text-muted-foreground">${Math.abs(t.openPrice).toFixed(2)}</td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3"></td>
                           <td className={`py-1.5 px-3 text-right tabular-nums text-[11px] ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-[9px] ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
@@ -1176,11 +1179,11 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
                       <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                        ${Math.abs(t.openPrice).toFixed(2)}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
+                        {t.closePrice !== null ? `$${Math.abs(t.closePrice).toFixed(2)}` : "—"}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
                         {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}

@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Display fix: per-share entry prices show as positive
+
+**Why:** Owner reported position numbers looked off on SoFi and ORCL.
+Verified the *math* is correct (each lot's Open P/L computes correctly,
+the aggregated sum matches), but the *display* was misleading: avg open
+price showed as `-180.82` for an ORCL long position, individual lot
+prices showed `-182.38` and `-173.03` in red. That's because `openPrice`
+is stored signed (negative = debit / cash-out) for the internal profit
+math, and the display was passing it through raw.
+
+**Fix:**
+- `client/src/pages/trade-tracker.tsx` — three render sites:
+  - Aggregate row's "Avg Open Price" cell now shows `$X.XX` (positive,
+    neutral color). The internal `avgOpenPrice` calc also uses
+    `Math.abs(openPrice)` in the weighted sum so the average never goes
+    negative even with mixed signed conventions across lots.
+  - Individual lot row's open-price cell shows `$X.XX` instead of
+    signed `-XX.XX` in red.
+  - Closed-trade rows' open + close price cells both use `Math.abs` so
+    long positions display positive entry prices.
+
+The signed `openPrice` convention stays in the data layer — the profit
+math (`computeStockPL`, `computeOptionPL`, `computeTradeProfit`) all
+relies on it. Only the display changed.
+
+---
 ## 2026-05-04 (dev branch) — Cost basis from openPrice × shares + allocation rule setting
 
 **Why:** v2 used `trade.allocation` to compute cash debits, but allocation
