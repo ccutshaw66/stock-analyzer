@@ -127,10 +127,9 @@ async function fmpQuotePrice(symbol: string): Promise<number | null> {
 /** Yahoo chart endpoint, latest regular-market price. Used as a fallback
  *  for tickers FMP/Polygon don't carry on our tier — notably the VIX9D
  *  and VIX3M cash indices. Cron-only path, not on user requests.
- *  Logs failures so cron diagnostics show exactly which step broke. */
+ *  Verbose logging so cron diagnostics show every step. */
 async function yahooLatestClose(symbol: string): Promise<number | null> {
-  // Yahoo accepts both raw and encoded `^`; raw is more reliable across
-  // some intermediate proxies / ISPs that mangle %5E. Use raw.
+  console.log(`[mp-yahoo] CALLED ${symbol}`);
   const rawSymbol = symbol.startsWith("^") ? symbol : encodeURIComponent(symbol);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${rawSymbol}?range=5d&interval=1d`;
   try {
@@ -141,20 +140,19 @@ async function yahooLatestClose(symbol: string): Promise<number | null> {
         "Accept-Language": "en-US,en;q=0.9",
       },
     });
+    console.log(`[mp-yahoo] ${symbol} HTTP ${res.status}`);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.warn(`[market-pulse] Yahoo ${symbol} HTTP ${res.status}: ${body.substring(0, 160)}`);
+      console.log(`[mp-yahoo] ${symbol} body: ${body.substring(0, 160)}`);
       return null;
     }
     const json: any = await res.json();
     const meta = json?.chart?.result?.[0]?.meta;
     const price = num(meta?.regularMarketPrice);
-    if (price === null) {
-      console.warn(`[market-pulse] Yahoo ${symbol} parsed but no regularMarketPrice: ${JSON.stringify(json).substring(0, 240)}`);
-    }
+    console.log(`[mp-yahoo] ${symbol} price=${price} (meta.regularMarketPrice=${meta?.regularMarketPrice})`);
     return price;
   } catch (err: any) {
-    console.warn(`[market-pulse] Yahoo ${symbol} fetch threw: ${String(err?.message || err).substring(0, 200)}`);
+    console.log(`[mp-yahoo] ${symbol} threw: ${String(err?.message || err).substring(0, 200)}`);
     return null;
   }
 }
@@ -173,10 +171,12 @@ export async function getVolatility(): Promise<VolatilityMetrics> {
     fmpQuotePrice("^VIX3M"),
     fmpHistoricalCloses("^VIX", 25),
   ]);
+  console.log(`[mp-vol] FMP returned vix=${vix} vix9d=${vix9d} vix3m=${vix3m} histLen=${vixHistory.length}`);
 
   if (vix === null)   vix   = await yahooLatestClose("^VIX");
   if (vix9d === null) vix9d = await yahooLatestClose("^VIX9D");
   if (vix3m === null) vix3m = await yahooLatestClose("^VIX3M");
+  console.log(`[mp-vol] AFTER yahoo: vix=${vix} vix9d=${vix9d} vix3m=${vix3m}`);
 
   const vixPercentile20d = vix !== null && vixHistory.length > 0
     ? rankPercentile(vix, vixHistory.slice(-20))
