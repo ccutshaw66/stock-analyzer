@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Market Pulse: clean up debug logging
+
+Pulled the verbose `[mp-yahoo]` and `[mp-vol]` console.log lines that
+were added while debugging why VIX9D / VIX3M weren't populating. Yahoo
+fallback is confirmed working (page now shows "Contango" with the
+ratio). Reverted to a minimal log-on-failure-only pattern: only a
+single `console.warn` when Yahoo returns non-2xx or throws, so the
+dev terminal stays quiet during normal operation but we still have
+visibility if it breaks later.
+
+`server/data/providers/market-pulse.adapter.ts` only.
+
+---
 ## 2026-05-04 (dev branch) — Market Pulse: Yahoo fallback for VIX term structure
 
 Owner: a "data not available" placeholder is dumb. VIX9D and VIX3M
