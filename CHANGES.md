@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Market Pulse is the home page
+
+Owner: Market Pulse should be what loads when a user opens the site.
+
+`client/src/App.tsx` — root route `/` now maps to `MarketPulsePage`
+instead of `TradeTracker`. Trade Tracker still reachable at `/tracker`
+(its existing route is unchanged) and via the sidebar nav. The
+`/market-pulse` route stays as an alias so any existing bookmarks
+don't break.
+
+---
 ## 2026-05-04 (dev branch) — Market Pulse: clean up debug logging
 
 Pulled the verbose `[mp-yahoo]` and `[mp-vol]` console.log lines that

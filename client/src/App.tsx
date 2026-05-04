@@ -92,7 +92,7 @@ function AuthenticatedApp() {
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
-            <Route path="/" component={TradeTracker} />
+            <Route path="/" component={MarketPulsePage} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
             <Route path="/scanner" component={Scanner} />
