@@ -65,6 +65,15 @@ export const accountSettings = pgTable("account_settings", {
   commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
   maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
   totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
+  // Allocation-rule reminder per position. The user picks ONE of:
+  //   "dollar"  → never put more than allocationRuleValue dollars in one position
+  //   "percent" → never put more than allocationRuleValue percent of total
+  //               portfolio in one position (e.g., 5 means 5%)
+  // This is a REFERENCE limit, not used in cash/P&L math. A future commit
+  // will surface a red/green dot per trade based on whether each trade's
+  // cost basis exceeds the rule.
+  allocationRuleMode: text("allocation_rule_mode").default("dollar"),
+  allocationRuleValue: doublePrecision("allocation_rule_value").default(250),
 });
 
 export const accountTransactions = pgTable("account_transactions", {

@@ -4956,27 +4956,38 @@ export async function registerRoutes(
         return s + pl - (t.commIn || 0);
       }, 0);
 
-      // Allocated $ (cost basis of open positions — what's tied up)
-      const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
+      // Cost basis of open positions — what was paid to open them. Derived
+      // from openPrice × shares (× 100 for options). The trade.allocation
+      // column is a USER REFERENCE for risk-reminder, not the actual cost,
+      // and is often null/0, so we don't use it in cash math.
+      const openPositionCostBasis = openTrades.reduce((s, t) => {
+        const multiplier = t.tradeCategory === "Option" ? 100 : 1;
+        return s + (Math.abs(t.openPrice) * t.contractsShares * multiplier);
+      }, 0);
 
-      // Open position MARKET VALUE (live for stocks, allocation proxy for options)
+      // Open position MARKET VALUE (live for stocks; for options we don't have
+      // live premiums, so we use cost basis as a break-even proxy)
       const openPositionMarketValue = openTrades.reduce((s, t) => {
         if (t.tradeCategory === "Stock" && t.currentPrice) {
           return s + (t.currentPrice * t.contractsShares);
         }
         if (t.tradeCategory === "Option") {
-          return s + (t.allocation || 0);
+          return s + (Math.abs(t.openPrice) * t.contractsShares * 100);
         }
         return s;
       }, 0);
 
       // Cash available = starting + realized P/L + transactions − money tied
-      // up in open positions. This is what's actually free in the account.
-      const cashAvailable = settings.startingAccountValue + totalProfit + txTotal - allocated;
+      // up in open positions (their cost basis). This is what's free.
+      const cashAvailable = settings.startingAccountValue + totalProfit + txTotal - openPositionCostBasis;
 
       // Account Value = cash + open position market value. Should match Schwab.
       const accountValue = cashAvailable + openPositionMarketValue;
 
+      // Allocated — kept as a user-reference number from the trade.allocation
+      // column (NOT used in cash math). Future: per-trade red/green dot if
+      // the trade's cost basis exceeds the user's allocation rule.
+      const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
       const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
 
       // Equity curve data points

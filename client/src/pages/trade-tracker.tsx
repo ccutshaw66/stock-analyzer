@@ -80,6 +80,7 @@ interface Summary {
 interface AccountSettings {
   id: number; startingAccountValue: number; commPerSharesTrade: number;
   commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
+  allocationRuleMode?: "dollar" | "percent"; allocationRuleValue?: number;
 }
 
 type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
@@ -757,6 +758,36 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           ))}
+
+          {/* Allocation Rule (per-position risk reminder, not used in math) */}
+          <div className="border-t border-card-border pt-3 mt-3">
+            <div className="text-xs font-semibold text-foreground mb-2">Allocation Rule per Position</div>
+            <div className="text-[11px] text-muted-foreground mb-2">
+              A reference limit. Future indicator will flag positions that exceed it.
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Mode</label>
+                <select
+                  value={vals.allocationRuleMode ?? "dollar"}
+                  onChange={e => setVals(v => ({ ...v, allocationRuleMode: e.target.value }))}
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
+                >
+                  <option value="dollar">Dollar amount</option>
+                  <option value="percent">Percent of portfolio</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  {vals.allocationRuleMode === "percent" ? "Max % per position" : "Max $ per position"}
+                </label>
+                <input type="number" step="0.01" value={vals.allocationRuleValue ?? ""}
+                  onChange={e => setVals(v => ({ ...v, allocationRuleValue: parseFloat(e.target.value) || 0 }))}
+                  className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
+              </div>
+            </div>
+          </div>
+
           <button onClick={() => saveMutation.mutate(vals)} disabled={saveMutation.isPending}
             className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">
             {saveMutation.isPending ? "Saving..." : "Save Settings"}

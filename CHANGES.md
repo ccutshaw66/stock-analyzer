@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Cost basis from openPrice × shares + allocation rule setting
+
+**Why:** v2 used `trade.allocation` to compute cash debits, but allocation
+is sparsely populated (often null/0 on existing trades). Owner clarified:
+allocation is a USER REFERENCE for risk-reminder, not the actual cost
+basis. Real cost basis is `openPrice × shares` (× 100 for options).
+
+**Fix:**
+- `server/routes.ts` — cash math now derives `openPositionCostBasis`
+  from `openPrice × shares` (× 100 for options). Reliable regardless of
+  whether the user filled in the allocation field. The `allocated` /
+  `allocatedPct` fields stay as user-reference numbers (still used for
+  the existing Allocated card and color thresholds), but no longer
+  affect cash or account value math.
+- `shared/schema.ts` — added `allocationRuleMode` ("dollar" | "percent")
+  and `allocationRuleValue` (number) to `account_settings`. The user
+  picks ONE rule: "no more than $X per position" OR "no more than X%
+  of total portfolio per position." Future commit will surface a
+  red/green dot on each trade based on whether its cost basis exceeds
+  the rule.
+- `client/src/pages/trade-tracker.tsx` — Settings drawer gets a new
+  "Allocation Rule per Position" section with a Mode dropdown
+  (Dollar / Percent) and a single value field that relabels based on mode.
+
+Future: per-trade red/green indicator if the trade's cost basis
+exceeds the allocation rule. Schema and settings UI are ready; just
+need the per-trade UI wiring.
+
+---
 ## 2026-05-03 (dev branch, v2) — Trade Tracker portfolio model: derived cash + correct Account Value
 
 **Why the redesign:** First version (v1, see entry below) asked the user
