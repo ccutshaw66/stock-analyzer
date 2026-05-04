@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch, latest) — Trade Tracker auto-refreshes prices
+
+**Why:** Owner noticed Open Positions / Cash / Account Value were lagging
+the broker. Cause: `currentPrice` on each trade was only being updated by
+the hourly server-side cron, so during active market hours the displayed
+numbers could be up to an hour stale.
+
+**Fix:** trade-tracker page now auto-refreshes prices on mount and every
+5 minutes while open. Brings the freshness floor from 60min → 5min.
+Existing manual "Refresh P/L" button still works for instant pulls;
+small "Updated HH:MM" timestamp added next to it so the user can see
+how fresh the numbers are.
+
+The hourly cron is unchanged — it's still the safety net when no one is
+viewing the page.
+
+`client/src/pages/trade-tracker.tsx` only.
+
+---
 ## 2026-05-04 (dev branch, late) — Cash auto-tracks new trades (asOf-stamped)
 
 **Problem:** Previous version required user to manually update Beginning

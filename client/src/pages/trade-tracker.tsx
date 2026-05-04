@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from "react";
+import { useState, useMemo, memo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
@@ -827,8 +827,25 @@ export default function TradeTracker() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => { const r = await apiRequest("POST", "/api/trades/refresh-prices"); return r.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      setLastRefreshAt(new Date());
+    },
   });
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
+
+  // Auto-refresh prices on page mount + every 5 minutes while the page is
+  // open. Keeps Cash / Open Positions / Account Value close to live without
+  // forcing the user to click Refresh P/L every time. The hourly server-side
+  // cron is the lower-bound floor; this brings it down to ~5min while
+  // actively viewing.
+  useEffect(() => {
+    refreshMutation.mutate();
+    const interval = setInterval(() => refreshMutation.mutate(), 5 * 60 * 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
@@ -900,10 +917,17 @@ export default function TradeTracker() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-lg font-bold text-foreground">Trade Tracker</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
+              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
+            </button>
+            {lastRefreshAt && !refreshMutation.isPending && (
+              <span className="text-[10px] text-muted-foreground">
+                Updated {lastRefreshAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
           <button onClick={() => setShowSettings(true)}
             className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
             <Settings className="h-3.5 w-3.5" />Settings
