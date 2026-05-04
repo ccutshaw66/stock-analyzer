@@ -9,6 +9,41 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-03 (dev branch) — Brokerage cash balance + Total Portfolio card
+
+**Why:** Owner wants the Trade Tracker portfolio figures to match what
+he sees in Schwab. The existing "Account Value" is a derived equity-
+curve number (`startingAccountValue + closed P/L + manual transactions`)
+which doesn't include actual brokerage cash or live open-position market
+value, so it always drifts from the broker's number.
+
+**Status:** shipped to `dev` branch only. Not yet on production. Owner
+tests locally, then merges dev → main when ready (which also requires
+running `npm run db:push` on the prod server before the merge — schema
+adds a column).
+
+**Fix:**
+- `shared/schema.ts` — added `cashBalance` field to `account_settings`
+  (default 0, manually set by user).
+- `server/routes.ts` (account summary route) — computes
+  `openPositionMarketValue` from open trades (stocks: currentPrice ×
+  shares; options: allocation as a proxy since we don't have live
+  premiums) and returns three new fields: `cashBalance`,
+  `openPositionMarketValue`, `totalPortfolioValue` (= cash + positions).
+- `client/src/pages/trade-tracker.tsx` — Settings drawer gets a
+  "Brokerage Cash Balance" input. Top of the page gets a new 3-card row
+  showing Total Portfolio / Brokerage Cash / Open Positions side-by-side.
+  Existing 6-card row stays intact underneath. Defensive `?? 0` on the
+  three new fields so the page renders even if the response shape is
+  partial (e.g. during a deploy where the server is updated but the DB
+  migration hasn't run yet).
+
+Note: this is the second attempt. First attempt pushed straight to main
+without the dev-branch workflow and broke prod for ~10 min because the
+schema change wasn't applied to the production database. Now lives on
+dev only, with a manual ship gate.
+
+---
 ## 2026-05-03 (late evening) — Cross-platform `httpServer.listen` (Windows fix)
 
 **Issue:** After fixing the `dev` script earlier (cross-env), `npm run dev`
