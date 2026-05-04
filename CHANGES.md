@@ -9,6 +9,56 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Market Pulse v0.1
+
+New page at `/market-pulse` answering "is the market environment hostile,
+neutral, or favorable for trading right now?" — measured from
+price/volume only, no narrative. One-sentence verdict at the top, three
+groups of numbers below, four index cards underneath.
+
+Three signal groups feed a 0-100 regime score that maps to a tier
+(EUPHORIC / RISK_ON / NEUTRAL / DEFENSIVE / RISK_OFF):
+- **Volatility:** VIX level, 20-day percentile, VIX9D/VIX3M term structure.
+- **Breadth:** % of S&P 500 above 50/200d MA, 52-week new highs vs lows.
+- **Risk Appetite:** HYG/LQD ratio (junk vs IG) + SPY/TLT (stocks vs
+  long bonds), each with 5-day direction.
+
+Plus 4 index cards (SPY/QQQ/IWM/DIA) showing price, change %, and
+above 50/200d MA flags.
+
+**Architecture (per spec):**
+- Polygon = primary for ETF prices and S&P 500 daily bars (already paid for).
+- FMP = VIX-family quotes (`^VIX`, `^VIX9D`, `^VIX3M`) and S&P 500
+  constituent list — Polygon Stocks Starter doesn't include cash indices.
+- Yahoo NOT on the request path.
+- All heavy work runs in crons; the route reads a disk-cached snapshot
+  for instant page loads (target: <200ms).
+
+**Crons:**
+- `*/5 13-21 * * 1-5` — intraday refresh of volatility / risk-appetite /
+  indices (cheap; preserves the cached breadth). isMarketHours guard
+  inside the handler.
+- `35 14 * * 1-5` — daily S&P 500 breadth walk (~500 tickers, batched 8
+  parallel; fits in ~3 min).
+
+**Files added:**
+- `server/data/providers/market-pulse.adapter.ts` — pure compute (data
+  fetching + regime scoring; 436 lines)
+- `server/market-pulse-cache.ts` — disk read/write helpers
+- `server/market-pulse-warmup.ts` — cron handlers
+- `client/src/pages/market-pulse.tsx` — the page
+
+**Files modified:**
+- `server/cron.ts` — registered both crons
+- `server/routes.ts` — added `GET /api/market-pulse`
+- `client/src/App.tsx` — added route
+- `client/src/components/AppLayout.tsx` — added "Market Pulse" entry to
+  the Investment Opportunities nav section
+
+The cron has `runOnStart: true` so the cache populates immediately on
+deploy/restart, no manual warm-up step.
+
+---
 ## 2026-05-04 (dev branch, latest) — Trade Tracker auto-refreshes prices
 
 **Why:** Owner noticed Open Positions / Cash / Account Value were lagging

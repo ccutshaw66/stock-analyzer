@@ -18,6 +18,7 @@ import Help from "@/pages/help";
 import Institutional from "@/pages/institutional";
 import Verdict from "@/pages/verdict";
 import ConvictionPage from "@/pages/conviction";
+import MarketPulsePage from "@/pages/market-pulse";
 import PayoffDiagram from "@/pages/payoff-diagram";
 import KellyCalculator from "@/pages/kelly-calculator";
 import GreeksCalculator from "@/pages/greeks-calculator";
@@ -99,6 +100,7 @@ function AuthenticatedApp() {
             <Route path="/calculator" component={OptionsCalculator} />
             <Route path="/verdict" component={Verdict} />
             <Route path="/conviction" component={ConvictionPage} />
+            <Route path="/market-pulse" component={MarketPulsePage} />
             <Route path="/institutional" component={Institutional} />
             <Route path="/help" component={Help} />
             <Route path="/payoff" component={PayoffDiagram} />

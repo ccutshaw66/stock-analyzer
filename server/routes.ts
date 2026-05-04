@@ -4408,6 +4408,25 @@ export async function registerRoutes(
     { symbol: "XLC", name: "Communication Services", fmpSector: "Communication Services" },
   ];
 
+  // ─── Market Pulse ────────────────────────────────────────────────────────
+  // Reads from the disk cache populated by the market-pulse-intraday cron
+  // (every 5 min during market hours) and the market-pulse-breadth cron
+  // (once daily). No live API calls in the request path — instant read.
+  app.get("/api/market-pulse", async (_req, res) => {
+    try {
+      const { readMarketPulseSnapshot } = await import("./market-pulse-cache");
+      const snap = readMarketPulseSnapshot();
+      if (!snap) {
+        return res.status(503).json({
+          error: "Market Pulse cache is empty. The intraday cron will populate it shortly; try again in ~30 seconds.",
+        });
+      }
+      res.json(snap);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to read market pulse" });
+    }
+  });
+
   app.get("/api/sectors", async (_req, res) => {
     try {
       await ensureReady();

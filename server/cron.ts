@@ -8,6 +8,7 @@ import { warmInstitutionalCache } from "./institutional-warmup";
 import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
 import type { GetCompanySnapshotOpts } from "./snapshot";
+import { warmIntradaySnapshot, warmDailyBreadth } from "./market-pulse-warmup";
 
 // Yahoo Finance helpers will be passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
@@ -183,6 +184,59 @@ export function initCron(
     },
   });
   console.log("[CRON] Conviction forward-returns updater registered (45 21 * * 1-5)");
+
+  // ─── Market Pulse v0.1 ───────────────────────────────────────────────────
+  //
+  // Two crons feed the disk cache that /api/market-pulse reads from. Result:
+  // a user hitting the page never triggers live API calls — they just read
+  // the cached snapshot file.
+  //
+  // Intraday: every 5 min during the union of EDT and EST market hours
+  // (13:00-21:59 UTC, weekdays). The handler internally checks isMarketHours
+  // and skips off-hours; the cron just fires the trigger. ~3 FMP calls and
+  // ~10 Polygon calls per fire.
+  registerJob({
+    id: "market-pulse-intraday",
+    description: "Market Pulse intraday snapshot refresh (volatility + indices + ratios)",
+    cron: "*/5 13-21 * * 1-5",
+    timeoutMs: 5 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: true, // populate cache immediately so the page works after restart
+    handler: async () => {
+      if (!isMarketHours()) return;
+      try {
+        const res = await warmIntradaySnapshot();
+        // Trim noisy logging — only report on tier transitions, not every 5min
+        if (res.ok) {
+          // (could log tier here but it's noisy; rely on /api/market-pulse for state)
+        }
+      } catch (e: any) {
+        console.error(`[CRON] market-pulse-intraday failed: ${String(e?.message || e).substring(0, 200)}`);
+      }
+    },
+  });
+  console.log("[CRON] Market Pulse intraday registered (*/5 13-21 * * 1-5)");
+
+  // Daily breadth: once per day, ~5 min after EDT open / ~65 min after EST
+  // open (acceptable drift for a daily metric). The S&P 500 walk takes
+  // ~2-3 minutes at our 4 req/sec rate limit; a 10-min timeout is generous.
+  registerJob({
+    id: "market-pulse-breadth",
+    description: "Market Pulse daily S&P 500 breadth walk (% above 50/200d MA, new H/L)",
+    cron: "35 14 * * 1-5",
+    timeoutMs: 10 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      try {
+        const res = await warmDailyBreadth();
+        console.log(`[CRON] market-pulse-breadth: walked ${res.universeSize ?? 0} tickers`);
+      } catch (e: any) {
+        console.error(`[CRON] market-pulse-breadth failed: ${String(e?.message || e).substring(0, 200)}`);
+      }
+    },
+  });
+  console.log("[CRON] Market Pulse breadth registered (35 14 * * 1-5)");
 }
 
 function isMarketHours(): boolean {

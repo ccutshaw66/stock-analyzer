@@ -536,6 +536,7 @@ function Sidebar({
     {
       label: "Investment Opportunities",
       items: [
+        { path: "/market-pulse", label: "Market Pulse", icon: Activity },
         { path: "/scanner", label: "Scanner", icon: Radar },
         { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
         { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
