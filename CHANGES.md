@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-03 (late evening) — Brokerage cash balance + Total Portfolio card
+
+**Why:** Owner wants the Trade Tracker portfolio figures to match what
+he sees in Schwab. The existing "Account Value" is a derived equity-
+curve number (`startingAccountValue + closed P/L + manual transactions`)
+which doesn't include actual brokerage cash or live open-position market
+value, so it always drifts from the broker's number.
+
+**Fix:**
+- `shared/schema.ts` — added `cashBalance` field to `account_settings`
+  (default 0, manually set by user).
+- `server/routes.ts` (account summary route) — computes
+  `openPositionMarketValue` from open trades (stocks: currentPrice ×
+  shares; options: allocation as a proxy since we don't have live
+  premiums) and returns three new fields: `cashBalance`,
+  `openPositionMarketValue`, `totalPortfolioValue` (= cash + positions).
+- `client/src/pages/trade-tracker.tsx` — Settings drawer gets a
+  "Brokerage Cash Balance" input. Top of the page gets a new 3-card row
+  showing Total Portfolio / Brokerage Cash / Open Positions side-by-side.
+  Existing 6-card row (Account Value, P/L, win rate, etc.) stays intact
+  underneath.
+
+Owner runs `npm run db:push` after pulling to add the new column.
+
+Commit: `<this commit>`. Rollback tag: `safe/2026-05-03-cashbalance`.
+
+---
 ## 2026-05-03 (late evening) — Cross-platform `httpServer.listen` (Windows fix)
 
 **Issue:** After fixing the `dev` script earlier (cross-env), `npm run dev`
