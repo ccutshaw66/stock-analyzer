@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Remove Total column + simplify cash math
+
+**Why:** Owner clarified the cash model and asked to drop the running-total
+column from the trades table.
+
+**Cash model (final):** Cash = Starting Account Value − Open Position Cost
+Basis. Owner treats Starting Account Value as a CURRENT cash snapshot he
+updates to match his broker, not a historical baseline. So closed-trade
+P/L and recorded transactions no longer factor into Cash or Account Value
+— they're still computed for the P/L card and equity curve but don't
+shift the cash math.
+
+So if user enters Starting = $10,000 and has $6,000 of positions at cost,
+Cash shows $4,000. Account Value = $4,000 + current market value of the
+positions (which equals starting + unrealized P/L).
+
+**Total column:** confusing column showing a running cumulative P/L going
+down the table; order-dependent and didn't have a clean financial
+meaning. Removed entirely. The Open P/L summary card already shows the
+total.
+
+**Files touched:**
+- `server/routes.ts` — cashAvailable simplified to `starting − costBasis`.
+- `client/src/pages/trade-tracker.tsx` — Total column removed (header,
+  open-position row, lot row, closed-trade row); colSpan on the empty
+  state adjusted from 15 → 14; runningTotal variable + increments removed.
+
+---
 ## 2026-05-04 (dev branch) — Display fix: per-share entry prices show as positive
 
 **Why:** Owner reported position numbers looked off on SoFi and ORCL.

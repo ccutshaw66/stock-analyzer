@@ -1040,7 +1040,6 @@ export default function TradeTracker() {
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Close</th>
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Price</th>
               <th className="text-right py-2.5 px-3"><SortBtn field="profit" label="P/L" /></th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Total</th>
               <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Exp</th>
               <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Days</th>
               <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Status</th>
@@ -1048,14 +1047,12 @@ export default function TradeTracker() {
             </tr></thead>
             <tbody>
               {totalRowsInView === 0 ? (
-                <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
+                <tr><td colSpan={14} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
               ) : (() => {
-                let runningTotal = 0;
                 const rendered: React.ReactNode[] = [];
 
                 // ─── Open positions (grouped) ───────────────────────────────
                 for (const g of openGroups) {
-                  runningTotal += g.totalOpenPL;
                   const isSingleLot = g.lots.length === 1;
                   const isExpanded = expandedGroups.has(g.key) || isSingleLot;
                   const daysToExp = g.expiration ? Math.ceil((new Date(g.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
@@ -1092,9 +1089,6 @@ export default function TradeTracker() {
                         {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
                         {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
                         {g.tradeCategory === "Option" && g.totalOpenPL !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
                       </td>
                       <td className="py-2 px-3 text-center">
                         {g.expiration ? (
@@ -1144,7 +1138,6 @@ export default function TradeTracker() {
                           <td className="py-1.5 px-3"></td>
                           <td className={`py-1.5 px-3 text-right tabular-nums text-[11px] ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-[9px] ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
                           <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3 text-right tabular-nums text-[11px]">{lotDays}d</td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3 text-right">
@@ -1163,7 +1156,6 @@ export default function TradeTracker() {
                 // ─── Closed trades (flat) ───────────────────────────────────────
                 for (const t of closedFlat) {
                   const profit = computeTradeProfit(t);
-                  runningTotal += profit;
                   const days = daysInTrade(t);
                   const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
                   const isWin = profit >= 0;
@@ -1191,9 +1183,6 @@ export default function TradeTracker() {
                       <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
                         {profit !== 0 ? formatCurrency(profit) : "—"}
                         {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
                       </td>
                       <td className="py-2 px-3 text-center">
                         {t.expiration ? (

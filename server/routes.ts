@@ -4928,17 +4928,19 @@ export async function registerRoutes(
       const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
-      // Cash + account value:
-      //   Starting Account Value = initial cash.
-      //   Cash debits when positions open (allocation), credits when they
-      //     close (close price + realized P/L), tracks deposits/withdrawals.
-      //   Account Value = cash + current market value of open positions.
+      // Cash + account value (owner-defined model):
+      //   Starting Account Value is treated as a CURRENT cash snapshot the
+      //   user updates to match their broker (not a historical baseline).
+      //   Cash = Starting Account Value − cost basis of open positions.
+      //   Account Value = Cash + open position market value.
+      //                 = Starting + (marketValue − costBasis)
+      //                 = Starting + unrealized P/L
       //
-      // Equivalent reformulation we use here (less arithmetic, same result):
-      //   cashAvailable  = starting + realizedPL + transactions − openAllocated
-      //   accountValue   = starting + realizedPL + transactions + unrealizedPL
-      // where unrealizedPL is the openPL computed below for stocks (options
-      // assumed at allocation cost since we don't have live premiums).
+      // Realized P/L from closed trades and recorded deposits/withdrawals
+      // are NOT included here — the user is expected to bake them into the
+      // Starting Account Value setting when their broker balance changes.
+      // We still compute totalProfit + txTotal above for the P/L cards
+      // and equity curve, but they don't affect Cash or Account Value.
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
 
       // Open P/L (stocks only — we have stock price for both open and current)
@@ -4977,9 +4979,9 @@ export async function registerRoutes(
         return s;
       }, 0);
 
-      // Cash available = starting + realized P/L + transactions − money tied
-      // up in open positions (their cost basis). This is what's free.
-      const cashAvailable = settings.startingAccountValue + totalProfit + txTotal - openPositionCostBasis;
+      // Cash available = starting account value − cost of open positions.
+      // (Owner's model: starting value is the current snapshot, not historical.)
+      const cashAvailable = settings.startingAccountValue - openPositionCostBasis;
 
       // Account Value = cash + open position market value. Should match Schwab.
       const accountValue = cashAvailable + openPositionMarketValue;
