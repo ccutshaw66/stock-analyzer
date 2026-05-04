@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch) — Market Pulse v0.1 polish
+
+Three follow-ups after first hands-on test:
+
+1. **Methodology HelpBlock moved to the top** of the page (above the
+   verdict pill). Owner couldn't see it at the bottom past the index
+   cards and contributor pills. Now it's the first thing in the page.
+
+2. **VIX term row hidden when data unavailable** instead of showing "—".
+   FMP's `/quote` doesn't reliably return VIX9D/VIX3M cash indices on
+   our tier. Replaced the silent dash with explicit copy:
+   *"VIX9D/VIX3M term-structure data not available from current providers
+   — score still computed from VIX level + percentile."* The score
+   formula was already structured to absent-points-not-penalize, so a
+   missing term-structure metric just means the regime score caps a
+   bit lower. No code change to the score logic.
+
+3. **Breadth populates on first run.** Previously, breadth waited until
+   the daily 14:35 UTC cron fired — could be 24 hours after deploy
+   before users saw real numbers. Now `warmIntradaySnapshot()` checks
+   the cached breadth on each fire; if missing/empty, runs the S&P 500
+   walk inline (~3 min one-time cost). Subsequent fires skip it.
+   Bumped the intraday cron timeout from 5 → 10 min to accommodate.
+
+Files: `server/market-pulse-warmup.ts`, `server/cron.ts`,
+`client/src/pages/market-pulse.tsx`.
+
+---
 ## 2026-05-04 (dev branch) — Market Pulse v0.1
 
 New page at `/market-pulse` answering "is the market environment hostile,

@@ -199,7 +199,7 @@ export function initCron(
     id: "market-pulse-intraday",
     description: "Market Pulse intraday snapshot refresh (volatility + indices + ratios)",
     cron: "*/5 13-21 * * 1-5",
-    timeoutMs: 5 * 60 * 1000,
+    timeoutMs: 10 * 60 * 1000, // 10min — first run can include the ~3min breadth walk
     preventOverrun: true,
     runOnStart: true, // populate cache immediately so the page works after restart
     handler: async () => {

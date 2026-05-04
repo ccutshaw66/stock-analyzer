@@ -13,6 +13,7 @@
 import {
   buildMarketPulseLive,
   computeRegime,
+  getBreadth,
   type MarketPulse,
 } from "./data/providers/market-pulse.adapter";
 import { readMarketPulseSnapshot, writeMarketPulseSnapshot } from "./market-pulse-cache";
@@ -24,7 +25,15 @@ export async function warmIntradaySnapshot(): Promise<{ ok: boolean; tier: strin
   // Preserve the last cached breadth — it's a once-per-day computation,
   // not stale within the trading day in any meaningful way.
   const existing = readMarketPulseSnapshot();
-  const breadth = existing?.breadth ?? live.breadth;
+  let breadth = existing?.breadth ?? live.breadth;
+
+  // First-time cold start: no usable breadth in the cache. Walk the S&P
+  // 500 once inline so the user sees real breadth numbers on the very
+  // first page load instead of "—". Adds ~3 min to this run only;
+  // subsequent intraday refreshes skip it (breadth is now cached).
+  if (!breadth || breadth.universeSize == null || breadth.universeSize === 0) {
+    try { breadth = await getBreadth(); } catch { /* keep whatever we had */ }
+  }
 
   const merged: MarketPulse = {
     ...live,

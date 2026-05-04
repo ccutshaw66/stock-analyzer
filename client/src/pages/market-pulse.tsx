@@ -181,6 +181,27 @@ export default function MarketPulse() {
         <div className="text-[11px] text-muted-foreground">{updatedLabel}</div>
       </div>
 
+      {/* Methodology — at the top so users can read it before scrolling */}
+      <HelpBlock title="How the regime score works">
+        <p>
+          The score combines three independent signal groups — <strong className="text-foreground">volatility</strong>,
+          <strong className="text-foreground"> breadth</strong>, and <strong className="text-foreground">risk appetite</strong> —
+          into a single 0-100 number. No news, no narrative, no editorial. Just measured market behavior.
+        </p>
+        <ul className="list-disc pl-5 mt-2 space-y-1">
+          <li><strong className="text-foreground">Volatility:</strong> VIX level + 20-day percentile + VIX9D/VIX3M term structure.
+            Low fear and contango (front month below back month) lift the score; elevated VIX or backwardation drag it.</li>
+          <li><strong className="text-foreground">Breadth:</strong> percent of the S&P 500 trading above their 50-day and 200-day
+            moving averages, plus 52-week high/low counts. Broad participation lifts; narrow leadership drags.</li>
+          <li><strong className="text-foreground">Risk Appetite:</strong> HYG (junk bonds) vs LQD (investment grade)
+            and SPY vs TLT (long bonds). Junk leading IG = investors reaching for yield = risk-on.</li>
+        </ul>
+        <p className="mt-2">
+          <strong className="text-foreground">Tier mapping:</strong> 80+ Euphoric · 60-79 Risk-On · 40-59 Neutral ·
+          20-39 Defensive · &lt;20 Risk-Off. Updated every 5 minutes during market hours; breadth refreshes once daily.
+        </p>
+      </HelpBlock>
+
       {/* Verdict pill */}
       <div className={`rounded-xl border p-5 ${tierClasses}`}>
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -207,11 +228,17 @@ export default function MarketPulse() {
             value={dash(v.vix, 2)}
             sub={v.vixPercentile20d !== null ? `${v.vixPercentile20d.toFixed(0)}th %ile (20d)` : "—"}
           />
-          <MetricBlock
-            label="VIX Term"
-            value={v.vixTermRatio !== null ? (v.vixTermRatio < 1 ? "Contango" : "Backwardation") : "—"}
-            sub={v.vixTermRatio !== null ? `VIX9D / VIX3M = ${v.vixTermRatio.toFixed(2)}` : "—"}
-          />
+          {v.vixTermRatio !== null ? (
+            <MetricBlock
+              label="VIX Term"
+              value={v.vixTermRatio < 1 ? "Contango" : "Backwardation"}
+              sub={`VIX9D / VIX3M = ${v.vixTermRatio.toFixed(2)}`}
+            />
+          ) : (
+            <div className="text-[11px] text-muted-foreground italic">
+              VIX9D/VIX3M term-structure data not available from current providers — score still computed from VIX level + percentile.
+            </div>
+          )}
         </div>
 
         {/* Breadth */}
@@ -294,26 +321,6 @@ export default function MarketPulse() {
         </div>
       )}
 
-      {/* Methodology */}
-      <HelpBlock title="How the regime score works">
-        <p>
-          The score combines three independent signal groups — <strong className="text-foreground">volatility</strong>,
-          <strong className="text-foreground"> breadth</strong>, and <strong className="text-foreground">risk appetite</strong> —
-          into a single 0-100 number. No news, no narrative, no editorial. Just measured market behavior.
-        </p>
-        <ul className="list-disc pl-5 mt-2 space-y-1">
-          <li><strong className="text-foreground">Volatility:</strong> VIX level + 20-day percentile + VIX9D/VIX3M term structure.
-            Low fear and contango (front month below back month) lift the score; elevated VIX or backwardation drag it.</li>
-          <li><strong className="text-foreground">Breadth:</strong> percent of the S&P 500 trading above their 50-day and 200-day
-            moving averages, plus 52-week high/low counts. Broad participation lifts; narrow leadership drags.</li>
-          <li><strong className="text-foreground">Risk Appetite:</strong> HYG (junk bonds) vs LQD (investment grade)
-            and SPY vs TLT (long bonds). Junk leading IG = investors reaching for yield = risk-on.</li>
-        </ul>
-        <p className="mt-2">
-          <strong className="text-foreground">Tier mapping:</strong> 80+ Euphoric · 60-79 Risk-On · 40-59 Neutral ·
-          20-39 Defensive · &lt;20 Risk-Off. Updated every 5 minutes during market hours; breadth refreshes once daily.
-        </p>
-      </HelpBlock>
     </div>
   );
 }
