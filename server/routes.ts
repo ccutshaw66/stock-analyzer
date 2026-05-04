@@ -4928,20 +4928,50 @@ export async function registerRoutes(
       const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
-      // Cash + account value (owner-defined model):
-      //   Starting Account Value = "Beginning Cash" — the cash portion of
-      //   the broker account at the moment the user is looking at it. User
-      //   maintains it: when broker cash changes (trades, deposits), they
-      //   update the setting. We do NOT auto-debit cash for opens because
-      //   pre-loaded existing positions would double-count.
+      // Cash + account value (auto-tracking model):
+      //   Beginning Cash = the cash portion of the broker account at the
+      //   moment the user entered it. We stamp `beginningCashAsOf` to
+      //   that update timestamp.
       //
-      //   Cash Available = Beginning Cash (passes through)
-      //   Open Positions = sum of current market values
-      //   Account Value  = Cash + Open Positions = should match broker total
+      //   Trades dated <= asOf are PRE-LOADED — their cost was already in
+      //   the Beginning Cash figure the user typed, so they don't debit
+      //   cash again.
       //
-      // Realized P/L and transactions stay computed for the P/L cards and
-      // equity curve but don't affect Cash or Account Value.
+      //   Trades dated > asOf affect cash automatically:
+      //     - Open: cash += openPrice × shares × multiplier
+      //       (openPrice is signed: negative for long buy = cash out;
+      //        positive for short sell = cash in)
+      //     - Close: cash += closePrice × shares × multiplier − comm
+      //
+      //   So new trades the user enters today (or any date after they last
+      //   set Beginning Cash) will automatically reduce Cash and increase
+      //   Open Positions. Closes credit cash by the close value (full
+      //   recovery, not just profit). Pre-loaded historical positions
+      //   stay fixed in Beginning Cash.
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
+      const asOfDate = (settings as any).beginningCashAsOf
+        ? new Date((settings as any).beginningCashAsOf)
+        : null;
+      function isAfterAsOf(dateStr: string | null | undefined): boolean {
+        if (!asOfDate || !dateStr) return false;
+        return new Date(dateStr).getTime() > asOfDate.getTime();
+      }
+      let postAsOfCashFlow = 0;
+      let postAsOfTransactions = 0;
+      for (const t of allTrades) {
+        const multiplier = t.tradeCategory === "Option" ? 100 : 1;
+        if (isAfterAsOf(t.tradeDate)) {
+          postAsOfCashFlow += t.openPrice * t.contractsShares * multiplier;
+          postAsOfCashFlow -= (t.commIn || 0);
+        }
+        if (t.closeDate && isAfterAsOf(t.closeDate)) {
+          postAsOfCashFlow += (t.closePrice || 0) * t.contractsShares * multiplier;
+          postAsOfCashFlow -= (t.commOut || 0);
+        }
+      }
+      for (const tx of transactions) {
+        if (isAfterAsOf(tx.date)) postAsOfTransactions += tx.amount;
+      }
 
       // Open P/L (stocks only — we have stock price for both open and current)
       // Options are excluded: currentPrice is the STOCK price, not the option premium,
@@ -4979,9 +5009,9 @@ export async function registerRoutes(
         return s;
       }, 0);
 
-      // Cash available = Beginning Cash (the user-entered cash setting).
-      // No automatic debit/credit on opens/closes — user maintains it.
-      const cashAvailable = settings.startingAccountValue;
+      // Cash available = Beginning Cash + auto cash flow from trades and
+      // transactions dated AFTER beginningCashAsOf.
+      const cashAvailable = settings.startingAccountValue + postAsOfCashFlow + postAsOfTransactions;
 
       // Account Value = cash + open position market value. Should match Schwab.
       const accountValue = cashAvailable + openPositionMarketValue;
@@ -5233,7 +5263,17 @@ export async function registerRoutes(
 
   app.patch("/api/account/settings", async (req, res) => {
     try {
-      const settings = await storage.updateAccountSettings(req.user!.id, req.body);
+      // Auto-stamp beginningCashAsOf whenever Beginning Cash changes so
+      // future trades dated after this moment will affect cash, while
+      // existing pre-loaded trades won't double-debit.
+      const incoming = { ...req.body } as any;
+      if (Object.prototype.hasOwnProperty.call(incoming, "startingAccountValue")) {
+        const existing = await storage.getAccountSettings(req.user!.id);
+        if (!existing || existing.startingAccountValue !== incoming.startingAccountValue) {
+          incoming.beginningCashAsOf = new Date();
+        }
+      }
+      const settings = await storage.updateAccountSettings(req.user!.id, incoming);
       res.json(settings);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update settings" });

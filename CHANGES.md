@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-04 (dev branch, late) — Cash auto-tracks new trades (asOf-stamped)
+
+**Problem:** Previous version required user to manually update Beginning
+Cash every time they made a trade. Owner correctly called this out as
+unworkable — nobody manually tracks cash on every trade.
+
+**Solution:** Stamp `beginningCashAsOf` whenever the user sets Beginning
+Cash. Trades dated on/before that stamp are PRE-LOADED (cost already
+in Beginning Cash, no auto-debit). Trades dated AFTER affect cash
+automatically:
+- Open after asOf → cash debited by cost basis
+- Close after asOf → cash credited by close value
+- Recorded transactions after asOf → cash adjusted
+
+This means: enter Beginning Cash once. From then on, every new trade
+you add updates Cash and Open Positions automatically; Account Value
+stays consistent with the broker. Pre-loaded historical positions
+don't double-count.
+
+When user changes Beginning Cash setting, asOf is auto-stamped to NOW
+(handled in the PATCH /api/account/settings route). No date input
+required from the user.
+
+**Files touched:**
+- `shared/schema.ts` — added `beginningCashAsOf` timestamp column.
+- `server/routes.ts` — settings update auto-stamps the timestamp;
+  account-summary route splits trades by asOf and includes only
+  post-asOf cash flows.
+
+---
 ## 2026-05-04 (dev branch, late) — Beginning Cash + Proposed Allocation Limit settings cleanup
 
 **Cash model finalized:**
