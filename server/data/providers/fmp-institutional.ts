@@ -64,32 +64,140 @@ export interface FmpInstitutionalSummary {
 /**
  * Heuristic fund-name detector. 13F filers are a mix of banks, asset
  * managers, pension funds, mutual funds, ETFs, hedge funds, etc. The
- * "Fund Holders" tab specifically wants mutual-fund / ETF / index-fund
- * filers. Match on common naming conventions — not perfect but covers
- * the vast majority of the names users care about (Vanguard funds,
- * iShares ETFs, Fidelity funds, SPDR ETFs, etc.).
+ * "Fund Holders" tab wants the asset-manager / fund-family / ETF-issuer
+ * subset — i.e., the names you'd think of as "funds in this stock."
+ *
+ * Strategy: three matching layers.
+ *   1) Known asset-manager prefixes/contains — covers the names that
+ *      DON'T contain "FUND/TRUST/ETF" in their legal entity name
+ *      (e.g. "BLACKROCK INC.", "STATE STREET CORP", "GEODE CAPITAL").
+ *   2) Generic fund/etf/trust keywords.
+ *   3) Asset-manager suffixes (" ASSET MANAGEMENT", " ADVISORS",
+ *      " INVESTMENT MGMT", etc.).
+ *
+ * Anything matching ANY layer is treated as a fund. Tuned for false-
+ * positives (slightly broader is OK — Top Institutions tab still shows
+ * everything). Goal is that the major holders users expect to see for
+ * any megacap (Vanguard, BlackRock, State Street, Geode, T. Rowe,
+ * Fidelity, Wellington, Northern Trust, BNY Mellon, etc.) all surface.
  */
+const KNOWN_FUND_FAMILIES = [
+  // Index / ETF issuers
+  "VANGUARD",
+  "BLACKROCK",
+  "ISHARES",
+  "STATE STREET",
+  "SPDR",
+  "INVESCO",
+  "GEODE",
+  "DIMENSIONAL",
+  "CHARLES SCHWAB",
+  "SCHWAB ",
+  "WISDOMTREE",
+  "FIRST TRUST",
+  "VANECK",
+  "PROSHARES",
+  "DIREXION",
+  // Mutual fund families
+  "FIDELITY",
+  "T ROWE PRICE",
+  "TROWE PRICE",
+  "AMERICAN FUNDS",
+  "CAPITAL RESEARCH",
+  "CAPITAL GROUP",
+  "JANUS HENDERSON",
+  "FRANKLIN ",
+  "FRANKLIN RESOURCES",
+  "FRANKLIN TEMPLETON",
+  "ALLIANCEBERNSTEIN",
+  "ALLIANZ ",
+  "NUVEEN",
+  "EATON VANCE",
+  "DODGE & COX",
+  "DODGE AND COX",
+  "PRIMECAP",
+  "MFS ",
+  "MFS INVESTMENT",
+  "HARRIS ASSOCIATES",
+  "OAKMARK",
+  "VICTORY CAPITAL",
+  "TIAA",
+  "VOYA",
+  "JOHN HANCOCK",
+  "PACER ",
+  "PACIFIC INVESTMENT",
+  "PIMCO",
+  "DWS ",
+  "COLUMBIA THREADNEEDLE",
+  "NORTHERN TRUST",
+  "BANK OF NEW YORK MELLON",
+  "BNY MELLON",
+  "WELLINGTON MANAGEMENT",
+  "WELLINGTON ",
+  "PARAMETRIC PORTFOLIO",
+  "LEGG MASON",
+  "ARK INVEST",
+  // Big-bank asset-management arms
+  "GOLDMAN SACHS ASSET",
+  "MORGAN STANLEY INVESTMENT",
+  "MORGAN STANLEY ASSET",
+  "JPMORGAN ASSET",
+  "JP MORGAN ASSET",
+  "JPMORGAN INVESTMENT",
+  "WELLS FARGO ADVISORS",
+  "BANK OF AMERICA SECURITIES",
+  "UBS ASSET",
+  "BNP PARIBAS ASSET",
+  "AMUNDI",
+  // Major pension funds (these are large 13F filers)
+  "CALIFORNIA PUBLIC EMPLOYEES",
+  "CALPERS",
+  "TEACHER RETIREMENT",
+  "NEW YORK STATE COMMON",
+  "FLORIDA RETIREMENT",
+  "STATE BOARD OF ADMIN",
+];
+
+const FUND_SUFFIX_PATTERNS = [
+  " ASSET MANAGEMENT",
+  " ASSET MGMT",
+  " INVESTMENT MANAGEMENT",
+  " INVESTMENT MGMT",
+  " INVESTMENT ADVISORS",
+  " INVESTMENT ADVISERS",
+  " CAPITAL MANAGEMENT",
+  " CAPITAL MGMT",
+  " WEALTH MANAGEMENT",
+  " WEALTH MGMT",
+  " FUND MANAGEMENT",
+  " FUND ADVISORS",
+];
+
 function looksLikeFund(name: string): boolean {
-  const n = (name || "").toUpperCase();
-  return (
+  const n = (name || "").toUpperCase().trim();
+  if (!n) return false;
+  // Layer 1: known asset-manager prefixes / contains.
+  for (const fam of KNOWN_FUND_FAMILIES) {
+    if (n.startsWith(fam) || n.includes(fam)) return true;
+  }
+  // Layer 2: generic fund / etf / trust keywords.
+  if (
     n.includes(" FUND") ||
     n.endsWith(" FUND") ||
     n.includes(" ETF") ||
     n.includes(" INDEX FUND") ||
     n.includes(" INDEX TRUST") ||
-    n.startsWith("VANGUARD ") ||
-    n.startsWith("ISHARES ") ||
-    n.startsWith("SPDR ") ||
-    n.startsWith("INVESCO ") ||
-    n.includes("FIDELITY ") ||
-    n.includes("SCHWAB ") ||
-    n.includes("AMERICAN FUNDS") ||
-    n.includes("T ROWE PRICE") ||
-    n.includes("TROWE PRICE") ||
-    n.includes("DIMENSIONAL FUND") ||
-    n.includes("VOYA ") ||
-    n.includes(" TRUST")
-  );
+    n.includes(" PENSION FUND") ||
+    n.includes(" RETIREMENT FUND") ||
+    n.includes(" TRUST CO") ||
+    n.includes(" TRUST COMPANY") ||
+    n.includes(" MUTUAL FUND")
+  ) return true;
+  // Layer 3: asset-manager suffixes.
+  for (const suffix of FUND_SUFFIX_PATTERNS) {
+    if (n.includes(suffix)) return true;
+  }
+  return false;
 }
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h — 13Fs are quarterly anyway
@@ -153,7 +261,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:${T}`;
+  const cacheKey = `fmp-inst:v2:${T}`;
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
