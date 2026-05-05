@@ -22,7 +22,8 @@
  * right TTL — same cadence as the EDGAR cache and the Yahoo ownership cache.
  */
 import { fmpGet, FmpApiError } from "./fmp.client";
-import { getCached, setCache, recordCacheHit } from "../../cache";
+import { getCached, setCache } from "../../cache";
+import { recordCacheHit } from "../../request-queue";
 import { logger as rootLogger } from "../../lib/logger";
 
 const log = rootLogger.child({ module: "fmp-institutional" });
