@@ -583,16 +583,38 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderTxns = raw?.insiderTransactions?.transactions || [];
   const netActivity = raw?.netSharePurchaseActivity || {};
 
-  // EDGAR institutional summary
-  let edgar: Awaited<ReturnType<typeof getInstitutionalSummary>> | null = null;
+  // Institutional summary — provider chain:
+  //   1. FMP Ultimate (when FMP_TIER=ultimate is set) — paid, reliable
+  //   2. SEC EDGAR — free, authoritative, but IP-blockable
+  //   3. Yahoo majorHoldersBreakdown fallback — handled later in the
+  //      `usingEdgar` block, populates summary stats only
+  // FMP Ultimate is the primary when configured because it's the paid
+  // provider and removes the dependency on free sources that keep getting
+  // throttled. EDGAR stays in the chain as a free emergency fallback for
+  // when FMP has an outage.
+  let edgar: any = null;
   try {
-    // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
-    // present (even past TTL), triggers a background refresh. This prevents
-    // the 25-min EDGAR cold path from blocking a user-facing request.
-    edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    const { getFmpInstitutional, isFmpUltimateEnabled } = await import(
+      "./data/providers/fmp-institutional"
+    );
+    if (isFmpUltimateEnabled()) {
+      edgar = await getFmpInstitutional(ticker);
+      // edgar is null when FMP returns 402 (plan downgrade) or any other
+      // error — fall through to EDGAR below in that case.
+    }
   } catch (e) {
-    console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
-    edgar = null;
+    console.error(`[fmp-inst] failed for ${ticker}:`, (e as Error).message);
+  }
+  if (!edgar) {
+    try {
+      // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
+      // present (even past TTL), triggers a background refresh. This prevents
+      // the 25-min EDGAR cold path from blocking a user-facing request.
+      edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    } catch (e) {
+      console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
+      edgar = null;
+    }
   }
 
   // Yahoo-sourced ownership data, attached by getInstitutionalData. If the
