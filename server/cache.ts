@@ -16,7 +16,7 @@ const TTL = {
   chart: 30 * 60 * 1000,        // 30 minutes for chart data
   dividend: 2 * 60 * 60 * 1000, // 2 hours for dividend data (changes rarely)
   sector: 60 * 60 * 1000,       // 1 hour for sector data
-  institutional: 2 * 60 * 60 * 1000, // 2 hours for institutional data
+  institutional: 24 * 60 * 60 * 1000, // 24 hours — institutional data updates quarterly (13F) and monthly (N-PORT). Long TTL builds a warm corpus over time so the random-sample scanner mostly hits cache.
   options: 15 * 60 * 1000,      // 15 minutes for options chain data
   // Route-level result caches — avoid recomputing full pipelines on repeat page loads
   earnings: 4 * 60 * 60 * 1000,  // 4 hours for earnings calendar results (earnings dates don't change intraday)

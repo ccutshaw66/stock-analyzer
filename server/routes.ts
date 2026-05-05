@@ -475,17 +475,23 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // Institutional / Market Maker Data Fetchers
 // ============================================================
 
-async function getInstitutionalData(ticker: string, refresh = false): Promise<any> {
-  // Phase 3.7: fully migrated off Yahoo.
+async function getInstitutionalData(ticker: string): Promise<any> {
+  // Phase 3.7: fully migrated off Yahoo for the request path.
   //  - Institutional ownership: SEC EDGAR 13Fs (in parseInstitutionalData)
   //  - Insider transactions: FMP /insider-trading/search
   //  - Price / marketCap / volume: Polygon snapshot via getQuote, merged
   //    into a Yahoo-shaped blob so parseInstitutionalData stays compatible.
+  //
+  // Cache lives 24h (TTL.institutional) — institutional data updates
+  // quarterly (13F) and monthly (N-PORT), so long TTL is correct. The
+  // random-sample scanner builds up a warm cache over many scans; once
+  // a ticker has been fetched once today it's free for the rest of the day.
+  // Aggregate scan cache is busted per click (refresh=1 from frontend) so
+  // the user gets a different random sample each click while still hitting
+  // this per-ticker cache for any tickers we've already fetched.
   const cacheKey = `inst:${ticker.toUpperCase()}`;
-  if (!refresh) {
-    const cached = getCached(cacheKey);
-    if (cached) { recordCacheHit(); return cached; }
-  }
+  const cached = getCached(cacheKey);
+  if (cached) { recordCacheHit(); return cached; }
 
   let quote: any = null;
   try {
@@ -556,7 +562,15 @@ async function getInstitutionalData(ticker: string, refresh = false): Promise<an
     majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
   };
 
-  setCache(cacheKey, result, TTL.institutional);
+  // Don't poison the 24h cache with empty results. If neither Yahoo nor FMP
+  // gave us anything useful, cache for only 5 minutes so we retry soon
+  // instead of being stuck for the full window. This is what "blocked +
+  // bad cache" was — Yahoo was failing AND we were caching the empty
+  // result for hours.
+  const hasYahooData = !!(yahooOwnership.majorHoldersBreakdown || yahooOwnership.institutionOwnership);
+  const hasInsiderData = insiderTxns.length > 0;
+  const isUseful = hasYahooData || hasInsiderData;
+  setCache(cacheKey, result, isUseful ? TTL.institutional : 5 * 60 * 1000);
   return result;
 }
 
@@ -4417,10 +4431,12 @@ export async function registerRoutes(
             const batch = tickers.slice(b, b + BATCH_SIZE);
             const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
               try {
-                // Propagate refresh into per-ticker fetch so a "Scan now"
-                // click busts the inst:* cache instead of replaying stale
-                // zeros from an earlier EDGAR-blocked scan.
-                const raw = await getInstitutionalData(ticker, refresh);
+                // Per-ticker cache (24h) is preserved across scans — refresh=1
+                // only busts the AGGREGATE cache so the user gets a different
+                // random sample each click. Tickers we've already fetched
+                // today are free; new tickers get fetched. Over many scans
+                // we build up a warm corpus of the entire 150-ticker universe.
+                const raw = await getInstitutionalData(ticker);
                 return parseInstitutionalData(raw, ticker);
               } catch {
                 return null;
