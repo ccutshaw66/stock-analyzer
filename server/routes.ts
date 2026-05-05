@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v7:${ticker}`;
+      const verdictCacheKey = `verdict:v8:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4235,6 +4235,8 @@ export async function registerRoutes(
       await delay(200);
       const spyChart = await fmpHistoricalChart("SPY");
       await delay(200);
+      const qqqChart = await fmpHistoricalChart("QQQ");
+      await delay(200);
       const goldChart = await fmpHistoricalChart("GCUSD");
       await delay(200);
       const silverChart = await fmpHistoricalChart("SIUSD");
@@ -4274,6 +4276,7 @@ export async function registerRoutes(
         period: `${event.start.substring(0, 7)} to ${event.end.substring(0, 7)}`,
         ticker: getReturnDuringPeriod(tickerChart, event.start, event.end) ?? 0,
         spy: getReturnDuringPeriod(spyChart, event.start, event.end) ?? 0,
+        nasdaq: getReturnDuringPeriod(qqqChart, event.start, event.end) ?? 0,
         gold: getReturnDuringPeriod(goldChart, event.start, event.end) ?? 0,
         silver: getReturnDuringPeriod(silverChart, event.start, event.end) ?? 0,
         hasData: getReturnDuringPeriod(tickerChart, event.start, event.end) !== null,

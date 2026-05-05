@@ -54,6 +54,7 @@ interface StressTest {
   period: string;
   ticker: number;
   spy: number;
+  nasdaq?: number;
   gold: number;
   silver: number;
   hasData?: boolean;
@@ -542,6 +543,7 @@ export default function Verdict() {
                   <th className="text-left py-2.5 px-3 font-semibold">Period</th>
                   <th className="text-right py-2.5 px-3 font-semibold">{data.ticker}</th>
                   <th className="text-right py-2.5 px-3 font-semibold">S&amp;P 500</th>
+                  <th className="text-right py-2.5 px-3 font-semibold">Nasdaq 100</th>
                   <th className="text-right py-2.5 px-3 font-semibold">Gold</th>
                   <th className="text-right py-2.5 px-6 font-semibold">Silver</th>
                 </tr>
@@ -567,6 +569,9 @@ export default function Verdict() {
                       </td>
                       <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.spy)}`}>
                         {noData ? "N/A" : formatPct(test.spy)}
+                      </td>
+                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData || test.nasdaq == null ? "text-muted-foreground" : pctColor(test.nasdaq)}`}>
+                        {noData || test.nasdaq == null ? "N/A" : formatPct(test.nasdaq)}
                       </td>
                       <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.gold)}`}>
                         {noData ? "N/A" : formatPct(test.gold)}
