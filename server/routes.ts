@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v4:${ticker}`;
+      const verdictCacheKey = `verdict:v5:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4206,7 +4206,10 @@ export async function registerRoutes(
         try {
           const to = new Date().toISOString().slice(0, 10);
           const from = "2000-01-01";
-          const rows: any = await fmpGet(`/historical-price-eod/full?symbol=${sym}&from=${from}&to=${to}`);
+          // fmpGet builds the query string from the second-arg object.
+          // Embedding params in the path produced a malformed double-`?`
+          // URL that FMP silently rejected (empty response → no stress data).
+          const rows: any = await fmpGet("/historical-price-eod/full", { symbol: sym, from, to });
           const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
           if (!arr.length) return null;
           const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -4268,7 +4271,7 @@ export async function registerRoutes(
       // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
       async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
         try {
-          const rows: any = await fmpGet(`/quote?symbol=${sym}`);
+          const rows: any = await fmpGet("/quote", { symbol: sym });
           const row = Array.isArray(rows) ? rows[0] : rows;
           if (!row?.price) return null;
           return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };
