@@ -54,6 +54,39 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24h — 13Fs are quarterly anyway
 const TTL_MS_EMPTY = 5 * 60 * 1000; // 5m on empty/error so we retry soon
 
 /**
+ * Returns the most recent 13F quarters that should have publicly-filed data,
+ * newest first. 13Fs are due 45 days after the quarter ends, but we add a
+ * 60-day buffer to be safe — smaller filers tend to file near the deadline,
+ * so the data isn't fully aggregated until ~60 days after quarter-end.
+ *
+ * Example (today = May 5, 2026):
+ *   - Q1 2026 ended Mar 31, deadline May 15 → not yet aggregated
+ *   - Q4 2025 ended Dec 31, deadline Feb 14 → fully filed, returned
+ *   - Q3 2025 ended Sep 30 → also returned as fallback
+ */
+function latestAvailableQuarters(count: number): Array<{ year: number; quarter: number }> {
+  const result: Array<{ year: number; quarter: number }> = [];
+  const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
+  let year = cutoff.getUTCFullYear();
+  let quarter = Math.floor(cutoff.getUTCMonth() / 3) + 1;
+  for (let i = 0; i < count; i++) {
+    result.push({ year, quarter });
+    quarter -= 1;
+    if (quarter < 1) {
+      quarter = 4;
+      year -= 1;
+    }
+  }
+  return result;
+}
+
+function quarterEndDate(year: number, quarter: number): string {
+  const month = quarter * 3; // Q1=3, Q2=6, Q3=9, Q4=12
+  const day = month === 6 || month === 9 ? 30 : 31; // Jun=30, Sep=30, Mar/Dec=31
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
  * Returns true when FMP Ultimate-tier institutional endpoints should be
  * used as the primary source. Reads `FMP_TIER` env var. Default off.
  */
@@ -90,70 +123,92 @@ export async function getFmpInstitutional(
   if (!isFmpUltimateEnabled()) return null;
 
   try {
-    // Fetch both in parallel — they're independent calls.
-    const [summary, holders] = await Promise.all([
-      fmpGet<any[] | any>("/institutional-ownership/symbol-ownership", {
-        symbol: T,
-        includeCurrentQuarter: "true",
-      }).catch((e: any) => {
-        log.debug({ ticker: T, err: String(e?.message || e) }, "summary fetch failed");
-        return null;
-      }),
-      fmpGet<any[]>("/institutional-holder", { symbol: T }).catch((e: any) => {
-        log.debug({ ticker: T, err: String(e?.message || e) }, "holders fetch failed");
-        return null;
-      }),
-    ]);
+    // FMP Form 13F endpoints require year + quarter params. Latest available
+    // quarter is the most recent one whose 45-day filing window has passed.
+    // We try the latest 2 quarters in case some symbols haven't been filed
+    // yet for the most recent (smaller filers file closer to deadline).
+    const quarters = latestAvailableQuarters(2);
 
-    // Latest-quarter summary row. Endpoint returns an array, newest first.
-    const latest = Array.isArray(summary) && summary.length ? summary[0] : null;
+    let latest: any = null;
+    let holders: any[] | null = null;
+    let usedQuarter: { year: number; quarter: number } | null = null;
 
-    // Top holders — sort by shares desc and slice top 25 to mirror EDGAR's cap.
-    let topHolders: FmpInstitutionalSummary["topHolders"] = [];
-    if (Array.isArray(holders)) {
-      topHolders = holders
-        .map((h: any) => ({
-          name: String(h.holder || h.name || "Unknown"),
-          shares: Number(h.shares || h.position || 0),
-          // FMP's institutional-holder endpoint sometimes lacks `value` —
-          // compute from shares × current price if missing? Skip: leave 0.
-          value: Number(h.value || 0),
-          pctHeld: Number(h.weightPercent || h.pctHeld || 0) / 100, // FMP returns percent, EDGAR shape is fraction
-          reportDate: (h.dateReported || h.date || null) as string | null,
-          accession: null, // FMP doesn't expose the accession number on this endpoint
-          cik: null,       // CIK is on the symbol-ownership endpoint, not per-holder
-        }))
-        .sort((a, b) => b.shares - a.shares)
-        .slice(0, 25);
+    for (const q of quarters) {
+      const [summaryArr, holdersArr] = await Promise.all([
+        fmpGet<any[]>("/institutional-ownership/symbol-positions-summary", {
+          symbol: T,
+          year: q.year,
+          quarter: q.quarter,
+        }).catch((e: any) => {
+          log.debug({ ticker: T, q, err: String(e?.message || e) }, "summary fetch failed");
+          return null;
+        }),
+        fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", {
+          symbol: T,
+          year: q.year,
+          quarter: q.quarter,
+          page: 0,
+          limit: 25,
+        }).catch((e: any) => {
+          log.debug({ ticker: T, q, err: String(e?.message || e) }, "holders fetch failed");
+          return null;
+        }),
+      ]);
+
+      const summaryRow = Array.isArray(summaryArr) && summaryArr.length ? summaryArr[0] : null;
+      const holdersList = Array.isArray(holdersArr) ? holdersArr : null;
+
+      if (summaryRow || (holdersList && holdersList.length > 0)) {
+        latest = summaryRow;
+        holders = holdersList;
+        usedQuarter = q;
+        break;
+      }
     }
 
-    // If neither call returned anything useful, treat as a miss and cache
-    // briefly so we retry. Don't poison the 24h cache.
+    // Top holders mapped to the EDGAR-compatible shape.
+    let topHolders: FmpInstitutionalSummary["topHolders"] = [];
+    if (Array.isArray(holders)) {
+      topHolders = holders.map((h: any) => ({
+        name: String(h.investorName || h.holder || h.name || "Unknown"),
+        shares: Number(h.sharesNumber || h.shares || h.position || 0),
+        value: Number(h.marketValue || h.value || 0),
+        // FMP returns weight as a percentage (e.g. 9.65). EDGAR shape uses a
+        // fraction (0.0965). Convert.
+        pctHeld: Number(h.weight || h.weightPercent || h.ownership || 0) / 100,
+        reportDate: (h.date || h.dateReported || null) as string | null,
+        accession: null,
+        cik: h.cik ? String(h.cik) : null,
+      }));
+      // Sort by shares descending to mirror EDGAR's ordering.
+      topHolders.sort((a, b) => b.shares - a.shares);
+    }
+
+    // If neither call returned anything useful for any quarter we tried,
+    // cache briefly and return null so the caller falls through to EDGAR.
     if (!latest && topHolders.length === 0) {
       setCache(cacheKey, null, TTL_MS_EMPTY);
       return null;
     }
 
     const institutionCount = Number(
-      latest?.investorsHolding ?? latest?.institutionsHolding ?? 0,
+      latest?.investorsHolding ?? latest?.investorsHoldingNumber ?? 0,
+    );
+    const ownershipPct = Number(
+      latest?.ownershipPercent ?? latest?.ownership ?? 0,
     );
     const sharesOutstanding =
       Number(latest?.sharesOutstanding ?? latest?.numberOf13FsharesOutstanding ?? 0) || null;
-    const totalInst13fShares = Number(latest?.numberOf13Fshares ?? 0);
-    // institutionPct = total 13F shares / total shares outstanding × 100.
-    // Falls back to summing the topHolders shares if the summary endpoint
-    // is missing the rollup.
-    const institutionPct =
-      sharesOutstanding && totalInst13fShares
-        ? (totalInst13fShares / sharesOutstanding) * 100
-        : 0;
 
     const result: FmpInstitutionalSummary = {
       topHolders,
-      institutionPct,
+      institutionPct: ownershipPct,
       institutionCount,
       sharesOutstanding,
-      asOf: latest?.date || (topHolders[0]?.reportDate ?? null),
+      asOf:
+        usedQuarter
+          ? quarterEndDate(usedQuarter.year, usedQuarter.quarter)
+          : latest?.date || topHolders[0]?.reportDate || null,
       source: "fmp-ultimate",
     };
 
