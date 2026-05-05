@@ -475,15 +475,17 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // Institutional / Market Maker Data Fetchers
 // ============================================================
 
-async function getInstitutionalData(ticker: string): Promise<any> {
+async function getInstitutionalData(ticker: string, refresh = false): Promise<any> {
   // Phase 3.7: fully migrated off Yahoo.
   //  - Institutional ownership: SEC EDGAR 13Fs (in parseInstitutionalData)
   //  - Insider transactions: FMP /insider-trading/search
   //  - Price / marketCap / volume: Polygon snapshot via getQuote, merged
   //    into a Yahoo-shaped blob so parseInstitutionalData stays compatible.
   const cacheKey = `inst:${ticker.toUpperCase()}`;
-  const cached = getCached(cacheKey);
-  if (cached) { recordCacheHit(); return cached; }
+  if (!refresh) {
+    const cached = getCached(cacheKey);
+    if (cached) { recordCacheHit(); return cached; }
+  }
 
   let quote: any = null;
   try {
@@ -610,7 +612,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   }
 
   // Top institutional holders (EDGAR 13F + Yahoo QoQ delta where available)
-  const topInstitutions = (edgar?.topHolders ?? []).map(h => ({
+  let topInstitutions = (edgar?.topHolders ?? []).map(h => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
@@ -623,6 +625,24 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     accession: h.accession,
     cik: h.cik,
   }));
+
+  // Yahoo fallback for the top-holders table — when EDGAR is blocked or
+  // returns nothing, populate from Yahoo's institutionOwnership.ownershipList
+  // so the user sees the top ~10 institutional holders Yahoo knows about
+  // instead of an empty table. EDGAR is more authoritative (more holders,
+  // more recent), but an empty table is worse than Yahoo's slim view.
+  if (topInstitutions.length === 0 && instOwnership.length > 0) {
+    topInstitutions = instOwnership.slice(0, 25).map((inst: any) => ({
+      name: inst.organization || "Unknown",
+      shares: inst.position?.raw || 0,
+      value: inst.value?.raw || 0,
+      pctHeld: inst.pctHeld?.raw || 0,
+      changeQoQ: (inst.pctChange?.raw || 0) * 100,
+      reportDate: inst.reportDate?.fmt || null,
+      accession: null,
+      cik: null,
+    }));
+  }
 
   // Top fund holders (mutual funds / ETFs).
   // Yahoo's pctHeld and pctChange both come in as fractions (0.05 = 5%).
@@ -4367,7 +4387,10 @@ export async function registerRoutes(
             const batch = tickers.slice(b, b + BATCH_SIZE);
             const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
               try {
-                const raw = await getInstitutionalData(ticker);
+                // Propagate refresh into per-ticker fetch so a "Scan now"
+                // click busts the inst:* cache instead of replaying stale
+                // zeros from an earlier EDGAR-blocked scan.
+                const raw = await getInstitutionalData(ticker, refresh);
                 return parseInstitutionalData(raw, ticker);
               } catch {
                 return null;

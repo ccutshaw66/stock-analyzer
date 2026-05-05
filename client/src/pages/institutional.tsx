@@ -540,10 +540,14 @@ export default function Institutional() {
   const scanRefetch = async () => {
     setScanFetching(true);
     try {
-      const params = scanMode === "custom" && customTickers.trim()
-        ? `?tickers=${encodeURIComponent(customTickers.trim())}`
+      // Always pass refresh=1 on a user-initiated scan click. Without this,
+      // the 6h aggregate cache + per-ticker inst:* cache will keep replaying
+      // stale results from any earlier scan that ran while EDGAR was blocked
+      // (every row would be 0 holders → filter strips them → "0 results").
+      const tickerPart = scanMode === "custom" && customTickers.trim()
+        ? `&tickers=${encodeURIComponent(customTickers.trim())}`
         : "";
-      const res = await apiRequest("GET", `/api/institutional-scan${params}`);
+      const res = await apiRequest("GET", `/api/institutional-scan?refresh=1${tickerPart}`);
       const result = await res.json();
       setScanData(result);
       queryClient.setQueryData(["/api/institutional-scan"], result);
