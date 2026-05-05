@@ -535,12 +535,16 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo ownership modules (fund holders + 13F QoQ change deltas).
-  // Fetched in parallel with the rest above would be ideal, but keeping it
-  // sequential here avoids reordering the existing FMP/Polygon flow. The
-  // helper is internally cached and fails open (returns nulls) so a Yahoo
-  // outage degrades to the prior empty-tab behaviour rather than 500ing.
-  const yahooOwnership = await getYahooOwnership(ticker);
+  // Yahoo ownership modules (fund holders + insider holders + 13F QoQ deltas).
+  // SKIPPED when FMP_TIER=ultimate is set — FMP is the primary source and
+  // Yahoo's IP-based 429 block was causing the whole scan to hang here.
+  // Fund-holders and insider-holders tabs will be empty in that mode (FMP
+  // versions of those endpoints are wired up in a follow-up); the
+  // institutional table itself populates from FMP via parseInstitutionalData.
+  const { isFmpUltimateEnabled } = await import("./data/providers/fmp-institutional");
+  const yahooOwnership = isFmpUltimateEnabled()
+    ? { institutionOwnership: null, fundOwnership: null, majorHoldersBreakdown: null, insiderHolders: null }
+    : await getYahooOwnership(ticker);
 
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
