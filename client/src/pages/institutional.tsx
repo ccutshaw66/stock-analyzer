@@ -660,7 +660,7 @@ export default function Institutional() {
         <div className="flex gap-2 mb-3">
           <button onClick={() => setScanMode("default")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${scanMode === "default" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-            Top 50 Stocks
+            Random 30 Stocks
           </button>
           <button onClick={() => setScanMode("custom")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${scanMode === "custom" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
@@ -712,7 +712,7 @@ export default function Institutional() {
             </div>
           ))}
           <p className="text-center text-sm text-muted-foreground animate-pulse">
-            Analyzing institutional holdings across {scanMode === "custom" ? "your tickers" : "50 stocks"}... This takes 30-60 seconds.
+            Analyzing institutional holdings across {scanMode === "custom" ? "your tickers" : "30 random stocks"}... This takes 30-60 seconds.
           </p>
         </div>
       )}
@@ -741,7 +741,7 @@ export default function Institutional() {
       {!scanData && !scanFetching && !activeTicker && (
         <div className="text-center py-8 text-muted-foreground">
           <Building2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Search a ticker above or click "Scan Institutional Flow" to analyze the top 50 stocks.</p>
+          <p className="text-sm">Search a ticker above or click "Scan Institutional Flow" to analyze a random 30 stocks across sectors. Click again for a different mix.</p>
         </div>
       )}
 

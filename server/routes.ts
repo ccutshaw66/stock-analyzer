@@ -4328,25 +4328,55 @@ export async function registerRoutes(
 
       const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
 
-      // Hardcoded universe of large-cap, liquid tickers spanning sectors.
-      // Replaces the previous "filter by warm institutional cache" approach
-      // which collapsed to ~1 ticker on fresh databases (only tickers that
-      // had been manually warmed had cache files). The snapshot pipeline's
-      // EDGAR → Yahoo fallback handles tickers without an EDGAR cache, so
-      // pre-filtering on cache state was redundant and brittle.
+      // Expanded universe (~150 tickers) spanning mega/large/mid caps across
+      // every sector. We randomly sample 30 per scan so each click surfaces
+      // a different mix — was returning the same megacaps every time, which
+      // wasn't useful since the user already knows AAPL/NVDA/JPM.
+      // Custom mode (user-supplied tickers) bypasses sampling entirely.
       const DEFAULT_SCAN_UNIVERSE: string[] = [
+        // Mega-cap tech
         "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","AVGO","ORCL","ADBE",
         "CRM","AMD","INTC","CSCO","QCOM","TXN","IBM","MU","AMAT","LRCX",
+        "ASML","KLAC","SNPS","CDNS","PANW","CRWD","FTNT","NOW","SNOW","DDOG",
+        "NET","ZS","MDB","TEAM","WDAY","OKTA","SHOP","SQ","PYPL","COIN",
+        // Financials
         "JPM","BAC","WFC","GS","MS","C","BLK","V","MA","BRK.B",
-        "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","DHR",
-        "WMT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX",
-        "PG","KO","PEP","XOM","CVX","CAT","BA","GE","HON",
+        "AXP","SCHW","BX","KKR","APO","CME","ICE","SPGI","MCO","TROW",
+        // Healthcare
+        "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","DHR","BMY",
+        "AMGN","GILD","CVS","CI","HUM","ELV","ISRG","REGN","VRTX","BIIB",
+        // Consumer
+        "WMT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX","TGT",
+        "PG","KO","PEP","CL","KMB","MO","PM","DEO","EL","LULU",
+        // Industrials / Energy / Materials
+        "XOM","CVX","CAT","BA","GE","HON","DE","UPS","FDX","LMT",
+        "RTX","NOC","GD","COP","SLB","HAL","OXY","EOG","PSX","VLO",
+        "FCX","NEM","LIN","APD","SHW","DD","NUE","STLD","CLF","X",
+        // Utilities / Telecom / Real Estate
+        "NEE","DUK","SO","D","AEP","T","VZ","TMUS","CMCSA","CHTR",
+        "AMT","PLD","CCI","EQIX","SPG","O","WELL","PSA","DLR","VTR",
+        // Mid-caps / popular tickers retail tracks
+        "PLTR","SOFI","RIVN","LCID","NIO","XPEV","RBLX","U","DKNG","HOOD",
+        "AFRM","UPST","CHWY","ETSY","PINS","SNAP","UBER","LYFT","DASH","ABNB",
+        "MARA","RIOT","CLSK","HIVE","BITF","MSTR","SMCI","ARM","CAVA","BROS",
       ];
+
+      // Fisher-Yates shuffle of a fresh copy, then slice. Date.now seeds
+      // implicitly via Math.random — every scan produces a different sample.
+      function sampleN<T>(arr: ReadonlyArray<T>, n: number): T[] {
+        const copy = [...arr];
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy.slice(0, n);
+      }
+
       let tickers: string[];
       if (customTickers && customTickers.length) {
         tickers = customTickers.slice(0, 50);
       } else {
-        tickers = DEFAULT_SCAN_UNIVERSE.slice(0, 50);
+        tickers = sampleN(DEFAULT_SCAN_UNIVERSE, 30);
       }
 
       // Aggregated result cache (6h)
