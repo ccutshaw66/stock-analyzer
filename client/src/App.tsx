@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TickerProvider } from "@/contexts/TickerContext";
+import { TimeframeProvider } from "@/contexts/TimeframeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import NotFound from "@/pages/not-found";
@@ -86,6 +87,7 @@ function AuthenticatedApp() {
 
   // Logged in — show the app
   return (
+    <TimeframeProvider>
     <TickerProvider>
       {showTour && <OnboardingTour onComplete={() => { setShowTour(false); setTourDismissed(true); }} />}
       <Router hook={useHashLocation}>
@@ -123,6 +125,7 @@ function AuthenticatedApp() {
         </AppLayout>
       </Router>
     </TickerProvider>
+    </TimeframeProvider>
   );
 }
 

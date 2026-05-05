@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { HelpBlock } from "@/components/HelpBlock";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
 // Lightweight badge that calls /api/scanner-v2/quick/:ticker and shows
@@ -33,10 +34,11 @@ function classifyGateVerdict(verdict: string): { bg: string; text: string; label
 }
 
 const ScannerPip = memo(function ScannerPip({ ticker }: { ticker: string }) {
+  const { timeframe } = useTimeframe();
   const { data, isLoading } = useQuery<{ score: number | null; verdict: string | null }>({
-    queryKey: ["/api/scanner-v2/quick", ticker],
+    queryKey: ["/api/scanner-v2/quick", ticker, timeframe],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}`);
+      const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}?timeframe=${timeframe}`);
       return res.json();
     },
     staleTime: 15 * 60 * 1000,

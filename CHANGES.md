@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Site-wide timeframe picker for RSI / score consistency
+
+**Why:** Trade Analysis used 1y daily bars while Scanner / Watchlist / quick gate badge used 6mo daily. Wilder's RSI is path-dependent — same ticker showed slightly different RSI on different pages, which flipped grades around the 30/70 thresholds. Owner's complaint: "header grade doesn't match outlook grade."
+
+**What:** Header dropdown (`1D / 1M / 3M / 6M / 1Y / 2Y / 5Y`) that drives every indicator-computing route. Default `1Y`. Setting persists in localStorage and syncs across tabs. Same lookback feeds RSI/EMA/Bollinger everywhere → same answer everywhere.
+
+**Files added:**
+- `server/timeframe.ts` — single source of timeframe presets + `parseTimeframe(req)` helper
+- `client/src/contexts/TimeframeContext.tsx` — provider, hook, localStorage persistence
+- `client/src/components/TimeframePicker.tsx` — dropdown component
+
+**Files modified (server — accept `?timeframe=`):**
+- `server/routes.ts` — `/api/analyze`, `/api/trade-analysis`, `/api/scanner`, `/api/scanner/amc`, `/api/scanner-v2/quick/:ticker`, `/api/scanner-v2/indicators/:ticker`, `/api/favorites/:listType/refresh`. Cache keys now include timeframe so flipping the picker doesn't poison cache.
+
+**Files modified (client — pass timeframe to queries):**
+- `client/src/App.tsx` — wraps app in `TimeframeProvider`
+- `client/src/components/AppLayout.tsx` — picker in header; favorites refresh sends timeframe
+- `client/src/contexts/TickerContext.tsx` — `/api/analyze` + `/api/trade-analysis` queries
+- `client/src/pages/scanner.tsx` — main / AMC / v2 scanner queries; cache key swap on timeframe change
+- `client/src/pages/trade-tracker.tsx` — quick gate badge query
+- `client/src/components/IndicatorOscillator.tsx` — MACD/RSI oscillator query
+
+**Notes:**
+- Structural longer-context bars stay fixed (e.g. 2y weekly for SMA200 in trade-analysis, 3y/5y weekly in analyze, verdict's 1y return) — those measure something specific and shouldn't move with the user's pick.
+- 1D maps to `range=1d, interval=5m`. Polygon Stocks Starter is end-of-day data, so 1D may return empty until/unless the Polygon plan is upgraded to a tier with intraday access. UI handles empty bars gracefully.
+- Conviction Compass and Track Record were left unchanged (they use the snapshot pipeline / historical signal validation, not the user-driven indicator path).
+
+Rollback tag: `safe/2026-05-05-pre-timeframe`.
+
+---
 ## 2026-05-04 — Institutional page: Yahoo fallback + scan dedup + crash guards
 
 **Symptoms users were seeing:**

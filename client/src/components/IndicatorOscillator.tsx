@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 
 interface Bar {
   t: number;
@@ -16,10 +17,11 @@ interface Bar {
  * Bottom pane: RSI(14) line with 30/70 guide rails.
  */
 export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bars?: number }) {
+  const { timeframe } = useTimeframe();
   const { data, isLoading } = useQuery<{ ticker: string; series: Bar[]; reason?: string }>({
-    queryKey: ["/api/scanner-v2/indicators", ticker, bars],
+    queryKey: ["/api/scanner-v2/indicators", ticker, bars, timeframe],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/scanner-v2/indicators/${ticker}?bars=${bars}`);
+      const res = await apiRequest("GET", `/api/scanner-v2/indicators/${ticker}?bars=${bars}&timeframe=${timeframe}`);
       return res.json();
     },
     staleTime: 10 * 60 * 1000,

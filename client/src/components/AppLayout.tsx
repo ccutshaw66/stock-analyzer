@@ -45,6 +45,8 @@ import {
   Compass,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe } from "@/contexts/TimeframeContext";
+import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -202,6 +204,9 @@ function StickyHeader({
           <span className="hidden sm:inline">Analyze</span>
         </button>
       </form>
+
+      {/* Timeframe picker — site-wide; drives charts/scanners/indicators */}
+      <TimeframePicker />
 
       {/* Active stock info — verdict banner style like the analysis card */}
       {analysisData && !isAnalysisLoading && verdictColor && (
@@ -393,6 +398,7 @@ function Sidebar({
   const [location] = useLocation();
   const { activeTicker, setActiveTicker, analysisData, tradeData, isAnalysisLoading } =
     useTicker();
+  const { timeframe } = useTimeframe();
   const { tier } = useSubscription();
   // Fetch open trades for sidebar
   interface TradeItem {
@@ -459,7 +465,7 @@ function Sidebar({
       // button always returns fresh gate signals.
       const res = await apiRequest(
         "POST",
-        `/api/favorites/${listType}/refresh?force=1`
+        `/api/favorites/${listType}/refresh?force=1&timeframe=${timeframe}`
       );
       return res.json();
     },
