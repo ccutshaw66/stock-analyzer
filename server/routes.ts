@@ -723,12 +723,22 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   }
 
   // Top fund holders (mutual funds / ETFs).
-  // Yahoo's pctHeld and pctChange both come in as fractions (0.05 = 5%).
-  // Frontend convention is split: pctHeld is rendered with `(v*100).toFixed(2)%`
-  // (so we send the raw fraction), while changeQoQ is rendered with
-  // `v.toFixed(1)%` (so we convert to percent here, matching the
-  // topInstitutions row above).
-  const topFunds = fundOwnership.slice(0, 15).map((fund: any) => ({
+  // PRIMARY: when edgar source is FMP (paid Ultimate plan), use the topFunds
+  // FMP returned — same 13F data filtered to fund/ETF filers.
+  // FALLBACK: Yahoo's fundOwnership (only populated when Yahoo is enabled).
+  // When neither has data, the Fund Holders tab shows the empty state.
+  const fmpFunds: any[] = (edgar?.topFunds && Array.isArray(edgar.topFunds)) ? edgar.topFunds : [];
+  const fundSource = fmpFunds.length > 0 ? "fmp" : "yahoo";
+  const topFunds = fundSource === "fmp"
+    ? fmpFunds.map((f: any) => ({
+        name: f.name || "Unknown",
+        shares: Number(f.shares || 0),
+        value: Number(f.value || 0),
+        pctHeld: Number(f.pctHeld || 0),
+        changeQoQ: Number(f.changeQoQ || 0),
+        reportDate: f.reportDate || null,
+      }))
+    : fundOwnership.slice(0, 15).map((fund: any) => ({
     name: fund.organization || "Unknown",
     shares: fund.position?.raw || 0,
     value: fund.value?.raw || 0,
@@ -737,8 +747,41 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
-  // Insider holders (current positions)
-  const insiders = insiderHolders.map((h: any) => ({
+  // Insider holders (current positions).
+  // PRIMARY: Yahoo's insiderHolders module (only populated when Yahoo is
+  // enabled, which it isn't on FMP_TIER=ultimate).
+  // FALLBACK: derive a roster from the insider transaction history we already
+  // pull from FMP — group by insider name, take the most recent transaction
+  // per name, sum the shares involved as a proxy for "current activity."
+  // It's not a true holdings statement (that requires Form 3/Form 5 data),
+  // but it gives the Insiders tab a populated roster of who's been moving
+  // shares lately, sourced entirely from FMP.
+  const insidersFromTxns = (() => {
+    if (insiderHolders.length > 0) return null; // Yahoo path will be used
+    if (!Array.isArray(insiderTxns) || insiderTxns.length === 0) return [];
+    const byName = new Map<string, any>();
+    for (const tx of insiderTxns) {
+      const name = String(tx.filerName || "Unknown");
+      const date = tx.startDate?.fmt || null;
+      const existing = byName.get(name);
+      if (!existing || (date && (!existing.latestDate || date > existing.latestDate))) {
+        byName.set(name, {
+          name,
+          relation: String(tx.filerRelation || "Insider"),
+          shares: Number(tx.shares?.raw || 0),
+          sharesIndirect: 0,
+          latestTransaction: String(tx.transactionText || "").includes("S") ? "Sale"
+            : String(tx.transactionText || "").includes("P") ? "Purchase"
+            : "Form 4 Filing",
+          latestDate: date,
+        });
+      }
+    }
+    return Array.from(byName.values()).slice(0, 20);
+  })();
+  const insiders = insidersFromTxns !== null
+    ? insidersFromTxns
+    : insiderHolders.map((h: any) => ({
     name: h.name || "Unknown",
     relation: h.relation || "Unknown",
     shares: h.positionDirect?.raw || 0,

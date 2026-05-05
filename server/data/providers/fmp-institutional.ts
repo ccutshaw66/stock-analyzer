@@ -43,11 +43,53 @@ export interface FmpInstitutionalSummary {
     accession: string | null;
     cik: string | null;
   }>;
+  // Same row shape as topHolders, but filtered to mutual fund / ETF / index
+  // fund / SMA filers — populates the "Fund Holders" tab on the institutional
+  // page now that the Yahoo-sourced fundOwnership is dead.
+  topFunds: Array<{
+    name: string;
+    shares: number;
+    value: number;
+    pctHeld: number;
+    changeQoQ: number;     // 0 — FMP holders endpoint doesn't expose pctChange
+    reportDate: string | null;
+  }>;
   institutionPct: number;       // percentage 0..100 (matches EDGAR shape)
   institutionCount: number;
   sharesOutstanding: number | null;
   asOf: string | null;
   source: "fmp-ultimate";
+}
+
+/**
+ * Heuristic fund-name detector. 13F filers are a mix of banks, asset
+ * managers, pension funds, mutual funds, ETFs, hedge funds, etc. The
+ * "Fund Holders" tab specifically wants mutual-fund / ETF / index-fund
+ * filers. Match on common naming conventions — not perfect but covers
+ * the vast majority of the names users care about (Vanguard funds,
+ * iShares ETFs, Fidelity funds, SPDR ETFs, etc.).
+ */
+function looksLikeFund(name: string): boolean {
+  const n = (name || "").toUpperCase();
+  return (
+    n.includes(" FUND") ||
+    n.endsWith(" FUND") ||
+    n.includes(" ETF") ||
+    n.includes(" INDEX FUND") ||
+    n.includes(" INDEX TRUST") ||
+    n.startsWith("VANGUARD ") ||
+    n.startsWith("ISHARES ") ||
+    n.startsWith("SPDR ") ||
+    n.startsWith("INVESCO ") ||
+    n.includes("FIDELITY ") ||
+    n.includes("SCHWAB ") ||
+    n.includes("AMERICAN FUNDS") ||
+    n.includes("T ROWE PRICE") ||
+    n.includes("TROWE PRICE") ||
+    n.includes("DIMENSIONAL FUND") ||
+    n.includes("VOYA ") ||
+    n.includes(" TRUST")
+  );
 }
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h — 13Fs are quarterly anyway
@@ -200,8 +242,24 @@ export async function getFmpInstitutional(
     const sharesOutstanding =
       Number(latest?.sharesOutstanding ?? latest?.numberOf13FsharesOutstanding ?? 0) || null;
 
+    // Build the fund-only subset for the Fund Holders tab. Same source as
+    // topHolders, just filtered. Limit to top 15 to mirror what Yahoo's
+    // fundOwnership previously returned.
+    const topFunds = topHolders
+      .filter((h) => looksLikeFund(h.name))
+      .slice(0, 15)
+      .map((h) => ({
+        name: h.name,
+        shares: h.shares,
+        value: h.value,
+        pctHeld: h.pctHeld,
+        changeQoQ: 0,
+        reportDate: h.reportDate,
+      }));
+
     const result: FmpInstitutionalSummary = {
       topHolders,
+      topFunds,
       institutionPct: ownershipPct,
       institutionCount,
       sharesOutstanding,
