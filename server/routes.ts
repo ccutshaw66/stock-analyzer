@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v8:${ticker}`;
+      const verdictCacheKey = `verdict:v9:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4295,12 +4295,12 @@ export async function registerRoutes(
       await delay(200);
       const silverSpot = await fmpSpotQuote("SIUSD");
       await delay(200);
-      const spyQuote = await getQuote("SPY").catch(() => null);
+      // SPY/QQQ via FMP for consistent change-pct shape. The Polygon snapshot
+      // path through getQuote returns prices fine but regularMarketChangePercent.raw
+      // wasn't populated, so the cards were stuck at +0.0% today.
+      const spySpot = await fmpSpotQuote("SPY");
       await delay(200);
-      const qqqQuote = await getQuote("QQQ").catch(() => null);
-
-      const spyPrice = spyQuote?.price || null;
-      const qqqPrice = qqqQuote?.price || null;
+      const qqqSpot = await fmpSpotQuote("QQQ");
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
@@ -4429,13 +4429,13 @@ export async function registerRoutes(
             name: "Silver",
           },
           spy: {
-            price: spyPrice?.regularMarketPrice?.raw || 0,
-            change: spyPrice?.regularMarketChangePercent?.raw || 0,
+            price: spySpot?.price || 0,
+            change: spySpot?.changePct || 0,
             name: "S&P 500",
           },
           nasdaq: {
-            price: qqqPrice?.regularMarketPrice?.raw || 0,
-            change: qqqPrice?.regularMarketChangePercent?.raw || 0,
+            price: qqqSpot?.price || 0,
+            change: qqqSpot?.changePct || 0,
             name: "Nasdaq 100",
           },
         },
