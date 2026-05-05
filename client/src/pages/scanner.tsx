@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 import {
   Radar, Search, TrendingUp, TrendingDown, Minus,
   Activity, BarChart3, Volume2, Zap, ChevronDown, ChevronUp,
@@ -379,6 +380,7 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
 
 export default function Scanner() {
   const { setActiveTicker } = useTicker();
+  const { timeframe } = useTimeframe();
   const [, navigate] = useLocation();
   const [scanMode, setScanMode] = useState<"3strategy" | "amc" | "v2">("3strategy");
   const [sector, setSector] = useState("All Sectors");
@@ -395,15 +397,25 @@ export default function Scanner() {
     minPrice: String(priceConfig.min), maxPrice: String(priceConfig.max),
     sector: sector === "All Sectors" ? "all" : sector,
     marketCap, count: String(scanCount), showAll: String(showAll),
+    timeframe,
   }).toString();
 
-  // Scan results persisted via queryClient cache so they survive page navigation
-  const [threeStratData, setThreeStratData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/3strat"]) || null);
-  const [amcData, setAmcData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/amc"]) || null);
-  const [v2Data, setV2Data] = useState<any>(() => queryClient.getQueryData(["/api/scanner/v2"]) || null);
+  // Scan results persisted via queryClient cache so they survive page navigation.
+  // Cache key includes timeframe so flipping the picker doesn't show stale data.
+  const [threeStratData, setThreeStratData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/3strat", timeframe]) || null);
+  const [amcData, setAmcData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/amc", timeframe]) || null);
+  const [v2Data, setV2Data] = useState<any>(() => queryClient.getQueryData(["/api/scanner/v2", timeframe]) || null);
   const [v2Direction, setV2Direction] = useState<"either" | "up" | "down">("either");
   const [v2MinScore, setV2MinScore] = useState<number>(10);
   const [isFetching, setIsFetching] = useState(false);
+
+  // When the user flips the timeframe picker, swap displayed scan results
+  // for the cached entry under the new timeframe (or clear if none cached yet).
+  useEffect(() => {
+    setThreeStratData(queryClient.getQueryData(["/api/scanner/3strat", timeframe]) || null);
+    setAmcData(queryClient.getQueryData(["/api/scanner/amc", timeframe]) || null);
+    setV2Data(queryClient.getQueryData(["/api/scanner/v2", timeframe]) || null);
+  }, [timeframe]);
 
   const data = scanMode === "amc" ? amcData : scanMode === "v2" ? v2Data : threeStratData;
 
@@ -431,13 +443,13 @@ export default function Scanner() {
       const result = await res.json();
       if (scanMode === "amc") {
         setAmcData(result);
-        queryClient.setQueryData(["/api/scanner/amc"], result);
+        queryClient.setQueryData(["/api/scanner/amc", timeframe], result);
       } else if (scanMode === "v2") {
         setV2Data(result);
-        queryClient.setQueryData(["/api/scanner/v2"], result);
+        queryClient.setQueryData(["/api/scanner/v2", timeframe], result);
       } else {
         setThreeStratData(result);
-        queryClient.setQueryData(["/api/scanner/3strat"], result);
+        queryClient.setQueryData(["/api/scanner/3strat", timeframe], result);
       }
     } catch (err: any) {
       console.error("Scanner fetch failed:", err);

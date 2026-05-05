@@ -17,6 +17,7 @@ import {
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
+import { parseTimeframe, getTimeframePreset, type TimeframePreset } from "./timeframe";
 import { computeBBTC, computeVER, computeAMC, scoreAMC } from "./signals";
 import {
   getPolygonQuoteSummary,
@@ -2521,13 +2522,15 @@ export async function registerRoutes(
 
   app.get("/api/analyze/:ticker", checkFeatureAccess('analysisPerDay'), async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
+    const tf = parseTimeframe(req);
 
     try {
       await ensureReady();
-      // Fetch all data in parallel
+      // Fetch all data in parallel. Primary daily bars use the user-selected
+      // timeframe so RSI/EMA/Bollinger match what other pages compute.
       const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
         getQuote(ticker),
-        getChart(ticker, "1y", "1d"),
+        getChart(ticker, tf.range, tf.interval),
         getChart(ticker, "3y", "1wk"),
         getChart(ticker, "5y", "1wk"),
       ]);
@@ -2826,11 +2829,13 @@ export async function registerRoutes(
 
   app.get("/api/trade-analysis/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
+    const tf = parseTimeframe(req);
     try {
       await ensureReady();
-      // Fetch 1-year daily for BBTC + RSI, 2-year weekly for SMA200
+      // Primary daily bars use user-selected timeframe (drives RSI/BBTC/AMC).
+      // 2-year weekly is structural context for SMA200 and stays fixed.
       const [chart1YResult, chart2YResult] = await Promise.allSettled([
-        getChart(ticker, "1y", "1d"),
+        getChart(ticker, tf.range, tf.interval),
         getChart(ticker, "2y", "1wk"),
       ]);
 
@@ -3388,6 +3393,7 @@ export async function registerRoutes(
     const marketCapTier = (req.query.marketCap as string) || "all";
     const scanSize = Math.min(Number(req.query.count) || 100, 200);
     const showAll = req.query.showAll === "true";
+    const tf = parseTimeframe(req);
 
     // Map market cap tier to min/max
     let minMarketCap = 500_000_000;
@@ -3400,9 +3406,9 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple → instant response.
+    // Route-level cache: same filter tuple + timeframe → instant response.
     // User-scoped to keep rate-limit fairness but shared filters hit the same key anyway.
-    const scanCacheKey = `scanner:main:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
+    const scanCacheKey = `scanner:main:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
     {
       const cached = getCached(scanCacheKey);
       if (cached) return res.json(cached);
@@ -3438,7 +3444,7 @@ export async function registerRoutes(
         const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
-            const chart = await getChart(ticker, "6mo", "1d");
+            const chart = await getChart(ticker, tf.range, tf.interval);
             if (!chart || !chart.timestamp) return null;
 
             const quoteData = chart.indicators?.quote?.[0] || {};
@@ -3757,6 +3763,7 @@ export async function registerRoutes(
     const marketCapTier = (req.query.marketCap as string) || "all";
     const scanSize = Math.min(Number(req.query.count) || 100, 200);
     const showAll = req.query.showAll === "true";
+    const tf = parseTimeframe(req);
 
     let minMarketCap = 500_000_000;
     let maxMarketCap: number | undefined;
@@ -3768,8 +3775,8 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple → instant response.
-    const amcCacheKey = `scanner:amc:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
+    // Route-level cache: same filter tuple + timeframe → instant response.
+    const amcCacheKey = `scanner:amc:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
     {
       const cached = getCached(amcCacheKey);
       if (cached) return res.json(cached);
@@ -3800,7 +3807,7 @@ export async function registerRoutes(
         const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
-            const chart = await getChart(ticker, "6mo", "1d");
+            const chart = await getChart(ticker, tf.range, tf.interval);
             if (!chart || !chart.timestamp) return null;
 
             const quoteData = chart.indicators?.quote?.[0] || {};
@@ -3924,12 +3931,13 @@ export async function registerRoutes(
       await ensureReady();
       const ticker = String(req.params.ticker || "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker required" });
+      const tf = parseTimeframe(req);
 
-      const key = `v2:gate:${ticker}`;
+      const key = `v2:gate:${ticker}:${tf.value}`;
       const cached = getCached(key);
       if (cached) return res.json({ ticker, score: cached.score, verdict: cached.verdict, cached: true });
 
-      const chart6m = await getChart(ticker, "6mo", "1d");
+      const chart6m = await getChart(ticker, tf.range, tf.interval);
       if (!chart6m || !chart6m.timestamp) {
         return res.json({ ticker, score: null, verdict: null, reason: "no-chart" });
       }
@@ -3980,12 +3988,13 @@ export async function registerRoutes(
       const ticker = String(req.params.ticker || "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker required" });
       const bars = Number(req.query.bars) || 60;
+      const tf = parseTimeframe(req);
 
-      const key = `v2:osc:${ticker}:${bars}`;
+      const key = `v2:osc:${ticker}:${bars}:${tf.value}`;
       const cached = getCached(key);
       if (cached) return res.json({ ticker, ...cached, cached: true });
 
-      const chart = await getChart(ticker, "6mo", "1d");
+      const chart = await getChart(ticker, tf.range, tf.interval);
       if (!chart?.timestamp) return res.json({ ticker, series: [], reason: "no-chart" });
       const q = chart.indicators?.quote?.[0] || {};
       const closes: number[] = (q.close || []).map((v: any) => Number(v) || 0).filter((n: number) => n > 0);
@@ -4063,13 +4072,14 @@ export async function registerRoutes(
       const listType = req.params.listType;
       const items = await storage.getFavorites(req.user!.id, listType);
       const force = String(req.query.force || "") === "1";
+      const tf = parseTimeframe(req);
       const results: any[] = [];
 
       // Partition: cached vs needs-compute. Per-ticker gate cache with 15min TTL.
       // Force=1 (manual Refresh button) bypasses cache; normal page loads reuse.
       const toCompute: typeof items = [];
       for (const item of items) {
-        const key = `v2:gate:${item.ticker.toUpperCase()}`;
+        const key = `v2:gate:${item.ticker.toUpperCase()}:${tf.value}`;
         const cached = force ? null : getCached(key);
         if (cached) {
           results.push({ ...item, score: cached.score, verdict: cached.verdict });
@@ -4084,7 +4094,7 @@ export async function registerRoutes(
         const batchResults = await Promise.allSettled(
           batch.map(async (item) => {
             try {
-              const chart6m = await getChart(item.ticker, "6mo", "1d");
+              const chart6m = await getChart(item.ticker, tf.range, tf.interval);
               if (!chart6m || !chart6m.timestamp) {
                 console.log(`[watchlist-refresh] ${item.ticker}: no chart data`);
                 return { ...item };
@@ -4103,7 +4113,7 @@ export async function registerRoutes(
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
-              setCache(`v2:gate:${item.ticker.toUpperCase()}`, { score, verdict }, TTL.watchlist);
+              setCache(`v2:gate:${item.ticker.toUpperCase()}:${tf.value}`, { score, verdict }, TTL.watchlist);
               console.log(`[watchlist-refresh] ${item.ticker}: ${verdict} (${score} gates)`);
               return { ...item, score, verdict };
             } catch (err: any) {
