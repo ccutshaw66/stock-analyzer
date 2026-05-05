@@ -28,7 +28,19 @@ const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 " +
   "(KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
+// Master kill switch (mirrors the one in routes.ts so this adapter is also
+// neutralised when FMP_TIER=ultimate or YAHOO_DISABLED=true). The whole point
+// is that ZERO Yahoo HTTP traffic should leave the server when the user has
+// opted into the paid FMP path.
+function isYahooDisabled(): boolean {
+  const tier = (process.env.FMP_TIER || "").toLowerCase();
+  if (tier === "ultimate") return true;
+  if ((process.env.YAHOO_DISABLED || "").toLowerCase() === "true") return true;
+  return false;
+}
+
 async function yget<T>(url: string): Promise<T> {
+  if (isYahooDisabled()) throw new Error("yahoo:disabled");
   const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
   if (resp.status === 429) throw new Error("yahoo:rate_limited");
   if (resp.status === 401 || resp.status === 403) throw new Error(`yahoo:unauthorized_${resp.status}`);

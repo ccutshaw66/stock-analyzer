@@ -331,8 +331,31 @@ async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
   }
 }
 
-// Queued Yahoo fetch — all requests go through the global rate limiter
+// Master Yahoo kill switch. Yahoo is removed from the live request path when
+// FMP_TIER=ultimate is set OR YAHOO_DISABLED=true. Every Yahoo call routes
+// through this single chokepoint, so the kill switch here disables Yahoo
+// site-wide — the institutional scan, long-range charts, ownership warmups,
+// and any other code path that ends up calling yahooFetch all fail-fast
+// instead of hitting the network and burning into Yahoo's 429 block.
+function isYahooDisabled(): boolean {
+  const tier = (process.env.FMP_TIER || "").toLowerCase();
+  if (tier === "ultimate") return true;
+  if ((process.env.YAHOO_DISABLED || "").toLowerCase() === "true") return true;
+  return false;
+}
+
+class YahooDisabledError extends Error {
+  constructor() {
+    super("yahoo:disabled (FMP_TIER=ultimate or YAHOO_DISABLED=true)");
+    this.name = "YahooDisabledError";
+  }
+}
+
+// Queued Yahoo fetch — all requests go through the global rate limiter.
+// Returns immediately with a YahooDisabledError when Yahoo is disabled,
+// so no socket is opened, no crumb is fetched, no 429 is incurred.
 async function yahooFetch(url: string, retries = 3): Promise<any> {
+  if (isYahooDisabled()) throw new YahooDisabledError();
   return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
 }
 
@@ -360,6 +383,16 @@ const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
  */
 export async function getYahooOwnership(ticker: string): Promise<any> {
   const T = ticker.toUpperCase();
+  // Master kill switch: when Yahoo is disabled, return the empty shape
+  // immediately. No socket, no crumb fetch, no rate-limit retries.
+  if (isYahooDisabled()) {
+    return {
+      institutionOwnership: null,
+      fundOwnership: null,
+      majorHoldersBreakdown: null,
+      insiderHolders: null,
+    };
+  }
   const cacheKey = `yahoo:ownership:${T}`;
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
@@ -535,25 +568,21 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo ownership modules (fund holders + insider holders + 13F QoQ deltas).
-  // Yahoo's IP-based 429 block was causing this call to hang the whole scan
-  // for 30s+ while it retried crumb fetches. Wrap in a 5s race so the scan
-  // moves on quickly if Yahoo is unhappy. When Yahoo is up (or cache-warm)
-  // it usually returns in <1s so the timeout almost never fires in practice.
-  // Failure path returns the same empty shape getYahooOwnership uses on
-  // its own internal errors — fund/insider tabs simply show empty.
-  const yahooEmpty = {
+  // Yahoo is REMOVED from the institutional data path. The user is on FMP
+  // Ultimate; relying on a free, IP-blockable scrape provider for paid-tier
+  // data was the wrong architecture. Empty stub here — institutional table
+  // populates from FMP via parseInstitutionalData, fund/insider tabs are
+  // wired up via FMP follow-ups (TODO).
+  //
+  // NOTE: getYahooOwnership() is still defined and called by other paths
+  // (single-ticker view fallback, the nightly Yahoo warmup cron). Only the
+  // scan-time per-ticker path is changed here.
+  const yahooOwnership = {
     institutionOwnership: null,
     fundOwnership: null,
     majorHoldersBreakdown: null,
     insiderHolders: null,
   };
-  const yahooOwnership = await Promise.race([
-    getYahooOwnership(ticker).catch(() => yahooEmpty),
-    new Promise<typeof yahooEmpty>((resolve) =>
-      setTimeout(() => resolve(yahooEmpty), 5000),
-    ),
-  ]);
 
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
@@ -1250,9 +1279,17 @@ export async function registerRoutes(
   // ─── New compartmentalized routes (Phase 1 strangler) ──────────────────
   registerSearchRoutes(app);
 
-  // Warm up Yahoo crumb on startup — API routes wait for this before making Yahoo calls
+  // Warm up Yahoo crumb on startup — API routes wait for this before making
+  // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate
+  // or YAHOO_DISABLED=true) — no point burning into Yahoo's 429 block fetching
+  // a crumb we'll never use.
   let _warmupDone = false;
   const _warmupPromise = (async () => {
+    if (isYahooDisabled()) {
+      console.log("[yahoo] kill switch active (FMP_TIER=ultimate or YAHOO_DISABLED=true) — skipping crumb warmup");
+      _warmupDone = true;
+      return;
+    }
     for (let attempt = 1; attempt <= 5; attempt++) {
       await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s, 8s, 10s
       try {
