@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v6:${ticker}`;
+      const verdictCacheKey = `verdict:v7:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4293,8 +4293,11 @@ export async function registerRoutes(
       const silverSpot = await fmpSpotQuote("SIUSD");
       await delay(200);
       const spyQuote = await getQuote("SPY").catch(() => null);
+      await delay(200);
+      const qqqQuote = await getQuote("QQQ").catch(() => null);
 
       const spyPrice = spyQuote?.price || null;
+      const qqqPrice = qqqQuote?.price || null;
 
       // Compute unified verdict score (0-100)
       // Weighted combination of: analysis score, institutional flow, strategy alignment
@@ -4426,6 +4429,11 @@ export async function registerRoutes(
             price: spyPrice?.regularMarketPrice?.raw || 0,
             change: spyPrice?.regularMarketChangePercent?.raw || 0,
             name: "S&P 500",
+          },
+          nasdaq: {
+            price: qqqPrice?.regularMarketPrice?.raw || 0,
+            change: qqqPrice?.regularMarketChangePercent?.raw || 0,
+            name: "Nasdaq 100",
           },
         },
       };

@@ -82,6 +82,7 @@ interface VerdictData {
     gold: MetalData;
     silver: MetalData;
     spy: MetalData;
+    nasdaq?: MetalData;
   };
 }
 
@@ -589,116 +590,138 @@ export default function Verdict() {
 
       {/* ━━━ 4. METALS DASHBOARD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {data.metals && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
+        <section className="space-y-6">
+          <div className="flex items-center gap-2">
             <Gem className="h-5 w-5 text-muted-foreground" />
             <h3 className="text-base font-semibold text-foreground">Safe Haven &amp; Benchmark Comparison</h3>
           </div>
 
-          {(() => {
-            // Regime classification for the Gold/Silver Ratio.
-            // Historical ranges: >80 silver looks cheap, 60–80 fair, <60 gold looks cheap.
-            let ratioLabel = "—";
-            let ratioBadge = "Awaiting data";
-            let ratioBgClass = "bg-muted/30";
-            let ratioBorderClass = "border-card-border";
-            let ratioTextClass = "text-muted-foreground";
-            if (goldSilverRatio > 0) {
-              ratioLabel = goldSilverRatio.toFixed(1);
-              if (goldSilverRatio >= 80) {
-                ratioBadge = "Silver Undervalued";
-                ratioBgClass = "bg-gray-400/10";
-                ratioBorderClass = "border-gray-400/30";
-                ratioTextClass = "text-gray-300";
-              } else if (goldSilverRatio >= 60) {
-                ratioBadge = "Fair Value";
-                ratioBgClass = "bg-amber-500/10";
-                ratioBorderClass = "border-amber-500/30";
-                ratioTextClass = "text-amber-400";
-              } else {
-                ratioBadge = "Gold Undervalued";
-                ratioBgClass = "bg-yellow-500/10";
-                ratioBorderClass = "border-yellow-500/30";
-                ratioTextClass = "text-yellow-400";
+          {/* ─── Precious Metals subsection ───────────────────────────── */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 mb-2 px-1">Precious Metals</h4>
+            {(() => {
+              // Regime classification for the Gold/Silver Ratio.
+              // Historical ranges: >80 silver looks cheap, 60–80 fair, <60 gold looks cheap.
+              let ratioLabel = "—";
+              let ratioBadge = "Awaiting data";
+              let ratioTextClass = "text-muted-foreground";
+              if (goldSilverRatio > 0) {
+                ratioLabel = goldSilverRatio.toFixed(1);
+                if (goldSilverRatio >= 80) {
+                  ratioBadge = "Silver Undervalued";
+                  ratioTextClass = "text-gray-300";
+                } else if (goldSilverRatio >= 60) {
+                  ratioBadge = "Fair Value";
+                  ratioTextClass = "text-amber-400";
+                } else {
+                  ratioBadge = "Gold Undervalued";
+                  ratioTextClass = "text-yellow-400";
+                }
               }
-            }
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Gold */}
-                <div className="bg-card border border-card-border rounded-xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-yellow-500/15 flex items-center justify-center">
-                      <Gem className="h-4 w-4 text-yellow-400" />
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Gold */}
+                  <div className="bg-card border border-card-border rounded-xl p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-yellow-500/15 flex items-center justify-center">
+                        <Gem className="h-4 w-4 text-yellow-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{data.metals.gold.name}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{data.metals.gold.name}</p>
+                    <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.gold.price)}</p>
+                    <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.gold.change)}`}>
+                      {data.metals.gold.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                      <span className="tabular-nums">{formatPct(data.metals.gold.change)}</span>
+                      <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.gold.price)}</p>
-                  <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.gold.change)}`}>
-                    {data.metals.gold.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                    <span className="tabular-nums">{formatPct(data.metals.gold.change)}</span>
-                    <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
+
+                  {/* Silver */}
+                  <div className="bg-card border border-card-border rounded-xl p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-gray-400/15 flex items-center justify-center">
+                        <Gem className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">{data.metals.silver.name}</p>
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.silver.price)}</p>
+                    <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.silver.change)}`}>
+                      {data.metals.silver.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                      <span className="tabular-nums">{formatPct(data.metals.silver.change)}</span>
+                      <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
+                    </div>
+                  </div>
+
+                  {/* Gold / Silver Ratio — same card style; only the label color signals regime */}
+                  <div className="bg-card border border-card-border rounded-xl p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                        <Scale className="h-4 w-4 text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gold / Silver Ratio</p>
+                      </div>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground tabular-nums">{ratioLabel}</p>
+                    <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${ratioTextClass}`}>
+                      <span>{ratioBadge}</span>
+                    </div>
                   </div>
                 </div>
+              );
+            })()}
+          </div>
 
-                {/* Silver */}
-                <div className="bg-card border border-card-border rounded-xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-gray-400/15 flex items-center justify-center">
-                      <Gem className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{data.metals.silver.name}</p>
-                    </div>
+          {/* ─── Market Benchmarks subsection ─────────────────────────── */}
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/80 mb-2 px-1">Market Benchmarks</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* S&P 500 */}
+              <div className="bg-card border border-card-border rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                    <LineChart className="h-4 w-4 text-blue-400" />
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.silver.price)}</p>
-                  <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.silver.change)}`}>
-                    {data.metals.silver.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                    <span className="tabular-nums">{formatPct(data.metals.silver.change)}</span>
-                    <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{data.metals.spy.name}</p>
                   </div>
                 </div>
-
-                {/* S&P 500 */}
-                <div className="bg-card border border-card-border rounded-xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                      <LineChart className="h-4 w-4 text-blue-400" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{data.metals.spy.name}</p>
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.spy.price)}</p>
-                  <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.spy.change)}`}>
-                    {data.metals.spy.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                    <span className="tabular-nums">{formatPct(data.metals.spy.change)}</span>
-                    <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
-                  </div>
-                </div>
-
-                {/* Gold / Silver Ratio */}
-                <div className={`${ratioBgClass} border ${ratioBorderClass} rounded-xl p-5`}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
-                      <Scale className={`h-4 w-4 ${ratioTextClass}`} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Gold / Silver Ratio</p>
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">{ratioLabel}</p>
-                  <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${ratioTextClass}`}>
-                    <span>{ratioBadge}</span>
-                  </div>
+                <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.spy.price)}</p>
+                <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.spy.change)}`}>
+                  {data.metals.spy.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                  <span className="tabular-nums">{formatPct(data.metals.spy.change)}</span>
+                  <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
                 </div>
               </div>
-            );
-          })()}
 
-          <p className="mt-3 px-1 text-xs text-muted-foreground leading-relaxed">
-            Gold and silver serve as traditional safe-haven hedges. When equities decline, precious metals often hold value or appreciate, providing portfolio resilience. The Gold/Silver Ratio (typically 60–90) signals which metal is historically cheaper relative to the other.
+              {/* Nasdaq 100 */}
+              {data.metals.nasdaq && (
+                <div className="bg-card border border-card-border rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center">
+                      <LineChart className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">{data.metals.nasdaq.name}</p>
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.nasdaq.price)}</p>
+                  <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.nasdaq.change)}`}>
+                    {data.metals.nasdaq.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+                    <span className="tabular-nums">{formatPct(data.metals.nasdaq.change)}</span>
+                    <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="px-1 text-xs text-muted-foreground leading-relaxed">
+            Gold and silver serve as traditional safe-haven hedges. The Gold/Silver Ratio (typically 60–90) signals which metal is historically cheaper relative to the other. S&amp;P 500 and Nasdaq 100 give you the broad-market and tech-heavy benchmarks for context.
           </p>
         </section>
       )}
