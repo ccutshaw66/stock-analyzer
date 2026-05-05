@@ -1,4 +1,5 @@
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe, TIMEFRAME_LABELS } from "@/contexts/TimeframeContext";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +175,8 @@ function SignalDot(props: any) {
 export default function TradeAnalysis() {
   const { activeTicker, tradeData: data, isTradeLoading: isLoading, tradeError: error } = useTicker();
   const { isAnalysisExhausted } = useSubscription();
+  const { timeframe } = useTimeframe();
+  const tfLabel = TIMEFRAME_LABELS[timeframe];
 
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -693,7 +696,7 @@ export default function TradeAnalysis() {
           {/* Price Chart with Overlays */}
           <Card data-testid="card-price-chart">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Price Chart (1Y) with EMA Overlays</CardTitle>
+              <CardTitle className="text-sm font-semibold">Price Chart ({tfLabel}) with EMA Overlays</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-80">
