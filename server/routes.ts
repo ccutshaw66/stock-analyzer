@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v3:${ticker}`;
+      const verdictCacheKey = `verdict:v4:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4195,14 +4195,14 @@ export async function registerRoutes(
         })(),
       ]);
 
-      // Batch 2: Historical charts for stress test (sequentially with delays)
-      await delay(500);
-      const tickerChart = await getChart(ticker, "25y", "1mo").catch(() => null);
-      await delay(400);
-      const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
-      await delay(400);
-      // Metals via FMP (Yahoo GC=F/SI=F unreliable). Adapt to Yahoo chart shape.
-      async function fmpMetalChart(sym: string): Promise<any> {
+      // Batch 2: Historical charts for stress test.
+      // Polygon Stocks Starter is capped ~5y, so the oldest events (Dot-Com,
+      // 9/11, 2008, 2011) require a deeper-history source. With Yahoo killed
+      // under FMP_TIER=ultimate, the only working long-history source is FMP
+      // /historical-price-eod/full, which goes back to 2000-01-01. Same
+      // approach already used for gold/silver below — generalised to a single
+      // helper that takes any symbol.
+      async function fmpHistoricalChart(sym: string): Promise<any> {
         try {
           const to = new Date().toISOString().slice(0, 10);
           const from = "2000-01-01";
@@ -4216,9 +4216,14 @@ export async function registerRoutes(
           };
         } catch { return null; }
       }
-      const goldChart = await fmpMetalChart("GCUSD");
+      await delay(500);
+      const tickerChart = await fmpHistoricalChart(ticker);
       await delay(200);
-      const silverChart = await fmpMetalChart("SIUSD");
+      const spyChart = await fmpHistoricalChart("SPY");
+      await delay(200);
+      const goldChart = await fmpHistoricalChart("GCUSD");
+      await delay(200);
+      const silverChart = await fmpHistoricalChart("SIUSD");
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
