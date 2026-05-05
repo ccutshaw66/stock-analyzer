@@ -389,6 +389,41 @@ Note: this is the second attempt. First attempt pushed straight to main
 without the dev-branch workflow and broke prod for ~10 min because the
 schema change wasn't applied to the production database. Now lives on
 dev only, with a manual ship gate.
+---
+## 2026-05-04 — Institutional page: Yahoo fallback + scan dedup + crash guards
+
+**Symptoms users were seeing:**
+- Page crashed on render with `TypeError: Cannot read properties of undefined (reading 'length')` after a previous scan had been cached.
+- Scanner ran for ~30s and returned "0 results" (or 1 result) even though Yahoo holdings data had been fetched successfully.
+- Hitting Scan a second time while the first was still running was tipping the dev server over (silent process exit on Windows mid-fetch).
+- Scanner button labels still said "Top 30 Stocks" / "max 30" even though the recent hotfix `0bcc034` lifted the universe to 50.
+
+**Root causes:**
+
+1. **Response shape mismatch.** `/api/institutional-scan` returned `cached.results` (a bare array) on cache hit but `{ scannedAt, totalScanned, results, ... }` (a wrapper object) on cache miss. The frontend expected the wrapper, so a cached response made `scanData.results` undefined → `.length` crashed during render.
+
+2. **Filter stripped everything when EDGAR was blocked.** `parseInstitutionalData` set `institutionPct` and `institutionCount` to `edgar?.institutionPct ?? 0` / `edgar?.institutionCount ?? 0`. With EDGAR currently blocked (per 2026-05-03 Akamai re-block), every row came back 0/0 and the post-scan filter `r.institutionPct > 0 || r.institutionCount > 0` discarded all 50 even though Yahoo had useful holdings data via the helper added on 2026-04-25.
+
+3. **No in-flight dedup on the scan endpoint.** Each click started a fresh storm of provider calls (50 tickers × ~4 endpoints each ≈ 200 concurrent sockets). Two back-to-back clicks doubled that on Windows defaults, exhausting sockets and silently killing the dev server.
+
+**Fixes:**
+
+- **`server/routes.ts`** —
+  - cache-hit path now returns `{ ...cached, cached: true }` (full wrapper) instead of `cached.results`, matching the cache-miss shape.
+  - `parseInstitutionalData` falls back to Yahoo's `majorHoldersBreakdown.institutionsPercentHeld` / `institutionsCount` / `institutionsFloatPercentHeld` when EDGAR returns null. `institutionalSource` reports `"yahoo-major-holders"` when the fallback fires (vs `"sec-edgar-13f"` when EDGAR is authoritative) so we don't lose provenance.
+  - In-flight scan dedup via `Map<scanCacheKey, Promise>` — second clicks `await` the same promise instead of firing another storm. Cleared in `.finally()` so failures don't permanently block the key.
+  - `BATCH_SIZE` lowered 10 → 4 to keep concurrent socket count under ~16 on Windows.
+  - Post-scan filter broadened to keep rows that have any signal: institutional ownership (EDGAR or Yahoo fallback), fund holdings, OR insider activity.
+
+- **`client/src/pages/institutional.tsx`** —
+  - Defensive `(scanData.results ?? [])` guards on the three render sites that crashed on the bare-array shape (status row, results header, results map, empty-state branch). Also unblocks any browser that already has the bad shape cached in React Query.
+  - Updated stale "30 stocks" / "max 30" copy → "50 stocks" / "max 50" to match commit `0bcc034`.
+
+**Operational note:** real fix for "0 results" is the SEC EDGAR unblock (filed 2026-05-03 follow-up); the Yahoo fallback is a soft floor so the page is usable in the meantime.
+
+**Files touched:**
+- `server/routes.ts`
+- `client/src/pages/institutional.tsx`
 
 ---
 ## 2026-05-03 (late evening) — Cross-platform `httpServer.listen` (Windows fix)

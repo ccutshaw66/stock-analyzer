@@ -540,10 +540,14 @@ export default function Institutional() {
   const scanRefetch = async () => {
     setScanFetching(true);
     try {
-      const params = scanMode === "custom" && customTickers.trim()
-        ? `?tickers=${encodeURIComponent(customTickers.trim())}`
+      // Always pass refresh=1 on a user-initiated scan click. Without this,
+      // the 6h aggregate cache + per-ticker inst:* cache will keep replaying
+      // stale results from any earlier scan that ran while EDGAR was blocked
+      // (every row would be 0 holders → filter strips them → "0 results").
+      const tickerPart = scanMode === "custom" && customTickers.trim()
+        ? `&tickers=${encodeURIComponent(customTickers.trim())}`
         : "";
-      const res = await apiRequest("GET", `/api/institutional-scan${params}`);
+      const res = await apiRequest("GET", `/api/institutional-scan?refresh=1${tickerPart}`);
       const result = await res.json();
       setScanData(result);
       queryClient.setQueryData(["/api/institutional-scan"], result);
@@ -656,7 +660,7 @@ export default function Institutional() {
         <div className="flex gap-2 mb-3">
           <button onClick={() => setScanMode("default")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${scanMode === "default" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-            Top 30 Stocks
+            Random 30 Stocks
           </button>
           <button onClick={() => setScanMode("custom")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${scanMode === "custom" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
@@ -674,7 +678,7 @@ export default function Institutional() {
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground placeholder:text-muted-foreground"
               data-testid="input-custom-tickers"
             />
-            <p className="text-[10px] text-muted-foreground mt-1">Comma-separated, max 30. Scans each ticker for institutional activity.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Comma-separated, max 50. Scans each ticker for institutional activity.</p>
           </div>
         )}
 
@@ -692,7 +696,7 @@ export default function Institutional() {
       {/* Scan Status */}
       {scanData && !scanFetching && (
         <div className="text-center text-[11px] text-muted-foreground">
-          Scanned {scanData.totalScanned} stocks at {new Date(scanData.scannedAt).toLocaleTimeString()} · {scanData.results.length} results · Ranked by money flow strength
+          Scanned {scanData.totalScanned} stocks at {new Date(scanData.scannedAt).toLocaleTimeString()} · {(scanData.results ?? []).length} results · Ranked by money flow strength
         </div>
       )}
 
@@ -708,27 +712,27 @@ export default function Institutional() {
             </div>
           ))}
           <p className="text-center text-sm text-muted-foreground animate-pulse">
-            Analyzing institutional holdings across {scanMode === "custom" ? "your tickers" : "30 stocks"}... This takes 30-60 seconds.
+            Analyzing institutional holdings across {scanMode === "custom" ? "your tickers" : "30 random stocks"}... This takes 30-60 seconds.
           </p>
         </div>
       )}
 
       {/* Results */}
-      {scanData && !scanFetching && scanData.results.length > 0 && (
+      {scanData && !scanFetching && (scanData.results ?? []).length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              {scanData.results.length} Results
+              {(scanData.results ?? []).length} Results
             </h3>
             <span className="text-xs text-muted-foreground">Click any card for full institutional breakdown</span>
           </div>
-          {scanData.results.map((result, idx) => (
+          {(scanData.results ?? []).map((result, idx) => (
             <ResultCard key={result.ticker} data={result} rank={idx + 1} onClick={() => setSelectedData(result)} />
           ))}
         </div>
       )}
 
-      {scanData && !scanFetching && scanData.results.length === 0 && (
+      {scanData && !scanFetching && (scanData.results ?? []).length === 0 && (
         <div className="bg-card border border-card-border rounded-lg p-8 text-center">
           <p className="text-muted-foreground">No institutional data found for the scanned tickers.</p>
         </div>
@@ -737,7 +741,7 @@ export default function Institutional() {
       {!scanData && !scanFetching && !activeTicker && (
         <div className="text-center py-8 text-muted-foreground">
           <Building2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">Search a ticker above or click "Scan Institutional Flow" to analyze the top 30 stocks.</p>
+          <p className="text-sm">Search a ticker above or click "Scan Institutional Flow" to analyze a random 30 stocks across sectors. Click again for a different mix.</p>
         </div>
       )}
 

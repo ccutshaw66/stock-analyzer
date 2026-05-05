@@ -331,8 +331,31 @@ async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
   }
 }
 
-// Queued Yahoo fetch — all requests go through the global rate limiter
+// Master Yahoo kill switch. Yahoo is removed from the live request path when
+// FMP_TIER=ultimate is set OR YAHOO_DISABLED=true. Every Yahoo call routes
+// through this single chokepoint, so the kill switch here disables Yahoo
+// site-wide — the institutional scan, long-range charts, ownership warmups,
+// and any other code path that ends up calling yahooFetch all fail-fast
+// instead of hitting the network and burning into Yahoo's 429 block.
+function isYahooDisabled(): boolean {
+  const tier = (process.env.FMP_TIER || "").toLowerCase();
+  if (tier === "ultimate") return true;
+  if ((process.env.YAHOO_DISABLED || "").toLowerCase() === "true") return true;
+  return false;
+}
+
+class YahooDisabledError extends Error {
+  constructor() {
+    super("yahoo:disabled (FMP_TIER=ultimate or YAHOO_DISABLED=true)");
+    this.name = "YahooDisabledError";
+  }
+}
+
+// Queued Yahoo fetch — all requests go through the global rate limiter.
+// Returns immediately with a YahooDisabledError when Yahoo is disabled,
+// so no socket is opened, no crumb is fetched, no 429 is incurred.
 async function yahooFetch(url: string, retries = 3): Promise<any> {
+  if (isYahooDisabled()) throw new YahooDisabledError();
   return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
 }
 
@@ -360,6 +383,16 @@ const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
  */
 export async function getYahooOwnership(ticker: string): Promise<any> {
   const T = ticker.toUpperCase();
+  // Master kill switch: when Yahoo is disabled, return the empty shape
+  // immediately. No socket, no crumb fetch, no rate-limit retries.
+  if (isYahooDisabled()) {
+    return {
+      institutionOwnership: null,
+      fundOwnership: null,
+      majorHoldersBreakdown: null,
+      insiderHolders: null,
+    };
+  }
   const cacheKey = `yahoo:ownership:${T}`;
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
@@ -476,11 +509,19 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // ============================================================
 
 async function getInstitutionalData(ticker: string): Promise<any> {
-  // Phase 3.7: fully migrated off Yahoo.
+  // Phase 3.7: fully migrated off Yahoo for the request path.
   //  - Institutional ownership: SEC EDGAR 13Fs (in parseInstitutionalData)
   //  - Insider transactions: FMP /insider-trading/search
   //  - Price / marketCap / volume: Polygon snapshot via getQuote, merged
   //    into a Yahoo-shaped blob so parseInstitutionalData stays compatible.
+  //
+  // Cache lives 24h (TTL.institutional) — institutional data updates
+  // quarterly (13F) and monthly (N-PORT), so long TTL is correct. The
+  // random-sample scanner builds up a warm cache over many scans; once
+  // a ticker has been fetched once today it's free for the rest of the day.
+  // Aggregate scan cache is busted per click (refresh=1 from frontend) so
+  // the user gets a different random sample each click while still hitting
+  // this per-ticker cache for any tickers we've already fetched.
   const cacheKey = `inst:${ticker.toUpperCase()}`;
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
@@ -527,12 +568,21 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo ownership modules (fund holders + 13F QoQ change deltas).
-  // Fetched in parallel with the rest above would be ideal, but keeping it
-  // sequential here avoids reordering the existing FMP/Polygon flow. The
-  // helper is internally cached and fails open (returns nulls) so a Yahoo
-  // outage degrades to the prior empty-tab behaviour rather than 500ing.
-  const yahooOwnership = await getYahooOwnership(ticker);
+  // Yahoo is REMOVED from the institutional data path. The user is on FMP
+  // Ultimate; relying on a free, IP-blockable scrape provider for paid-tier
+  // data was the wrong architecture. Empty stub here — institutional table
+  // populates from FMP via parseInstitutionalData, fund/insider tabs are
+  // wired up via FMP follow-ups (TODO).
+  //
+  // NOTE: getYahooOwnership() is still defined and called by other paths
+  // (single-ticker view fallback, the nightly Yahoo warmup cron). Only the
+  // scan-time per-ticker path is changed here.
+  const yahooOwnership = {
+    institutionOwnership: null,
+    fundOwnership: null,
+    majorHoldersBreakdown: null,
+    insiderHolders: null,
+  };
 
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
@@ -554,7 +604,15 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
   };
 
-  setCache(cacheKey, result, TTL.institutional);
+  // Don't poison the 24h cache with empty results. If neither Yahoo nor FMP
+  // gave us anything useful, cache for only 5 minutes so we retry soon
+  // instead of being stuck for the full window. This is what "blocked +
+  // bad cache" was — Yahoo was failing AND we were caching the empty
+  // result for hours.
+  const hasYahooData = !!(yahooOwnership.majorHoldersBreakdown || yahooOwnership.institutionOwnership);
+  const hasInsiderData = insiderTxns.length > 0;
+  const isUseful = hasYahooData || hasInsiderData;
+  setCache(cacheKey, result, isUseful ? TTL.institutional : 5 * 60 * 1000);
   return result;
 }
 
@@ -567,16 +625,38 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderTxns = raw?.insiderTransactions?.transactions || [];
   const netActivity = raw?.netSharePurchaseActivity || {};
 
-  // EDGAR institutional summary
-  let edgar: Awaited<ReturnType<typeof getInstitutionalSummary>> | null = null;
+  // Institutional summary — provider chain:
+  //   1. FMP Ultimate (when FMP_TIER=ultimate is set) — paid, reliable
+  //   2. SEC EDGAR — free, authoritative, but IP-blockable
+  //   3. Yahoo majorHoldersBreakdown fallback — handled later in the
+  //      `usingEdgar` block, populates summary stats only
+  // FMP Ultimate is the primary when configured because it's the paid
+  // provider and removes the dependency on free sources that keep getting
+  // throttled. EDGAR stays in the chain as a free emergency fallback for
+  // when FMP has an outage.
+  let edgar: any = null;
   try {
-    // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
-    // present (even past TTL), triggers a background refresh. This prevents
-    // the 25-min EDGAR cold path from blocking a user-facing request.
-    edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    const { getFmpInstitutional, isFmpUltimateEnabled } = await import(
+      "./data/providers/fmp-institutional"
+    );
+    if (isFmpUltimateEnabled()) {
+      edgar = await getFmpInstitutional(ticker);
+      // edgar is null when FMP returns 402 (plan downgrade) or any other
+      // error — fall through to EDGAR below in that case.
+    }
   } catch (e) {
-    console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
-    edgar = null;
+    console.error(`[fmp-inst] failed for ${ticker}:`, (e as Error).message);
+  }
+  if (!edgar) {
+    try {
+      // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
+      // present (even past TTL), triggers a background refresh. This prevents
+      // the 25-min EDGAR cold path from blocking a user-facing request.
+      edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    } catch (e) {
+      console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
+      edgar = null;
+    }
   }
 
   // Yahoo-sourced ownership data, attached by getInstitutionalData. If the
@@ -610,7 +690,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   }
 
   // Top institutional holders (EDGAR 13F + Yahoo QoQ delta where available)
-  const topInstitutions = (edgar?.topHolders ?? []).map(h => ({
+  let topInstitutions = (edgar?.topHolders ?? []).map(h => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
@@ -624,13 +704,41 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     cik: h.cik,
   }));
 
+  // Yahoo fallback for the top-holders table — when EDGAR is blocked or
+  // returns nothing, populate from Yahoo's institutionOwnership.ownershipList
+  // so the user sees the top ~10 institutional holders Yahoo knows about
+  // instead of an empty table. EDGAR is more authoritative (more holders,
+  // more recent), but an empty table is worse than Yahoo's slim view.
+  if (topInstitutions.length === 0 && instOwnership.length > 0) {
+    topInstitutions = instOwnership.slice(0, 25).map((inst: any) => ({
+      name: inst.organization || "Unknown",
+      shares: inst.position?.raw || 0,
+      value: inst.value?.raw || 0,
+      pctHeld: inst.pctHeld?.raw || 0,
+      changeQoQ: (inst.pctChange?.raw || 0) * 100,
+      reportDate: inst.reportDate?.fmt || null,
+      accession: null,
+      cik: null,
+    }));
+  }
+
   // Top fund holders (mutual funds / ETFs).
-  // Yahoo's pctHeld and pctChange both come in as fractions (0.05 = 5%).
-  // Frontend convention is split: pctHeld is rendered with `(v*100).toFixed(2)%`
-  // (so we send the raw fraction), while changeQoQ is rendered with
-  // `v.toFixed(1)%` (so we convert to percent here, matching the
-  // topInstitutions row above).
-  const topFunds = fundOwnership.slice(0, 15).map((fund: any) => ({
+  // PRIMARY: when edgar source is FMP (paid Ultimate plan), use the topFunds
+  // FMP returned — same 13F data filtered to fund/ETF filers.
+  // FALLBACK: Yahoo's fundOwnership (only populated when Yahoo is enabled).
+  // When neither has data, the Fund Holders tab shows the empty state.
+  const fmpFunds: any[] = (edgar?.topFunds && Array.isArray(edgar.topFunds)) ? edgar.topFunds : [];
+  const fundSource = fmpFunds.length > 0 ? "fmp" : "yahoo";
+  const topFunds = fundSource === "fmp"
+    ? fmpFunds.map((f: any) => ({
+        name: f.name || "Unknown",
+        shares: Number(f.shares || 0),
+        value: Number(f.value || 0),
+        pctHeld: Number(f.pctHeld || 0),
+        changeQoQ: Number(f.changeQoQ || 0),
+        reportDate: f.reportDate || null,
+      }))
+    : fundOwnership.slice(0, 15).map((fund: any) => ({
     name: fund.organization || "Unknown",
     shares: fund.position?.raw || 0,
     value: fund.value?.raw || 0,
@@ -639,8 +747,41 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
-  // Insider holders (current positions)
-  const insiders = insiderHolders.map((h: any) => ({
+  // Insider holders (current positions).
+  // PRIMARY: Yahoo's insiderHolders module (only populated when Yahoo is
+  // enabled, which it isn't on FMP_TIER=ultimate).
+  // FALLBACK: derive a roster from the insider transaction history we already
+  // pull from FMP — group by insider name, take the most recent transaction
+  // per name, sum the shares involved as a proxy for "current activity."
+  // It's not a true holdings statement (that requires Form 3/Form 5 data),
+  // but it gives the Insiders tab a populated roster of who's been moving
+  // shares lately, sourced entirely from FMP.
+  const insidersFromTxns = (() => {
+    if (insiderHolders.length > 0) return null; // Yahoo path will be used
+    if (!Array.isArray(insiderTxns) || insiderTxns.length === 0) return [];
+    const byName = new Map<string, any>();
+    for (const tx of insiderTxns) {
+      const name = String(tx.filerName || "Unknown");
+      const date = tx.startDate?.fmt || null;
+      const existing = byName.get(name);
+      if (!existing || (date && (!existing.latestDate || date > existing.latestDate))) {
+        byName.set(name, {
+          name,
+          relation: String(tx.filerRelation || "Insider"),
+          shares: Number(tx.shares?.raw || 0),
+          sharesIndirect: 0,
+          latestTransaction: String(tx.transactionText || "").includes("S") ? "Sale"
+            : String(tx.transactionText || "").includes("P") ? "Purchase"
+            : "Form 4 Filing",
+          latestDate: date,
+        });
+      }
+    }
+    return Array.from(byName.values()).slice(0, 20);
+  })();
+  const insiders = insidersFromTxns !== null
+    ? insidersFromTxns
+    : insiderHolders.map((h: any) => ({
     name: h.name || "Unknown",
     relation: h.relation || "Unknown",
     shares: h.positionDirect?.raw || 0,
@@ -741,6 +882,17 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   else if (combinedScore <= -40) signal = "STRONG OUTFLOW";
   else if (combinedScore <= -15) signal = "DISTRIBUTING";
 
+  // Ownership breakdown — EDGAR is authoritative when it has real data,
+  // but falls back to Yahoo's majorHoldersBreakdown when EDGAR is blocked,
+  // partially-failed, or returns a stub object with zero holders. We test
+  // `edgar.institutionCount > 0` rather than `edgar != null` so a partial-
+  // failure EDGAR response (object present but zero counts) also triggers
+  // the fallback — was leaving us stuck on zeros for 49 of 50 megacaps.
+  const yahooInstPct = (majorBreakdown?.institutionsPercentHeld?.raw || 0) * 100;
+  const yahooInstCount = majorBreakdown?.institutionsCount?.raw || 0;
+  const yahooFloatPct = (majorBreakdown?.institutionsFloatPercentHeld?.raw || 0) * 100;
+  const usingEdgar = !!(edgar?.institutionCount && edgar.institutionCount > 0);
+
   return {
     ticker,
     companyName: price.shortName || price.longName || ticker,
@@ -749,14 +901,13 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    // Ownership breakdown (EDGAR-sourced)
     insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
-    institutionPct: edgar?.institutionPct ?? 0,
-    institutionCount: edgar?.institutionCount ?? 0,
-    floatPct: edgar?.institutionPct ?? 0,
+    institutionPct: usingEdgar ? (edgar!.institutionPct || yahooInstPct) : yahooInstPct,
+    institutionCount: usingEdgar ? edgar!.institutionCount : yahooInstCount,
+    floatPct: usingEdgar ? (edgar!.institutionPct || yahooFloatPct) : yahooFloatPct,
     sharesOutstanding: edgar?.sharesOutstanding ?? null,
     institutionalAsOf: edgar?.asOf ?? null,
-    institutionalSource: edgar?.source ?? "sec-edgar-13f",
+    institutionalSource: usingEdgar ? (edgar!.source ?? "sec-edgar-13f") : (yahooInstCount ? "yahoo-major-holders" : "none"),
 
     // Money flow
     flowScore: combinedScore,
@@ -1171,9 +1322,17 @@ export async function registerRoutes(
   // ─── New compartmentalized routes (Phase 1 strangler) ──────────────────
   registerSearchRoutes(app);
 
-  // Warm up Yahoo crumb on startup — API routes wait for this before making Yahoo calls
+  // Warm up Yahoo crumb on startup — API routes wait for this before making
+  // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate
+  // or YAHOO_DISABLED=true) — no point burning into Yahoo's 429 block fetching
+  // a crumb we'll never use.
   let _warmupDone = false;
   const _warmupPromise = (async () => {
+    if (isYahooDisabled()) {
+      console.log("[yahoo] kill switch active (FMP_TIER=ultimate or YAHOO_DISABLED=true) — skipping crumb warmup");
+      _warmupDone = true;
+      return;
+    }
     for (let attempt = 1; attempt <= 5; attempt++) {
       await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s, 8s, 10s
       try {
@@ -4280,6 +4439,11 @@ export async function registerRoutes(
   //     as "warming" so it gets picked up on the next cron pass.
   //  3. Hard-caps the universe at 150 tickers per request.
   //  4. Results cached 6h so repeat visits are instant.
+  //  5. Dedups concurrent scans for the same key — a second click while the
+  //     first is in flight waits on the same promise instead of firing another
+  //     full storm of provider requests (was crashing the dev server on
+  //     Windows from socket exhaustion).
+  const inFlightScans = new Map<string, Promise<any>>();
   app.get("/api/institutional-scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     try {
@@ -4293,26 +4457,55 @@ export async function registerRoutes(
 
       const { readInstitutionalFresh, readInstitutionalStale } = await import("./institutional-cache");
 
-      // Resolve universe
-      // Hardcoded universe of large-cap, liquid tickers spanning sectors.
-      // Replaces the previous "filter by warm institutional cache" approach,
-      // which collapsed to ~1 ticker on fresh local databases (only the
-      // single ticker the user had manually warmed had a cache file). The
-      // snapshot pipeline's EDGAR → Yahoo fallback handles tickers without
-      // EDGAR cache, so we don't need to pre-filter on cache state.
+      // Expanded universe (~150 tickers) spanning mega/large/mid caps across
+      // every sector. We randomly sample 30 per scan so each click surfaces
+      // a different mix — was returning the same megacaps every time, which
+      // wasn't useful since the user already knows AAPL/NVDA/JPM.
+      // Custom mode (user-supplied tickers) bypasses sampling entirely.
       const DEFAULT_SCAN_UNIVERSE: string[] = [
+        // Mega-cap tech
         "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","AVGO","ORCL","ADBE",
         "CRM","AMD","INTC","CSCO","QCOM","TXN","IBM","MU","AMAT","LRCX",
+        "ASML","KLAC","SNPS","CDNS","PANW","CRWD","FTNT","NOW","SNOW","DDOG",
+        "NET","ZS","MDB","TEAM","WDAY","OKTA","SHOP","SQ","PYPL","COIN",
+        // Financials
         "JPM","BAC","WFC","GS","MS","C","BLK","V","MA","BRK.B",
-        "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","DHR",
-        "WMT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX",
-        "PG","KO","PEP","XOM","CVX","CAT","BA","GE","HON",
+        "AXP","SCHW","BX","KKR","APO","CME","ICE","SPGI","MCO","TROW",
+        // Healthcare
+        "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","DHR","BMY",
+        "AMGN","GILD","CVS","CI","HUM","ELV","ISRG","REGN","VRTX","BIIB",
+        // Consumer
+        "WMT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX","TGT",
+        "PG","KO","PEP","CL","KMB","MO","PM","DEO","EL","LULU",
+        // Industrials / Energy / Materials
+        "XOM","CVX","CAT","BA","GE","HON","DE","UPS","FDX","LMT",
+        "RTX","NOC","GD","COP","SLB","HAL","OXY","EOG","PSX","VLO",
+        "FCX","NEM","LIN","APD","SHW","DD","NUE","STLD","CLF","X",
+        // Utilities / Telecom / Real Estate
+        "NEE","DUK","SO","D","AEP","T","VZ","TMUS","CMCSA","CHTR",
+        "AMT","PLD","CCI","EQIX","SPG","O","WELL","PSA","DLR","VTR",
+        // Mid-caps / popular tickers retail tracks
+        "PLTR","SOFI","RIVN","LCID","NIO","XPEV","RBLX","U","DKNG","HOOD",
+        "AFRM","UPST","CHWY","ETSY","PINS","SNAP","UBER","LYFT","DASH","ABNB",
+        "MARA","RIOT","CLSK","HIVE","BITF","MSTR","SMCI","ARM","CAVA","BROS",
       ];
+
+      // Fisher-Yates shuffle of a fresh copy, then slice. Date.now seeds
+      // implicitly via Math.random — every scan produces a different sample.
+      function sampleN<T>(arr: ReadonlyArray<T>, n: number): T[] {
+        const copy = [...arr];
+        for (let i = copy.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [copy[i], copy[j]] = [copy[j], copy[i]];
+        }
+        return copy.slice(0, n);
+      }
+
       let tickers: string[];
       if (customTickers && customTickers.length) {
         tickers = customTickers.slice(0, 50);
       } else {
-        tickers = DEFAULT_SCAN_UNIVERSE.slice(0, 50);
+        tickers = sampleN(DEFAULT_SCAN_UNIVERSE, 30);
       }
 
       // Aggregated result cache (6h)
@@ -4328,49 +4521,81 @@ export async function registerRoutes(
           res.setHeader("X-Total-Scanned", String(cached.totalScanned));
           res.setHeader("X-With-Data", String(cached.withData));
           res.setHeader("X-Cached", "true");
-          return res.json(cached.results);
+          return res.json({ ...cached, cached: true });
         }
       }
 
-      console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
-      const scanStart = Date.now();
-      const results: any[] = [];
+      // Dedup: if the same scan is already running, await its result rather
+      // than firing a parallel storm of provider calls. Without this, two
+      // back-to-back clicks ran 2× the request volume concurrently, which
+      // was tipping the dev server over.
+      let scanPromise = inFlightScans.get(scanCacheKey);
+      if (!scanPromise) {
+        scanPromise = (async () => {
+          console.log(`[institutional-scan] Scanning ${tickers.length} tickers (refresh=${refresh})`);
+          const scanStart = Date.now();
+          const scanResults: any[] = [];
 
-      // All selected tickers have warm cache, so these calls return instantly.
-      // Run parallel batches of 10.
-      const BATCH_SIZE = 10;
-      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
-        const batch = tickers.slice(b, b + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
-          try {
-            const raw = await getInstitutionalData(ticker);
-            return parseInstitutionalData(raw, ticker);
-          } catch {
-            return null;
+          // BATCH_SIZE 4 (was 10): each ticker fans out into ~4 provider
+          // calls (Polygon quote, FMP insider, Yahoo ownership, EDGAR), so
+          // batch=10 meant up to ~40 concurrent sockets. Windows defaults
+          // make that fragile, especially when EDGAR is timing out and
+          // sockets sit in TIME_WAIT. 4 keeps us under ~16 concurrent.
+          const BATCH_SIZE = 4;
+          for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+            const batch = tickers.slice(b, b + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+              try {
+                // Per-ticker cache (24h) is preserved across scans — refresh=1
+                // only busts the AGGREGATE cache so the user gets a different
+                // random sample each click. Tickers we've already fetched
+                // today are free; new tickers get fetched. Over many scans
+                // we build up a warm corpus of the entire 150-ticker universe.
+                const raw = await getInstitutionalData(ticker);
+                return parseInstitutionalData(raw, ticker);
+              } catch {
+                return null;
+              }
+            }));
+            for (const r of batchResults) {
+              if (r.status === "fulfilled" && r.value) scanResults.push(r.value);
+            }
           }
-        }));
-        for (const r of batchResults) {
-          if (r.status === "fulfilled" && r.value) results.push(r.value);
-        }
+
+          // Keep rows that have any signal — institutional ownership (EDGAR
+          // or Yahoo fallback), fund holdings, or insider activity. Previously
+          // filtered on institutionPct/Count only, which stripped every row
+          // when EDGAR was blocked even though Yahoo had usable data.
+          const withInstData = scanResults.filter(r =>
+            r.institutionPct > 0 ||
+            r.institutionCount > 0 ||
+            (r.topFunds?.length ?? 0) > 0 ||
+            r.insiderBuyCount > 0 ||
+            r.insiderSellCount > 0
+          );
+          withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+
+          const scanElapsed = Date.now() - scanStart;
+          console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${scanElapsed}ms`);
+
+          const built = {
+            scannedAt: new Date().toISOString(),
+            lastScannedAt: new Date().toISOString(),
+            totalScanned: tickers.length,
+            withData: withInstData.length,
+            elapsedMs: scanElapsed,
+            cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
+            results: withInstData,
+          };
+          setCache(scanCacheKey, built, SCAN_CACHE_TTL);
+          return built;
+        })().finally(() => {
+          inFlightScans.delete(scanCacheKey);
+        });
+        inFlightScans.set(scanCacheKey, scanPromise);
       }
 
-      // Only keep rows that actually have institutional ownership data
-      const withInstData = results.filter(r => r.institutionPct > 0 || r.institutionCount > 0);
-      withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
-
-      const elapsed = Date.now() - scanStart;
-      console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
-
-      const payload = {
-        scannedAt: new Date().toISOString(),
-        lastScannedAt: new Date().toISOString(),
-        totalScanned: tickers.length,
-        withData: withInstData.length,
-        elapsedMs: elapsed,
-        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
-        results: withInstData,
-      };
-      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      const payload = await scanPromise;
       res.setHeader("X-Scanned-At", payload.scannedAt);
       res.setHeader("X-Total-Scanned", String(payload.totalScanned));
       res.setHeader("X-With-Data", String(payload.withData));

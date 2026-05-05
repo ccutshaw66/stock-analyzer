@@ -14,12 +14,18 @@ type QueuedRequest<T> = {
   label: string;
 };
 
-const MAX_CONCURRENT = 2;
-const MIN_DELAY_MS = 600; // minimum ms between request starts
-const BACKOFF_BASE_MS = 3000; // base backoff on 429
-const MAX_BACKOFF_MS = 30000; // max backoff
-const CIRCUIT_BREAK_THRESHOLD = 5; // consecutive 429s before pausing
-const CIRCUIT_BREAK_PAUSE_MS = 60000; // 1 minute pause on circuit break
+// Tightened 2026-05-04 after persistent 429s during institutional scans.
+// Yahoo's unofficial API tolerates ~1 req/sec sustained; bursts trip 429
+// even when the average is under their stated cap. Going strictly serial
+// with 1500ms gaps (= 0.66 req/sec) and aggressive backoff. The cost is
+// slower scans (~45s for 30 fresh tickers vs ~15s previously) but with
+// the 24h per-ticker cache this only matters on the first scan.
+const MAX_CONCURRENT = 1;
+const MIN_DELAY_MS = 1500; // minimum ms between request starts (~0.66 req/sec)
+const BACKOFF_BASE_MS = 5000; // base backoff on 429 (was 3s — Yahoo wants longer cooldowns)
+const MAX_BACKOFF_MS = 60000; // max backoff (was 30s)
+const CIRCUIT_BREAK_THRESHOLD = 3; // trip sooner so we don't keep hitting 429s (was 5)
+const CIRCUIT_BREAK_PAUSE_MS = 120000; // 2 minute pause on circuit break (was 1m)
 
 let queue: QueuedRequest<any>[] = [];
 let activeCount = 0;
