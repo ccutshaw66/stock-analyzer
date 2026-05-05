@@ -741,6 +741,17 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   else if (combinedScore <= -40) signal = "STRONG OUTFLOW";
   else if (combinedScore <= -15) signal = "DISTRIBUTING";
 
+  // Ownership breakdown — EDGAR is authoritative when it has real data,
+  // but falls back to Yahoo's majorHoldersBreakdown when EDGAR is blocked,
+  // partially-failed, or returns a stub object with zero holders. We test
+  // `edgar.institutionCount > 0` rather than `edgar != null` so a partial-
+  // failure EDGAR response (object present but zero counts) also triggers
+  // the fallback — was leaving us stuck on zeros for 49 of 50 megacaps.
+  const yahooInstPct = (majorBreakdown?.institutionsPercentHeld?.raw || 0) * 100;
+  const yahooInstCount = majorBreakdown?.institutionsCount?.raw || 0;
+  const yahooFloatPct = (majorBreakdown?.institutionsFloatPercentHeld?.raw || 0) * 100;
+  const usingEdgar = !!(edgar?.institutionCount && edgar.institutionCount > 0);
+
   return {
     ticker,
     companyName: price.shortName || price.longName || ticker,
@@ -749,19 +760,13 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    // Ownership breakdown — EDGAR is authoritative when available; falls back
-    // to Yahoo's majorHoldersBreakdown (already fetched by getYahooOwnership)
-    // when EDGAR is empty (blocked, cold-cache, micro-cap not in 13Fs). Without
-    // this fallback, an EDGAR outage poisons the entire scan: every row comes
-    // back with institutionPct=0 / institutionCount=0 and the scan endpoint's
-    // own filter strips them all → "0 results" UI.
     insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
-    institutionPct: edgar?.institutionPct ?? ((majorBreakdown?.institutionsPercentHeld?.raw || 0) * 100),
-    institutionCount: edgar?.institutionCount ?? (majorBreakdown?.institutionsCount?.raw || 0),
-    floatPct: edgar?.institutionPct ?? ((majorBreakdown?.institutionsFloatPercentHeld?.raw || 0) * 100),
+    institutionPct: usingEdgar ? (edgar!.institutionPct || yahooInstPct) : yahooInstPct,
+    institutionCount: usingEdgar ? edgar!.institutionCount : yahooInstCount,
+    floatPct: usingEdgar ? (edgar!.institutionPct || yahooFloatPct) : yahooFloatPct,
     sharesOutstanding: edgar?.sharesOutstanding ?? null,
     institutionalAsOf: edgar?.asOf ?? null,
-    institutionalSource: edgar ? (edgar.source ?? "sec-edgar-13f") : (majorBreakdown?.institutionsCount ? "yahoo-major-holders" : "none"),
+    institutionalSource: usingEdgar ? (edgar!.source ?? "sec-edgar-13f") : (yahooInstCount ? "yahoo-major-holders" : "none"),
 
     // Money flow
     flowScore: combinedScore,
