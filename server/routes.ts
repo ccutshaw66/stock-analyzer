@@ -4159,7 +4159,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v5:${ticker}`;
+      const verdictCacheKey = `verdict:v6:${ticker}`;
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4205,14 +4205,25 @@ export async function registerRoutes(
       async function fmpHistoricalChart(sym: string): Promise<any> {
         try {
           const to = new Date().toISOString().slice(0, 10);
-          const from = "2000-01-01";
-          // fmpGet builds the query string from the second-arg object.
-          // Embedding params in the path produced a malformed double-`?`
-          // URL that FMP silently rejected (empty response → no stress data).
-          const rows: any = await fmpGet("/historical-price-eod/full", { symbol: sym, from, to });
-          const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
-          if (!arr.length) return null;
-          const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
+          // FMP /historical-price-eod/full caps at ~5000 rows per call (~20y
+          // of trading days). One call from 2000 only returns back to ~2006,
+          // which kills the Dot-Com and 9/11 stress events. Split into two
+          // chunked calls and concatenate so 2000-present is fully covered.
+          const [oldChunk, newChunk] = await Promise.allSettled([
+            fmpGet("/historical-price-eod/full", { symbol: sym, from: "2000-01-01", to: "2009-12-31" }),
+            fmpGet("/historical-price-eod/full", { symbol: sym, from: "2010-01-01", to }),
+          ]);
+          const arrFrom = (r: any): any[] => {
+            const data = r.status === "fulfilled" ? r.value : null;
+            if (!data) return [];
+            return Array.isArray(data) ? data : (data?.historical || []);
+          };
+          const all = [...arrFrom(oldChunk), ...arrFrom(newChunk)];
+          if (!all.length) return null;
+          // Dedupe by date in case the chunks overlap
+          const byDate = new Map<string, any>();
+          for (const row of all) byDate.set(row.date, row);
+          const asc = [...byDate.values()].sort((a: any, b: any) => a.date.localeCompare(b.date));
           return {
             timestamp: asc.map((r: any) => Math.floor(new Date(r.date).getTime() / 1000)),
             indicators: { quote: [{ close: asc.map((r: any) => r.close) }] },
