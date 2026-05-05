@@ -749,14 +749,19 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    // Ownership breakdown (EDGAR-sourced)
+    // Ownership breakdown — EDGAR is authoritative when available; falls back
+    // to Yahoo's majorHoldersBreakdown (already fetched by getYahooOwnership)
+    // when EDGAR is empty (blocked, cold-cache, micro-cap not in 13Fs). Without
+    // this fallback, an EDGAR outage poisons the entire scan: every row comes
+    // back with institutionPct=0 / institutionCount=0 and the scan endpoint's
+    // own filter strips them all → "0 results" UI.
     insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
-    institutionPct: edgar?.institutionPct ?? 0,
-    institutionCount: edgar?.institutionCount ?? 0,
-    floatPct: edgar?.institutionPct ?? 0,
+    institutionPct: edgar?.institutionPct ?? ((majorBreakdown?.institutionsPercentHeld?.raw || 0) * 100),
+    institutionCount: edgar?.institutionCount ?? (majorBreakdown?.institutionsCount?.raw || 0),
+    floatPct: edgar?.institutionPct ?? ((majorBreakdown?.institutionsFloatPercentHeld?.raw || 0) * 100),
     sharesOutstanding: edgar?.sharesOutstanding ?? null,
     institutionalAsOf: edgar?.asOf ?? null,
-    institutionalSource: edgar?.source ?? "sec-edgar-13f",
+    institutionalSource: edgar ? (edgar.source ?? "sec-edgar-13f") : (majorBreakdown?.institutionsCount ? "yahoo-major-holders" : "none"),
 
     // Money flow
     flowScore: combinedScore,
@@ -4280,6 +4285,11 @@ export async function registerRoutes(
   //     as "warming" so it gets picked up on the next cron pass.
   //  3. Hard-caps the universe at 150 tickers per request.
   //  4. Results cached 6h so repeat visits are instant.
+  //  5. Dedups concurrent scans for the same key — a second click while the
+  //     first is in flight waits on the same promise instead of firing another
+  //     full storm of provider requests (was crashing the dev server on
+  //     Windows from socket exhaustion).
+  const inFlightScans = new Map<string, Promise<any>>();
   app.get("/api/institutional-scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
     try {
@@ -4327,49 +4337,76 @@ export async function registerRoutes(
           res.setHeader("X-Total-Scanned", String(cached.totalScanned));
           res.setHeader("X-With-Data", String(cached.withData));
           res.setHeader("X-Cached", "true");
-          return res.json(cached.results);
+          return res.json({ ...cached, cached: true });
         }
       }
 
-      console.log(`[institutional-scan] Scanning ${tickers.length} warm tickers (refresh=${refresh})`);
-      const scanStart = Date.now();
-      const results: any[] = [];
+      // Dedup: if the same scan is already running, await its result rather
+      // than firing a parallel storm of provider calls. Without this, two
+      // back-to-back clicks ran 2× the request volume concurrently, which
+      // was tipping the dev server over.
+      let scanPromise = inFlightScans.get(scanCacheKey);
+      if (!scanPromise) {
+        scanPromise = (async () => {
+          console.log(`[institutional-scan] Scanning ${tickers.length} tickers (refresh=${refresh})`);
+          const scanStart = Date.now();
+          const scanResults: any[] = [];
 
-      // All selected tickers have warm cache, so these calls return instantly.
-      // Run parallel batches of 10.
-      const BATCH_SIZE = 10;
-      for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
-        const batch = tickers.slice(b, b + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
-          try {
-            const raw = await getInstitutionalData(ticker);
-            return parseInstitutionalData(raw, ticker);
-          } catch {
-            return null;
+          // BATCH_SIZE 4 (was 10): each ticker fans out into ~4 provider
+          // calls (Polygon quote, FMP insider, Yahoo ownership, EDGAR), so
+          // batch=10 meant up to ~40 concurrent sockets. Windows defaults
+          // make that fragile, especially when EDGAR is timing out and
+          // sockets sit in TIME_WAIT. 4 keeps us under ~16 concurrent.
+          const BATCH_SIZE = 4;
+          for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
+            const batch = tickers.slice(b, b + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
+              try {
+                const raw = await getInstitutionalData(ticker);
+                return parseInstitutionalData(raw, ticker);
+              } catch {
+                return null;
+              }
+            }));
+            for (const r of batchResults) {
+              if (r.status === "fulfilled" && r.value) scanResults.push(r.value);
+            }
           }
-        }));
-        for (const r of batchResults) {
-          if (r.status === "fulfilled" && r.value) results.push(r.value);
-        }
+
+          // Keep rows that have any signal — institutional ownership (EDGAR
+          // or Yahoo fallback), fund holdings, or insider activity. Previously
+          // filtered on institutionPct/Count only, which stripped every row
+          // when EDGAR was blocked even though Yahoo had usable data.
+          const withInstData = scanResults.filter(r =>
+            r.institutionPct > 0 ||
+            r.institutionCount > 0 ||
+            (r.topFunds?.length ?? 0) > 0 ||
+            r.insiderBuyCount > 0 ||
+            r.insiderSellCount > 0
+          );
+          withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
+
+          const scanElapsed = Date.now() - scanStart;
+          console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${scanElapsed}ms`);
+
+          const built = {
+            scannedAt: new Date().toISOString(),
+            lastScannedAt: new Date().toISOString(),
+            totalScanned: tickers.length,
+            withData: withInstData.length,
+            elapsedMs: scanElapsed,
+            cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
+            results: withInstData,
+          };
+          setCache(scanCacheKey, built, SCAN_CACHE_TTL);
+          return built;
+        })().finally(() => {
+          inFlightScans.delete(scanCacheKey);
+        });
+        inFlightScans.set(scanCacheKey, scanPromise);
       }
 
-      // Only keep rows that actually have institutional ownership data
-      const withInstData = results.filter(r => r.institutionPct > 0 || r.institutionCount > 0);
-      withInstData.sort((a, b) => Math.abs(b.flowScore) - Math.abs(a.flowScore));
-
-      const elapsed = Date.now() - scanStart;
-      console.log(`[institutional-scan] Complete: ${withInstData.length}/${tickers.length} with data in ${elapsed}ms`);
-
-      const payload = {
-        scannedAt: new Date().toISOString(),
-        lastScannedAt: new Date().toISOString(),
-        totalScanned: tickers.length,
-        withData: withInstData.length,
-        elapsedMs: elapsed,
-        cacheTtlMinutes: SCAN_CACHE_TTL / 60000,
-        results: withInstData,
-      };
-      setCache(scanCacheKey, payload, SCAN_CACHE_TTL);
+      const payload = await scanPromise;
       res.setHeader("X-Scanned-At", payload.scannedAt);
       res.setHeader("X-Total-Scanned", String(payload.totalScanned));
       res.setHeader("X-With-Data", String(payload.withData));
