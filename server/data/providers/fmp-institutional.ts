@@ -261,7 +261,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v2:${T}`;
+  const cacheKey = `fmp-inst:v3:${T}`;
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -298,7 +298,11 @@ export async function getFmpInstitutional(
           year: q.year,
           quarter: q.quarter,
           page: 0,
-          limit: 25,
+          // Was 25 — too narrow. With limit=100 we get the top 100 holders by
+          // shares, then the Fund Holders filter catches all the major asset
+          // managers (Vanguard, BlackRock, State Street, Geode, Wellington,
+          // T. Rowe, Fidelity, etc.) instead of just the few that fit in 25.
+          limit: 100,
         }).catch((e: any) => {
           log.debug({ ticker: T, q, err: String(e?.message || e) }, "holders fetch failed");
           return null;
@@ -351,11 +355,11 @@ export async function getFmpInstitutional(
       Number(latest?.sharesOutstanding ?? latest?.numberOf13FsharesOutstanding ?? 0) || null;
 
     // Build the fund-only subset for the Fund Holders tab. Same source as
-    // topHolders, just filtered. Limit to top 15 to mirror what Yahoo's
-    // fundOwnership previously returned.
+    // topHolders, just filtered. With limit=100 upstream we have plenty of
+    // candidates to choose from; cap at 25 funds so the table doesn't bloat.
     const topFunds = topHolders
       .filter((h) => looksLikeFund(h.name))
-      .slice(0, 15)
+      .slice(0, 25)
       .map((h) => ({
         name: h.name,
         shares: h.shares,
