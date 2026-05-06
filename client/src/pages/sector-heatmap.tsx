@@ -151,7 +151,7 @@ export default function SectorHeatmap() {
           <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4 animate-spin" />
-              <span>Loading sector data from Yahoo Finance...</span>
+              <span>Loading sector data...</span>
             </div>
           </div>
         )}
