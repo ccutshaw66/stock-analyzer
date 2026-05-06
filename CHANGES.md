@@ -9,6 +9,56 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Phase 2 follow-ups: FMP institutional in snapshot, insider penalty calibration, FMP beta fallback
+
+**Why:** Phase 2 (`fa65161`) shipped the `scoreSnapshot()` function and the side-by-side diag endpoint. Verification on PLTR / AAPL / MSFT / KO / F surfaced three fixable issues before any cutover:
+
+1. **EDGAR returned empty on all 5 megacaps tested.** The snapshot's institutional adapter chained EDGAR → Yahoo, but Yahoo is neutered when `FMP_TIER=ultimate` and EDGAR alone was returning empty for everything. **Institutional Flow (15% weight in the new score) was silently dropping out for every ticker.**
+2. **Insider Confidence calibration was punishing routine 10b5-1 sales.** "0 buys / 9 sells" (Tim Cook's normal scheduled selling) scored 1/10 — identical to a panic-selling micro-cap with "0 buys / 50 sells." Same data, completely different signal — the score conflated them.
+3. **Beta was null on all 5 tickers.** Polygon hardcodes `beta: null` on every tier, FMP /quote doesn't include beta either, so the snapshot quote ended up populated-but-beta-less in every case. Thesis Durability scoring fell back to neutral every time. Legacy /api/analyze patches this via `getFmpProfileBeta()` from `fmp.adapter.ts` — the snapshot didn't have that hookup.
+
+**What:**
+
+- **`server/snapshot/institutional.ts`** — added FMP Ultimate as the primary institutional source (when `FMP_TIER=ultimate`), pulling current and prior quarter via `/institutional-ownership/extract-analytics/holder` and computing QoQ deltas by holder name. This is effectively Phase 3.4b of the master plan (compute QoQ from two consecutive 13F snapshots ourselves) pulled forward because Phase 2 scoring needed real flow data. EDGAR stays as the fallback, Yahoo stays as the neutered last-ditch. New imports: `getFmpInstitutional` + `isFmpUltimateEnabled` from `fmp-institutional.ts`, `fmpGet` from `fmp.client.ts`.
+
+- **`server/snapshot/score.ts`** — recalibrated `scoreInsiderConfidence`. New buckets:
+  - < 4 events → score 5 (no signal, thin activity)
+  - 0 buys / 5–15 sells → score 4 (mild negative; covers blue-chip 10b5-1)
+  - 0 buys / 15+ sells → score 3 (moderate negative; high-volume sell-only)
+  - 0–25% buys → 4–5 linear
+  - 25–75% buys → 5–7 linear
+  - 75–100% buys → 8–10 linear
+  - 5+ buys, 0 sells → 10 (strong net buying — historically the best signal)
+  - The "0 buys / 9 sells" case that was scoring 1/10 now scores 4 (mild negative) — directionally correct but no longer max-penalizing every megacap.
+
+- **`server/snapshot/quote.ts`** — after `tryProviders` settles, if `result.value.beta === null`, run `getFmpProfileBeta(T)` and patch it onto the value. Same fallback the legacy `/api/analyze` route uses (`server/routes.ts:2560`). Non-fatal — if FMP profile fetch fails, beta stays null.
+
+**Verification:**
+Re-run the diag endpoint on the same 5 tickers and look for:
+- `snapshotHealth.fields.ownership.source === "fmp"` (was `null`) — Institutional Flow factor should now be `populated: true` on every megacap.
+- `categories[].Insider Confidence` — for AAPL / KO with low-volume sells, score should be ~4 instead of 1.
+- `categories[].Thesis Durability` — `populated: true` with a real beta in the reasoning string.
+- `factorsContributed: 11` (was 7-9) on healthy tickers.
+
+URLs to check tomorrow:
+```
+https://stockotter.ai/api/diag/score/PLTR
+https://stockotter.ai/api/diag/score/AAPL
+https://stockotter.ai/api/diag/score/MSFT
+https://stockotter.ai/api/diag/score/KO
+https://stockotter.ai/api/diag/score/F
+```
+
+If those look right, we're cleared for Phase 2.5 cutover (flip `/api/analyze` and `/api/verdict` to read from `scoreSnapshot()`).
+
+**Notes:**
+- No user-visible changes. `/api/analyze` and `/api/verdict` still use the legacy code path. This commit only improves what `/api/diag/score/:ticker` produces.
+- Yahoo's branch in the institutional adapter stays in code for emergency manual override but doesn't fire when Ultimate is active. Cleanup is a separate task.
+- The fund-tab QoQ computation is still `0` (FMP's holder endpoint doesn't expose enough fund-level metadata to do the same diff cheaply). Follow-up.
+
+Rollback tag: `safe/2026-05-05-pre-phase-2-followups`.
+
+---
 ## 2026-05-05 — Phase 2: scoreSnapshot() + side-by-side diagnostic routes (no cutover yet)
 
 **Why:** Phase 1 (2026-05-01, commit `0de1864`) built the snapshot foundation but no routes were cut over to it. Two scoring paths still co-exist:

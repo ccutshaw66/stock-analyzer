@@ -297,12 +297,37 @@ function scoreInsiderConfidence(snap: CompanySnapshot): CategoryScore {
   const buy = a?.buyCount ?? 0;
   const sell = a?.sellCount ?? 0;
   const total = buy + sell;
-  // Net buy/sell over the lookback window. 50/50 → neutral 5.
+
+  // Calibration: most blue-chip executives sell quarterly under 10b5-1 plans.
+  // Under the previous "1 + (buy/total)*9" formula, AAPL's "0 buys / 9 sells"
+  // and a panic-selling micro-cap's "0 buys / 50 sells" both scored 1/10 —
+  // identical, despite being categorically different signals. The new
+  // calibration treats:
+  //   - very thin activity (< 4 events)         → no signal, score 5 (neutral)
+  //   - sell-only with low-medium volume        → mild negative (4)
+  //   - sell-only with high volume (>15)        → moderate negative (3)
+  //   - mostly sells (buy ratio < 25%)          → 4
+  //   - balanced (25%–75% buys)                 → 5–7 (linear)
+  //   - mostly buys (> 75%)                     → 8–10 (linear)
+  //   - strong net buying (> 5 buys, no sells)  → 10
   let score = 5;
   let populated = total > 0;
-  if (total > 0) {
+  if (total < 4) {
+    // Treat thin activity as no signal — it's not material either way.
+    score = 5;
+    populated = total > 0;
+  } else if (buy === 0) {
+    score = sell > 15 ? 3 : 4;
+  } else {
     const buyRatio = buy / total;
-    score = 1 + buyRatio * 9; // 0% buys → 1, 100% buys → 10
+    if (buyRatio >= 0.75) {
+      score = 8 + (buyRatio - 0.75) * 8; // 75% → 8, 100% → 10
+    } else if (buyRatio >= 0.25) {
+      score = 5 + (buyRatio - 0.25) * 4; // 25% → 5, 75% → 7
+    } else {
+      score = 4 + buyRatio * 4; // 0% → 4, 25% → 5
+    }
+    if (sell === 0 && buy >= 5) score = 10;
   }
   return {
     name: "Insider Confidence",

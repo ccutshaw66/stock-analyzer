@@ -11,6 +11,7 @@ import type { CompanyQuote, FieldHealth } from "./types";
 import { tryProviders } from "./fallback";
 import { getPolygonQuoteSummary } from "../polygon";
 import { fmpGet } from "../data/providers/fmp.client";
+import { getFmpProfileBeta } from "../data/providers/fmp.adapter";
 
 const QUOTE_TTL_MS = 5 * 60 * 1000;
 
@@ -103,7 +104,7 @@ export async function getQuoteSnapshot(
   yahooFetch: (url: string, retries?: number) => Promise<any>,
 ): Promise<FieldHealth<CompanyQuote>> {
   const T = ticker.toUpperCase();
-  return tryProviders<CompanyQuote>(
+  const result = await tryProviders<CompanyQuote>(
     [
       {
         source: "polygon",
@@ -130,4 +131,23 @@ export async function getQuoteSnapshot(
       isEmpty: (q) => q.price === null && q.marketCap === null,
     },
   );
+
+  // Beta enrichment. Polygon hardcodes `beta: null` on every tier, and FMP
+  // /quote doesn't include it either, so when Polygon answers (the typical
+  // case) we end up with a populated quote that's missing beta only. The
+  // legacy /api/analyze route patches this via `getFmpProfileBeta` from
+  // fmp.adapter.ts (cached, contentful) — we do the same thing here so
+  // Thesis Durability scoring stops bottoming out at neutral.
+  if (result.value && result.value.beta === null) {
+    try {
+      const fmpBeta = await getFmpProfileBeta(T);
+      if (fmpBeta !== null) {
+        result.value = { ...result.value, beta: fmpBeta };
+      }
+    } catch {
+      // Non-fatal. The quote stays beta-less; thesis scoring falls back to neutral.
+    }
+  }
+
+  return result;
 }

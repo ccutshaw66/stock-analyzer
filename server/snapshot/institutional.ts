@@ -1,18 +1,25 @@
 /**
  * Institutional ownership adapter for the snapshot pipeline.
  *
- * Provider chain:
- *   - EDGAR primary for the AUTHORITATIVE 13F holder list, institutionPct,
- *     institutionCount, sharesOutstanding.
- *   - Yahoo buffer for QoQ change deltas, fund holders, insider holders,
- *     and the major-holders insiderPct. We MERGE Yahoo's QoQ into EDGAR's
- *     authoritative shares/value rows by normalized name.
- *   - FMP not currently used as an institutional source (Premium plan returns
- *     402 on the 13F endpoints), but the registry leaves the door open.
+ * Provider chain (FMP_TIER=ultimate):
+ *   - FMP Ultimate primary — `/institutional-ownership/symbol-positions-summary`
+ *     + `/institutional-ownership/extract-analytics/holder` for current and
+ *     prior quarter; QoQ deltas computed by diffing share counts by holder
+ *     name. This populates institutionPct, institutionCount, top holders,
+ *     top funds, AND a real flow score (the previous EDGAR+Yahoo chain
+ *     could only get flow when Yahoo was alive — now neutered by the kill
+ *     switch under Ultimate).
+ *   - EDGAR fallback — same authoritative SEC source the legacy path used.
+ *     Kept for resilience if FMP Ultimate returns null (plan downgrade or
+ *     transient 5xx). EDGAR's response shape matches FMP's.
+ *   - Yahoo last-ditch — neutered when Ultimate is set. Left in code for
+ *     emergency manual override only.
  *
- * On Yahoo failure we still return a populated EDGAR-only result. On EDGAR
- * failure we still return Yahoo's institutionOwnership list as a fallback
- * top-holder list rather than an empty page.
+ * Flow scoring previously bottomed out at NEUTRAL whenever Yahoo was off,
+ * because the QoQ deltas came from Yahoo's `pctChange` field. Now we
+ * compute QoQ ourselves from two consecutive FMP 13F snapshots (this is
+ * effectively the Phase 3.4b plan — pulled forward because the Phase 2
+ * scoring requires real flow data to land).
  */
 
 import type {
@@ -25,6 +32,8 @@ import type {
   ProviderAttempt,
 } from "./types";
 import { getInstitutionalSummaryStaleOk } from "../data/providers/edgar.adapter";
+import { getFmpInstitutional, isFmpUltimateEnabled } from "../data/providers/fmp-institutional";
+import { fmpGet } from "../data/providers/fmp.client";
 
 const OWNERSHIP_TTL_MS = 6 * 60 * 60 * 1000; // 6h — 13F filings are quarterly
 
@@ -61,12 +70,138 @@ interface YahooOwnership {
 
 export type GetYahooOwnership = (ticker: string) => Promise<YahooOwnership>;
 
+/** Most-recently-completed quarter (current_quarter - 1). */
+function priorQuarter(): { year: number; quarter: number } {
+  const now = new Date();
+  // The "current" filing-eligible quarter trails the calendar by ~one quarter
+  // because 13F filings have a 45-day window. We pull the quarter before that
+  // (so two calendar quarters back) so we have a stable baseline.
+  const cy = now.getUTCFullYear();
+  const cq = Math.floor(now.getUTCMonth() / 3) + 1;
+  let year = cy;
+  let quarter = cq - 2;
+  while (quarter <= 0) { quarter += 4; year -= 1; }
+  return { year, quarter };
+}
+
+/** FMP holders for one specific quarter. Returns [] on any error. */
+async function fmpHoldersForQuarter(symbol: string, q: { year: number; quarter: number }): Promise<any[]> {
+  try {
+    const rows = await fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", {
+      symbol, year: q.year, quarter: q.quarter, page: 0, limit: 100,
+    });
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getOwnershipSnapshot(
   ticker: string,
   getYahooOwnership: GetYahooOwnership,
 ): Promise<FieldHealth<CompanyOwnership>> {
   const T = ticker.toUpperCase();
   const attempts: ProviderAttempt[] = [];
+
+  // ─── FMP Ultimate (primary on FMP_TIER=ultimate) ─────────────────────────
+  if (isFmpUltimateEnabled()) {
+    const t0 = Date.now();
+    try {
+      const fmp = await getFmpInstitutional(T);
+      const ms = Date.now() - t0;
+      if (fmp && fmp.topHolders.length > 0) {
+        attempts.push({ source: "fmp", ok: true, ms });
+
+        // QoQ flow: pull the prior quarter and diff by holder name. Without
+        // this, flow score sits at zero (NEUTRAL) for everyone.
+        const priorRows = await fmpHoldersForQuarter(T, priorQuarter());
+        const priorByName = new Map<string, number>();
+        for (const ph of priorRows) {
+          const k = normalizeOrgName(String(ph.investorName || ph.holder || ph.name || ""));
+          if (!k) continue;
+          const prevShares = Number(ph.sharesNumber || ph.shares || ph.position || 0);
+          // Sum if multiple report rows per filer (e.g. amended filings)
+          priorByName.set(k, (priorByName.get(k) ?? 0) + prevShares);
+        }
+
+        let instInflow = 0, instOutflow = 0;
+        let instIncreased = 0, instDecreased = 0, instNew = 0, instSoldOut = 0;
+
+        const topInstitutions: InstitutionalHolderRow[] = fmp.topHolders.map((h) => {
+          const k = normalizeOrgName(h.name);
+          const prev = priorByName.get(k) ?? 0;
+          let chgFraction = 0;
+          if (prev > 0 && h.shares > 0) chgFraction = (h.shares - prev) / prev;
+          else if (prev === 0 && h.shares > 0) chgFraction = 1; // new position
+          else if (prev > 0 && h.shares === 0) chgFraction = -1; // sold out
+
+          if (chgFraction > 0.5) instNew++;
+          else if (chgFraction > 0) instIncreased++;
+          if (chgFraction < -0.9) instSoldOut++;
+          else if (chgFraction < 0) instDecreased++;
+          if (chgFraction > 0) instInflow += h.value * chgFraction;
+          if (chgFraction < 0) instOutflow += Math.abs(h.value * chgFraction);
+
+          return {
+            name: h.name,
+            shares: h.shares,
+            value: h.value,
+            pctHeld: h.pctHeld * 100, // FMP returns 0..1 (matches EDGAR shape); convert to percent
+            changeQoQ: chgFraction * 100,
+            reportDate: h.reportDate,
+            cik: h.cik || undefined,
+            accession: h.accession || undefined,
+          };
+        });
+
+        const totalFlow = instInflow + instOutflow;
+        const flowScore = totalFlow > 0
+          ? Math.round(((instInflow - instOutflow) / totalFlow) * 100)
+          : 0;
+
+        const topFunds: FundHolderRow[] = fmp.topFunds.map((f) => ({
+          name: f.name,
+          shares: f.shares,
+          value: f.value,
+          pctHeld: f.pctHeld * 100,
+          changeQoQ: 0, // fund-tab QoQ is a follow-up
+          reportDate: f.reportDate,
+        }));
+
+        const value: CompanyOwnership = {
+          institutionPct: fmp.institutionPct,
+          institutionCount: fmp.institutionCount,
+          sharesOutstanding: fmp.sharesOutstanding,
+          asOf: fmp.asOf,
+          topInstitutions,
+          topFunds,
+          insiderHolders: [], // FMP doesn't have an insider-holders endpoint; left empty
+          insiderPct: 0,      // same — populate from EDGAR/Yahoo follow-up if needed
+          flowScore,
+          signal: signalFor(flowScore),
+          instInflow: Math.round(instInflow),
+          instOutflow: Math.round(instOutflow),
+          instIncreased,
+          instDecreased,
+          instNew,
+          instSoldOut,
+        };
+
+        return {
+          value,
+          source: "fmp",
+          attempts,
+          fetchedAt: Date.now(),
+          ttlMs: OWNERSHIP_TTL_MS,
+          cached: false,
+        };
+      } else {
+        attempts.push({ source: "fmp", ok: true, ms, empty: true });
+      }
+    } catch (e: any) {
+      attempts.push({ source: "fmp", ok: false, ms: Date.now() - t0, error: String(e?.message || e).substring(0, 200) });
+    }
+  }
 
   // ─── EDGAR (primary, authoritative for 13F summary) ──────────────────────
   let edgar: Awaited<ReturnType<typeof getInstitutionalSummaryStaleOk>> = null;
