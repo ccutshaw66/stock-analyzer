@@ -47,6 +47,13 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
+      // Keep cached data for the whole session — don't evict when a
+      // component unmounts. The scanner stores results via
+      // queryClient.setQueryData and reads them back when the page
+      // remounts; without this, default 5-min gc would silently
+      // wipe scan results after navigating away. Cache lives until
+      // a manual refresh or full page reload (logout).
+      gcTime: Infinity,
       retry: false,
     },
     mutations: {

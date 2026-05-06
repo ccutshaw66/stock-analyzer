@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Scanner results survive page navigation (gcTime: Infinity)
+
+**Why:** Owner reported scan results were disappearing when leaving the Scanner page and returning, forcing a re-scan every visit. Spec is "stay until refreshed or log out."
+
+**Root cause:** React Query's `gcTime` (formerly `cacheTime`) defaults to 5 minutes. The Scanner page writes scan results into the QueryClient cache via `queryClient.setQueryData(...)` but doesn't keep an active `useQuery` observer subscribed to that key. When the user navigates away, the page unmounts and the cache entry has zero observers, so after 5 minutes it gets garbage-collected. Coming back finds nothing and the page falls back to the empty initial state.
+
+**Fix:** `gcTime: Infinity` added to the global QueryClient `defaultOptions.queries`. Cache entries now live for the entire session and are only cleared on a full page reload (logout) or when explicitly refetched. Matches the existing `staleTime: Infinity` already in place.
+
+**Files:** `client/src/lib/queryClient.ts`.
+
+**Notes:**
+- This is a global change but it's safe — the app doesn't generate huge numbers of unique queries, and `staleTime: Infinity` already meant queries don't auto-refresh, so the only behavioral change is that data persists across navigation instead of evicting after 5 min idle.
+- Scan results, watchlist, trades, account settings, etc. all benefit from this — anything that was already unmount/remount-flickering should now stay put.
+
+Rollback tag: `safe/2026-05-05-pre-scanner-cache`.
+
+---
 ## 2026-05-05 — Scroll-to-top on navigation + neutral Open price column
 
 **Why:**
