@@ -1044,8 +1044,8 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
                       <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${g.avgOpenPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {g.avgOpenPrice > 0 ? "+" : ""}{g.avgOpenPrice.toFixed(2)}
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                        {Math.abs(g.avgOpenPrice).toFixed(2)}
                         {!isSingleLot && <span className="block text-[9px] opacity-60">avg</span>}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
@@ -1101,7 +1101,7 @@ export default function TradeTracker() {
                           <td className="py-1.5 px-3"><span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.pilotOrAdd === "Pilot" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>{t.pilotOrAdd === "Pilot" ? "P" : "A"}</span></td>
                           <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares}</td>
                           <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400/80" : "text-red-400/80"}`}>{t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right tabular-nums font-mono">{Math.abs(t.openPrice).toFixed(2)}</td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3"></td>
                           <td className={`py-1.5 px-3 text-right tabular-nums text-[11px] ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-[9px] ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
@@ -1141,8 +1141,8 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
                       <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
+                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                        {Math.abs(t.openPrice).toFixed(2)}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
                         {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}

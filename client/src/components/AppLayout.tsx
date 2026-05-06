@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import iconUrl from "@/assets/icon.png";
@@ -1250,6 +1250,15 @@ function SidebarContent({
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
   const [sidebarExpanded, setSidebarExpanded] = useState(!isMobile);
+  const [location] = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Reset scroll to top whenever the route changes — clicking a sidebar
+  // link should always land at the top of the new page, never inherit
+  // the previous page's scroll offset.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
 
   const toggleSidebar = () => setSidebarExpanded((v) => !v);
   const closeSidebar = () => setSidebarExpanded(false);
@@ -1266,7 +1275,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           onClose={closeSidebar}
           isMobile={isMobile}
         />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="main-content">
+        <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="main-content">
           {children}
         </main>
       </div>

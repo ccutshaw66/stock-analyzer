@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Scroll-to-top on navigation + neutral Open price column
+
+**Why:**
+1. Clicking a sidebar link wasn't resetting the scroll position — if you scrolled to the bottom of, say, Trade Analysis and then clicked Profile, you'd land at the bottom of the new page. Regression introduced a couple of changes back.
+2. The "Open" column in Current Positions was rendering debit prices as negative red numbers (e.g., `-1.50`). Owner's note: "no other platform uses a negative red number for their trade price" — the open price is the trade's entry price, a constant, and it shouldn't visually change color based on whether it's a credit or debit. The CR/DB direction is already encoded in the trade-type badge to the left of the column.
+
+**What:**
+- `client/src/components/AppLayout.tsx` — added a `mainRef` on `<main>` and a `useEffect([location])` that calls `mainRef.current?.scrollTo({ top: 0 })` on every route change. `behavior: "auto"` so it's instant, not a smooth-scroll animation.
+- `client/src/pages/trade-tracker.tsx` — three rendering sites of the Open column (parent aggregated row, lot row, closed-flat row) now show `Math.abs(price).toFixed(2)` with neutral `text-foreground` styling. No sign prefix, no green/red tint. The underlying signed value is preserved in the database and in P/L math — only the display is neutralized.
+
+Rollback tag: `safe/2026-05-05-pre-scroll-and-openprice`.
+
+---
 ## 2026-05-05 — Wheel HelpBlock + Trade Tracker tabs
 
 **What:**
