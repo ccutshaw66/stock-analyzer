@@ -971,7 +971,7 @@ export default function TradeTracker() {
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(["open", "closed", "stocks", "options"] as FilterTab[]).map(tab => (
+        {(["open", "stocks", "options", "closed"] as FilterTab[]).map(tab => (
           <button key={tab} onClick={() => setFilterTab(tab)}
             className={`h-7 px-3 text-xs font-medium rounded-md transition-colors ${
               filterTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
