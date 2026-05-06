@@ -9,6 +9,15 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Wheel HelpBlock + Trade Tracker tabs
+
+**What:**
+- **Wheel Strategy page** — `<HelpBlock title="What is the Wheel Strategy?" defaultOpen>` was forcing the How-It-Works panel open every visit. Removed `defaultOpen` so it matches every other page (closed by default, click to expand). Files: `client/src/pages/wheel.tsx`.
+- **Current Positions tabs** — dropped the "All" tab (the four remaining tabs already cover the universe), changed default tab from `"all"` to `"open"` so the page lands on what the user actually wants to see, and updated the `FilterTab` type to drop `"all"`. Tab labels also now show counts for every tab (previously the All tab had no count and the others did). Files: `client/src/pages/trade-tracker.tsx`.
+
+Rollback tag: `safe/2026-05-05-pre-wheel-tabs`.
+
+---
 ## 2026-05-05 — Page header polish (post-feedback)
 
 **Why:** Owner caught four follow-up issues on the consistency pass that just shipped.

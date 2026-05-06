@@ -84,7 +84,7 @@ interface AccountSettings {
   commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
 }
 
-type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
+type FilterTab = "open" | "closed" | "stocks" | "options";
 type SortField = "tradeDate" | "symbol" | "tradeType" | "openPrice" | "profit";
 
 // ─── Position aggregation ─────────────────────────────────────────────────────
@@ -778,7 +778,7 @@ export default function TradeTracker() {
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [filterTab, setFilterTab] = useState<FilterTab>("open");
   const [sortField, setSortField] = useState<SortField>("tradeDate");
   const [sortAsc, setSortAsc] = useState(false);
   // Expanded-state for aggregated open positions. Closed trades always render flat.
@@ -971,13 +971,13 @@ export default function TradeTracker() {
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(["all", "open", "closed", "stocks", "options"] as FilterTab[]).map(tab => (
+        {(["open", "closed", "stocks", "options"] as FilterTab[]).map(tab => (
           <button key={tab} onClick={() => setFilterTab(tab)}
             className={`h-7 px-3 text-xs font-medium rounded-md transition-colors ${
               filterTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
             }`}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            {tab !== "all" && ` (${
+            {` (${
               tab === "open" ? trades.filter(t => !t.closeDate).length :
               tab === "closed" ? trades.filter(t => !!t.closeDate).length :
               tab === "stocks" ? trades.filter(t => t.tradeCategory === "Stock").length :

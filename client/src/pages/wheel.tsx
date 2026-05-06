@@ -193,7 +193,7 @@ export default function WheelCalculator() {
       <Disclaimer />
 
       {/* How It Works */}
-      <HelpBlock title="What is the Wheel Strategy?" defaultOpen>
+      <HelpBlock title="What is the Wheel Strategy?">
         <p>
           The Wheel is a <strong className="text-foreground">neutral-to-bullish income strategy</strong> that combines
           <strong className="text-foreground"> cash-secured puts (CSPs)</strong> and
