@@ -2612,10 +2612,45 @@ export async function registerRoutes(
 
       const fullData = { quote, financials, historicalReturns };
 
-      // Compute scoring
-      const scoring = computeScoring(fullData);
-      const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-      const { verdict, ruling } = computeVerdict(weightedScore);
+      // ─── Phase 2.5 cutover ─────────────────────────────────────────────
+      // The verdict/score/ruling/scoring fields below now come from
+      // scoreSnapshot (the unified scoring function in
+      // server/snapshot/score.ts). The legacy computeScoring formula was
+      // structurally blind to institutional flow, insider activity, and
+      // analyst consensus — see CHANGES.md 2026-05-05 Phase 2 entry for
+      // the full rationale.
+      //
+      // Other fields (chartData, redFlags, businessQuality, etc.) stay
+      // on the legacy path because they don't depend on the score and
+      // wholesale-rewriting /api/analyze would be a much bigger change.
+      // The duplicate fetch (snapshot + legacy in parallel) costs an
+      // extra ~1-2s per call but guarantees nothing else breaks.
+      let verdict: string;
+      let ruling: string;
+      let weightedScore: number;
+      let scoring: Array<{ name: string; score: number; weight: number; reasoning: string }>;
+      try {
+        const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+        const next = scoreSnapshot(snap);
+        verdict = next.verdict;
+        ruling = next.ruling;
+        weightedScore = next.score10;
+        scoring = next.categories.map(c => ({
+          name: c.name, score: c.score, weight: c.weight, reasoning: c.reasoning,
+        }));
+      } catch (e: any) {
+        // Snapshot path failed for whatever reason — fall back to the
+        // legacy formula so the page still renders. This is the safety
+        // net; if it fires often the snapshot pipeline has a bug worth
+        // investigating, not a reason to abandon the cutover.
+        routesLog.warn({ ticker, err: String(e?.message || e) }, "scoreSnapshot fallback to legacy computeScoring");
+        scoring = computeScoring(fullData);
+        weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+        const v = computeVerdict(weightedScore);
+        verdict = v.verdict;
+        ruling = v.ruling;
+      }
+
       const { positives, risks } = generateBullBear(fullData);
       const redFlags = generateRedFlags(fullData);
       const decisionShortcut = generateDecisionShortcut(fullData);

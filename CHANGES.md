@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Phase 2.5: cut /api/analyze over to scoreSnapshot()
+
+**Why:** Phase 2 + the follow-ups (`fa65161` + `7f819a4`) shipped the unified `scoreSnapshot()` and the side-by-side diagnostic. Force-refresh verification on AAPL and MSFT this morning confirmed the new score works end-to-end (institutional flow populates, beta populates, insider calibration is sane). MSFT specifically went from SPECULATIVE (legacy) → INVESTMENT GRADE (new) — the structural fix the rebuild was for.
+
+The "trade-analysis header grade doesn't match outlook grade" complaint can't be fixed without flipping the routes. This commit flips the first one.
+
+**What:** `/api/analyze` (`server/routes.ts:2613`) now computes its `verdict`, `score`, `ruling`, and `scoring` (categories array) from `scoreSnapshot(getCompanySnapshot(ticker))` instead of the legacy `computeScoring(fullData)` formula. All other fields in the response (chartData, redFlags, businessQuality, financials, historicalReturns, etc.) stay on the legacy path — wholesale-rewriting `/api/analyze` would be a much bigger change and the score/verdict swap is the load-bearing part.
+
+**Safety net:** if `getCompanySnapshot` or `scoreSnapshot` throws for any reason, the route falls back to the legacy `computeScoring`/`computeVerdict` so the page still renders. A warn-level log fires on fallback so we can spot if the snapshot path is consistently failing.
+
+**Cost:** one extra snapshot fetch per `/api/analyze` call. Adds ~1-2 seconds latency to the trade-analysis page on cache-cold tickers. Acceptable for cutover; can be optimized later by making `/api/analyze` fully snapshot-based.
+
+**What changes for users:**
+- Trade Analysis page header score will now reflect institutional flow, insider activity, and analyst consensus on top of the 8 fundamental categories.
+- Most tickers will see a small score change (typically ±0.5). Some will see verdict bucket changes (PLTR-class names will downgrade if insiders are dumping; MSFT-class names will upgrade if institutions are accumulating).
+- The trade-analysis header grade will now match the verdict outlook for tickers that haven't yet been cut over once `/api/verdict` follows in the next commit.
+
+**Not in this commit:**
+- `/api/verdict` cutover — separate follow-up because the verdict response includes a stress-test breakdown and a specific factor display that needs careful mapping. Doing analyze + verdict in one commit would be a bigger blast radius.
+
+**Files:** `server/routes.ts` (one block in the `/api/analyze` handler).
+
+Rollback tag: `safe/2026-05-06-pre-analyze-cutover`.
+
+---
 ## 2026-05-05 — Phase 2 follow-ups: FMP institutional in snapshot, insider penalty calibration, FMP beta fallback
 
 **Why:** Phase 2 (`fa65161`) shipped the `scoreSnapshot()` function and the side-by-side diag endpoint. Verification on PLTR / AAPL / MSFT / KO / F surfaced three fixable issues before any cutover:
