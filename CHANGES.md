@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Wire snapshot D/E + ROE into legacy `financials` so page display picks them up
+
+**Why:** Previous commit (`3853791`) added the FMP fallback for D/E and ROE in the snapshot's fundamentals adapter. The new score correctly used the FMP value. But the Trade Analysis page's "Debt/Equity" display field, plus the red-flag generator, decision-shortcut generator, and bull/bear copy generator, all still pull from `financials.debtToEquity` — a different code path sourced from `extractQuoteData(summary)` → Polygon directly. The page showed "Debt/Equity: N/A" on PLTR even though the snapshot path had the value.
+
+Two code paths, only one got patched.
+
+**What:** Inside the `/api/analyze` Phase 2.5 cutover block, after `getCompanySnapshot` returns, copy `snap.fundamentals.value.debtToEquity` and `.returnOnEquity` into the legacy `financials` object IF the legacy fields are null. The legacy mutators (red flags, decision shortcut, bull/bear) all read from the same `financials` reference, so a single mutation flows everywhere.
+
+**Files:** `server/routes.ts` (the Phase 2.5 cutover block in `/api/analyze`).
+
+**Notes:**
+- This is a transitional shim. The proper long-term fix is to make the page's display fields read from the snapshot too, which would happen naturally as more of `/api/analyze` migrates to snapshot-sourced. Today's commit keeps the surface area small.
+- After deploy, hard-refresh the trade-analysis page to bypass the React Query cache and confirm "Debt / Equity" shows a real number on PLTR/KO.
+
+Rollback tag: `safe/2026-05-06-pre-de-display-patch`.
+
+---
 ## 2026-05-06 — Fundamentals: FMP fallback for debtToEquity + returnOnEquity
 
 **Why:** Owner caught D/E showing N/A on PLTR (and KO has the same problem). The fundamentals adapter pulls from Polygon primary, but Polygon's `quoteSummary.financialData.debtToEquity` is patchily null on certain tickers — even when the rest of the fundamentals blob is populated. Because the field is set non-null on most tickers, the existing FMP fallback never fires (it only fires when the entire fundamentals blob is empty).

@@ -2638,6 +2638,24 @@ export async function registerRoutes(
         scoring = next.categories.map(c => ({
           name: c.name, score: c.score, weight: c.weight, reasoning: c.reasoning,
         }));
+
+        // Patch the legacy `financials` object with the snapshot's fundamentals
+        // for any field Polygon's quoteSummary returned null on. The snapshot
+        // adapter now has FMP fallbacks for D/E and ROE, but the legacy
+        // `financials` (sourced from extractQuoteData → Polygon directly) is
+        // what feeds the page's display fields, the red-flag generator, the
+        // decision-shortcut generator, and the bull/bear copy. Without this
+        // patch, the page shows "Debt/Equity: N/A" on PLTR/KO even though
+        // the score reflects the FMP-fallback value.
+        const sf = snap.fundamentals.value;
+        if (sf) {
+          if ((financials.debtToEquity == null) && sf.debtToEquity != null) {
+            financials.debtToEquity = sf.debtToEquity;
+          }
+          if ((financials.returnOnEquity == null) && sf.returnOnEquity != null) {
+            financials.returnOnEquity = sf.returnOnEquity;
+          }
+        }
       } catch (e: any) {
         // Snapshot path failed for whatever reason — fall back to the
         // legacy formula so the page still renders. This is the safety
