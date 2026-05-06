@@ -82,7 +82,7 @@ function fundamentalsFromFmp(ratios: any, income: any): CompanyFundamentals | nu
 
 export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHealth<CompanyFundamentals>> {
   const T = ticker.toUpperCase();
-  return tryProviders<CompanyFundamentals>(
+  const result = await tryProviders<CompanyFundamentals>(
     [
       {
         source: "polygon",
@@ -109,4 +109,44 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
       isEmpty: (f) => Object.values(f).every(v => v === null),
     },
   );
+
+  // Per-field FMP enrichment for fields Polygon's quoteSummary patchily
+  // returns. Polygon answers with a populated fundamentals blob but leaves
+  // some fields null on certain tickers — PLTR and KO observed missing
+  // debtToEquity, AAPL observed missing it on some refreshes. Rather than
+  // throwing the whole Polygon result away (it has lots of useful fields),
+  // we patch the missing one from FMP /ratios-ttm. Same pattern as the
+  // FMP beta fallback in quote.ts.
+  //
+  // Fields chosen because they have a clean 1:1 mapping AND meaningfully
+  // affect scoring:
+  //   - debtToEquity → Balance Sheet Quality (10% weight)
+  //   - returnOnEquity → currently unused by scoring but useful elsewhere
+  //
+  // Payout ratio is intentionally NOT patched — null on Polygon often means
+  // "no dividend" which the score treats correctly as a low income-quality
+  // signal. Patching from FMP would force "0%" which scores slightly worse
+  // and is semantically the same thing.
+  if (result.value && (result.value.debtToEquity === null || result.value.returnOnEquity === null)) {
+    try {
+      const ratiosRows = await fmpGet<any[]>(`/ratios-ttm`, { symbol: T });
+      const r = Array.isArray(ratiosRows) && ratiosRows.length ? ratiosRows[0] : null;
+      if (r) {
+        const patched = { ...result.value };
+        if (patched.debtToEquity === null) {
+          const der = num(r.debtEquityRatio);
+          if (der !== null) patched.debtToEquity = der * 100; // FMP fraction → percent
+        }
+        if (patched.returnOnEquity === null) {
+          const roe = num(r.returnOnEquity);
+          if (roe !== null) patched.returnOnEquity = roe * 100;
+        }
+        result.value = patched;
+      }
+    } catch {
+      // Non-fatal. Fields stay null; scoring falls back to neutral.
+    }
+  }
+
+  return result;
 }

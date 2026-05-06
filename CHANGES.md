@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Fundamentals: FMP fallback for debtToEquity + returnOnEquity
+
+**Why:** Owner caught D/E showing N/A on PLTR (and KO has the same problem). The fundamentals adapter pulls from Polygon primary, but Polygon's `quoteSummary.financialData.debtToEquity` is patchily null on certain tickers — even when the rest of the fundamentals blob is populated. Because the field is set non-null on most tickers, the existing FMP fallback never fires (it only fires when the entire fundamentals blob is empty).
+
+**What:** After `tryProviders` settles in `getFundamentalsSnapshot`, if `result.value.debtToEquity` (or `returnOnEquity`) is null, fetch FMP `/ratios-ttm` once and patch in the missing field(s). Same pattern as the FMP beta fallback added to `quote.ts` yesterday.
+
+**Why only D/E and ROE (not payoutRatio):** A null payout ratio on Polygon usually means "no dividend." Patching from FMP would force "0%" which scores slightly worse semantically — same conclusion either way, but null is more honest.
+
+**Files:** `server/snapshot/fundamentals.ts`.
+
+**Expected impact:** Balance Sheet Quality scores will now populate for PLTR (D/E ~6%, score ~7) and KO (D/E meaningful, score ~6) where they were neutral 5 before. Trade Analysis and Verdict pages should both reflect.
+
+Rollback tag: `safe/2026-05-06-pre-de-fallback`.
+
+---
 ## 2026-05-06 — Phase 2.5: cut /api/analyze over to scoreSnapshot()
 
 **Why:** Phase 2 + the follow-ups (`fa65161` + `7f819a4`) shipped the unified `scoreSnapshot()` and the side-by-side diagnostic. Force-refresh verification on AAPL and MSFT this morning confirmed the new score works end-to-end (institutional flow populates, beta populates, insider calibration is sane). MSFT specifically went from SPECULATIVE (legacy) → INVESTMENT GRADE (new) — the structural fix the rebuild was for.
