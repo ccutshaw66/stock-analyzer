@@ -569,7 +569,17 @@ function Sidebar({
   // Add/Close trade modal states
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [showCloseTrade, setShowCloseTrade] = useState(false);
-  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Calculators": true, "Trade Tracker": true, "Watchlist": true, "Active Options": true, "Active Stocks": true });
+  // Watchlist / Active Options / Active Stocks default to collapsed —
+  // the user opens them when they want them, not every session.
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({
+    "Company Information": true,
+    "Research": true,
+    "Calculators": true,
+    "Trade Tracker": true,
+    "Watchlist": false,
+    "Active Options": false,
+    "Active Stocks": false,
+  });
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 

@@ -186,7 +186,7 @@ export default function TradeAnalysis() {
       <PageHeader
         icon={Activity}
         title="Trade Analysis"
-        subtitle={data ? `${data.companyName} (${data.ticker})` : "Per-ticker 3-gate signal + 8-factor scoring."}
+        subtitle="Per-ticker 3-gate signal + 8-factor scoring."
       />
 
       {/* Disclaimer */}

@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Page header polish (post-feedback)
+
+**Why:** Owner caught four follow-up issues on the consistency pass that just shipped.
+
+**What:**
+1. **`PageHeader` layout** — icon was floating vertically-centered between the title and the subtitle when both were present. Restructured so the icon sits on the same row as the title and the subtitle drops underneath the row. Files: `client/src/components/PageHeader.tsx`.
+2. **Conviction Compass blank on error** — the loading and error branches rendered without a `<PageHeader>`, so when the `/api/conviction/:ticker` call failed the page showed nothing but an error card with no page identity. Both branches now render the title + disclaimer first. Files: `client/src/pages/conviction.tsx`.
+3. **Trade Analysis "undefined (TSLA)"** — the subtitle interpolated `${data.companyName}` but `tradeData` is typed `any | null` and the `/api/trade-analysis` response shape doesn't include `companyName` at the top level (that field is on `analysisData`, a different query). Replaced with a static subtitle so it can never read `undefined`. Files: `client/src/pages/trade-analysis.tsx`.
+4. **Sidebar groups default expanded** — Watchlist, Active Options, and Active Stocks were initialized to `true` in `groupOpen`, forcing the user to scroll past three open lists every session. Flipped to `false` so they start collapsed; clicking the group header still toggles them open. Files: `client/src/components/AppLayout.tsx`.
+
+Rollback tag: `safe/2026-05-05-pre-page-header-polish`.
+
+---
 ## 2026-05-05 — Page header consistency: Title → Disclaimer → How It Works on every page
 
 **Why:** Owner's long-standing complaint — pages were inconsistent. Some had a title, some didn't; some put the disclaimer before the title; some buried the How-It-Works inside a card; some had a sidebar icon but no matching icon next to the page title. The pitch is "verify the gurus," and it loses credibility if the chrome looks like four different apps stitched together.

@@ -454,7 +454,13 @@ export default function ConvictionPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        <PageHeader
+          icon={Compass}
+          title="Conviction Compass"
+          subtitle={`Building reading for ${activeTicker}…`}
+        />
+        <Disclaimer />
         <div className="flex flex-col items-center gap-3 py-24">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Building Conviction Compass for {activeTicker}…</p>
@@ -465,7 +471,13 @@ export default function ConvictionPage() {
 
   if (error || !compass) {
     return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        <PageHeader
+          icon={Compass}
+          title="Conviction Compass"
+          subtitle={`${activeTicker} — one signal from four independent data streams.`}
+        />
+        <Disclaimer />
         <div className="bg-card border border-red-500/30 rounded-xl p-6 text-center">
           <p className="text-red-400 font-semibold">Could not build Conviction Compass</p>
           <p className="text-xs text-muted-foreground mt-2">{(error as any)?.message || "Try refreshing."}</p>
