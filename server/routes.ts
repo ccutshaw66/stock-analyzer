@@ -41,6 +41,8 @@ const routesLog = rootLogger.child({ module: "routes" });
 // Calls /price-target-consensus + /grades-consensus directly (not the adapter's
 // collapsed form) so we get per-bucket buy/hold/sell counts.
 import { fmpGet } from "./data/providers/fmp.client";
+import { getCompanySnapshot, snapshotHealth } from "./snapshot";
+import { scoreSnapshot, bucketVerdict, type CategoryScore } from "./snapshot/score";
 
 interface AnalystBlock {
   buy: number;
@@ -4723,6 +4725,119 @@ export async function registerRoutes(
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Sector data fetch failed" });
+    }
+  });
+
+  // ================================================================
+  // SNAPSHOT + SCORE DIAGNOSTICS
+  //
+  // Phase 1 of the architectural rebuild built getCompanySnapshot — a
+  // provider-agnostic snapshot with per-field provenance. Phase 2 added
+  // scoreSnapshot — a single scoring function that's no longer blind to
+  // institutional flow / insider activity / analyst consensus.
+  //
+  // Neither is wired into /api/analyze or /api/verdict yet. These diag
+  // routes expose them for verification:
+  //   GET /api/diag/snapshot/:ticker[?view=health|?refresh=1]
+  //   GET /api/diag/score/:ticker[?refresh=1]
+  //
+  // Use the score endpoint to compare the new score's `score10` and
+  // `verdict` fields against what /api/analyze and /api/verdict are
+  // returning today. The `legacyView` block in the response shows what
+  // the score WOULD be if the new flow/insider/analyst factors were
+  // dropped (i.e., what computeScoring effectively does today).
+  // ================================================================
+
+  app.get("/api/diag/snapshot/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    const view = String(req.query.view || "");
+    const forceRefresh = String(req.query.refresh || "") === "1";
+    try {
+      await ensureReady();
+      const snap = await getCompanySnapshot(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      if (view === "health") {
+        return res.json(snapshotHealth(snap));
+      }
+      res.json(snap);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Snapshot fetch failed" });
+    }
+  });
+
+  app.get("/api/diag/score/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    const forceRefresh = String(req.query.refresh || "") === "1";
+    try {
+      await ensureReady();
+      const snap = await getCompanySnapshot(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      const next = scoreSnapshot(snap);
+
+      // Legacy-equivalent view: same scoring math but only the first 8
+      // fundamental categories — i.e., the factors computeScoring uses
+      // today. This makes the structural blindness visible: legacy
+      // computeScoring cannot see institutional flow, insider activity,
+      // or analyst consensus, so this slice approximates what the
+      // legacy /api/analyze produces from the same underlying data.
+      const LEGACY_NAMES = new Set([
+        "Income Strength",
+        "Income Quality",
+        "Business Quality",
+        "Balance Sheet Quality",
+        "Performance Quality",
+        "Valuation Sanity",
+        "Liquidity & Scale",
+        "Thesis Durability",
+      ]);
+      const legacyCats: CategoryScore[] = next.categories.filter(c => LEGACY_NAMES.has(c.name));
+      const legacyPopulated = legacyCats.filter(c => c.populated);
+      const legacyDenom = legacyPopulated.reduce((s, c) => s + c.weight, 0);
+      const legacyScore10 = legacyDenom > 0
+        ? legacyPopulated.reduce((s, c) => s + c.score * c.weight, 0) / legacyDenom
+        : 5;
+      const legacyBucket = bucketVerdict(legacyScore10);
+      const legacyView = {
+        score10: Math.round(legacyScore10 * 100) / 100,
+        score100: Math.round(legacyScore10 * 100) / 10,
+        verdict: legacyBucket.verdict,
+        ruling: legacyBucket.ruling,
+        factorsContributed: legacyPopulated.length,
+        factorsTotal: legacyCats.length,
+      };
+
+      // Which factors the new model added that legacy didn't see.
+      const addedFactors = next.categories
+        .filter(c => !LEGACY_NAMES.has(c.name))
+        .map(c => ({
+          name: c.name,
+          score: c.score,
+          weight: c.weight,
+          populated: c.populated,
+          source: c.source,
+          reasoning: c.reasoning,
+        }));
+
+      res.json({
+        ticker,
+        new: next,
+        legacyView,
+        addedFactors,
+        delta: {
+          score10: Math.round((next.score10 - legacyView.score10) * 100) / 100,
+          score100: Math.round((next.score100 - legacyView.score100) * 10) / 10,
+          verdictChanged: next.verdict !== legacyView.verdict,
+        },
+        snapshotHealth: snapshotHealth(snap),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Score diagnostic failed" });
     }
   });
 

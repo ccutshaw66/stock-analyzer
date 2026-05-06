@@ -9,6 +9,49 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Phase 2: scoreSnapshot() + side-by-side diagnostic routes (no cutover yet)
+
+**Why:** Phase 1 (2026-05-01, commit `0de1864`) built the snapshot foundation but no routes were cut over to it. Two scoring paths still co-exist:
+- `computeScoring` (`server/routes.ts:988`) — feeds `/api/analyze` and the trade-analysis header. 8 fundamental categories. **Structurally blind to institutional flow, insider activity, and analyst consensus.**
+- The `/api/verdict` route's inline factor-blend (`server/routes.ts:4305+`) — different weighting, includes institutional/insider, but had a 20% strategy factor wired to a hardcoded null.
+
+That's why the trade-analysis header grade and the verdict outlook can disagree — they were computed by two different formulas with different inputs. Phase 2's job is the unified scoring function. **No routes are cut over in this commit** — just the new function and a side-by-side diagnostic so we can verify parity on a sample of tickers before flipping anything.
+
+**What:**
+1. **`server/snapshot/score.ts`** (new) — exports `scoreSnapshot(snap)` returning a single canonical score on 0-100 (with `score10`/`score100`/`verdict` fields for legacy compat). Eleven categories totaling 100% weight:
+   - 8 fundamental categories from legacy `computeScoring` (Income Strength, Income Quality, Business Quality, Balance Sheet, Performance, Valuation, Liquidity, Thesis Durability) — total 65%.
+   - 3 new factors that legacy was blind to: Institutional Flow (15%), Insider Confidence (10%), Analyst Consensus (10%).
+   - Each category renormalizes across populated factors only — a missing data source doesn't drag the score toward neutral. Per-category `populated` and `source` (`ProviderSource`) provenance preserved on the way out.
+   - Verdict bucketing: STRONG CONVICTION (≥8.5) / INVESTMENT GRADE (≥7.0) / SPECULATIVE (≥5.5) / HIGH RISK (else). Matches the legacy `computeVerdict` thresholds exactly so any verdict change in the diff is meaningful.
+
+2. **`GET /api/diag/snapshot/:ticker[?view=health|?refresh=1]`** (new) — returns the full `CompanySnapshot` or just the per-field health view (`source` + `attempts` + `cached` + `populated`). Source of truth for "blank tab" diagnosis.
+
+3. **`GET /api/diag/score/:ticker[?refresh=1]`** (new) — returns:
+   - `new` — the full `scoreSnapshot()` output
+   - `legacyView` — same math but only the 8 fundamental categories (i.e., what computeScoring's structural blindness produces)
+   - `addedFactors` — the 3 new factors the legacy view doesn't see, with their populated/source/reasoning
+   - `delta` — `score10`, `score100`, and `verdictChanged` between new and legacy
+   - `snapshotHealth` — same shape as the snapshot diag's health view
+
+**How to verify before cutover:**
+Run the diag endpoint on a sample of tickers (recommended: PLTR, AAPL, MSFT, KO, F):
+- `https://stockotter.ai/api/diag/score/PLTR`
+- Same for AAPL, MSFT, KO, F
+- For each, eyeball: does the new `verdict` match what the user would expect given the underlying business? Does `addedFactors` show the institutional/insider/analyst categories actually populated, or is the data thin? Where the `legacyView` and `new` disagree, is the new one telling a more honest story?
+- If the diagnostic looks right on those 5 tickers, we're cleared to flip `/api/analyze` and `/api/verdict` over to the new score in a follow-up commit (Phase 2.5 cutover).
+
+**Files:**
+- `server/snapshot/score.ts` (new)
+- `server/routes.ts` — added imports + the two diag routes (right above the SECTOR TOP LEADERS section)
+
+**Notes:**
+- This commit doesn't touch any user-visible behavior. Existing `/api/analyze`, `/api/verdict`, scanner, and watchlist all still use the legacy code paths.
+- The two new routes are unauthenticated read-only diagnostics — no analysis-quota check, no cache writes that affect other paths.
+- Backlog logged this session: Scanner BUY/SELL filter not honored, scanner universe caps to audit (both saved to memory).
+
+Rollback tag: `safe/2026-05-05-pre-phase-2`.
+
+---
 ## 2026-05-05 — Sector Heatmap migrated off Polygon to FMP-direct
 
 **Why:** With `FMP_TIER=ultimate` confirmed, Polygon Stocks Starter is a drop candidate. `/api/sectors` was one of the legacy `getChart` call sites still routing through Polygon. Migrating it removes one direct Polygon dependency without waiting for the broader Phase 2 snapshot cutover.
