@@ -9,6 +9,49 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Page header consistency: Title → Disclaimer → How It Works on every page
+
+**Why:** Owner's long-standing complaint — pages were inconsistent. Some had a title, some didn't; some put the disclaimer before the title; some buried the How-It-Works inside a card; some had a sidebar icon but no matching icon next to the page title. The pitch is "verify the gurus," and it loses credibility if the chrome looks like four different apps stitched together.
+
+**What:** Standardized the top of every sidebar-reachable page on a single pattern:
+1. **`<PageHeader>`** (icon matches the sidebar icon, title matches the sidebar label, optional subtitle, optional right-side actions)
+2. **`<Disclaimer />`** (when appropriate — kept off pages that show only your own data, like Trade Tracker / Dividend Positions / Help)
+3. **`<HelpBlock title="How … works">`** (always at the top level — pulled out of card wrappers where it had been buried)
+4. Page content
+
+**New component:**
+- `client/src/components/PageHeader.tsx` — `{ icon, title, subtitle?, right? }`. The `icon` prop is a `LucideIcon` and the convention is to pass the same icon that's used in the sidebar so the page identity is unambiguous.
+
+**Pages touched (all under `client/src/pages/`):**
+- `home.tsx` (Profile) — added title + disclaimer + How-It-Works (was bare).
+- `trade-analysis.tsx` — added title + disclaimer; moved How-It-Works above the loading/error/limit states.
+- `trade-tracker.tsx` (Current Positions) — added matching `ClipboardList` icon to title; buttons moved into the header `right` slot.
+- `dividend-portfolio.tsx` (Dividend Positions) — title now uses `Landmark` icon to match sidebar.
+- `trade-analytics.tsx` (Performance Analytics) — title now uses `PieChart` icon; pulled How-It-Works out of the Key Metrics card.
+- `mm-exposure.tsx` — title now uses `Crosshair` icon; reordered so the Search form sits below How-It-Works.
+- `institutional.tsx` — swapped to `<PageHeader>` for visual parity.
+- `conviction.tsx` — title on both empty state and loaded state; added a How-It-Works block (was missing on the loaded page).
+- `verdict.tsx` (Long-Term Outlook) — title with `Award` icon now renders on the loaded page (previously only on the empty state).
+- `scanner.tsx` — added title with `Radar` icon; reordered Disclaimer → HelpBlock → Signal Pulse.
+- `sector-heatmap.tsx` — title with `Grid3X3` icon; pulled How-It-Works out of the Sector Performance card.
+- `earnings-calendar.tsx` — title with `Calendar` icon; pulled How-It-Works out of the Watchlist Earnings card.
+- `dividends.tsx` — title with `DollarSign` icon to match sidebar.
+- `track-record.tsx` — title now appears **before** the Disclaimer (was reversed).
+- `alerts.tsx` — title now appears **before** the How-It-Works (was reversed); buttons moved into the header `right` slot.
+- `options-calculator.tsx` — title with `Calculator` icon; rendered the imported-but-unused `<Disclaimer />`. (Per-section How-It-Works blocks inside each sub-calculator stay where they are.)
+- `payoff-diagram.tsx` — title with `LineChart` icon; rendered Disclaimer; pulled How-It-Works out of the Strategy Builder card.
+- `greeks-calculator.tsx` — title with `Sigma` icon; rendered Disclaimer; pulled How-It-Works out of the Black-Scholes card.
+- `kelly-calculator.tsx` — title with `Percent` icon; rendered Disclaimer; pulled How-It-Works out of the Position Sizing card.
+- `wheel.tsx` — moved the Disclaimer from the bottom of the page up to the standard slot.
+- `help.tsx` — title swapped to `<PageHeader>` for visual parity (icon already matched).
+
+**Notes:**
+- Sidebar icons unchanged — the icons next to the page titles are pulled from the same `lucide-react` set the sidebar uses, so the sidebar entry and the page title visually anchor to the same glyph.
+- No backend changes. No type-checker regressions in any of the touched files.
+
+Rollback tag: `safe/2026-05-05-pre-page-headers`.
+
+---
 ## 2026-05-05 — Site-wide timeframe picker for RSI / score consistency
 
 **Why:** Trade Analysis used 1y daily bars while Scanner / Watchlist / quick gate badge used 6mo daily. Wilder's RSI is path-dependent — same ticker showed slightly different RSI on different pages, which flipped grades around the 30/70 thresholds. Owner's complaint: "header grade doesn't match outlook grade."

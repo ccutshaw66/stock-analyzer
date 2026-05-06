@@ -8,6 +8,7 @@ import { HelpBlock } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 
 // ─── Import Position Button ──────────────────────────────────────────────────
 
@@ -543,8 +544,17 @@ function LegSection({ label, legs, calcType, addLeg, removeLeg, updateLeg, total
 export default function OptionsCalculator() {
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="options-calculator-page">
-      <h1 className="text-lg font-bold text-foreground">Options Calculator</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Click the blue info bar on each section for instructions with credit and debit examples.</p>
+      {/* Title */}
+      <PageHeader
+        icon={Calculator}
+        title="Options Calculator"
+        subtitle="Risk, vertical expectancy, defined risk/reward, and weighted-price math — each section has its own How It Works."
+      />
+
+      {/* Disclaimer */}
+      <Disclaimer />
+
+      {/* How It Works lives inside each calculator section below — click the blue info bar. */}
       <RiskCalculator />
       <VerticalExpectancy />
       <DefinedRiskReward />

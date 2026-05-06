@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -568,18 +569,17 @@ export default function Institutional() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="institutional-page">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
-            Institutional Money Flow
-          </h1>
-          <p className="text-xs text-muted-foreground">Track institutional buying/selling, insider moves, and smart money flow signals.</p>
-      <Disclaimer />
-        </div>
-      </div>
+      {/* Title */}
+      <PageHeader
+        icon={Building2}
+        title="Institutions"
+        subtitle="Track institutional buying/selling, insider moves, and smart money flow signals."
+      />
 
-      {/* ─── FAQ / How It Works ──────────────────────────────────────── */}
+      {/* Disclaimer */}
+      <Disclaimer />
+
+      {/* How It Works */}
       <HelpBlock title="How Institutional Money Flow Scoring Works">
         <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-red-400">-100</strong> (all selling) to <strong className="text-green-400">+100</strong> (all buying).</p>
 

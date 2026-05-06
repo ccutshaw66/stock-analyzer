@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BookOpen, ChevronDown, ChevronUp, ClipboardList, Calculator, BarChart3, Activity, Radar, HelpCircle, RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 
 function Section({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -27,11 +28,12 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 export default function Help() {
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-4 max-w-[900px] mx-auto" data-testid="help-page">
-      <div className="flex items-center gap-2 mb-2">
-        <BookOpen className="h-5 w-5 text-primary" />
-        <h1 className="text-lg font-bold text-foreground">Help & Instructions</h1>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-2">Click each section to expand. Everything you need to know about each feature.</p>
+      {/* Title */}
+      <PageHeader
+        icon={BookOpen}
+        title="Help / FAQ"
+        subtitle="Click each section to expand. Everything you need to know about each feature."
+      />
 
       {/* ─── Getting Started ──────────────────────────────────────────── */}
       <Section title="Getting Started" icon={HelpCircle}>

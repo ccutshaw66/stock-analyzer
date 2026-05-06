@@ -13,6 +13,7 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { SignalPulse } from "@/components/SignalPulse";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 
 const SECTORS = [
   "All Sectors", "Technology", "Healthcare", "Financial Services",
@@ -472,11 +473,17 @@ export default function Scanner() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        {/* Title */}
+        <PageHeader
+          icon={Radar}
+          title="Scanner"
+          subtitle="3-strategy alignment, AMC scoring, and the Explosion Detector — all on one engine."
+        />
+
+        {/* Disclaimer */}
         <Disclaimer />
 
-        {/* SIGNAL PULSE — unique proprietary oscillator */}
-        <SignalPulse ticker={pulseTicker} />
-
+        {/* How It Works */}
         <HelpBlock title="How the Scanner page works">
           <p><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-green-400">bullish fires</span> minus <span className="text-red-400">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
           <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-green-400">GO ↑</span>/<span className="text-red-400">GO ↓</span> (all gates clear), <span className="text-green-400">SET ↑</span>/<span className="text-red-400">SET ↓</span> (most gates clear), <span className="text-green-400">READY ↑</span>/<span className="text-red-400">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors differentiate up vs down.</p>
@@ -484,6 +491,9 @@ export default function Scanner() {
           <p><b className="text-foreground">Explosion Detector:</b> Scans 2000 US stocks looking for combinations of 12 signals (6 technical + 6 catalyst) that historically precede large moves. Expand any card to see per-signal breakdown and an MACD/RSI indicator chart.</p>
           <p><b className="text-foreground">Credibility:</b> All three scanners use the same signal engine — verdicts here match Trade Analysis, Trade Tracker, and Watchlist exactly.</p>
         </HelpBlock>
+
+        {/* Signal Pulse — proprietary oscillator */}
+        <SignalPulse ticker={pulseTicker} />
 
         {/* Scan Mode Tabs */}
         <div className="flex border-b border-card-border">

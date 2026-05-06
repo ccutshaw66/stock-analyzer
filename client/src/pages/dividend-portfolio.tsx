@@ -6,6 +6,7 @@ import {
   RefreshCw, PiggyBank, ChevronDown, Landmark, Info,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 
@@ -165,25 +166,25 @@ export default function DividendPortfolio() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividend-portfolio-page">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Dividend Portfolio</h1>
-          <p className="text-xs text-muted-foreground">
-            Auto-detected from your open stock positions that pay dividends.
-          </p>
-        </div>
-        <button
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/dividend-portfolio"] })}
-          disabled={isRefetching}
-          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
-          data-testid="button-refresh-dividends"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
-        </button>
-      </div>
+      {/* Title */}
+      <PageHeader
+        icon={Landmark}
+        title="Dividend Positions"
+        subtitle="Auto-detected from your open stock positions that pay dividends."
+        right={
+          <button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/dividend-portfolio"] })}
+            disabled={isRefetching}
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
+            data-testid="button-refresh-dividends"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
+          </button>
+        }
+      />
 
-      {/* Help Block */}
-      <HelpBlock title="How This Works">
+      {/* How It Works */}
+      <HelpBlock title="How Dividend Positions Work">
         <p><strong className="text-foreground">Automatic Detection:</strong> This page scans all your open LONG stock positions and checks if they pay dividends. If they do, they show up here automatically — no manual entry needed.</p>
         <p><strong className="text-foreground">Yield on Cost (YoC):</strong> Your personal dividend yield based on what you actually paid. If a stock's current yield is 3% but you bought it years ago at a lower price, your YoC could be much higher.</p>
         <p><strong className="text-foreground">Annual Income:</strong> Total dividends expected per year based on shares owned and current dividend rate.</p>

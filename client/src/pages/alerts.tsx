@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Bell, Plus, Trash2, Zap, TrendingUp, Calendar, Radio } from "lucide-react";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 
 interface AlertRule {
   id: number;
@@ -48,7 +49,33 @@ export default function AlertsPage() {
   });
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
+    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+      {/* Title */}
+      <PageHeader
+        icon={Bell}
+        title="Alerts"
+        subtitle="Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above."
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => evaluateNow.mutate()}
+              disabled={evaluateNow.isPending}
+              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+            >
+              {evaluateNow.isPending ? "Evaluating..." : "Evaluate now"}
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Alert
+            </button>
+          </div>
+        }
+      />
+
+      {/* How It Works */}
       <HelpBlock title="How Alerts work">
         <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
         <p><b className="text-foreground">Rule types:</b></p>
@@ -61,32 +88,6 @@ export default function AlertsPage() {
         <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
         <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
       </HelpBlock>
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Bell className="h-5 w-5" /> Alerts
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => evaluateNow.mutate()}
-            disabled={evaluateNow.isPending}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-          >
-            {evaluateNow.isPending ? "Evaluating..." : "Evaluate now"}
-          </button>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" /> New rule
-          </button>
-        </div>
-      </div>
 
       {/* Coming-soon channels */}
       <div className="mb-6 p-3 bg-muted/30 border border-card-border rounded-lg">

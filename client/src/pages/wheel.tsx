@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 import { useTicker } from "@/contexts/TickerContext";
 import {
   ResponsiveContainer, LineChart, Line,
@@ -177,16 +178,21 @@ export default function WheelCalculator() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="wheel-page">
-      <div className="flex items-center gap-2">
-        <RefreshCw className="h-5 w-5 text-primary" />
-        <h1 className="text-lg font-bold text-foreground">The Wheel Strategy</h1>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-4">
-        Generate income by selling cash-secured puts and covered calls in a continuous cycle.
-        {activeTicker && <> Currently analyzing <span className="text-primary font-semibold">{activeTicker}</span>.</>}
-      </p>
+      {/* Title */}
+      <PageHeader
+        icon={RefreshCw}
+        title="Wheel Strategy"
+        subtitle={
+          activeTicker
+            ? `Generate income via cash-secured puts → covered calls — currently analyzing ${activeTicker}.`
+            : "Generate income by selling cash-secured puts and covered calls in a continuous cycle."
+        }
+      />
 
-      {/* ── Instructions ─────────────────────────────────────────── */}
+      {/* Disclaimer */}
+      <Disclaimer />
+
+      {/* How It Works */}
       <HelpBlock title="What is the Wheel Strategy?" defaultOpen>
         <p>
           The Wheel is a <strong className="text-foreground">neutral-to-bullish income strategy</strong> that combines
@@ -399,8 +405,6 @@ export default function WheelCalculator() {
           ))}
         </ul>
       </div>
-
-      <Disclaimer />
     </div>
   );
 }

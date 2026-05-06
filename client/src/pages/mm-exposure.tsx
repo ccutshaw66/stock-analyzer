@@ -15,6 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import mascotUrl from "@/assets/mascot.jpg";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,13 +92,30 @@ export default function MMExposure() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="mm-exposure-page">
-      <div>
-        <h1 className="text-lg font-bold text-foreground">Market Maker Exposure</h1>
-        <p className="text-xs text-muted-foreground">
-          Where they're hiding, where they're hedging, and how to trade alongside them.
-        </p>
+      {/* Title */}
+      <PageHeader
+        icon={Crosshair}
+        title="MM Exposure"
+        subtitle="Where they're hiding, where they're hedging, and how to trade alongside them."
+      />
+
+      {/* Disclaimer */}
       <Disclaimer />
-      </div>
+
+      {/* How It Works */}
+      <HelpBlock title="Understanding Market Maker Exposure">
+        <p><strong className="text-foreground">GEX (Gamma Exposure):</strong> Measures how much dealers must buy or sell to hedge for each 1% move. High GEX strikes act as magnets — price gets pinned there.</p>
+        <p><strong className="text-foreground">Call Wall (Resistance):</strong> Strike with the highest call open interest. MMs sold these calls and will SELL stock to hedge as price approaches — creating a ceiling.</p>
+        <p><strong className="text-foreground">Put Wall (Support):</strong> Strike with the highest put open interest. MMs sold these puts and will BUY stock to hedge as price drops — creating a floor.</p>
+        <p><strong className="text-foreground">Gamma Flip:</strong> Price where dealer gamma switches from positive to negative. Above = MMs dampen moves (range-bound). Below = MMs amplify moves (volatile).</p>
+        <p><strong className="text-foreground">Max Pain:</strong> Price where the most options expire worthless. MMs profit most here — price gravitates to this level into expiration.</p>
+        <Example type="good">
+          <strong className="text-green-400">Positive Gamma (Dealer Long):</strong> MMs buy dips, sell rallies. Tight range. Sell premium.
+        </Example>
+        <Example type="bad">
+          <strong className="text-red-400">Negative Gamma (Dealer Short):</strong> MMs sell into drops, buy into rallies. Wild swings. Buy directional.
+        </Example>
+      </HelpBlock>
 
       {/* Search */}
       <form onSubmit={handleSearch} className="flex items-center gap-2">
@@ -115,21 +133,6 @@ export default function MMExposure() {
           Scan
         </button>
       </form>
-
-      {/* Help */}
-      <HelpBlock title="Understanding Market Maker Exposure">
-        <p><strong className="text-foreground">GEX (Gamma Exposure):</strong> Measures how much dealers must buy or sell to hedge for each 1% move. High GEX strikes act as magnets — price gets pinned there.</p>
-        <p><strong className="text-foreground">Call Wall (Resistance):</strong> Strike with the highest call open interest. MMs sold these calls and will SELL stock to hedge as price approaches — creating a ceiling.</p>
-        <p><strong className="text-foreground">Put Wall (Support):</strong> Strike with the highest put open interest. MMs sold these puts and will BUY stock to hedge as price drops — creating a floor.</p>
-        <p><strong className="text-foreground">Gamma Flip:</strong> Price where dealer gamma switches from positive to negative. Above = MMs dampen moves (range-bound). Below = MMs amplify moves (volatile).</p>
-        <p><strong className="text-foreground">Max Pain:</strong> Price where the most options expire worthless. MMs profit most here — price gravitates to this level into expiration.</p>
-        <Example type="good">
-          <strong className="text-green-400">Positive Gamma (Dealer Long):</strong> MMs buy dips, sell rallies. Tight range. Sell premium.
-        </Example>
-        <Example type="bad">
-          <strong className="text-red-400">Negative Gamma (Dealer Short):</strong> MMs sell into drops, buy into rallies. Wild swings. Buy directional.
-        </Example>
-      </HelpBlock>
 
       {/* Loading */}
       {isLoading && ticker && (

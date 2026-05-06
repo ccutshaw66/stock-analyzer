@@ -20,6 +20,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Compass, TrendingUp, TrendingDown, Minus, Loader2,
   Building2, Activity, LineChart, BarChart3,
@@ -432,11 +433,16 @@ export default function ConvictionPage() {
 
   if (!activeTicker) {
     return (
-      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="text-center py-24 text-muted-foreground">
+      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        <PageHeader
+          icon={Compass}
+          title="Conviction Compass"
+          subtitle="One signal from four independent data streams. High conviction requires agreement."
+        />
+        <Disclaimer />
+        <div className="text-center py-16 text-muted-foreground">
           <Compass className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker for a Conviction Compass reading</p>
-          <Disclaimer />
           <p className="text-sm mt-1 opacity-60">
             Combines smart money flow, dealer positioning, technical momentum, and fundamental quality
             into a single signal. Highest conviction = all four agree.
@@ -472,27 +478,35 @@ export default function ConvictionPage() {
 
   return (
     <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Compass className="h-5 w-5 text-primary" />
-            Conviction Compass — <span className="font-mono">{compass.ticker}</span>
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            One signal from four independent data streams. High conviction requires agreement.
-          </p>
-          <Disclaimer />
-        </div>
-        <div className="text-xs text-muted-foreground self-end">
-          Confidence:{" "}
-          <span className={`font-semibold ${
-            compass.confidence === "HIGH" ? "text-green-400"
-              : compass.confidence === "MODERATE" ? "text-yellow-400"
-              : "text-red-400"
-          }`}>{compass.confidence}</span>
-        </div>
-      </div>
+      {/* Title */}
+      <PageHeader
+        icon={Compass}
+        title="Conviction Compass"
+        subtitle={`${compass.ticker} — one signal from four independent data streams.`}
+        right={
+          <div className="text-xs text-muted-foreground">
+            Confidence:{" "}
+            <span className={`font-semibold ${
+              compass.confidence === "HIGH" ? "text-green-400"
+                : compass.confidence === "MODERATE" ? "text-yellow-400"
+                : "text-red-400"
+            }`}>{compass.confidence}</span>
+          </div>
+        }
+      />
+
+      {/* Disclaimer */}
+      <Disclaimer />
+
+      {/* How It Works */}
+      <HelpBlock title="How the Conviction Compass works">
+        <p>The Compass fuses <strong className="text-foreground">four independent signal categories</strong> into a single reading. Because each axis pulls from a different data stream, agreement across axes is much stronger evidence than agreement across, say, four technical indicators that all read the same price.</p>
+        <p><strong className="text-foreground">Smart Money Flow</strong> — institutional buying/selling and insider activity (13F + Form 4).</p>
+        <p><strong className="text-foreground">Dealer Positioning</strong> — gamma exposure and dealer hedging direction (options chain).</p>
+        <p><strong className="text-foreground">Technical Momentum</strong> — trend, RSI, and breakout structure (price/volume).</p>
+        <p><strong className="text-foreground">Fundamental Quality</strong> — earnings, balance sheet, and growth (financial statements).</p>
+        <p className="mt-2"><strong className="text-foreground">Reading the radar:</strong> distance from the center is magnitude; color is direction. When all four extend the same way, conviction is HIGH. When they fight, confidence drops to MODERATE or LOW.</p>
+      </HelpBlock>
 
       {/* Verdict pill */}
       <div className={`rounded-xl border p-5 ${verdictToneClasses(verdictMeta.tone)}`}>

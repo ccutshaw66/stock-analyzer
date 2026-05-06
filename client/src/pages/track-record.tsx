@@ -10,6 +10,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLin
 import { Disclaimer } from "@/components/Disclaimer";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -47,15 +48,15 @@ export default function TrackRecord() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1100px] mx-auto" data-testid="track-record-page">
-      <Disclaimer />
+      {/* Title */}
+      <PageHeader
+        icon={Trophy}
+        title="Track Record"
+        subtitle="Every signal logged. Every outcome tracked. Full transparency."
+      />
 
-      <div className="flex items-center gap-3">
-        <Trophy className="h-5 w-5 text-primary" />
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Track Record</h1>
-          <p className="text-xs text-muted-foreground">Every signal logged. Every outcome tracked. Full transparency.</p>
-        </div>
-      </div>
+      {/* Disclaimer */}
+      <Disclaimer />
 
       {/* Tabs */}
       <div className="flex border-b border-card-border">

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -69,30 +70,37 @@ export default function EarningsCalendar() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="earnings-calendar-page">
-      <h1 className="text-lg font-bold text-foreground">Earnings Calendar</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Upcoming earnings dates and history for your watchlist stocks.</p>
+      {/* Title */}
+      <PageHeader
+        icon={Calendar}
+        title="Earnings Calendar"
+        subtitle="Upcoming earnings dates and history for your watchlist stocks."
+      />
+
+      {/* Disclaimer */}
       <Disclaimer />
+
+      {/* How It Works */}
+      <HelpBlock title="Understanding earnings reports">
+        <p><strong className="text-foreground">Earnings season</strong> occurs every quarter when public companies report their financial results. These reports often cause significant stock price moves.</p>
+        <p><strong className="text-foreground">EPS (Earnings Per Share):</strong> The most watched metric. Analysts publish consensus estimates, and the stock reacts based on whether the company beats or misses.</p>
+        <Example type="good">
+          <strong className="text-green-400">Beat:</strong> If EPS estimate is $1.50 and actual comes in at $1.65, that's a $0.15 beat (+10%). The stock usually gaps up, especially if guidance is raised.
+        </Example>
+        <Example type="bad">
+          <strong className="text-red-400">Miss:</strong> If EPS estimate is $1.50 and actual is $1.35, that's a $0.15 miss (-10%). The stock often gaps down hard, and IV crush hits option holders.
+        </Example>
+        <p><strong className="text-foreground">Revenue Estimate:</strong> Even with an EPS beat, a revenue miss can tank a stock — it suggests the earnings quality is poor (cost-cutting vs. actual growth).</p>
+        <ScoreRange label="Beat" range="> 0%" color="green" description="Company exceeded analyst expectations — typically bullish" />
+        <ScoreRange label="In-line" range="±2%" color="yellow" description="Met expectations — reaction depends on guidance and tone" />
+        <ScoreRange label="Miss" range="< 0%" color="red" description="Missed expectations — typically bearish, especially on revenue misses" />
+      </HelpBlock>
 
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <Calendar className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">Watchlist Earnings</h3>
         </div>
-
-        <HelpBlock title="Understanding earnings reports">
-          <p><strong className="text-foreground">Earnings season</strong> occurs every quarter when public companies report their financial results. These reports often cause significant stock price moves.</p>
-          <p><strong className="text-foreground">EPS (Earnings Per Share):</strong> The most watched metric. Analysts publish consensus estimates, and the stock reacts based on whether the company beats or misses.</p>
-          <Example type="good">
-            <strong className="text-green-400">Beat:</strong> If EPS estimate is $1.50 and actual comes in at $1.65, that's a $0.15 beat (+10%). The stock usually gaps up, especially if guidance is raised.
-          </Example>
-          <Example type="bad">
-            <strong className="text-red-400">Miss:</strong> If EPS estimate is $1.50 and actual is $1.35, that's a $0.15 miss (-10%). The stock often gaps down hard, and IV crush hits option holders.
-          </Example>
-          <p><strong className="text-foreground">Revenue Estimate:</strong> Even with an EPS beat, a revenue miss can tank a stock — it suggests the earnings quality is poor (cost-cutting vs. actual growth).</p>
-          <ScoreRange label="Beat" range="> 0%" color="green" description="Company exceeded analyst expectations — typically bullish" />
-          <ScoreRange label="In-line" range="±2%" color="yellow" description="Met expectations — reaction depends on guidance and tone" />
-          <ScoreRange label="Miss" range="< 0%" color="red" description="Missed expectations — typically bearish, especially on revenue misses" />
-        </HelpBlock>
 
         {isLoading && (
           <div className="flex items-center justify-center py-12">

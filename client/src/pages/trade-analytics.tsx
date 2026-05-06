@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3, TrendingUp, Target, DollarSign,
   Activity, AlertTriangle, Percent, Award,
-  Crosshair, Info, Clock,
+  Crosshair, Info, Clock, PieChart as PieChartIcon,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -176,7 +177,7 @@ export default function TradeAnalytics() {
   if (error) {
     return (
       <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
-        <h1 className="text-lg font-bold text-foreground mb-4">Trade Analytics</h1>
+        <PageHeader icon={PieChartIcon} title="Performance Analytics" />
         <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
           <AlertTriangle className="h-4 w-4 text-red-400" />
           <span className="text-xs text-red-400">Failed to load analytics. Please try again.</span>
@@ -188,7 +189,7 @@ export default function TradeAnalytics() {
   if (!analytics || analytics.totalTrades === 0) {
     return (
       <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
-        <h1 className="text-lg font-bold text-foreground mb-4">Trade Analytics</h1>
+        <PageHeader icon={PieChartIcon} title="Performance Analytics" />
         <div className="flex flex-col items-center justify-center py-12 text-center bg-card border border-card-border rounded-lg">
           <BarChart3 className="h-8 w-8 text-muted-foreground/40 mb-2" />
           <p className="text-sm text-muted-foreground font-medium">No closed trades yet</p>
@@ -200,9 +201,31 @@ export default function TradeAnalytics() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="trade-analytics-page">
-      <h1 className="text-lg font-bold text-foreground">Trade Analytics</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Comprehensive performance analysis of your closed trades.</p>
+      {/* Title */}
+      <PageHeader
+        icon={PieChartIcon}
+        title="Performance Analytics"
+        subtitle="Comprehensive performance analysis of your closed trades."
+      />
+
+      {/* Disclaimer */}
       <Disclaimer />
+
+      {/* How It Works */}
+      <HelpBlock title="Understanding your trading metrics">
+        <p><strong className="text-foreground">Win Rate:</strong> Percentage of trades that are profitable. Most successful options sellers target 65-80%. A 50% win rate can still be profitable with good risk management.</p>
+        <p><strong className="text-foreground">Profit Factor:</strong> Gross profits ÷ gross losses. A value above 1.0 means you're profitable overall. Above 2.0 is excellent.</p>
+        <Example type="good">
+          <strong className="text-green-400">Profit Factor = 2.5:</strong> For every $1 you lose, you make $2.50. This is a strong edge.
+        </Example>
+        <p><strong className="text-foreground">Expectancy:</strong> Average amount you expect to make per trade = (Win Rate × Avg Win) − (Loss Rate × Avg Loss). Positive = profitable system.</p>
+        <p><strong className="text-foreground">R-Multiple:</strong> How many "R" (initial risk) your trade returned. An R of 2.0 means you made 2× your initial risk. Negative R means you lost more than planned.</p>
+        <p><strong className="text-foreground">MFE (Maximum Favorable Excursion):</strong> The maximum profit available during the trade. <strong className="text-foreground">MAE (Maximum Adverse Excursion):</strong> The maximum drawdown during the trade.</p>
+        <p><strong className="text-foreground">Exit Efficiency:</strong> Actual profit ÷ MFE — how much of the available profit you captured. 50-75% is good for credit spreads (closing at 50% max profit).</p>
+        <ScoreRange label="Excellent" range="> 70%" color="green" description="Win rate above 70% with positive expectancy — strong consistent edge" />
+        <ScoreRange label="Good" range="50-70%" color="yellow" description="Profitable but room to improve — focus on either win rate or reward/risk" />
+        <ScoreRange label="Needs Work" range="< 50%" color="red" description="Losing more than winning — review your entries, position sizing, and exits" />
+      </HelpBlock>
 
       {/* Key Metrics */}
       <div className="bg-card border border-card-border rounded-lg p-4">
@@ -210,21 +233,6 @@ export default function TradeAnalytics() {
           <Target className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">Key Metrics</h3>
         </div>
-
-        <HelpBlock title="Understanding your trading metrics">
-          <p><strong className="text-foreground">Win Rate:</strong> Percentage of trades that are profitable. Most successful options sellers target 65-80%. A 50% win rate can still be profitable with good risk management.</p>
-          <p><strong className="text-foreground">Profit Factor:</strong> Gross profits ÷ gross losses. A value above 1.0 means you're profitable overall. Above 2.0 is excellent.</p>
-          <Example type="good">
-            <strong className="text-green-400">Profit Factor = 2.5:</strong> For every $1 you lose, you make $2.50. This is a strong edge.
-          </Example>
-          <p><strong className="text-foreground">Expectancy:</strong> Average amount you expect to make per trade = (Win Rate × Avg Win) − (Loss Rate × Avg Loss). Positive = profitable system.</p>
-          <p><strong className="text-foreground">R-Multiple:</strong> How many "R" (initial risk) your trade returned. An R of 2.0 means you made 2× your initial risk. Negative R means you lost more than planned.</p>
-          <p><strong className="text-foreground">MFE (Maximum Favorable Excursion):</strong> The maximum profit available during the trade. <strong className="text-foreground">MAE (Maximum Adverse Excursion):</strong> The maximum drawdown during the trade.</p>
-          <p><strong className="text-foreground">Exit Efficiency:</strong> Actual profit ÷ MFE — how much of the available profit you captured. 50-75% is good for credit spreads (closing at 50% max profit).</p>
-          <ScoreRange label="Excellent" range="> 70%" color="green" description="Win rate above 70% with positive expectancy — strong consistent edge" />
-          <ScoreRange label="Good" range="50-70%" color="yellow" description="Profitable but room to improve — focus on either win rate or reward/risk" />
-          <ScoreRange label="Needs Work" range="< 50%" color="red" description="Losing more than winning — review your entries, position sizing, and exits" />
-        </HelpBlock>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <MetricCard

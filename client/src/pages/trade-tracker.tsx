@@ -6,10 +6,11 @@ import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
-  CheckCircle2, Loader2, History, Clock
+  CheckCircle2, Loader2, History, Clock, ClipboardList
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageHeader } from "@/components/PageHeader";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
@@ -874,27 +875,29 @@ export default function TradeTracker() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto" data-testid="trade-tracker-page">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-lg font-bold text-foreground">Trade Tracker</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
-          </button>
-          <button onClick={() => setShowSettings(true)}
-            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
-            <Settings className="h-3.5 w-3.5" />Settings
-          </button>
+      {/* Title */}
+      <PageHeader
+        icon={ClipboardList}
+        title="Current Positions"
+        right={
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
+              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
+            </button>
+            <button onClick={() => setShowSettings(true)}
+              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
+              <Settings className="h-3.5 w-3.5" />Settings
+            </button>
+            <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
+              className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
+              <Plus className="h-3.5 w-3.5" />Add Trade
+            </button>
+          </div>
+        }
+      />
 
-          <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
-            className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
-            <Plus className="h-3.5 w-3.5" />Add Trade
-          </button>
-        </div>
-      </div>
-
-      {/* FAQ / How It Works */}
+      {/* How It Works */}
       <HelpBlock title="How the Trade Tracker Works">
         <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
 

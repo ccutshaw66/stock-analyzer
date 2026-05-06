@@ -9,6 +9,7 @@ import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,13 +123,17 @@ export default function Dividends() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividends-page">
-      <h1 className="text-lg font-bold text-foreground">Dividend Finder</h1>
-      <p className="text-xs text-muted-foreground -mt-4">
-        Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality.
-      </p>
+      {/* Title */}
+      <PageHeader
+        icon={DollarSign}
+        title="Dividend Finder"
+        subtitle="Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality."
+      />
+
+      {/* Disclaimer */}
       <Disclaimer />
 
-      {/* Help Block */}
+      {/* How It Works */}
       <HelpBlock title="Understanding Dividends">
         <p><strong className="text-foreground">Dividend Yield:</strong> Annual dividend payment divided by the stock price. A 3% yield on a $100 stock means $3/year in dividends per share.</p>
         <p><strong className="text-foreground">Payout Ratio:</strong> What percentage of earnings the company pays out as dividends. Under 60% is generally sustainable — the company retains enough to reinvest and grow.</p>

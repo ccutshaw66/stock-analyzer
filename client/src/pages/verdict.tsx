@@ -6,11 +6,12 @@ import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Disclaimer } from "@/components/Disclaimer";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
   Zap, AlertTriangle, Gem, DollarSign, Target,
   ArrowUpRight, ArrowDownRight, Minus, Loader2,
-  FlaskConical, Building2, UserCheck, LineChart, Scale
+  FlaskConical, Building2, UserCheck, LineChart, Scale, Award
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 
@@ -333,12 +334,16 @@ export default function Verdict() {
   // ─── Empty state ──────────────────────────────────────────────────────────
   if (!activeTicker) {
     return (
-      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="text-center py-24 text-muted-foreground">
+      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+        <PageHeader
+          icon={Award}
+          title="Long-Term Outlook"
+          subtitle="Is this a good stock to own? Fundamentals, institutional flow, stress resilience & insider confidence."
+        />
+        <Disclaimer />
+        <div className="text-center py-16 text-muted-foreground">
           <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
-      <Disclaimer />
-          <p className="text-sm mt-1 opacity-60">Is this a good stock to own? Fundamentals, institutional flow, stress resilience &amp; insider confidence</p>
           <p className="text-[10px] mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
         </div>
       </div>
@@ -399,7 +404,17 @@ export default function Verdict() {
   return (
     <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
 
-      {/* ━━━ FAQ / How It Works ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {/* Title */}
+      <PageHeader
+        icon={Award}
+        title="Long-Term Outlook"
+        subtitle={`${data.ticker} — fundamentals, institutional flow, stress resilience & insider confidence.`}
+      />
+
+      {/* Disclaimer */}
+      <Disclaimer />
+
+      {/* How It Works */}
       <HelpBlock title="How the Long-Term Outlook Score Works">
         <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
         <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
