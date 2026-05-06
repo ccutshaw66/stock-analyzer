@@ -4670,12 +4670,27 @@ export async function registerRoutes(
       await ensureReady();
       const results: any[] = [];
 
+      // Pull ~95 days of EOD bars per SPDR ETF directly from FMP. We need
+      // ~22 trading days for the 1-month return and ~63 for the 3-month
+      // return, so 95 calendar days is comfortably enough buffer for
+      // weekends/holidays.
+      const to = new Date().toISOString().slice(0, 10);
+      const from = new Date(Date.now() - 95 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
       for (const etf of SECTOR_ETFS) {
         try {
-          const chart = await getChart(etf.symbol, "3mo", "1d");
-          if (!chart) continue;
+          const raw: any = await fmpGet("/historical-price-eod/full", {
+            symbol: etf.symbol, from, to,
+          });
+          const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+          if (rows.length < 2) continue;
 
-          const closes: number[] = (chart.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
+          // FMP returns rows newest-first; sort ascending by date.
+          const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          const closes: number[] = asc
+            .map(r => Number(r.close))
+            .filter((c: number) => Number.isFinite(c));
           if (closes.length < 2) continue;
 
           const last = closes[closes.length - 1];
@@ -4697,7 +4712,9 @@ export async function registerRoutes(
             },
           });
 
-          await new Promise(r => setTimeout(r, 400));
+          // FMP Ultimate is 3000 req/min, so 150ms per ETF (~7 req/sec)
+          // is well under the limit and still polite.
+          await new Promise(r => setTimeout(r, 150));
         } catch (e: any) {
           console.log(`[sectors] ${etf.symbol} failed: ${e?.message}`);
         }

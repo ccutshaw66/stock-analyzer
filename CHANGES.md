@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-05 — Sector Heatmap migrated off Polygon to FMP-direct
+
+**Why:** With `FMP_TIER=ultimate` confirmed, Polygon Stocks Starter is a drop candidate. `/api/sectors` was one of the legacy `getChart` call sites still routing through Polygon. Migrating it removes one direct Polygon dependency without waiting for the broader Phase 2 snapshot cutover.
+
+**What:** `/api/sectors` now calls `fmpGet("/historical-price-eod/full", { symbol, from, to })` directly per SPDR ETF, with `from` set to ~95 calendar days ago (enough buffer for the 1mo and 3mo returns). FMP returns rows newest-first so we sort ascending and pull the close array. Inter-call delay dropped 400ms → 150ms since FMP Ultimate's 3000 req/min ceiling makes the prior pacing unnecessary.
+
+**Files:** `server/routes.ts` (the `/api/sectors` handler around line 4668).
+
+**Notes:**
+- Same Yahoo-shape `closes` array consumed by the existing returns math, so no frontend changes needed.
+- The `getChart` helper still exists for other legacy call sites (`/api/analyze`, `/api/trade-analysis` chart paths) — those'll be migrated as Phase 2 of the snapshot rebuild lands or opportunistically as they're touched.
+
+Rollback tag: `safe/2026-05-05-pre-sectors-fmp`.
+
+---
 ## 2026-05-05 — Scanner results survive page navigation (gcTime: Infinity)
 
 **Why:** Owner reported scan results were disappearing when leaving the Scanner page and returning, forcing a re-scan every visit. Spec is "stay until refreshed or log out."
