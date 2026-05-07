@@ -348,7 +348,32 @@ export class DatabaseStorage implements IStorage {
   // ─── Account Settings (userId scoped) ──────────────────────────────────────
 
   async getAccountSettings(userId: number): Promise<AccountSettings> {
-    const rows = await db.select().from(accountSettings).where(eq(accountSettings.userId, userId));
+    let rows: AccountSettings[];
+    try {
+      rows = await db.select().from(accountSettings).where(eq(accountSettings.userId, userId));
+    } catch (err: any) {
+      // Schema-mismatch fallback: if `db:push` hasn't been run on this env
+      // since a column was added to schema.ts, Drizzle's typed `select()`
+      // queries the new column and PostgreSQL errors. Retry with raw SQL
+      // (`SELECT *` returns whatever columns actually exist in the DB)
+      // and inject defaults for any missing properties so the app keeps
+      // working until the migration runs.
+      const msg = String(err?.message || err);
+      if (!/column .* does not exist/i.test(msg)) throw err;
+      console.warn(`[storage] account_settings schema mismatch; using SELECT * fallback. Run 'npm run db:push' on this env. (${msg})`);
+      const result: any = await db.execute(sql`SELECT * FROM account_settings WHERE user_id = ${userId}`);
+      const dbRows: any[] = Array.isArray(result?.rows) ? result.rows : Array.isArray(result) ? result : [];
+      rows = dbRows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        startingAccountValue: r.starting_account_value ?? 10000,
+        commPerSharesTrade: r.comm_per_shares_trade ?? 0,
+        commPerOptionContract: r.comm_per_option_contract ?? 0.65,
+        maxAllocationPerTrade: r.max_allocation_per_trade ?? 500,
+        totalAllocatedLimit: r.total_allocated_limit ?? 0.30,
+        cashBalance: r.cash_balance ?? 0,
+      })) as AccountSettings[];
+    }
     if (rows.length === 0) {
       // Auto-create default settings for this user
       const created = await db.insert(accountSettings).values({
@@ -365,7 +390,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateAccountSettings(userId: number, settings: Partial<InsertAccountSettings>): Promise<AccountSettings> {
-    await db.update(accountSettings).set(settings).where(eq(accountSettings.userId, userId));
+    try {
+      await db.update(accountSettings).set(settings).where(eq(accountSettings.userId, userId));
+    } catch (err: any) {
+      // Same migration-lag fallback as getAccountSettings: if a column in
+      // `settings` doesn't yet exist in the DB, drop it from the payload
+      // and retry. The user's submitted value for that field is silently
+      // discarded until db:push runs — better than 500-ing the whole save.
+      const msg = String(err?.message || err);
+      const m = /column "([^"]+)" of relation "account_settings" does not exist/i.exec(msg)
+            || /column .*"([^"]+)" does not exist/i.exec(msg);
+      if (!m) throw err;
+      const missingDbCol = m[1];
+      // Drop any settings keys whose camelCase form maps to that snake_case column.
+      const camelOfMissing = missingDbCol.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      const filtered: any = { ...settings };
+      delete filtered[camelOfMissing];
+      console.warn(`[storage] account_settings: dropped '${camelOfMissing}' from update (DB column missing). Run 'npm run db:push'.`);
+      if (Object.keys(filtered).length > 0) {
+        await db.update(accountSettings).set(filtered).where(eq(accountSettings.userId, userId));
+      }
+    }
     return this.getAccountSettings(userId);
   }
 

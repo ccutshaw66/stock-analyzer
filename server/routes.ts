@@ -5664,6 +5664,22 @@ export async function registerRoutes(
       const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
       const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
 
+      // Open position market value — combined with cashBalance to produce
+      // a "Total Portfolio" figure that matches the user's broker app.
+      //   - Stocks:  currentPrice × shares (live price × position size)
+      //   - Options: allocation (best proxy without live option premiums)
+      const openPositionMarketValue = openTrades.reduce((s, t) => {
+        if (t.tradeCategory === "Stock" && t.currentPrice) {
+          return s + (t.currentPrice * t.contractsShares);
+        }
+        if (t.tradeCategory === "Option") {
+          return s + (t.allocation || 0);
+        }
+        return s;
+      }, 0);
+      const cashBalance = (settings as any).cashBalance ?? 0;
+      const totalPortfolioValue = cashBalance + openPositionMarketValue;
+
       // Equity curve data points
       const equityCurve: { date: string; value: number }[] = [];
       const sortedTrades = [...closedTrades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
@@ -5692,6 +5708,9 @@ export async function registerRoutes(
         totalWins,
         winRate: closedTrades.length > 0 ? totalWins / closedTrades.length : 0,
         accountValue,
+        cashBalance,
+        openPositionMarketValue,
+        totalPortfolioValue,
         openPL,
         allocated,
         allocatedPct,

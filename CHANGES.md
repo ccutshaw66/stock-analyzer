@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-07 — Trade Tracker: brokerage cash balance + Total Portfolio card
+
+**Why:** The original cash-balance feature was reverted from main on 2026-05-03 after it broke prod (schema migration not run before deploy). Working code lived on dev but never made it back to main. Chris approved a rewrite + improvement.
+
+**What:**
+- **`shared/schema.ts`** — added `cashBalance` column to `account_settings` (`double_precision` default 0).
+- **`server/storage.ts`** — `getAccountSettings` now has a try/catch fallback. If Drizzle's typed `select()` errors with "column does not exist" (i.e., `db:push` hasn't run on this env yet for a new column), the function retries with raw `SELECT * FROM account_settings WHERE user_id = ...` and injects defaults for any missing properties. **This means deploys never 500 on a migration-lag race** — the page degrades gracefully (cashBalance shows 0) until the migration runs. Improvement over the original implementation.
+- **`server/routes.ts` `/api/trades/summary`** — computes `openPositionMarketValue` from open trades (stocks: currentPrice × shares; options: allocation as proxy until we have live option premiums) and returns `cashBalance`, `openPositionMarketValue`, `totalPortfolioValue` alongside the existing fields.
+- **`client/src/pages/trade-tracker.tsx`** — Settings drawer gets a "Brokerage Cash Balance ($) — set this to match your broker" input. Top of page gets a 3-card row above the existing 6-card row: Total Portfolio | Brokerage Cash | Open Positions. Defensive `?? 0` on the new fields.
+
+**Files:** `shared/schema.ts`, `server/storage.ts`, `server/routes.ts`, `client/src/pages/trade-tracker.tsx`.
+
+**Operator action:** run `npm run db:push` on the production server to add the new column. Thanks to the storage.ts resilience layer, the order doesn't matter — code can deploy first, migration can run second, no 500s either way. Until the migration runs, the cash balance input persists no value (writes silently no-op on the missing column) and the cards show $0.
+
+Rollback tag: `safe/2026-05-07-cash-balance`.
+
+---
 ## 2026-05-07 — Market Pulse page (rebuilt from scratch, FMP-only)
 
 **Why:** The original Market Pulse work shipped to the `dev` branch but never merged to `main`, so the page disappeared from production after the branches diverged. Chris green-lit a clean rewrite + repositioning under Trade Tracker (above Current Positions) + moving the Gold/Silver and major-market cards off the Verdict page onto Market Pulse.

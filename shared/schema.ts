@@ -65,6 +65,13 @@ export const accountSettings = pgTable("account_settings", {
   commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
   maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
   totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
+  // Brokerage cash balance — manually entered to match the user's broker app.
+  // Combined with open position market value to produce the "Total Portfolio"
+  // figure shown at the top of Trade Tracker.
+  // NOTE: when this column is added to a deployed env that hasn't run db:push
+  // yet, getAccountSettings in storage.ts has a raw-SQL fallback that
+  // tolerates the missing column, so deploys never 500 on a migration lag.
+  cashBalance: doublePrecision("cash_balance").default(0),
 });
 
 export const accountTransactions = pgTable("account_transactions", {
