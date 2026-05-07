@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — FMP YoY revenueGrowth + earningsGrowth (regression fix from FMP-primary cutover)
+
+**Why:** Verifying the FMP-primary cutover on PLTR diag, every field was correctly sourced from FMP, BUT Business Quality reasoning showed `"Rev growth N/A"` where Polygon used to give 56.2%. FMP `/ratios-ttm` doesn't expose `revenueGrowth` or `earningsGrowth` because those metrics need YoY comparison of two periods. The existing `fundamentalsFromFmp` even commented this out: `// would need YoY comparison of two periods`.
+
+Score impact: ~-0.20 on Business Quality category for any ticker with strong revenue growth (PLTR went 9 → 7).
+
+**What:** `/income-statement` call bumped from `limit: 1` to `limit: 2` so we have current + prior periods. `fundamentalsFromFmp` now diffs `revenue` and `netIncome` between the two and computes YoY growth as a percent. Falls back to null if either period is missing or prior is zero.
+
+**Files:** `server/snapshot/fundamentals.ts`.
+
+**Also bumped** the verdict route cache key from `v9` to `v10` so cached pre-cutover verdict results clear immediately instead of cycling out over the next hour.
+
+Rollback tag: `safe/2026-05-06-pre-yoy-growth`.
+
+---
 ## 2026-05-06 — Phase 2.5 (cont): cut /api/verdict over to scoreSnapshot()
 
 **Why:** Trade Analysis (`/api/analyze`) was cut over earlier. The "header grade doesn't match outlook grade" complaint can't go away until `/api/verdict` reads from the same scoring function. This commit closes that loop.

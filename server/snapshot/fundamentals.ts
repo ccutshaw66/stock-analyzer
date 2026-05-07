@@ -56,10 +56,27 @@ function fundamentalsFromQuoteSummary(summary: any): CompanyFundamentals | null 
   return hasAny ? out : null;
 }
 
-function fundamentalsFromFmp(ratios: any, income: any): CompanyFundamentals | null {
+function fundamentalsFromFmp(ratios: any, income: any, incomePrior: any = null): CompanyFundamentals | null {
   if (!ratios && !income) return null;
   const r = ratios || {};
   const i = income || {};
+  const ip = incomePrior || {};
+
+  // Compute YoY growth ourselves — FMP /ratios-ttm doesn't expose
+  // revenueGrowth or earningsGrowth (those need two periods). With
+  // /income-statement?limit=2 we have current + prior periods to diff.
+  const revCurrent = num(i.revenue);
+  const revPrior   = num(ip.revenue);
+  const niCurrent  = num(i.netIncome);
+  const niPrior    = num(ip.netIncome);
+  const revenueGrowthCalc =
+    revCurrent !== null && revPrior !== null && revPrior !== 0
+      ? ((revCurrent - revPrior) / Math.abs(revPrior)) * 100
+      : null;
+  const earningsGrowthCalc =
+    niCurrent !== null && niPrior !== null && niPrior !== 0
+      ? ((niCurrent - niPrior) / Math.abs(niPrior)) * 100
+      : null;
 
   // Helper: try TTM-suffixed field name first (FMP stable API), fall back to
   // non-suffixed (FMP v3 legacy). The stable migration in Aug 2025 changed
@@ -83,13 +100,13 @@ function fundamentalsFromFmp(ratios: any, income: any): CompanyFundamentals | nu
 
   const out: CompanyFundamentals = {
     revenue: num(i.revenue),
-    revenueGrowth: null,            // would need YoY comparison of two periods
+    revenueGrowth: revenueGrowthCalc,
     grossMargin: grossMargin !== null ? grossMargin * 100 : null,
     operatingMargin: operatingMargin !== null ? operatingMargin * 100 : null,
     profitMargin: profitMargin !== null ? profitMargin * 100 : null,
     ebitdaMargin: null,
     netIncome: num(i.netIncome),
-    earningsGrowth: null,
+    earningsGrowth: earningsGrowthCalc,
     payoutRatio: payout !== null ? payout * 100 : null,
     debtToEquity: debtToEquity !== null ? debtToEquity * 100 : null,
     currentRatio,
@@ -110,13 +127,17 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
       {
         source: "fmp",
         fetch: async () => {
+          // limit=2 so we can diff current vs prior period for YoY
+          // revenueGrowth + earningsGrowth (FMP /ratios-ttm doesn't
+          // expose growth metrics).
           const [ratiosRows, incomeRows] = await Promise.all([
             fmpGet<any[]>(`/ratios-ttm`, { symbol: T }).catch(() => []),
-            fmpGet<any[]>(`/income-statement`, { symbol: T, limit: 1 }).catch(() => []),
+            fmpGet<any[]>(`/income-statement`, { symbol: T, limit: 2 }).catch(() => []),
           ]);
           const ratios = Array.isArray(ratiosRows) && ratiosRows.length ? ratiosRows[0] : null;
-          const income = Array.isArray(incomeRows) && incomeRows.length ? incomeRows[0] : null;
-          return fundamentalsFromFmp(ratios, income);
+          const income = Array.isArray(incomeRows) && incomeRows.length >= 1 ? incomeRows[0] : null;
+          const incomePrior = Array.isArray(incomeRows) && incomeRows.length >= 2 ? incomeRows[1] : null;
+          return fundamentalsFromFmp(ratios, income, incomePrior);
         },
       },
       {
