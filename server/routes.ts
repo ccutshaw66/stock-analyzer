@@ -3622,14 +3622,11 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple + timeframe → instant response.
-    // User-scoped to keep rate-limit fairness but shared filters hit the same key anyway.
-    // Cache key includes scanSize so the new 2000-cap doesn't serve stale 200-row results.
-    const scanCacheKey = `scanner:main:v2:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
-    {
-      const cached = getCached(scanCacheKey);
-      if (cached) return res.json(cached);
-    }
+    // Route-level cache REMOVED 2026-05-07. User wants press-button-get-
+    // fresh-results — cached payloads were locking him to the same handful
+    // of tickers for 30 min at a time. Per-ticker bar cache (30 min) and
+    // FMP screener still keep the recompute fast (~5-15s typical), and the
+    // shuffle in fmpScreener gives a different cross-section every call.
 
     try {
       await ensureReady();
@@ -3913,7 +3910,7 @@ export async function registerRoutes(
         filters: { minPrice, maxPrice, sector, marketCapTier },
         results,
       };
-      setCache(scanCacheKey, payload, TTL.scanner);
+      // Route cache removed — see comment on the cache-read block above.
       res.json(payload);
     } catch (error: any) {
       console.error("Scanner error:", error?.message || error);
@@ -3955,14 +3952,12 @@ export async function registerRoutes(
       universeSize: q.universeSize != null ? Math.min(Number(q.universeSize), 3000) : 2000,
     };
 
-    const cacheKey = `scanner:v2:${JSON.stringify(filters)}`;
-    const cached = getCached(cacheKey);
-    if (cached) return res.json(cached);
-
+    // Route-level cache removed 2026-05-07 — match main + AMC scanners.
+    // Universe shuffle gives a different cross-section per scan; per-ticker
+    // bar cache (scanner-v2:bars:v2:*) keeps recompute fast.
     try {
       await ensureReady();
       const out = await runScannerV2(filters);
-      setCache(cacheKey, out, 60_000); // 1-min cache
       console.log(`[scanner-v2] scanned ${out.universeSize} tickers in ${out.scanDurationMs}ms, returned ${out.results.length}`);
       res.json(out);
     } catch (err: any) {
@@ -3996,12 +3991,8 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Cache key bumped to v2 alongside scanSize so old 200-row cached payloads flush.
-    const amcCacheKey = `scanner:amc:v2:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
-    {
-      const cached = getCached(amcCacheKey);
-      if (cached) return res.json(cached);
-    }
+    // Route-level cache removed 2026-05-07 (matches main scanner). Per-ticker
+    // bar cache + universe shuffle keep recompute fast and results fresh.
 
     try {
       await ensureReady();
@@ -4143,7 +4134,7 @@ export async function registerRoutes(
         filters: { minPrice, maxPrice, sector, marketCapTier },
         results,
       };
-      setCache(amcCacheKey, payload, TTL.scanner);
+      // Route cache removed — see comment on the cache-read block above.
       res.json(payload);
     } catch (error: any) {
       console.error("AMC Scanner error:", error?.message || error);
