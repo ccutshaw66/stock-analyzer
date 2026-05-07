@@ -460,6 +460,54 @@ export default function TradeAnalysis() {
                   </div>
                 </div>
               </div>
+
+              {/* Fib Pullback context — populated when gate signal is PULLBACK.
+                  Shows where price sits on the impulse leg (zone + retracement
+                  %), the swing range, and the invalidation level (break of
+                  this = trend was wrong, exit). */}
+              {data.gates.fib && (() => {
+                const fib = data.gates.fib;
+                const zoneStyle: Record<string, { ring: string; text: string; bg: string }> = {
+                  SHALLOW:  { ring: "ring-green-500/30",  text: "text-green-400",  bg: "bg-green-500/10" },
+                  HEALTHY:  { ring: "ring-blue-500/30",   text: "text-blue-400",   bg: "bg-blue-500/10" },
+                  DEEP:     { ring: "ring-amber-500/30",  text: "text-amber-400",  bg: "bg-amber-500/10" },
+                  FAILED:   { ring: "ring-red-500/30",    text: "text-red-400",    bg: "bg-red-500/10" },
+                };
+                const z = zoneStyle[fib.zone] ?? zoneStyle.HEALTHY;
+                return (
+                  <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Fib Pullback</span>
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md ring-1 ${z.ring} ${z.text} ${z.bg}`}>{fib.zone}</span>
+                        <span className="text-[10px] text-muted-foreground capitalize">· {fib.label}</span>
+                      </div>
+                      <div className="text-xs font-semibold text-foreground tabular-nums">
+                        Retraced <span className="text-orange-300">{(fib.retracementPct * 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-[11px]">
+                      <div>
+                        <div className="text-muted-foreground">Swing high</div>
+                        <div className="font-mono text-foreground tabular-nums">${fib.swingHigh.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Swing low</div>
+                        <div className="font-mono text-foreground tabular-nums">${fib.swingLow.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Invalidation</div>
+                        <div className="font-mono text-red-400 tabular-nums">${fib.invalidationPrice.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    {data.gates.priorSetup && (
+                      <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
+                        Pulling back from a <span className="font-semibold text-foreground">{data.gates.priorSetup.direction.toLowerCase()}</span> setup that cleared {data.gates.priorSetup.gatesClearedPrior} gate{data.gates.priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{data.gates.priorSetup.daysSincePriorSetup} bar{data.gates.priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago. Break below ${fib.invalidationPrice.toFixed(2)} = trend invalidated.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
