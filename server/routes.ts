@@ -4821,6 +4821,36 @@ export async function registerRoutes(
     }
   });
 
+  // Raw-FMP diagnostic. Hit /api/diag/fmp/:ticker to see exactly what FMP
+  // returns from /ratios-ttm, /key-metrics-ttm, /profile, /quote — useful
+  // when the snapshot says "D/E N/A" and we need to know whether the field
+  // is missing in FMP's response or just under a different name.
+  app.get("/api/diag/fmp/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    try {
+      await ensureReady();
+      const [ratios, keyMetrics, profile, quote, balanceSheet] = await Promise.allSettled([
+        fmpGet<any[]>("/ratios-ttm", { symbol: ticker }),
+        fmpGet<any[]>("/key-metrics-ttm", { symbol: ticker }),
+        fmpGet<any[]>("/profile", { symbol: ticker }),
+        fmpGet<any[]>("/quote", { symbol: ticker }),
+        fmpGet<any[]>("/balance-sheet-statement", { symbol: ticker, limit: 1 }),
+      ]);
+      const settle = (s: PromiseSettledResult<any>) =>
+        s.status === "fulfilled" ? s.value : { _error: String((s as any).reason?.message || s.reason || "unknown") };
+      res.json({
+        ticker,
+        ratiosTtm: settle(ratios),
+        keyMetricsTtm: settle(keyMetrics),
+        profile: settle(profile),
+        quote: settle(quote),
+        balanceSheetLatest: settle(balanceSheet),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "FMP diag fetch failed" });
+    }
+  });
+
   app.get("/api/diag/score/:ticker", async (req, res) => {
     const ticker = String(req.params.ticker || "").toUpperCase();
     const forceRefresh = String(req.query.refresh || "") === "1";
