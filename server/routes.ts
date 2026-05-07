@@ -798,19 +798,39 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
-  // Display cutoff: surface holders that are EITHER significant in size
-  // (>= $100M) OR meaningful movers (|QoQ| >= 0.05% — anything that would
-  // render as something other than "0.0%" at one-decimal precision).
-  // Hides the long tail of small + static filers without losing the small-
-  // but-actively-trading ones. The snapshot/scoring pipeline still operates
-  // on the full holder list — this is purely a display filter.
-  const MIN_DISPLAY_VALUE = 100_000_000;
+  // Display cutoff: surface holders that are EITHER significant in size OR
+  // meaningful movers (|QoQ| >= 0.05% — anything that would render as
+  // something other than "0.0%" at one-decimal precision).
+  //
+  // Size threshold is tiered by market cap because megacaps (MSFT, AAPL,
+  // NVDA, GOOG) have hundreds of $100M+ institutional positions just by
+  // virtue of being multi-trillion-dollar stocks. Without scaling, the
+  // cutoff barely shortens the list. The tiers below produce a list that
+  // is qualitatively similar across cap sizes — "the holders big enough
+  // to matter to *this* stock," not "anyone holding $100M of anything."
+  //
+  // The snapshot/scoring pipeline still operates on the full holder list —
+  // this is purely a display filter.
+  const marketCap = Number(price.marketCap?.raw || summary.marketCap?.raw || 0);
+  const MIN_DISPLAY_VALUE =
+    marketCap >= 500_000_000_000 ? 500_000_000 : // megacap (>=$500B): $500M cutoff
+    marketCap >= 100_000_000_000 ? 250_000_000 : // large cap (>=$100B): $250M cutoff
+    100_000_000;                                  // mid/small/default: $100M cutoff
   const MIN_DISPLAY_CHANGE_PCT = 0.05;
   const passesDisplayFilter = (row: { value: number; changeQoQ: number }) =>
     Number(row.value) >= MIN_DISPLAY_VALUE ||
     Math.abs(Number(row.changeQoQ) || 0) >= MIN_DISPLAY_CHANGE_PCT;
-  const topInstitutionsFiltered = topInstitutions.filter(passesDisplayFilter);
-  const topFundsFiltered = topFunds.filter(passesDisplayFilter);
+  // Sort by |changeQoQ| desc so movers float to the top of each table; ties
+  // (e.g., multiple zero-change rows that survived the filter on size) fall
+  // back to value desc.
+  const sortByMoversThenValue = (a: { value: number; changeQoQ: number }, b: { value: number; changeQoQ: number }) => {
+    const aChg = Math.abs(Number(a.changeQoQ) || 0);
+    const bChg = Math.abs(Number(b.changeQoQ) || 0);
+    if (aChg !== bChg) return bChg - aChg;
+    return Number(b.value) - Number(a.value);
+  };
+  const topInstitutionsFiltered = topInstitutions.filter(passesDisplayFilter).sort(sortByMoversThenValue);
+  const topFundsFiltered = topFunds.filter(passesDisplayFilter).sort(sortByMoversThenValue);
   topInstitutions = topInstitutionsFiltered;
 
   // Insider holders (current positions).

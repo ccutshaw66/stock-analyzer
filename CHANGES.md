@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page: tiered size threshold + movers-first sort
+
+**Why:** The OR filter (size or QoQ change) worked well on mid- and small-caps but barely shortened MSFT's list because megacaps have hundreds of $100M+ institutional positions just by virtue of being multi-trillion-dollar stocks. Chris also wanted movers surfaced first instead of buried below the size-sorted list.
+
+**What:**
+- `MIN_DISPLAY_VALUE` is now tiered by market cap so the cutoff scales with what "significant" means for a given stock:
+  - Market cap >= $500B (megacap, e.g. MSFT/AAPL/NVDA/GOOG) → $500M cutoff
+  - Market cap >= $100B (large cap) → $250M cutoff
+  - Otherwise (mid/small) → $100M cutoff
+- Sort flipped from share-count desc to `|changeQoQ|` desc, with `value` desc as the tiebreaker. Movers (positive or negative) bubble to the top; static-but-large holders sit below.
+
+**Files:** `server/routes.ts` (parseInstitutionalData).
+
+Rollback tag: `safe/2026-05-06-inst-sort-tier`.
+
+---
 ## 2026-05-06 — Institutional page filter: OR-style ($100M size OR meaningful QoQ)
 
 **Why:** Chris's first $100M cutoff hid bottom feeders successfully but also hid smaller filers who were *actively* trading the stock — those are signal, not noise. He wanted the list to surface holders that matter on either dimension: significant by size, or significant by activity. "Just trying to make the list shorter and more significant than 100 institutions where 70 of the 100 have 0 changes."
