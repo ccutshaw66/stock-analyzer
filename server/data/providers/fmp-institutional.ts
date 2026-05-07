@@ -59,6 +59,11 @@ export interface FmpInstitutionalSummary {
   institutionCount: number;
   sharesOutstanding: number | null;
   asOf: string | null;
+  // Quarter used for the topHolders snapshot. Consumers computing QoQ should
+  // diff against (usedQuarter - 1), NOT against priorQuarter() of today's
+  // calendar — the calendar-based assumption breaks when the in-progress
+  // quarter's filings haven't aggregated yet.
+  usedQuarter: { year: number; quarter: number } | null;
   source: "fmp-ultimate";
 }
 
@@ -292,7 +297,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v10:${T}`; // v10 — quarter-selection bug fix
+  const cacheKey = `fmp-inst:v11:${T}`; // v11 — exposes usedQuarter for downstream QoQ
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -505,6 +510,7 @@ export async function getFmpInstitutional(
         usedQuarter
           ? quarterEndDate(usedQuarter.year, usedQuarter.quarter)
           : latest?.date || topHolders[0]?.reportDate || null,
+      usedQuarter,
       source: "fmp-ultimate",
     };
 

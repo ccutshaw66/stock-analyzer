@@ -70,17 +70,11 @@ interface YahooOwnership {
 
 export type GetYahooOwnership = (ticker: string) => Promise<YahooOwnership>;
 
-/** Most-recently-completed quarter (current_quarter - 1). */
-function priorQuarter(): { year: number; quarter: number } {
-  const now = new Date();
-  // The "current" filing-eligible quarter trails the calendar by ~one quarter
-  // because 13F filings have a 45-day window. We pull the quarter before that
-  // (so two calendar quarters back) so we have a stable baseline.
-  const cy = now.getUTCFullYear();
-  const cq = Math.floor(now.getUTCMonth() / 3) + 1;
-  let year = cy;
-  let quarter = cq - 2;
-  while (quarter <= 0) { quarter += 4; year -= 1; }
+/** One quarter before the supplied current quarter. */
+function quarterBefore(q: { year: number; quarter: number }): { year: number; quarter: number } {
+  let year = q.year;
+  let quarter = q.quarter - 1;
+  if (quarter < 1) { quarter = 4; year -= 1; }
   return { year, quarter };
 }
 
@@ -112,9 +106,17 @@ export async function getOwnershipSnapshot(
       if (fmp && fmp.topHolders.length > 0) {
         attempts.push({ source: "fmp", ok: true, ms });
 
-        // QoQ flow: pull the prior quarter and diff by holder name. Without
-        // this, flow score sits at zero (NEUTRAL) for everyone.
-        const priorRows = await fmpHoldersForQuarter(T, priorQuarter());
+        // QoQ flow: pull the quarter BEFORE the one fmp.topHolders is from
+        // (fmp.usedQuarter) and diff by holder name. Using the calendar-based
+        // priorQuarter() was buggy — when the in-progress quarter's 13F
+        // filings haven't aggregated yet, getFmpInstitutional walks back to
+        // the same quarter the calendar-based prior would have picked, and
+        // we end up comparing a quarter to itself. Pulling fmp.usedQuarter - 1
+        // guarantees a real QoQ comparison.
+        const priorQ = fmp.usedQuarter
+          ? quarterBefore(fmp.usedQuarter)
+          : null;
+        const priorRows = priorQ ? await fmpHoldersForQuarter(T, priorQ) : [];
         const priorByName = new Map<string, number>();
         for (const ph of priorRows) {
           const k = normalizeOrgName(String(ph.investorName || ph.holder || ph.name || ""));

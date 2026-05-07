@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Snapshot pipeline flow score: derive prior quarter from FMP's usedQuarter
+
+**Why:** After fixing `latestAvailableQuarters`, MSFT's institutional flow factor showed -100 STRONG OUTFLOW in the score diag — wrong (drags MSFT to SPECULATIVE 5.6 instead of INVESTMENT GRADE 6.3). Root cause: snapshot pipeline's `priorQuarter()` returned Q4 2025 by walking the calendar back two quarters from Q2 2026 (the in-progress quarter). My quarter-fix made `getFmpInstitutional` ALSO return Q4 2025 (the most recent fully-aggregated). Result: comparing Q4 2025 to Q4 2025 — same data, just normalization-mismatch noise that nets negative.
+
+**What:**
+- `fmp-institutional.ts`: `FmpInstitutionalSummary` now exposes `usedQuarter` so consumers can derive the actual prior. Cache key v10→v11.
+- `snapshot/institutional.ts`: replaced `priorQuarter()` with `quarterBefore(fmp.usedQuarter)`. Now a real QoQ: Q3 2025 baseline vs Q4 2025 current (or whichever pair `getFmpInstitutional` actually used).
+
+**Files:** `server/data/providers/fmp-institutional.ts`, `server/snapshot/institutional.ts`.
+
+Rollback tag: `safe/2026-05-06-snapshot-priorq`.
+
+---
 ## 2026-05-06 — Root cause: latestAvailableQuarters picks in-progress quarter
 
 **Why:** Three failed deploys at fixing Inst%/Insider% on the institutional page. Root cause finally found: `latestAvailableQuarters()` in `fmp-institutional.ts` was picking the quarter that *contains* a date 60 days ago, not the most recent quarter whose END was 60 days ago. For 2026-05-06, "60 days ago" = 2026-03-07, which is in Q1 2026 — a quarter that ENDED 36 days ago (filings due May 15, NOT yet aggregated). FMP's response for an in-progress quarter has `numberOf13Fshares: 0` even when `ownershipPercent` returns a value, so my computation kept falling through to the broken `ownershipPercent` field.
