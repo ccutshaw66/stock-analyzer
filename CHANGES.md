@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page filter: OR-style ($100M size OR meaningful QoQ)
+
+**Why:** Chris's first $100M cutoff hid bottom feeders successfully but also hid smaller filers who were *actively* trading the stock — those are signal, not noise. He wanted the list to surface holders that matter on either dimension: significant by size, or significant by activity. "Just trying to make the list shorter and more significant than 100 institutions where 70 of the 100 have 0 changes."
+
+**What:** Filter in `parseInstitutionalData` flipped from AND-implicit (size only) to explicit OR:
+```
+value >= $100M  OR  |changeQoQ| >= 0.05%
+```
+The 0.05% threshold matches the page's one-decimal display: anything that would render as "0.0%" gets dropped unless it qualifies on size. Anything that would render as "+0.1%" or louder makes the cut.
+
+**Files:** `server/routes.ts` (parseInstitutionalData).
+
+**Notes:**
+- A genuinely brand-new holder (no prior quarter baseline) currently has `changeQoQ = 0` per `qoqPct` in `fmp-institutional.ts` (we report 0 for unknown baselines rather than +∞). Such a new position with `value < $100M` would be filtered out — flagged as a possible follow-up if Chris wants new entrants surfaced as a class.
+- The snapshot/scoring pipeline (`server/snapshot/institutional.ts`) is untouched: flow score, accumulation/distribution counts, etc. operate on the full unfiltered list as before.
+
+Rollback tag: `safe/2026-05-06-inst-or-filter`.
+
+---
 ## 2026-05-06 — Institutional page: $100M cutoff + CIK-keyed QoQ + deeper prior-quarter baseline
 
 **Why:** First QoQ pass shipped real numbers for the top ~16 holders but exposed two artifacts on MSFT: (1) most rows below #16 showed `0.0%` because the prior-quarter fetch was capped at 100 rows — a current top-100 holder who ranked #101+ last quarter had no baseline; (2) duplicate-name filers (UBS GROUP AG ×3, HSBC HOLDINGS PLC ×2) showed wildly negative changeQoQ (-93%, -94%) because `priorByName` summed all UBS/HSBC subsidiaries into one bucket, then each individual current row was diff'd against that aggregate. Chris also called for a display cutoff: hide bottom-feeder filers entirely.

@@ -798,14 +798,19 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
-  // Display cutoff: hide holders below $100M market value. Per Chris's call —
-  // the long tail of sub-$100M filers crowds the page with names that don't
-  // move the stock and where data quality (CIK matching, prior-quarter
-  // pagination overlap) is weakest. The snapshot/scoring pipeline keeps
-  // operating on the full list — this is purely display.
+  // Display cutoff: surface holders that are EITHER significant in size
+  // (>= $100M) OR meaningful movers (|QoQ| >= 0.05% — anything that would
+  // render as something other than "0.0%" at one-decimal precision).
+  // Hides the long tail of small + static filers without losing the small-
+  // but-actively-trading ones. The snapshot/scoring pipeline still operates
+  // on the full holder list — this is purely a display filter.
   const MIN_DISPLAY_VALUE = 100_000_000;
-  const topInstitutionsFiltered = topInstitutions.filter((h: any) => Number(h.value) >= MIN_DISPLAY_VALUE);
-  const topFundsFiltered = topFunds.filter((f: any) => Number(f.value) >= MIN_DISPLAY_VALUE);
+  const MIN_DISPLAY_CHANGE_PCT = 0.05;
+  const passesDisplayFilter = (row: { value: number; changeQoQ: number }) =>
+    Number(row.value) >= MIN_DISPLAY_VALUE ||
+    Math.abs(Number(row.changeQoQ) || 0) >= MIN_DISPLAY_CHANGE_PCT;
+  const topInstitutionsFiltered = topInstitutions.filter(passesDisplayFilter);
+  const topFundsFiltered = topFunds.filter(passesDisplayFilter);
   topInstitutions = topInstitutionsFiltered;
 
   // Insider holders (current positions).
