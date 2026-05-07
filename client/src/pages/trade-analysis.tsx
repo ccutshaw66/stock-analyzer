@@ -464,9 +464,23 @@ export default function TradeAnalysis() {
               {/* Fib Pullback context — populated when gate signal is PULLBACK.
                   Shows where price sits on the impulse leg (zone + retracement
                   %), the swing range, and the invalidation level (break of
-                  this = trend was wrong, exit). */}
-              {data.gates.fib && (() => {
-                const fib = data.gates.fib;
+                  this = trend was wrong, exit).
+                  Visual sanity-check: append ?demoFib=1 to the URL to render
+                  this card with sample data (independent of gate state). */}
+              {(() => {
+                const isDemo = typeof window !== "undefined" &&
+                  new URLSearchParams(window.location.hash.split("?")[1] || window.location.search).get("demoFib") === "1";
+                const fib = data.gates.fib || (isDemo ? {
+                  zone: "HEALTHY", label: "golden pocket",
+                  retracementPct: 0.55,
+                  swingHigh: data.currentPrice ? Number(data.currentPrice) * 1.15 : 100,
+                  swingLow:  data.currentPrice ? Number(data.currentPrice) * 0.92 : 80,
+                  invalidationPrice: data.currentPrice ? Number(data.currentPrice) * 0.90 : 78,
+                } : null);
+                const priorSetup = data.gates.priorSetup || (isDemo ? {
+                  direction: "BULLISH", gatesClearedPrior: 2, daysSincePriorSetup: 6,
+                } : null);
+                if (!fib) return null;
                 const zoneStyle: Record<string, { ring: string; text: string; bg: string }> = {
                   SHALLOW:  { ring: "ring-green-500/30",  text: "text-green-400",  bg: "bg-green-500/10" },
                   HEALTHY:  { ring: "ring-blue-500/30",   text: "text-blue-400",   bg: "bg-blue-500/10" },
@@ -500,9 +514,9 @@ export default function TradeAnalysis() {
                         <div className="font-mono text-red-400 tabular-nums">${fib.invalidationPrice.toFixed(2)}</div>
                       </div>
                     </div>
-                    {data.gates.priorSetup && (
+                    {priorSetup && (
                       <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
-                        Pulling back from a <span className="font-semibold text-foreground">{data.gates.priorSetup.direction.toLowerCase()}</span> setup that cleared {data.gates.priorSetup.gatesClearedPrior} gate{data.gates.priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{data.gates.priorSetup.daysSincePriorSetup} bar{data.gates.priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago. Break below ${fib.invalidationPrice.toFixed(2)} = trend invalidated.
+                        Pulling back from a <span className="font-semibold text-foreground">{priorSetup.direction.toLowerCase()}</span> setup that cleared {priorSetup.gatesClearedPrior} gate{priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{priorSetup.daysSincePriorSetup} bar{priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago. Break below ${fib.invalidationPrice.toFixed(2)} = trend invalidated.{isDemo && <span className="ml-1 text-orange-300">[demo data]</span>}
                       </p>
                     )}
                   </div>
