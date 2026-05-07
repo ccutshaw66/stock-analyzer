@@ -17,7 +17,6 @@
  */
 import { fmpScreener, type FmpScreenerRow } from "./data/providers/fmp.adapter";
 import { fmpGet } from "./data/providers/fmp.client";
-import { getPolygonChart } from "./polygon";
 import { getCached, setCache } from "./cache";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -236,37 +235,37 @@ async function fetchUniverse(filters: ScannerV2Filters): Promise<FmpScreenerRow[
 }
 
 /**
- * Load ~180 days of daily bars for a ticker. Cached 30 min (re-use across scans).
- * Returns null if Polygon fails or returns insufficient data.
+ * Load ~1 year of daily bars for a ticker via FMP (Polygon path retired
+ * 2026-05-07 per the kill-Polygon directive). Cached 30 min so re-scans
+ * within the same window don't repay the FMP call. Returns null if FMP
+ * fails or there's insufficient history.
  */
 async function loadBars(symbol: string): Promise<ScanContext["bars"] | null> {
-  const cacheKey = `scanner-v2:bars:${symbol}`;
+  const cacheKey = `scanner-v2:bars:v2:${symbol}`; // v2 = FMP-sourced
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   try {
-    const chart = await getPolygonChart(symbol, "1y", "1d");
-    const ts: number[] = chart?.timestamp || [];
-    const q = chart?.indicators?.quote?.[0] || {};
-    const closes = q.close || [];
-    const opens = q.open || [];
-    const highs = q.high || [];
-    const lows = q.low || [];
-    const vols = q.volume || [];
-    if (ts.length < 150) return null;
+    const to = new Date().toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 380 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const data: any = await fmpGet("/historical-price-eod/full", { symbol, from, to });
+    const arr: any[] = Array.isArray(data) ? data : (data?.historical || []);
+    if (arr.length < 150) return null;
+
+    // FMP returns most-recent-first; sort ascending so indicators see chronological order.
+    const sorted = [...arr].sort((a, b) =>
+      String(a.date).localeCompare(String(b.date)),
+    );
 
     const bars: ScanContext["bars"] = [];
-    for (let i = 0; i < ts.length; i++) {
-      const c = closes[i];
-      const o = opens[i];
-      const h = highs[i];
-      const l = lows[i];
-      const v = vols[i];
-      if (c == null || o == null || h == null || l == null) continue;
-      bars.push({ t: ts[i], o, h, l, c, v: v ?? 0 });
+    for (const r of sorted) {
+      const t = Math.floor(new Date(r.date).getTime() / 1000);
+      const o = Number(r.open), h = Number(r.high), l = Number(r.low), c = Number(r.close), v = Number(r.volume);
+      if (!Number.isFinite(c) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l)) continue;
+      bars.push({ t, o, h, l, c, v: Number.isFinite(v) ? v : 0 });
     }
     if (bars.length < 150) return null;
-    setCache(cacheKey, bars, 30 * 60 * 1000); // 30 min
+    setCache(cacheKey, bars, 30 * 60 * 1000);
     return bars;
   } catch {
     return null;

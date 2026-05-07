@@ -3603,7 +3603,9 @@ export async function registerRoutes(
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
-    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    // 200 cap was making the scanner feel "fixed" — every run hit the same
+    // top-200 by liquidity. Lift to 2000 so users can scan a real universe.
+    const scanSize = Math.min(Number(req.query.count) || 500, 2000);
     const showAll = req.query.showAll === "true";
     const tf = parseTimeframe(req);
 
@@ -3620,7 +3622,8 @@ export async function registerRoutes(
 
     // Route-level cache: same filter tuple + timeframe → instant response.
     // User-scoped to keep rate-limit fairness but shared filters hit the same key anyway.
-    const scanCacheKey = `scanner:main:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
+    // Cache key includes scanSize so the new 2000-cap doesn't serve stale 200-row results.
+    const scanCacheKey = `scanner:main:v2:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
     {
       const cached = getCached(scanCacheKey);
       if (cached) return res.json(cached);
@@ -3973,7 +3976,8 @@ export async function registerRoutes(
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
-    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    // 200 cap lifted to 2000 (matches main scanner). See main scanner comment.
+    const scanSize = Math.min(Number(req.query.count) || 500, 2000);
     const showAll = req.query.showAll === "true";
     const tf = parseTimeframe(req);
 
@@ -3987,8 +3991,8 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple + timeframe → instant response.
-    const amcCacheKey = `scanner:amc:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
+    // Cache key bumped to v2 alongside scanSize so old 200-row cached payloads flush.
+    const amcCacheKey = `scanner:amc:v2:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}:${tf.value}`;
     {
       const cached = getCached(amcCacheKey);
       if (cached) return res.json(cached);

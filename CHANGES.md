@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-07 — Scanners: kill Polygon dep in V2, lift universe cap, fix BUY/SELL filter
+
+**Why:** All three scanner modes were broken. Main scanner felt "stuck on the same tickers" (200-row hard cap making every scan return the same top-200 by liquidity). V2/Explosion was non-functional because it called `getPolygonChart` directly and that path is dying as Polygon Stocks Starter approaches drop. AMC ran but was capped at 200 rows the same way. BUY/SELL toggle on the main scanner used `dir === "BULLISH" || r.score > 0` — the OR let bearish-direction-but-positive-score rows through BUY (and worse, when `gates` was null for many rows the disjunction misfired entirely).
+
+**What:**
+- **`server/scanner-v2.ts`** — `loadBars` rewritten to use FMP `/historical-price-eod/full` directly via `fmpGet`. Polygon import dropped. Cache key bumped to `scanner-v2:bars:v2`.
+- **`server/routes.ts` `/api/scanner`** — count cap 200 → 2000, default 500. Cache key bumped to `scanner:main:v2`.
+- **`server/routes.ts` `/api/scanner/amc`** — same cap and default. Cache key `scanner:amc:v2`.
+- **`client/src/pages/scanner.tsx`** — BUY/SELL filter uses direction as the source of truth when present (rejects opposite direction explicitly). Score fallback only fires when `gates` is null, and uses tighter thresholds (`score >= 5` for buy, `score <= -3` for sell) so neutral rows don't leak through.
+
+**Files:** `server/scanner-v2.ts`, `server/routes.ts`, `client/src/pages/scanner.tsx`.
+
+**Notes:**
+- Performance is still per-ticker FMP fetches (2000 tickers × ~250ms ≈ 50s wall time first run, then 30-min cache). The right speed fix is the `/stable/eod-bulk` cron-warmed disk cache that scans read from in-memory — flagged as the next job, NOT in this commit.
+- V2/Explosion now functional but slow on cold cache. Same caveat.
+
+Rollback tag: `safe/2026-05-07-scanner-fixes`.
+
+---
 ## 2026-05-07 — Trade Tracker: brokerage cash balance + Total Portfolio card
 
 **Why:** The original cash-balance feature was reverted from main on 2026-05-03 after it broke prod (schema migration not run before deploy). Working code lived on dev but never made it back to main. Chris approved a rewrite + improvement.

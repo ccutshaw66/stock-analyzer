@@ -678,8 +678,20 @@ export default function Scanner() {
           const filtered = data.results.filter((r: any) => {
             if (signalFilter === "both") return true;
             const dir = r.gates?.direction;
-            if (signalFilter === "buy") return dir === "BULLISH" || r.score > 0;
-            if (signalFilter === "sell") return dir === "BEARISH" || r.score < 0;
+            // Direction is the source of truth when present (BULLISH / BEARISH
+            // from the gate system). Score-based fallback only kicks in when
+            // gates couldn't run for this row — and uses tighter thresholds
+            // so BUY/SELL don't pick up neutral ticks.
+            if (signalFilter === "buy") {
+              if (dir === "BULLISH") return true;
+              if (dir === "BEARISH") return false;
+              return r.score >= 5;
+            }
+            if (signalFilter === "sell") {
+              if (dir === "BEARISH") return true;
+              if (dir === "BULLISH") return false;
+              return r.score <= -3;
+            }
             return true;
           });
           return filtered.length > 0 ? (
