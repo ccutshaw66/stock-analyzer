@@ -142,13 +142,21 @@ export async function fmpScreener(filters: FmpScreenerFilters): Promise<FmpScree
   const rows = await fmpGet<any[]>(`/company-screener`, params);
   if (!Array.isArray(rows)) return [];
 
-  // Keep US common stocks only, ranked by dollar volume desc (liquidity proxy).
+  // Keep US common stocks only. The minVolume filter already enforces
+  // liquidity server-side, so within the qualifying set we now SHUFFLE
+  // rather than sort by dollar volume — otherwise every scan returns the
+  // same tech-megacap top-N (NVDA/AAPL/MSFT/PLTR/ORCL/...) and the
+  // scanner feels "stuck on the same tickers." Fisher-Yates shuffle
+  // gives a different cross-section of sectors on each call.
   const us = rows.filter((r) => {
     const ex = String(r?.exchangeShortName || "").toUpperCase();
     return US_EXCHANGES.has(ex);
   });
 
-  us.sort((a, b) => num(b.price) * num(b.volume) - num(a.price) * num(a.volume));
+  for (let i = us.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [us[i], us[j]] = [us[j], us[i]];
+  }
 
   return us.slice(0, count).map((r) => ({
     symbol: String(r.symbol || ""),

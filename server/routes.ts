@@ -3604,8 +3604,10 @@ export async function registerRoutes(
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
     // 200 cap was making the scanner feel "fixed" — every run hit the same
-    // top-200 by liquidity. Lift to 2000 so users can scan a real universe.
-    const scanSize = Math.min(Number(req.query.count) || 500, 2000);
+    // top-200 by liquidity. Lift to 2000 + default 1500 so users see a real
+    // universe slice. fmpScreener shuffles within the liquidity-filtered set
+    // so each scan returns a different cross-section of sectors.
+    const scanSize = Math.min(Number(req.query.count) || 1500, 2000);
     const showAll = req.query.showAll === "true";
     const tf = parseTimeframe(req);
 
@@ -3976,8 +3978,8 @@ export async function registerRoutes(
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
-    // 200 cap lifted to 2000 (matches main scanner). See main scanner comment.
-    const scanSize = Math.min(Number(req.query.count) || 500, 2000);
+    // 200 cap lifted to 2000 + default 1500 (matches main scanner).
+    const scanSize = Math.min(Number(req.query.count) || 1500, 2000);
     const showAll = req.query.showAll === "true";
     const tf = parseTimeframe(req);
 

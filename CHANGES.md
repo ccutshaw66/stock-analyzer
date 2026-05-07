@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-07 — Scanner: shuffle the universe + bump default to 1500
+
+**Why:** After lifting the 200-row cap, the scanner still returned the same tech megacaps every run (ORCL, PLTR, NVDA…). Root cause: `fmpScreener` sorted by dollar volume desc, so the top of the result list was always the most-traded names — overwhelmingly tech.
+
+**What:**
+- **`server/data/providers/fmp.adapter.ts`** — replaced the `sort by dollar volume` with a Fisher-Yates shuffle. The minVolume filter on the FMP server side still enforces liquidity, so the shuffled subset is all tradeable names — just a different cross-section every call.
+- **`server/routes.ts`** — bumped main scanner + AMC defaults from count=500 to count=1500 (cap stays 2000). 1500 tickers across the shuffled liquid universe surface diverse sectors per scan.
+
+**Files:** `server/data/providers/fmp.adapter.ts`, `server/routes.ts`.
+
+**Caveat:** within the 30-min route cache window, the same query parameters return the same shuffled subset. After 30 min, next scan reshuffles. If you want truly fresh-every-click results, we can lower the cache TTL or wire a "force refresh" param.
+
+Rollback tag: `safe/2026-05-07-scanner-diversity`.
+
+---
 ## 2026-05-07 — Scanners: kill Polygon dep in V2, lift universe cap, fix BUY/SELL filter
 
 **Why:** All three scanner modes were broken. Main scanner felt "stuck on the same tickers" (200-row hard cap making every scan return the same top-200 by liquidity). V2/Explosion was non-functional because it called `getPolygonChart` directly and that path is dying as Polygon Stocks Starter approaches drop. AMC ran but was capped at 200 rows the same way. BUY/SELL toggle on the main scanner used `dir === "BULLISH" || r.score > 0` — the OR let bearish-direction-but-positive-score rows through BUY (and worse, when `gates` was null for many rows the disjunction misfired entirely).
