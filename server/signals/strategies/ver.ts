@@ -60,10 +60,13 @@ export function computeVER(input: VERInput): VERResult {
   const n = closes.length;
   const signals: VERSignal[] = new Array(n).fill(null);
 
-  // Position state — only entered on a strict BUY (not WATCH_BUY). The exit
-  // check fires per-bar while inPosition; either condition closes the
-  // position with a STOP_HIT signal.
-  let inPosition = false;
+  // Position state — entered on a strict BUY (long) or strict SELL (short).
+  // WATCH_BUY / WATCH_SELL do NOT enter position state; they're just visible
+  // tags. The exit check fires per-bar while in position and emits a
+  // STOP_HIT in either direction:
+  //   long busted  → price fell to entry × (1 - 7%)  OR  entry - 2×ATR
+  //   short busted → price rose to entry × (1 + 7%)  OR  entry + 2×ATR
+  let position: "long" | "short" | null = null;
   let entryPrice = 0;
 
   for (let i = 2; i < n; i++) {
@@ -75,8 +78,8 @@ export function computeVER(input: VERInput): VERResult {
       isNaN(volAvg20[i])
     ) continue;
 
-    // ─── Position-aware exit check (runs every bar while in position) ─────
-    if (inPosition) {
+    // ─── Position-aware exit check (runs every bar while in a position) ───
+    if (position === "long") {
       const pctStopBreached = closes[i] <= entryPrice * (1 - STOP_PCT);
       const atrStopBreached =
         atr14 && !isNaN(atr14[i])
@@ -84,9 +87,20 @@ export function computeVER(input: VERInput): VERResult {
           : false;
       if (pctStopBreached || atrStopBreached) {
         signals[i] = "STOP_HIT";
-        inPosition = false;
+        position = null;
         entryPrice = 0;
-        // continue — a stop-hit bar can't simultaneously be a fresh entry
+        continue;
+      }
+    } else if (position === "short") {
+      const pctStopBreached = closes[i] >= entryPrice * (1 + STOP_PCT);
+      const atrStopBreached =
+        atr14 && !isNaN(atr14[i])
+          ? closes[i] >= entryPrice + STOP_ATR_MULT * atr14[i]
+          : false;
+      if (pctStopBreached || atrStopBreached) {
+        signals[i] = "STOP_HIT";
+        position = null;
+        entryPrice = 0;
         continue;
       }
     }
@@ -115,8 +129,8 @@ export function computeVER(input: VERInput): VERResult {
         // RSI tier decides BUY vs WATCH_BUY.
         if (rsi14[i] < 30) {
           signals[i] = "BUY";
-          // Strong BUY enters position state for stop tracking.
-          inPosition = true;
+          // Strong BUY enters a LONG position (overrides any active short).
+          position = "long";
           entryPrice = closes[i];
         } else {
           signals[i] = "WATCH_BUY";
@@ -143,11 +157,9 @@ export function computeVER(input: VERInput): VERResult {
       if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
         if (rsi14[i] > 70) {
           signals[i] = "SELL";
-          // A SELL also closes any active long.
-          if (inPosition) {
-            inPosition = false;
-            entryPrice = 0;
-          }
+          // Strong SELL enters a SHORT position (overrides any active long).
+          position = "short";
+          entryPrice = closes[i];
         } else {
           signals[i] = "WATCH_SELL";
         }
