@@ -14,6 +14,7 @@ import Home from "@/pages/home";
 import TradeAnalysis from "@/pages/trade-analysis";
 import Scanner from "@/pages/scanner";
 import TradeTracker from "@/pages/trade-tracker";
+import MarketPulse from "@/pages/market-pulse";
 import OptionsCalculator from "@/pages/options-calculator";
 import Help from "@/pages/help";
 import Institutional from "@/pages/institutional";
@@ -93,7 +94,8 @@ function AuthenticatedApp() {
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
-            <Route path="/" component={TradeTracker} />
+            <Route path="/" component={MarketPulse} />
+            <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
             <Route path="/scanner" component={Scanner} />

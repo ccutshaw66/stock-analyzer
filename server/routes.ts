@@ -4371,7 +4371,7 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v10:${ticker}`;
+      const verdictCacheKey = `verdict:v11:${ticker}`; // v11 — metals/benchmarks payload moved to Market Pulse
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
@@ -4532,25 +4532,8 @@ export async function registerRoutes(
         hasData: getReturnDuringPeriod(tickerChart, event.start, event.end) !== null,
       }));
 
-      // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
-      async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
-        try {
-          const rows: any = await fmpGet("/quote", { symbol: sym });
-          const row = Array.isArray(rows) ? rows[0] : rows;
-          if (!row?.price) return null;
-          return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };
-        } catch { return null; }
-      }
-      const goldSpot = await fmpSpotQuote("GCUSD");
-      await delay(200);
-      const silverSpot = await fmpSpotQuote("SIUSD");
-      await delay(200);
-      // SPY/QQQ via FMP for consistent change-pct shape. The Polygon snapshot
-      // path through getQuote returns prices fine but regularMarketChangePercent.raw
-      // wasn't populated, so the cards were stuck at +0.0% today.
-      const spySpot = await fmpSpotQuote("SPY");
-      await delay(200);
-      const qqqSpot = await fmpSpotQuote("QQQ");
+      // (Spot quotes for Gold/Silver/SPY/QQQ moved to /api/market-pulse —
+      // those cards now live on the Market Pulse page.)
 
       // Build display-only factor breakdown shown on the verdict page.
       // unifiedScore + finalVerdict are computed FROM THE SNAPSHOT below
@@ -4674,30 +4657,6 @@ export async function registerRoutes(
 
         // Stress tests
         stressTests,
-
-        // Metals comparison
-        metals: {
-          gold: {
-            price: goldSpot?.price || 0,
-            change: goldSpot?.changePct || 0,
-            name: "Gold",
-          },
-          silver: {
-            price: silverSpot?.price || 0,
-            change: silverSpot?.changePct || 0,
-            name: "Silver",
-          },
-          spy: {
-            price: spySpot?.price || 0,
-            change: spySpot?.changePct || 0,
-            name: "S&P 500",
-          },
-          nasdaq: {
-            price: qqqSpot?.price || 0,
-            change: qqqSpot?.changePct || 0,
-            name: "Nasdaq 100",
-          },
-        },
       };
       setCache(verdictCacheKey, verdictPayload, TTL.verdict);
       res.json(verdictPayload);
@@ -4923,6 +4882,50 @@ export async function registerRoutes(
     { symbol: "XLRE", name: "Real Estate", fmpSector: "Real Estate" },
     { symbol: "XLC", name: "Communication Services", fmpSector: "Communication Services" },
   ];
+
+  // ─── Market Pulse ─────────────────────────────────────────────────────────
+  //
+  // Reads cron-warmed disk caches (intraday.json + breadth.json), stitches
+  // them, computes the regime score, returns the full snapshot. Zero live
+  // FMP calls on the request path — page loads in <50ms.
+  app.get("/api/market-pulse", async (_req, res) => {
+    try {
+      const { readIntraday, readBreadth } = await import("./market-pulse-cache");
+      const { computeRegime } = await import("./data/providers/market-pulse.adapter");
+      const intraday = readIntraday();
+      const breadth = readBreadth();
+      if (!intraday) {
+        return res.status(503).json({
+          error: "Market Pulse cache is warming. Try again in a few seconds.",
+        });
+      }
+      const breadthOut = breadth ?? {
+        pctAbove50d: null, pctAbove200d: null,
+        newHighs: null, newLows: null, universeSize: null,
+        asOf: 0,
+      };
+      const regime = computeRegime(intraday.volatility, breadthOut, intraday.riskAppetite);
+      res.json({
+        asOf: intraday.asOf,
+        breadthAsOf: breadthOut.asOf,
+        marketStatus: intraday.marketStatus,
+        volatility: intraday.volatility,
+        breadth: {
+          pctAbove50d: breadthOut.pctAbove50d,
+          pctAbove200d: breadthOut.pctAbove200d,
+          newHighs: breadthOut.newHighs,
+          newLows: breadthOut.newLows,
+          universeSize: breadthOut.universeSize,
+        },
+        riskAppetite: intraday.riskAppetite,
+        indices: intraday.indices,
+        safeHaven: intraday.safeHaven,
+        regime,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to load Market Pulse" });
+    }
+  });
 
   app.get("/api/sectors", async (_req, res) => {
     try {

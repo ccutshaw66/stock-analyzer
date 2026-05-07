@@ -521,6 +521,7 @@ function Sidebar({
     {
       label: "Trade Tracker",
       items: [
+        { path: "/market-pulse", label: "Market Pulse", icon: Activity },
         { path: "/tracker", label: "Current Positions", icon: ClipboardList },
         { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
         { path: "#add-trade", label: "Add Trade", icon: Plus },

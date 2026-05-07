@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-07 — Market Pulse page (rebuilt from scratch, FMP-only)
+
+**Why:** The original Market Pulse work shipped to the `dev` branch but never merged to `main`, so the page disappeared from production after the branches diverged. Chris green-lit a clean rewrite + repositioning under Trade Tracker (above Current Positions) + moving the Gold/Silver and major-market cards off the Verdict page onto Market Pulse.
+
+**What:**
+
+- **`server/data/providers/market-pulse.adapter.ts`** (new) — FMP-only fetchers for Volatility (VIX, VIX9D, VIX3M, 20-day percentile, term ratio), Breadth (S&P 500 % above 50/200d MA + new H/L counts via `/stable/sp500-constituent` + `/stable/historical-price-eod/full`), Risk Appetite (HYG/LQD + SPY/TLT ratios with 5-day direction), Index Cards (SPY/QQQ/IWM/DIA), Safe Haven (Gold/Silver/Ratio with regime tag). `computeRegime()` produces a 0-100 score and 5-tier label (RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC) with a dynamic explainer.
+- **`server/market-pulse-cache.ts`** (new) — disk cache (`data/market-pulse-cache/intraday.json` + `breadth.json`).
+- **`server/market-pulse-warmup.ts`** (new) — two warmup handlers.
+- **`server/cron.ts`** — registered two crons: intraday `*/5 * * * *` (live during market hours, hourly off-hours; runOnStart) and breadth `35 13 * * 1-5` (weekday 9:35am ET; runOnStart).
+- **`server/routes.ts`** — `GET /api/market-pulse` serves cron-warmed cache (no live FMP calls on request path; <50ms response).
+- **`client/src/pages/market-pulse.tsx`** (new) — single-screen page: headline tier card, three-up Volatility/Breadth/Risk-Appetite grid, four-up Major Indices grid, three-up Safe Haven (Gold/Silver/Ratio).
+- **`client/src/App.tsx`** — `/market-pulse` route + root `/` now points to MarketPulse (was TradeTracker).
+- **`client/src/components/AppLayout.tsx`** — nav entry inserted at top of Trade Tracker group, ABOVE Current Positions.
+- **`client/src/pages/verdict.tsx`** — removed Section 4 "Safe Haven & Benchmark Comparison" (Gold/Silver/Ratio + SPY/QQQ cards) since those now live on Market Pulse. Stress Test table (per-ticker comparison vs S&P 500/Nasdaq 100/Gold/Silver during crises) stays — different feature.
+- **`server/routes.ts` `/api/verdict`** — dropped the `fmpSpotQuote` calls and `metals` payload assembly (now provided by `/api/market-pulse`). Verdict cache key bumped v10→v11.
+
+**Files (8):** `server/data/providers/market-pulse.adapter.ts`, `server/market-pulse-cache.ts`, `server/market-pulse-warmup.ts`, `server/cron.ts`, `server/routes.ts`, `client/src/pages/market-pulse.tsx`, `client/src/App.tsx`, `client/src/components/AppLayout.tsx`, `client/src/pages/verdict.tsx`.
+
+Rollback tag: `safe/2026-05-07-market-pulse`.
+
+---
 ## 2026-05-06 — Snapshot pipeline flow score: derive prior quarter from FMP's usedQuarter
 
 **Why:** After fixing `latestAvailableQuarters`, MSFT's institutional flow factor showed -100 STRONG OUTFLOW in the score diag — wrong (drags MSFT to SPECULATIVE 5.6 instead of INVESTMENT GRADE 6.3). Root cause: snapshot pipeline's `priorQuarter()` returned Q4 2025 by walking the calendar back two quarters from Q2 2026 (the in-progress quarter). My quarter-fix made `getFmpInstitutional` ALSO return Q4 2025 (the most recent fully-aggregated). Result: comparing Q4 2025 to Q4 2025 — same data, just normalization-mismatch noise that nets negative.
