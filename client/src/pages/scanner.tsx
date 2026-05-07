@@ -208,7 +208,7 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
 function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: number; onClick: () => void; onAnalyze?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const labelColor = result.amcScore >= 5 ? "bg-green-500 text-white" : result.amcScore >= 4 ? "bg-green-500/70 text-white" : result.amcScore >= 3 ? "bg-yellow-400/80 text-black" : "bg-muted text-muted-foreground";
-  const labelText = result.label || (result.amcScore >= 2 ? "Watch" : "Low");
+  const labelText = result.label || (result.amcScore >= 2 ? "AMC WATCH" : "AMC LOW");
   return (
     <div className="bg-card border border-card-border rounded-lg p-4 hover:border-purple-500/30 transition-colors" data-testid={`amc-result-${result.ticker}`}>
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -401,11 +401,33 @@ export default function Scanner() {
     timeframe,
   }).toString();
 
-  // Scan results persisted via queryClient cache so they survive page navigation.
-  // Cache key includes timeframe so flipping the picker doesn't show stale data.
-  const [threeStratData, setThreeStratData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/3strat", timeframe]) || null);
-  const [amcData, setAmcData] = useState<any>(() => queryClient.getQueryData(["/api/scanner/amc", timeframe]) || null);
-  const [v2Data, setV2Data] = useState<any>(() => queryClient.getQueryData(["/api/scanner/v2", timeframe]) || null);
+  // Scan results persisted via queryClient cache + sessionStorage backup.
+  // queryClient alone wasn't surviving component unmount reliably (manual
+  // setQueryData without a useQuery observer can drop on remount). Session-
+  // Storage acts as a belt-and-suspenders fallback. Cache key includes
+  // timeframe so flipping the picker shows the right cached entry.
+  const ssKey = (mode: string) => `scanner-cache:${mode}:${timeframe}`;
+  const ssGet = (mode: string): any => {
+    try {
+      const raw = sessionStorage.getItem(ssKey(mode));
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+  const ssSet = (mode: string, value: any) => {
+    try {
+      sessionStorage.setItem(ssKey(mode), JSON.stringify(value));
+    } catch {
+      // sessionStorage may throw on quota; non-fatal — queryClient still has it.
+    }
+  };
+  const readCached = (mode: string, qcKey: string) =>
+    queryClient.getQueryData([qcKey, timeframe]) || ssGet(mode) || null;
+
+  const [threeStratData, setThreeStratData] = useState<any>(() => readCached("3strat", "/api/scanner/3strat"));
+  const [amcData, setAmcData] = useState<any>(() => readCached("amc", "/api/scanner/amc"));
+  const [v2Data, setV2Data] = useState<any>(() => readCached("v2", "/api/scanner/v2"));
   const [v2Direction, setV2Direction] = useState<"either" | "up" | "down">("either");
   const [v2MinScore, setV2MinScore] = useState<number>(10);
   const [isFetching, setIsFetching] = useState(false);
@@ -413,9 +435,10 @@ export default function Scanner() {
   // When the user flips the timeframe picker, swap displayed scan results
   // for the cached entry under the new timeframe (or clear if none cached yet).
   useEffect(() => {
-    setThreeStratData(queryClient.getQueryData(["/api/scanner/3strat", timeframe]) || null);
-    setAmcData(queryClient.getQueryData(["/api/scanner/amc", timeframe]) || null);
-    setV2Data(queryClient.getQueryData(["/api/scanner/v2", timeframe]) || null);
+    setThreeStratData(readCached("3strat", "/api/scanner/3strat"));
+    setAmcData(readCached("amc", "/api/scanner/amc"));
+    setV2Data(readCached("v2", "/api/scanner/v2"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeframe]);
 
   const data = scanMode === "amc" ? amcData : scanMode === "v2" ? v2Data : threeStratData;
@@ -445,12 +468,15 @@ export default function Scanner() {
       if (scanMode === "amc") {
         setAmcData(result);
         queryClient.setQueryData(["/api/scanner/amc", timeframe], result);
+        ssSet("amc", result);
       } else if (scanMode === "v2") {
         setV2Data(result);
         queryClient.setQueryData(["/api/scanner/v2", timeframe], result);
+        ssSet("v2", result);
       } else {
         setThreeStratData(result);
         queryClient.setQueryData(["/api/scanner/3strat", timeframe], result);
+        ssSet("3strat", result);
       }
     } catch (err: any) {
       console.error("Scanner fetch failed:", err);

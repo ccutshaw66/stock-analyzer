@@ -4090,7 +4090,12 @@ export async function registerRoutes(
                    : closes[li] < ema20[li] && ema20[li] < ema50[li] ? "DOWN" : "SIDEWAYS")
                 : "SIDEWAYS";
 
-            const label = amcScore >= 5 ? "Strong Entry" : amcScore >= 4 ? "Entry" : amcScore >= 3 ? "Near Entry" : null;
+            // AMC scanner is single-strategy — it scores by the AMC algorithm
+            // ALONE. The unified Trade Analysis gate system can still say
+            // NO SETUP for an AMC-Strong ticker if Gate 1 (reversal) isn't
+            // firing. Label the badge so the user knows the scope: "AMC
+            // STRONG" not "STRONG ENTRY".
+            const label = amcScore >= 5 ? "AMC STRONG" : amcScore >= 4 ? "AMC SETUP" : amcScore >= 3 ? "AMC WATCH" : null;
 
             return {
               ticker,
