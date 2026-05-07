@@ -129,20 +129,49 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
   // and is semantically the same thing.
   if (result.value && (result.value.debtToEquity === null || result.value.returnOnEquity === null)) {
     try {
-      const ratiosRows = await fmpGet<any[]>(`/ratios-ttm`, { symbol: T });
-      const r = Array.isArray(ratiosRows) && ratiosRows.length ? ratiosRows[0] : null;
-      if (r) {
-        const patched = { ...result.value };
-        if (patched.debtToEquity === null) {
-          const der = num(r.debtEquityRatio);
-          if (der !== null) patched.debtToEquity = der * 100; // FMP fraction → percent
+      // FMP's stable API returns fields with TTM suffix on /ratios-ttm
+      // (e.g. `debtEquityRatioTTM`) but the v3 endpoint returns the
+      // non-suffixed names. Try /ratios-ttm first, then /key-metrics-ttm
+      // as a backup. Coalesce across all common field-name variants
+      // so we don't silently miss the value because of one naming
+      // inconsistency.
+      const [ratiosRows, keyMetricsRows] = await Promise.all([
+        fmpGet<any[]>(`/ratios-ttm`, { symbol: T }).catch(() => []),
+        fmpGet<any[]>(`/key-metrics-ttm`, { symbol: T }).catch(() => []),
+      ]);
+      const r1 = Array.isArray(ratiosRows) && ratiosRows.length ? ratiosRows[0] : {};
+      const r2 = Array.isArray(keyMetricsRows) && keyMetricsRows.length ? keyMetricsRows[0] : {};
+      const merged: Record<string, any> = { ...r2, ...r1 }; // ratios wins on conflict
+
+      const pickNum = (...keys: string[]): number | null => {
+        for (const k of keys) {
+          const v = num(merged[k]);
+          if (v !== null) return v;
         }
-        if (patched.returnOnEquity === null) {
-          const roe = num(r.returnOnEquity);
-          if (roe !== null) patched.returnOnEquity = roe * 100;
-        }
-        result.value = patched;
+        return null;
+      };
+
+      const patched = { ...result.value };
+
+      if (patched.debtToEquity === null) {
+        const der = pickNum(
+          "debtEquityRatioTTM", "debtEquityRatio",
+          "debtToEquityTTM", "debtToEquity",
+        );
+        // FMP returns these as fractions (0.777 = 77.7%) consistently
+        // across /ratios-ttm and /key-metrics-ttm. Match the existing
+        // fundamentalsFromFmp convention: multiply by 100.
+        if (der !== null) patched.debtToEquity = der * 100;
       }
+      if (patched.returnOnEquity === null) {
+        const roe = pickNum(
+          "returnOnEquityTTM", "returnOnEquity",
+          "roeTTM", "roe",
+        );
+        if (roe !== null) patched.returnOnEquity = roe * 100;
+      }
+
+      result.value = patched;
     } catch {
       // Non-fatal. Fields stay null; scoring falls back to neutral.
     }

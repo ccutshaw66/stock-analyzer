@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Fundamentals FMP fallback: try multiple FMP field-name variants
+
+**Why:** Owner reports D/E still N/A on PLTR after the previous fallback shipped. Diagnosis: FMP's stable API returns ratio fields with a `TTM` suffix on the `/ratios-ttm` endpoint (e.g. `debtEquityRatioTTM`), not the v3-style `debtEquityRatio` the existing `fundamentalsFromFmp` was reading. The fallback was firing but reading `r.debtEquityRatio` which doesn't exist on the stable response, so it always got null. Confirmed by owner that MSFT (which Polygon returns D/E for) shows correctly — so the issue was specifically that the FMP fallback never produced a value.
+
+**What:** Updated the fundamentals enrichment to try multiple FMP field-name variants and merge across `/ratios-ttm` + `/key-metrics-ttm`:
+
+```
+debtEquityRatioTTM | debtEquityRatio | debtToEquityTTM | debtToEquity
+returnOnEquityTTM  | returnOnEquity  | roeTTM          | roe
+```
+
+Whichever resolves to a non-null number wins. Removed the percent/fraction heuristic — FMP's stable API consistently returns fractions (0.777 = 77.7%) so multiplying by 100 unconditionally matches the existing `fundamentalsFromFmp` convention.
+
+**Files:** `server/snapshot/fundamentals.ts`.
+
+**Expected impact:** Trade Analysis on PLTR / KO / F should now show a real "Debt / Equity" value and the corresponding scoring category will reflect it. MSFT was already working via the Polygon path so no change there.
+
+Rollback tag: `safe/2026-05-06-pre-fmp-field-variants`.
+
+---
 ## 2026-05-06 — Wire snapshot D/E + ROE into legacy `financials` so page display picks them up
 
 **Why:** Previous commit (`3853791`) added the FMP fallback for D/E and ROE in the snapshot's fundamentals adapter. The new score correctly used the FMP value. But the Trade Analysis page's "Debt/Equity" display field, plus the red-flag generator, decision-shortcut generator, and bull/bear copy generator, all still pull from `financials.debtToEquity` — a different code path sourced from `extractQuoteData(summary)` → Polygon directly. The page showed "Debt/Equity: N/A" on PLTR even though the snapshot path had the value.
