@@ -516,7 +516,13 @@ export default function TradeAnalysis() {
                     </div>
                     {priorSetup && (
                       <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
-                        Pulling back from a <span className="font-semibold text-foreground">{priorSetup.direction.toLowerCase()}</span> setup that cleared {priorSetup.gatesClearedPrior} gate{priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{priorSetup.daysSincePriorSetup} bar{priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago. Break below ${fib.invalidationPrice.toFixed(2)} = trend invalidated.{isDemo && <span className="ml-1 text-orange-300">[demo data]</span>}
+                        Pulling back from a <span className="font-semibold text-foreground">{priorSetup.direction.toLowerCase()}</span> setup that cleared {priorSetup.gatesClearedPrior} gate{priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{priorSetup.daysSincePriorSetup} bar{priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago.{" "}
+                        {fib.zone === "FAILED" ? (
+                          <>Trend already invalidated — price broke through ${fib.invalidationPrice.toFixed(2)}.</>
+                        ) : (
+                          <>{priorSetup.direction === "BULLISH" ? "Break below" : "Break above"} ${fib.invalidationPrice.toFixed(2)} = trend invalidated.</>
+                        )}
+                        {isDemo && <span className="ml-1 text-orange-300">[demo data]</span>}
                       </p>
                     )}
                   </div>
