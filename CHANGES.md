@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional Inst% fix v3: derive sharesOutstanding from marketCap/price
+
+**Why:** Diag of FMP `/profile` for MSFT shows no `sharesOutstanding` field — only `marketCap` and `price`. My v7 fix that read `profileRow.sharesOutstanding` was returning null, falling back to the broken `ownershipPercent`.
+
+**What:** `fmp-institutional.ts` derives `sharesOutstanding = marketCap / price` from the `/profile` response. For MSFT: `3075072882800 / 413.96 ≈ 7.43B` shares — correct. Cache v7→v8.
+
+**Files:** `server/data/providers/fmp-institutional.ts`.
+
+Rollback tag: `safe/2026-05-06-inst-pct-fix3`.
+
+---
 ## 2026-05-06 — Institutional page Inst%/Insider% follow-up: bump caches + use /profile sharesOutstanding
 
 **Why:** Prior pass updated the in/out flow stats (worked) but Inst% and Insider% still showed old values. Two issues: (1) the route-level `inst:${ticker}` cache was unbumped so the page got the pre-fix Yahoo-stub response shape; (2) my Inst% formula used `numberOf13FsharesOutstanding` which doesn't exist on FMP's summary endpoint, so the calc fell back to the broken `ownershipPercent` field.

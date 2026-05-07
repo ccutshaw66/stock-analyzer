@@ -279,7 +279,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v7:${T}`; // v7 — institutionPct uses /profile sharesOutstanding
+  const cacheKey = `fmp-inst:v8:${T}`; // v8 — sharesOutstanding derived from marketCap/price
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -432,25 +432,23 @@ export async function getFmpInstitutional(
 
     // Institutional ownership %: compute as numberOf13Fshares / sharesOutstanding * 100.
     //
-    // The summary endpoint's `ownershipPercent` field returns nonsense values
-    // (MSFT and AMZN both observed at 4.8%, which is impossible for megacaps
-    // that have 60-90% institutional ownership). Sidestep the field entirely
-    // and compute from the underlying counts: numberOf13Fshares (total shares
-    // held by 13F filers, returned by this same endpoint) divided by
-    // sharesOutstanding (total shares outstanding, fetched separately from
-    // FMP /profile). This is the standard textbook definition of
-    // institutional ownership %.
+    // FMP `/profile` does NOT return sharesOutstanding as a top-level field
+    // (verified via diag for MSFT). Derive it from marketCap / price, which
+    // both /profile and /quote return reliably. This is the standard
+    // textbook definition of institutional ownership %.
     const profile = await fmpGet<any[]>("/profile", { symbol: T }).catch(() => null);
     const profileRow = Array.isArray(profile) && profile.length ? profile[0] : null;
-    const sharesOutstanding = Number(
-      profileRow?.sharesOutstanding ?? latest?.sharesOutstanding ?? 0,
-    ) || null;
+    const profileMarketCap = Number(profileRow?.marketCap ?? 0);
+    const profilePrice = Number(profileRow?.price ?? 0);
+    const sharesOutstanding =
+      profileMarketCap > 0 && profilePrice > 0
+        ? profileMarketCap / profilePrice
+        : Number(latest?.sharesOutstanding ?? 0) || null;
     const numberOf13Fshares = Number(latest?.numberOf13Fshares ?? 0);
     let ownershipPct = 0;
     if (numberOf13Fshares > 0 && sharesOutstanding && sharesOutstanding > 0) {
       ownershipPct = (numberOf13Fshares / sharesOutstanding) * 100;
     } else {
-      // Last-ditch fallback when one side is missing.
       ownershipPct = Number(latest?.ownershipPercent ?? latest?.ownership ?? 0);
     }
 
