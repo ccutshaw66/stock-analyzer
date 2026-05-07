@@ -619,21 +619,29 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo is REMOVED from the institutional data path. The user is on FMP
-  // Ultimate; relying on a free, IP-blockable scrape provider for paid-tier
-  // data was the wrong architecture. Empty stub here — institutional table
-  // populates from FMP via parseInstitutionalData, fund/insider tabs are
-  // wired up via FMP follow-ups (TODO).
-  //
-  // NOTE: getYahooOwnership() is still defined and called by other paths
-  // (single-ticker view fallback, the nightly Yahoo warmup cron). Only the
-  // scan-time per-ticker path is changed here.
-  const yahooOwnership = {
+  // Yahoo data — re-enabled here for insider% specifically. Long-term goal
+  // (per 2026-05-06 directive) is FMP-only, but until an FMP-side replacement
+  // for `majorHoldersBreakdown.insidersPercentHeld` is built, Yahoo's
+  // ownership module is the only source for that field. The Yahoo warmup
+  // cron pre-populates this 23h cache nightly so the request-path call
+  // almost always hits cache.
+  let yahooOwnership: {
+    institutionOwnership: any | null;
+    fundOwnership: any | null;
+    majorHoldersBreakdown: any | null;
+    insiderHolders: any | null;
+  } = {
     institutionOwnership: null,
     fundOwnership: null,
     majorHoldersBreakdown: null,
     insiderHolders: null,
   };
+  try {
+    const yo = await getYahooOwnership(ticker);
+    if (yo) yahooOwnership = yo;
+  } catch (e: any) {
+    routesLog.debug?.({ ticker, err: String(e?.message || e) }, "yahoo ownership fetch failed; continuing with FMP-only");
+  }
 
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
@@ -938,21 +946,43 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderBuyPct = netActivity.buyPercentInsiderShares?.raw || 0;
   const insiderSellPct = netActivity.sellPercentInsiderShares?.raw || 0;
 
-  // Institutional inflow/outflow from QoQ changes
+  // Institutional inflow/outflow from QoQ changes.
+  //
+  // Source priority:
+  //   1. FMP topHolders (paid Ultimate path) — has changeQoQ per holder
+  //      computed from CIK-keyed prior-quarter diff. Authoritative when the
+  //      FMP institutional adapter is in play.
+  //   2. Yahoo institutionOwnership.ownershipList — legacy fallback, dead
+  //      under FMP_TIER=ultimate but still works on the EDGAR-only path.
   let instInflow = 0;
   let instOutflow = 0;
   let instIncreased = 0;
   let instDecreased = 0;
   let instNew = 0;
   let instSoldOut = 0;
-  for (const inst of instOwnership) {
-    const chg = inst.pctChange?.raw || 0;
-    if (chg > 50) instNew++;
-    else if (chg > 0) instIncreased++;
-    if (chg < -90) instSoldOut++;
-    else if (chg < 0) instDecreased++;
-    if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
-    if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
+  const fmpHolders: any[] = (edgar?.topHolders && Array.isArray(edgar.topHolders)) ? edgar.topHolders : [];
+  if (fmpHolders.length > 0) {
+    for (const h of fmpHolders) {
+      const chgPct = Number(h.changeQoQ || 0); // already in percent (e.g. 5.2)
+      const value = Number(h.value || 0);
+      if (chgPct > 50) instNew++;
+      else if (chgPct > 0) instIncreased++;
+      if (chgPct < -90) instSoldOut++;
+      else if (chgPct < 0) instDecreased++;
+      const chgFraction = chgPct / 100;
+      if (chgFraction > 0) instInflow += value * chgFraction;
+      if (chgFraction < 0) instOutflow += Math.abs(value * chgFraction);
+    }
+  } else {
+    for (const inst of instOwnership) {
+      const chg = inst.pctChange?.raw || 0;
+      if (chg > 50) instNew++;
+      else if (chg > 0) instIncreased++;
+      if (chg < -90) instSoldOut++;
+      else if (chg < 0) instDecreased++;
+      if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
+      if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
+    }
   }
 
   // Money Flow Score: -100 (all selling) to +100 (all buying)
@@ -4930,6 +4960,29 @@ export async function registerRoutes(
   // the score WOULD be if the new flow/insider/analyst factors were
   // dropped (i.e., what computeScoring effectively does today).
   // ================================================================
+
+  // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
+  // exactly what FMP's symbol-positions-summary + extract-analytics/holder
+  // endpoints return for a ticker. Used for diagnosing field-name drift on
+  // the institutional pipeline (e.g. ownershipPercent returning unexpected
+  // values for megacaps in May 2026).
+  app.get("/api/diag/fmp-inst/:ticker", async (req, res) => {
+    try {
+      const ticker = String(req.params.ticker || "").toUpperCase();
+      const { fmpGet } = await import("./data/providers/fmp.client");
+      const now = new Date();
+      const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+      const year = cutoff.getUTCFullYear();
+      const quarter = Math.floor(cutoff.getUTCMonth() / 3) + 1;
+      const [summary, holders] = await Promise.all([
+        fmpGet<any[]>("/institutional-ownership/symbol-positions-summary", { symbol: ticker, year, quarter }).catch((e: any) => ({ error: String(e?.message || e) })),
+        fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", { symbol: ticker, year, quarter, page: 0, limit: 5 }).catch((e: any) => ({ error: String(e?.message || e) })),
+      ]);
+      res.json({ ticker, year, quarter, summary, holdersSample: holders });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "FMP-inst diag failed" });
+    }
+  });
 
   app.get("/api/diag/snapshot/:ticker", async (req, res) => {
     const ticker = String(req.params.ticker || "").toUpperCase();

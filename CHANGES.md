@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page: real Inst%, real Insider%, real flow score
+
+**Why:** Page (and scan) showed Insider% = 0% across all tickers, Inst% suspiciously low and identical across megacaps (MSFT 4.8% / AMZN 4.8%), 0-in/0-out counts everywhere, and STRONG OUTFLOW -100 score driven entirely by net insider selling because the institutional flow signal was zero.
+
+**What:**
+- `fmp-institutional.ts`: institutionPct now computed from `numberOf13Fshares / numberOf13FsharesOutstanding * 100` instead of trusting FMP's `ownershipPercent` field (which appears unreliable). FMP's field kept as last-ditch fallback. Cache key v5→v6.
+- `routes.ts` `getInstitutionalData`: dropped the Yahoo-stub block; now calls `getYahooOwnership()` so `majorHoldersBreakdown.insidersPercentHeld` populates `insiderPct`. Yahoo cron pre-warms this nightly so request-path almost always hits cache.
+- `routes.ts` `parseInstitutionalData`: institutional flow stats (inflow/outflow/increased/decreased/new/soldOut) now built from FMP `topHolders[].changeQoQ` when the FMP source is active; legacy Yahoo `instOwnership` loop kept as fallback. Unblocks the flow score so `combinedScore` isn't always insider-only.
+- New `/api/diag/fmp-inst/:ticker` route — dumps raw FMP `symbol-positions-summary` + a 5-row holder sample for diagnosing field-name drift.
+
+**Files:** `server/data/providers/fmp-institutional.ts`, `server/routes.ts`.
+
+Rollback tag: `safe/2026-05-06-inst-pct-flow-fix`.
+
+---
 ## 2026-05-06 — Institutional page: tiered size threshold + movers-first sort
 
 **Why:** The OR filter (size or QoQ change) worked well on mid- and small-caps but barely shortened MSFT's list because megacaps have hundreds of $100M+ institutional positions just by virtue of being multi-trillion-dollar stocks. Chris also wanted movers surfaced first instead of buried below the size-sorted list.

@@ -279,7 +279,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v5:${T}`; // v5 — CIK-keyed QoQ + deeper prior fetch
+  const cacheKey = `fmp-inst:v6:${T}`; // v6 — institutionPct computed from share counts
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -429,11 +429,26 @@ export async function getFmpInstitutional(
     const institutionCount = Number(
       latest?.investorsHolding ?? latest?.investorsHoldingNumber ?? 0,
     );
-    const ownershipPct = Number(
-      latest?.ownershipPercent ?? latest?.ownership ?? 0,
-    );
     const sharesOutstanding =
       Number(latest?.sharesOutstanding ?? latest?.numberOf13FsharesOutstanding ?? 0) || null;
+
+    // Institutional ownership %: compute ourselves from the underlying share
+    // counts FMP also returns. The `ownershipPercent` field has been observed
+    // returning suspiciously low / identical values across very different
+    // megacaps (MSFT 4.8% / AMZN 4.8% — clearly not actual institutional
+    // ownership, which is 60-90%+ for both). Computing from numberOf13Fshares
+    // / numberOf13FsharesOutstanding sidesteps whatever that field is and
+    // gives us the true % of shares outstanding held by 13F filers.
+    const numberOf13Fshares = Number(latest?.numberOf13Fshares ?? 0);
+    const numberOf13FsharesOutstanding = Number(latest?.numberOf13FsharesOutstanding ?? 0);
+    let ownershipPct = 0;
+    if (numberOf13Fshares > 0 && numberOf13FsharesOutstanding > 0) {
+      ownershipPct = (numberOf13Fshares / numberOf13FsharesOutstanding) * 100;
+    } else {
+      // Last-ditch fallback to whatever FMP reports — keep behaviour for
+      // tickers where we lack the underlying share counts.
+      ownershipPct = Number(latest?.ownershipPercent ?? latest?.ownership ?? 0);
+    }
 
     // Build the fund-only subset for the Fund Holders tab. Same source as
     // topHolders, just filtered. With limit=100 upstream we have plenty of
