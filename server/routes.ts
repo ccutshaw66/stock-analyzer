@@ -3891,18 +3891,21 @@ export async function registerRoutes(
         return b.score - a.score;
       });
 
-      // Filter: only show stocks worth looking at
-      // - At least 1 gate cleared, OR
-      // - Old score >= 5 (Strong Buy by legacy system), OR
-      // - showAll mode shows everything scored
-      const results = showAll
-        ? sorted.slice(0, 50)
-        : sorted.filter(r => {
-            const gates = r.gates?.gatesCleared ?? 0;
-            if (gates >= 1) return true;          // Gate setup active
-            if (r.score >= 5) return true;         // Strong signal from legacy
-            return false;                          // Everything else is noise
-          }).slice(0, 25);
+      // Default-pass-fewer-out filter. The previous version threw away any
+      // ticker without a fully-cleared gate or score>=5 — that left scans
+      // returning only 2-3 tickers (typically tech megacaps that hit the
+      // strict alignment bar). Now we always return 50 ranked candidates:
+      // gate-cleared and strong-buy on top, then merely "Buy" / "Lean Buy"
+      // / neutral fill the rest. The user can see WHY each shows up via
+      // its score + gates fields.
+      const TOP_N = 50;
+      const qualified = sorted.filter(r => {
+        const gates = r.gates?.gatesCleared ?? 0;
+        return gates >= 1 || r.score >= 3;
+      });
+      const fill = sorted.filter(r => !qualified.includes(r));
+      const merged = [...qualified, ...fill];
+      const results = showAll ? sorted.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
@@ -4124,9 +4127,15 @@ export async function registerRoutes(
         }
       }
 
-      // Sort by AMC score descending, then by VAMI
+      // Sort by AMC score descending, then by VAMI. Same default-pass-fewer-out
+      // logic as the main scanner: always return 50 ranked candidates with
+      // amcScore>=3 on top, then fill from the rest.
       const sorted = allResults.sort((a, b) => b.amcScore - a.amcScore || b.vami - a.vami);
-      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.amcScore >= 3).slice(0, 20);
+      const TOP_N = 50;
+      const qualified = sorted.filter(r => r.amcScore >= 3);
+      const fill = sorted.filter(r => !qualified.includes(r));
+      const merged = [...qualified, ...fill];
+      const results = showAll ? sorted.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
