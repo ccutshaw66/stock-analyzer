@@ -155,19 +155,37 @@ function LoadingState() {
   );
 }
 
-// Custom dot for signal markers on price chart
+// Custom dot for signal markers on price chart.
+// Tiered colors:
+//   green  — strict BUY (BBTC entry / ADD_LONG, or VER BUY at RSI < 30)
+//   amber  — VER WATCH_BUY (RSI 30-40, slightly oversold; not a confirmed entry)
+//   red    — strict SELL (BBTC SELL/STOP_HIT/REDUCE, VER SELL at RSI > 70,
+//             or VER STOP_HIT exit on a busted long)
+//   orange — VER WATCH_SELL (RSI 60-70)
 function SignalDot(props: any) {
   const { cx, cy, payload } = props;
   if (!payload) return null;
-  const hasBuy = payload.bbtcSignal === "BUY" || payload.bbtcSignal === "ADD_LONG" || payload.verSignal === "BUY";
-  const hasSell = payload.bbtcSignal === "SELL" || payload.bbtcSignal === "STOP_HIT" || payload.bbtcSignal === "REDUCE" || payload.verSignal === "SELL";
-  if (!hasBuy && !hasSell) return null;
+  const v = payload.verSignal;
+  const b = payload.bbtcSignal;
+  const isStrongBuy = b === "BUY" || b === "ADD_LONG" || v === "BUY";
+  const isWatchBuy = v === "WATCH_BUY";
+  const isStrongSell =
+    b === "SELL" || b === "STOP_HIT" || b === "REDUCE" ||
+    v === "SELL" || v === "STOP_HIT";
+  const isWatchSell = v === "WATCH_SELL";
+  if (!isStrongBuy && !isWatchBuy && !isStrongSell && !isWatchSell) return null;
+  const fill =
+    isStrongBuy ? "#22c55e" :
+    isWatchBuy  ? "#eab308" :
+    isStrongSell ? "#ef4444" :
+    "#f97316";
+  const r = (isWatchBuy || isWatchSell) ? 4 : 5;
   return (
     <circle
       cx={cx}
       cy={cy}
-      r={5}
-      fill={hasBuy ? "#22c55e" : "#ef4444"}
+      r={r}
+      fill={fill}
       stroke="#fff"
       strokeWidth={1.5}
     />
@@ -789,10 +807,16 @@ export default function TradeAnalysis() {
                   <span className="w-3 h-0.5 bg-purple-500 rounded border-dashed" style={{ borderTop: "1px dashed #a855f7", height: 0 }} /> SMA 200
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Buy Signal
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Buy (RSI&lt;30)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Sell Signal
+                  <span className="w-2 h-2 rounded-full bg-yellow-500" /> Watch (RSI 30-40)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Sell / Stop
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-orange-500" /> Watch Sell (RSI 60-70)
                 </span>
               </div>
             </CardContent>

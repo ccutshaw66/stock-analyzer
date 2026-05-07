@@ -3118,7 +3118,7 @@ export async function registerRoutes(
       const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
-      const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+      const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
       const verSignals = verResult.signals;
 
       // ---- Build response ----
@@ -3721,6 +3721,7 @@ export async function registerRoutes(
               bbUpper: bbUpperS,
               bbLower: bbLowerS,
               volAvg20: volAvg20S,
+              atr14,
             });
             const verSignals = verResult.signals;
             const verTopSignal = verResult.topSignal;

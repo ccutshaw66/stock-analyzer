@@ -1285,7 +1285,7 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   const bbtcBias = bbtcResult.bias;
   const bbtcTrend = bbtcResult.trend;
 
-  const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+  const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
   const verSignal = verResult.topSignal;
 
   // Current-bar VER reporting (matches /api/analyze lines 2470-2474)

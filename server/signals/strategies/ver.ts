@@ -1,24 +1,28 @@
 /**
  * VER — Volume Exhaustion Reversal strategy (single source of truth).
  *
- * Entry:
- *   BUY  — bullish RSI divergence (price lower low, RSI higher low, RSI < 40)
- *          + volume ≥ 2× 20-bar avg + touched lower Bollinger (20,2) band
- *          + closed back inside (above lower band)
- *   SELL — bearish RSI divergence (price higher high, RSI lower high, RSI > 60)
- *          + volume ≥ 2× 20-bar avg + touched upper Bollinger band
- *          + closed back inside (below upper band)
+ * Tiered entries (strict vs watch) + position-aware exit.
+ *
+ * Entry tiers:
+ *   BUY        — bullish RSI divergence + volume ≥ 2× 20-bar avg + lower BB
+ *                touch + closed back inside, with RSI < 30 (true oversold).
+ *   WATCH_BUY  — same conditions but RSI 30-40 (slightly oversold).
+ *   SELL       — bearish RSI divergence + volume ≥ 2× 20-bar avg + upper BB
+ *                touch + closed back inside, with RSI > 70 (true overbought).
+ *   WATCH_SELL — same conditions but RSI 60-70 (slightly overbought).
+ *
+ * Exit:
+ *   STOP_HIT   — fired only when an active VER position (entered on BUY,
+ *                NOT WATCH_BUY) breaches a 2× ATR stop OR a -7% hard stop
+ *                from entry. Means "this VER buy went wrong; don't keep
+ *                showing the green dot as if the trade is still on."
  *
  * This is the ONLY place VER is computed. Trade Analysis and Scanner
  * call into here. Do NOT inline VER in routes.ts or pages.
- *
- * History: VER was duplicated across two routes with subtle variable-name
- * drift (bbUpper vs bbUpperS, volAvg20 vs volAvg20S). Extracted in PR #18
- * (Phase 1.10).
  */
 
-export type VERSignal = "BUY" | "SELL" | null;
-export type VERTopSignal = "HOLD" | "ENTER" | "SELL";
+export type VERSignal = "BUY" | "WATCH_BUY" | "SELL" | "WATCH_SELL" | "STOP_HIT" | null;
+export type VERTopSignal = "HOLD" | "ENTER" | "WATCH" | "SELL" | "STOPPED";
 
 export interface VERInput {
   closes: number[];
@@ -29,6 +33,9 @@ export interface VERInput {
   bbUpper: number[];
   bbLower: number[];
   volAvg20: number[];
+  /** ATR(14). Used for the per-bar stop check on active VER positions.
+   *  Optional — when absent, falls back to a -7% hard stop only. */
+  atr14?: number[];
 }
 
 export interface VERResult {
@@ -36,21 +43,30 @@ export interface VERResult {
   signals: VERSignal[];
   /** Most recent non-null signal, or null if none. */
   lastSignal: VERSignal;
-  /** UI-level summary of lastSignal: ENTER on BUY, SELL on SELL, HOLD otherwise. */
+  /** UI-level summary of lastSignal. */
   topSignal: VERTopSignal;
 }
+
+const STOP_PCT = 0.07;       // -7% hard stop from entry
+const STOP_ATR_MULT = 2.0;   // 2× ATR stop (when ATR is available)
 
 /**
  * Compute the full VER signal series.
  *
- * Assumes inputs are aligned (same length) and indicator arrays have NaN for
- * warmup bars. The loop skips bars where any required indicator is NaN.
+ * Inputs must be aligned (same length) with NaN for warmup bars.
  */
 export function computeVER(input: VERInput): VERResult {
-  const { closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 } = input;
-  const signals: VERSignal[] = new Array(closes.length).fill(null);
+  const { closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 } = input;
+  const n = closes.length;
+  const signals: VERSignal[] = new Array(n).fill(null);
 
-  for (let i = 2; i < closes.length; i++) {
+  // Position state — only entered on a strict BUY (not WATCH_BUY). The exit
+  // check fires per-bar while inPosition; either condition closes the
+  // position with a STOP_HIT signal.
+  let inPosition = false;
+  let entryPrice = 0;
+
+  for (let i = 2; i < n; i++) {
     if (
       isNaN(rsi14[i]) ||
       isNaN(rsi14[i - 1]) ||
@@ -59,14 +75,33 @@ export function computeVER(input: VERInput): VERResult {
       isNaN(volAvg20[i])
     ) continue;
 
+    // ─── Position-aware exit check (runs every bar while in position) ─────
+    if (inPosition) {
+      const pctStopBreached = closes[i] <= entryPrice * (1 - STOP_PCT);
+      const atrStopBreached =
+        atr14 && !isNaN(atr14[i])
+          ? closes[i] <= entryPrice - STOP_ATR_MULT * atr14[i]
+          : false;
+      if (pctStopBreached || atrStopBreached) {
+        signals[i] = "STOP_HIT";
+        inPosition = false;
+        entryPrice = 0;
+        // continue — a stop-hit bar can't simultaneously be a fresh entry
+        continue;
+      }
+    }
+
     const volumeSpike = (volumes[i] || 0) >= volAvg20[i] * 2;
 
-    // Bullish Reversal
+    // ─── Bullish reversal entry (BUY or WATCH_BUY) ────────────────────────
     if (i >= 5) {
+      // Look for a higher-low RSI divergence vs price's lower low.
       let hasBullishDiv = false;
       for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
         const prevIdx = i - lookback;
         if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
+        // Note: divergence requires RSI[i] > RSI[prevIdx]. RSI threshold
+        // applies separately below to bucket strict vs watch.
         if (closes[i] < closes[prevIdx] && rsi14[i] > rsi14[prevIdx] && rsi14[i] < 40) {
           hasBullishDiv = true;
           break;
@@ -77,12 +112,21 @@ export function computeVER(input: VERInput): VERResult {
       const closedBackInside = closes[i] > bbLower[i];
 
       if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) {
-        signals[i] = "BUY";
+        // RSI tier decides BUY vs WATCH_BUY.
+        if (rsi14[i] < 30) {
+          signals[i] = "BUY";
+          // Strong BUY enters position state for stop tracking.
+          inPosition = true;
+          entryPrice = closes[i];
+        } else {
+          signals[i] = "WATCH_BUY";
+          // WATCH_BUY does NOT enter position state — it's just a watch tag.
+        }
       }
     }
 
-    // Bearish Reversal
-    if (i >= 5) {
+    // ─── Bearish reversal entry (SELL or WATCH_SELL) ──────────────────────
+    if (i >= 5 && signals[i] === null) {
       let hasBearishDiv = false;
       for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
         const prevIdx = i - lookback;
@@ -97,14 +141,23 @@ export function computeVER(input: VERInput): VERResult {
       const closedBackInsideUpper = closes[i] < bbUpper[i];
 
       if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
-        signals[i] = "SELL";
+        if (rsi14[i] > 70) {
+          signals[i] = "SELL";
+          // A SELL also closes any active long.
+          if (inPosition) {
+            inPosition = false;
+            entryPrice = 0;
+          }
+        } else {
+          signals[i] = "WATCH_SELL";
+        }
       }
     }
   }
 
-  // Summarize the most recent event
+  // Summarize the most recent event.
   let lastSignal: VERSignal = null;
-  for (let i = closes.length - 1; i >= 0; i--) {
+  for (let i = n - 1; i >= 0; i--) {
     if (signals[i]) {
       lastSignal = signals[i];
       break;
@@ -114,6 +167,8 @@ export function computeVER(input: VERInput): VERResult {
   let topSignal: VERTopSignal = "HOLD";
   if (lastSignal === "BUY") topSignal = "ENTER";
   else if (lastSignal === "SELL") topSignal = "SELL";
+  else if (lastSignal === "WATCH_BUY" || lastSignal === "WATCH_SELL") topSignal = "WATCH";
+  else if (lastSignal === "STOP_HIT") topSignal = "STOPPED";
 
   return { signals, lastSignal, topSignal };
 }
