@@ -4268,13 +4268,19 @@ export async function registerRoutes(
 
       const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-      // Batch 1: Core ticker data (analysis + institutional)
+      // Batch 1: Core ticker data (analysis + institutional). Phase 2.5
+      // cutover — score now comes from scoreSnapshot() instead of the
+      // legacy computeScoring() formula, matching what /api/analyze
+      // returns for the Trade Analysis header. The "header grade doesn't
+      // match outlook grade" complaint goes away once both pages read
+      // from the same scoring function.
       const [analysisRes, instRes] = await Promise.allSettled([
         (async () => {
           const summary = await getQuote(ticker);
           if (!summary) return null;
           const { quote, financials } = extractQuoteData(summary);
-          // Beta fallback — see verdict route comment above for rationale.
+          // Beta fallback for the legacy `quote` object — the page still
+          // displays this directly so we patch from FMP profile too.
           if (quote.beta == null) {
             try {
               const fmpBeta = await getFmpProfileBeta(ticker);
@@ -4285,11 +4291,43 @@ export async function registerRoutes(
           const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
           const { computedReturn: ret1Y } = extractChartData(chart1Y);
           const historicalReturns = { oneYear: ret1Y, threeYear: null, fiveYear: null };
-          const fullData = { quote, financials, historicalReturns };
-          const scoring = computeScoring(fullData);
-          const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-          const { verdict, ruling } = computeVerdict(weightedScore);
-          return { score: weightedScore, verdict, ruling, scoring, quote, financials };
+
+          // Score from the unified snapshot path. Falls back to the legacy
+          // formula if the snapshot throws so the page still renders.
+          let score: number;
+          let verdict: string;
+          let ruling: string;
+          let scoring: any[];
+          try {
+            const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+            const next = scoreSnapshot(snap);
+            score = next.score10;
+            verdict = next.verdict;
+            ruling = next.ruling;
+            scoring = next.categories.map(c => ({
+              name: c.name, score: c.score, weight: c.weight, reasoning: c.reasoning,
+            }));
+            // Patch legacy `financials` with snapshot fundamentals for any
+            // field Polygon left null — same shim as /api/analyze.
+            const sf = snap.fundamentals.value;
+            if (sf) {
+              if ((financials.debtToEquity == null) && sf.debtToEquity != null) {
+                financials.debtToEquity = sf.debtToEquity;
+              }
+              if ((financials.returnOnEquity == null) && sf.returnOnEquity != null) {
+                financials.returnOnEquity = sf.returnOnEquity;
+              }
+            }
+          } catch (e: any) {
+            routesLog.warn({ ticker, err: String(e?.message || e) }, "verdict scoreSnapshot fallback to legacy");
+            const fullData = { quote, financials, historicalReturns };
+            scoring = computeScoring(fullData);
+            score = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+            const v = computeVerdict(score);
+            verdict = v.verdict;
+            ruling = v.ruling;
+          }
+          return { score, verdict, ruling, scoring, quote, financials };
         })(),
         (async () => {
           await delay(500);
@@ -4405,9 +4443,11 @@ export async function registerRoutes(
       await delay(200);
       const qqqSpot = await fmpSpotQuote("QQQ");
 
-      // Compute unified verdict score (0-100)
-      // Weighted combination of: analysis score, institutional flow, strategy alignment
-      let unifiedScore = 50; // neutral baseline
+      // Build display-only factor breakdown shown on the verdict page.
+      // unifiedScore + finalVerdict are computed FROM THE SNAPSHOT below
+      // (Phase 2.5 cutover) — these factors are kept around so the user
+      // sees how stress resilience, institutional flow, etc. break down,
+      // but they don't drive the score anymore.
       const factors: { name: string; score: number; weight: number; signal: string; color: string }[] = [];
 
       if (analysis) {
@@ -4457,34 +4497,41 @@ export async function registerRoutes(
         factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
       }
 
-      // Calculate unified score. NOTE: post-Polygon migration, some factors
-      // (institutional, strategies, stress, insider) can silently drop out
-      // when Yahoo endpoints are blocked or 25y history is unavailable.
-      // Re-normalize across the factors that actually contributed so we
-      // don't default to SPECULATIVE just because data is missing.
-      const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
-      if (totalWeight > 0) {
-        unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
-      }
-
-      // If only one or two factors contributed (common when Yahoo data is
-      // unavailable), nudge the buckets wider so the verdict is not
-      // artificially pessimistic.
-      const factorsContributed = factors.length;
-      const narrowEvidence = factorsContributed <= 2;
-
-      // Final verdict
+      // Phase 2.5 cutover: unifiedScore + finalVerdict come from the
+      // snapshot scoring path so they line up with /api/analyze. The
+      // `factors` array above is now a display-only breakdown — it shows
+      // the user how stress resilience, institutional flow, etc. each
+      // contribute, but the actual verdict bucket is determined by the
+      // unified score from scoreSnapshot, which reads from a richer set
+      // of categories with consistent weighting.
+      let unifiedScore = 50;
       let finalVerdict = "SPECULATIVE";
-      let verdictColor = "yellow";
-      // Thresholds widen by 5 points in each direction when evidence is thin
-      const strongCutoff = narrowEvidence ? 65 : 70;
-      const investCutoff = narrowEvidence ? 50 : 55;
-      const highRiskCutoff = narrowEvidence ? 25 : 30;
-      const specCutoff = narrowEvidence ? 35 : 40;
-      if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
-      else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
-      else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
-      else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
+      let verdictColor: "green" | "yellow" | "red" = "yellow";
+
+      if (analysis) {
+        unifiedScore = Math.round(analysis.score * 10);
+        finalVerdict = analysis.verdict;
+        verdictColor =
+          finalVerdict === "STRONG CONVICTION" || finalVerdict === "INVESTMENT GRADE" ? "green" :
+          finalVerdict === "HIGH RISK" ? "red" :
+          "yellow";
+      } else {
+        // No snapshot — fall back to the legacy factor-blend on the
+        // verdict-page-specific factors so the page still renders.
+        const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
+        if (totalWeight > 0) {
+          unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
+        }
+        const narrowEvidence = factors.length <= 2;
+        const strongCutoff = narrowEvidence ? 65 : 70;
+        const investCutoff = narrowEvidence ? 50 : 55;
+        const highRiskCutoff = narrowEvidence ? 25 : 30;
+        const specCutoff = narrowEvidence ? 35 : 40;
+        if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
+        else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
+        else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
+        else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
+      }
 
       const verdictPayload = {
         ticker,

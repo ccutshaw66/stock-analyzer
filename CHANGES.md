@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Phase 2.5 (cont): cut /api/verdict over to scoreSnapshot()
+
+**Why:** Trade Analysis (`/api/analyze`) was cut over earlier. The "header grade doesn't match outlook grade" complaint can't go away until `/api/verdict` reads from the same scoring function. This commit closes that loop.
+
+**What:**
+- The analysis IIFE inside `/api/verdict` now wraps `getCompanySnapshot` + `scoreSnapshot` instead of `computeScoring`. Returns the same shape the verdict page consumes (`score`, `verdict`, `ruling`, `scoring`).
+- Same legacy-`financials` D/E + ROE patch as `/api/analyze` so the verdict page's display fields populate.
+- `unifiedScore` and `finalVerdict` (which drive the verdict page's headline) are now derived from `analysis.score * 10` and `analysis.verdict` — both come from `scoreSnapshot`. The verdict bucketing thresholds (STRONG / INVESTMENT / SPEC / HIGH RISK) move to the scoreSnapshot's identical thresholds, so the verdict on `/api/verdict` matches the verdict on `/api/analyze` and matches the score breakdown.
+- The `factors` array on the verdict page is now display-only — it shows the verdict-page-specific factors (Fundamental Analysis, Institutional Flow, Stress Resilience, Insider Confidence) as a breakdown for the user, but those weights no longer drive the score. The score comes from the snapshot. This means the displayed factor breakdown and the displayed unified score are computed from different things — flagged as a follow-up to either drop the legacy factors or rebuild them to mirror snapshot categories.
+- Fallback to legacy formula when `getCompanySnapshot` fails — same safety net as `/api/analyze`.
+
+**Files:** `server/routes.ts` (the `/api/verdict/:ticker` handler).
+
+**Notes:**
+- The 1-hour route-level cache key is `verdict:v9:<ticker>`. Bumping that key would force a fresh compute, but I'm leaving it — natural turnover within an hour will cycle in the new score, and the snapshot path is the source of truth even if some users see a 1h-stale legacy result transitionally.
+- The verdict page also still renders stress tests and metals comparison — those are display-only and unaffected.
+
+Rollback tag: `safe/2026-05-06-pre-verdict-cutover`.
+
+---
 ## 2026-05-06 — FMP-primary across snapshot quote/fundamentals/chart + legacy getChart
 
 **Why:** Owner's stated goal: "tired of fighting data providers." With `FMP_TIER=ultimate` and the field-name fix in the previous commit, FMP can now answer authoritatively for everything Polygon Stocks Starter currently provides. This commit flips the chain order from "Polygon primary, FMP fallback" to "FMP primary, Polygon fallback" across every stock-data adapter. Polygon is kept as a safety net but should now be the source of last resort, not the default.
