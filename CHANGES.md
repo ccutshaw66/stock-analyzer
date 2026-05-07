@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — FMP-side insiderPct + Inst% field-name variants
+
+**Why:** Yahoo kill switch (FMP_TIER=ultimate) makes `getYahooOwnership` short-circuit to all-nulls, so re-enabling that path was a no-op. Per the kill-Yahoo directive, computing insiderPct from FMP transaction data instead. Inst% still landing on the broken `ownershipPercent` because `numberOf13Fshares` may not be the field name FMP returns — adding variants and a debug log so we can see what's actually in the response.
+
+**What:**
+- `getInstitutionalData`: insider transaction fetch limit 50→500. For each unique insider (CIK or name), pick the row with the latest filing/transaction date and read `securitiesOwned`. Sum across insiders → `fmpInsiderTotalShares`. Also derive `fmpSharesOutstanding = marketCap / price` from the quote and stash both on the result. Inst cache key v2→v3.
+- `parseInstitutionalData`: `insiderPct` now computed as `fmpInsiderTotalShares / fmpSharesOutstanding * 100`. Yahoo kept as last-ditch (always 0 under Ultimate but harmless).
+- `fmp-institutional.ts`: try multiple field-name variants for the institutional share count (`numberOf13Fshares`, `numberOf13fShares`, `totalShares`, `total13fShares`, `shares`). Log a warn with the actual key list when none match so we can see what FMP returns. Cache v8→v9.
+
+**Files:** `server/routes.ts`, `server/data/providers/fmp-institutional.ts`.
+
+Rollback tag: `safe/2026-05-06-fmp-insider-pct`.
+
+---
 ## 2026-05-06 — Institutional Inst% fix v3: derive sharesOutstanding from marketCap/price
 
 **Why:** Diag of FMP `/profile` for MSFT shows no `sharesOutstanding` field — only `marketCap` and `price`. My v7 fix that read `profileRow.sharesOutstanding` was returning null, falling back to the broken `ownershipPercent`.

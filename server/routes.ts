@@ -573,7 +573,7 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   // Aggregate scan cache is busted per click (refresh=1 from frontend) so
   // the user gets a different random sample each click while still hitting
   // this per-ticker cache for any tickers we've already fetched.
-  const cacheKey = `inst:v2:${ticker.toUpperCase()}`; // v2 — Yahoo re-enabled for insider%
+  const cacheKey = `inst:v3:${ticker.toUpperCase()}`; // v3 — FMP-side insiderPct + sharesOutstanding
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
 
@@ -584,13 +584,17 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     quote = null;
   }
 
-  // FMP insider transactions (last ~50 for this symbol)
+  // FMP insider transactions. Limit bumped to 500 so we have enough history
+  // to identify each named insider's most recent post-transaction holding
+  // (the `securitiesOwned` field) — that's what we sum to compute insiderPct.
+  // 50 was too narrow; missed insiders who haven't transacted recently.
   let insiderTxns: any[] = [];
+  let insiderTotalShares = 0; // sum of latest securitiesOwned per unique insider
   try {
     const { fmpGet } = await import("./data/providers/fmp.client");
-    const rows: any[] = await fmpGet<any[]>(`/insider-trading/search`, { symbol: ticker, page: 0, limit: 50 });
+    const rows: any[] = await fmpGet<any[]>(`/insider-trading/search`, { symbol: ticker, page: 0, limit: 500 });
     if (Array.isArray(rows)) {
-      insiderTxns = rows.map((r) => ({
+      insiderTxns = rows.slice(0, 50).map((r) => ({
         filerName: r.reportingName || r.name || "Unknown",
         filerRelation: r.typeOfOwner || r.relation || "",
         transactionText: r.transactionType || r.acquistionOrDisposition || "Unknown",
@@ -598,6 +602,22 @@ async function getInstitutionalData(ticker: string): Promise<any> {
         value: { raw: Number(r.price ?? 0) * Number(r.securitiesTransacted ?? 0) || 0 },
         startDate: { fmt: r.transactionDate || r.filingDate || null },
       }));
+      // For each unique insider (by CIK if present, else name), pick the row
+      // with the latest filingDate / transactionDate and read securitiesOwned.
+      // Sum across insiders → total insider share count.
+      const latestByInsider = new Map<string, { date: string; owned: number }>();
+      for (const r of rows) {
+        const key = String(r.reportingCik || r.reportingName || r.name || "").toLowerCase();
+        if (!key) continue;
+        const owned = Number(r.securitiesOwned ?? 0);
+        if (!Number.isFinite(owned) || owned < 0) continue;
+        const date = String(r.filingDate || r.transactionDate || "");
+        const prior = latestByInsider.get(key);
+        if (!prior || date > prior.date) {
+          latestByInsider.set(key, { date, owned });
+        }
+      }
+      for (const v of latestByInsider.values()) insiderTotalShares += v.owned;
     }
   } catch (e: any) {
     routesLog.debug?.({ ticker, err: String(e?.message || e) }, "fmp insider fetch failed; continuing without");
@@ -643,6 +663,12 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     routesLog.debug?.({ ticker, err: String(e?.message || e) }, "yahoo ownership fetch failed; continuing with FMP-only");
   }
 
+  // Derive sharesOutstanding from quote (marketCap / price). Polygon-shaped
+  // quote returns regularMarketPrice and marketCap as `{raw}` objects.
+  const qPrice = Number(quote?.price?.regularMarketPrice?.raw ?? 0);
+  const qMcap = Number(quote?.price?.marketCap?.raw ?? quote?.summaryDetail?.marketCap?.raw ?? 0);
+  const sharesOutstanding = qPrice > 0 && qMcap > 0 ? qMcap / qPrice : 0;
+
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
     price: quote?.price || {},
@@ -661,6 +687,12 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     institutionOwnership: yahooOwnership.institutionOwnership,
     fundOwnership: yahooOwnership.fundOwnership,
     majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
+    // FMP-derived signals consumed by parseInstitutionalData. insiderTotalShares
+    // is the sum of each unique insider's most recent securitiesOwned;
+    // dividing by sharesOutstanding gives an FMP-only insiderPct (replacement
+    // for Yahoo's insidersPercentHeld which is dead under FMP_TIER=ultimate).
+    fmpInsiderTotalShares: insiderTotalShares,
+    fmpSharesOutstanding: sharesOutstanding,
   };
 
   // Don't poison the 24h cache with empty results. If neither Yahoo nor FMP
@@ -1017,7 +1049,19 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
+    insiderPct: (() => {
+      // FMP-side insider %: sum each unique insider's most recent post-
+      // transaction holding (securitiesOwned), divide by sharesOutstanding.
+      // Replaces Yahoo's insidersPercentHeld which is dead under
+      // FMP_TIER=ultimate (and unreliable when alive).
+      const fmpInsiderShares = Number(raw?.fmpInsiderTotalShares ?? 0);
+      const fmpSharesOut = Number(raw?.fmpSharesOutstanding ?? 0);
+      if (fmpInsiderShares > 0 && fmpSharesOut > 0) {
+        return (fmpInsiderShares / fmpSharesOut) * 100;
+      }
+      // Last-ditch: Yahoo (almost always 0 under Ultimate).
+      return (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100;
+    })(),
     institutionPct: usingEdgar ? (edgar!.institutionPct || yahooInstPct) : yahooInstPct,
     institutionCount: usingEdgar ? edgar!.institutionCount : yahooInstCount,
     floatPct: usingEdgar ? (edgar!.institutionPct || yahooFloatPct) : yahooFloatPct,

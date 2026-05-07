@@ -279,7 +279,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v8:${T}`; // v8 — sharesOutstanding derived from marketCap/price
+  const cacheKey = `fmp-inst:v9:${T}`; // v9 — share-count field-name variants
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -444,7 +444,22 @@ export async function getFmpInstitutional(
       profileMarketCap > 0 && profilePrice > 0
         ? profileMarketCap / profilePrice
         : Number(latest?.sharesOutstanding ?? 0) || null;
-    const numberOf13Fshares = Number(latest?.numberOf13Fshares ?? 0);
+    // FMP has used multiple casings/names for the same field across stable-
+    // API revisions. Try every variant we've seen.
+    const numberOf13Fshares = Number(
+      latest?.numberOf13Fshares ??
+      latest?.numberOf13fShares ??
+      latest?.totalShares ??
+      latest?.total13fShares ??
+      latest?.shares ??
+      0,
+    );
+    if (numberOf13Fshares === 0 && latest) {
+      log.warn(
+        { ticker: T, latestKeys: Object.keys(latest).slice(0, 30) },
+        "FMP institutional summary: no recognized share-count field; falling back to ownershipPercent",
+      );
+    }
     let ownershipPct = 0;
     if (numberOf13Fshares > 0 && sharesOutstanding && sharesOutstanding > 0) {
       ownershipPct = (numberOf13Fshares / sharesOutstanding) * 100;
