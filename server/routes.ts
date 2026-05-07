@@ -573,7 +573,7 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   // Aggregate scan cache is busted per click (refresh=1 from frontend) so
   // the user gets a different random sample each click while still hitting
   // this per-ticker cache for any tickers we've already fetched.
-  const cacheKey = `inst:${ticker.toUpperCase()}`;
+  const cacheKey = `inst:v2:${ticker.toUpperCase()}`; // v2 — Yahoo re-enabled for insider%
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
 

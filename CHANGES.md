@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page Inst%/Insider% follow-up: bump caches + use /profile sharesOutstanding
+
+**Why:** Prior pass updated the in/out flow stats (worked) but Inst% and Insider% still showed old values. Two issues: (1) the route-level `inst:${ticker}` cache was unbumped so the page got the pre-fix Yahoo-stub response shape; (2) my Inst% formula used `numberOf13FsharesOutstanding` which doesn't exist on FMP's summary endpoint, so the calc fell back to the broken `ownershipPercent` field.
+
+**What:**
+- `server/routes.ts` `getInstitutionalData`: cache key `inst:` → `inst:v2:` so the response shape with real Yahoo `majorHoldersBreakdown` flushes through. Insider% should now populate.
+- `server/data/providers/fmp-institutional.ts`: institutional ownership % now computed as `numberOf13Fshares / sharesOutstanding * 100`, where `sharesOutstanding` comes from a parallel FMP `/profile` call. Cache key v6→v7.
+
+**Files:** `server/routes.ts`, `server/data/providers/fmp-institutional.ts`.
+
+Rollback tag: `safe/2026-05-06-inst-pct-fix2`.
+
+---
 ## 2026-05-06 — Institutional page: real Inst%, real Insider%, real flow score
 
 **Why:** Page (and scan) showed Insider% = 0% across all tickers, Inst% suspiciously low and identical across megacaps (MSFT 4.8% / AMZN 4.8%), 0-in/0-out counts everywhere, and STRONG OUTFLOW -100 score driven entirely by net insider selling because the institutional flow signal was zero.
