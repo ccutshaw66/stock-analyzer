@@ -573,7 +573,7 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   // Aggregate scan cache is busted per click (refresh=1 from frontend) so
   // the user gets a different random sample each click while still hitting
   // this per-ticker cache for any tickers we've already fetched.
-  const cacheKey = `inst:v3:${ticker.toUpperCase()}`; // v3 — FMP-side insiderPct + sharesOutstanding
+  const cacheKey = `inst:v4:${ticker.toUpperCase()}`; // v4 — quarter-selection bug fix
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
 
@@ -5014,15 +5014,26 @@ export async function registerRoutes(
     try {
       const ticker = String(req.params.ticker || "").toUpperCase();
       const { fmpGet } = await import("./data/providers/fmp.client");
+      // Pick the latest quarter whose end was at least 60 days ago. Same
+      // walk-backward logic as latestAvailableQuarters in fmp-institutional.ts.
       const now = new Date();
-      const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
-      const year = cutoff.getUTCFullYear();
-      const quarter = Math.floor(cutoff.getUTCMonth() / 3) + 1;
-      const [summary, holders] = await Promise.all([
+      const minAgeMs = 60 * 24 * 60 * 60 * 1000;
+      let year = now.getUTCFullYear();
+      let quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+      for (let i = 0; i < 12; i++) {
+        const m = quarter * 3 - 1;
+        const d = quarter === 1 || quarter === 4 ? 31 : 30;
+        const qEnd = new Date(Date.UTC(year, m, d));
+        if (now.getTime() - qEnd.getTime() >= minAgeMs) break;
+        quarter -= 1;
+        if (quarter < 1) { quarter = 4; year -= 1; }
+      }
+      const [summary, holders, insiderSample] = await Promise.all([
         fmpGet<any[]>("/institutional-ownership/symbol-positions-summary", { symbol: ticker, year, quarter }).catch((e: any) => ({ error: String(e?.message || e) })),
         fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", { symbol: ticker, year, quarter, page: 0, limit: 5 }).catch((e: any) => ({ error: String(e?.message || e) })),
+        fmpGet<any[]>("/insider-trading/search", { symbol: ticker, page: 0, limit: 3 }).catch((e: any) => ({ error: String(e?.message || e) })),
       ]);
-      res.json({ ticker, year, quarter, summary, holdersSample: holders });
+      res.json({ ticker, year, quarter, summary, holdersSample: holders, insiderSample });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "FMP-inst diag failed" });
     }

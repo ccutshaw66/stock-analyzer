@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Root cause: latestAvailableQuarters picks in-progress quarter
+
+**Why:** Three failed deploys at fixing Inst%/Insider% on the institutional page. Root cause finally found: `latestAvailableQuarters()` in `fmp-institutional.ts` was picking the quarter that *contains* a date 60 days ago, not the most recent quarter whose END was 60 days ago. For 2026-05-06, "60 days ago" = 2026-03-07, which is in Q1 2026 — a quarter that ENDED 36 days ago (filings due May 15, NOT yet aggregated). FMP's response for an in-progress quarter has `numberOf13Fshares: 0` even when `ownershipPercent` returns a value, so my computation kept falling through to the broken `ownershipPercent` field.
+
+**What:**
+- `fmp-institutional.ts` `latestAvailableQuarters`: rewritten to walk backward from current calendar quarter, only including quarters whose END date is >= 60 days ago. Cap at 12 iterations to prevent infinite loop in any date-math edge case.
+- Same walk-backward logic added to the `/api/diag/fmp-inst/:ticker` route so it always queries a sane quarter.
+- Diag endpoint also now returns `insiderSample` (3 rows) so we can see the insider-trading response shape in one URL.
+- Cache keys: `fmp-inst:v9 → v10`, `inst:v3 → v4`.
+- New `docs/FMP_REFERENCE.md` — living reference of every FMP endpoint + field name we use, with verified field schemas, plus a "common pitfalls" section listing the ones we've hit (TTM rename, ownershipPercent unreliability, the `acquistionOrDisposition` typo, multi-CIK matching, this quarter-selection bug).
+
+**Files:** `server/data/providers/fmp-institutional.ts`, `server/routes.ts`, `docs/FMP_REFERENCE.md`.
+
+Rollback tag: `safe/2026-05-06-quarter-bug`.
+
+---
 ## 2026-05-06 — FMP-side insiderPct + Inst% field-name variants
 
 **Why:** Yahoo kill switch (FMP_TIER=ultimate) makes `getYahooOwnership` short-circuit to all-nulls, so re-enabling that path was a no-op. Per the kill-Yahoo directive, computing insiderPct from FMP transaction data instead. Inst% still landing on the broken `ownershipPercent` because `numberOf13Fshares` may not be the field name FMP returns — adding variants and a debug log so we can see what's actually in the response.

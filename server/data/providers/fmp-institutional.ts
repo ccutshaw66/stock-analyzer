@@ -216,17 +216,30 @@ const TTL_MS_EMPTY = 5 * 60 * 1000; // 5m on empty/error so we retry soon
  *   - Q3 2025 ended Sep 30 → also returned as fallback
  */
 function latestAvailableQuarters(count: number): Array<{ year: number; quarter: number }> {
+  // Walk backward from the current calendar quarter, only including quarters
+  // whose END DATE was at least 60 days ago (so 13F filings are aggregated).
+  //
+  // Previous implementation (buggy): picked the quarter that *contains* a
+  // date 60 days ago, which is the in-progress quarter for ~half the year.
+  // For 2026-05-06 it was returning Q1 2026 — a quarter that ended 36 days
+  // ago, NOT 60. Q1 2026 returns partial summary rows with numberOf13Fshares=0,
+  // which made institutional ownership % fall through to the broken
+  // ownershipPercent fallback.
   const result: Array<{ year: number; quarter: number }> = [];
-  const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
-  let year = cutoff.getUTCFullYear();
-  let quarter = Math.floor(cutoff.getUTCMonth() / 3) + 1;
-  for (let i = 0; i < count; i++) {
-    result.push({ year, quarter });
-    quarter -= 1;
-    if (quarter < 1) {
-      quarter = 4;
-      year -= 1;
+  const now = new Date();
+  const minAgeMs = 60 * 24 * 60 * 60 * 1000;
+  let year = now.getUTCFullYear();
+  let quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+  // Cap iterations to avoid an infinite loop in case of date-math weirdness.
+  for (let i = 0; i < 12 && result.length < count; i++) {
+    const qEndMonthIdx = quarter * 3 - 1; // Mar=2, Jun=5, Sep=8, Dec=11
+    const qEndDay = quarter === 1 || quarter === 4 ? 31 : 30;
+    const qEnd = new Date(Date.UTC(year, qEndMonthIdx, qEndDay));
+    if (now.getTime() - qEnd.getTime() >= minAgeMs) {
+      result.push({ year, quarter });
     }
+    quarter -= 1;
+    if (quarter < 1) { quarter = 4; year -= 1; }
   }
   return result;
 }
@@ -279,7 +292,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v9:${T}`; // v9 — share-count field-name variants
+  const cacheKey = `fmp-inst:v10:${T}`; // v10 — quarter-selection bug fix
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
