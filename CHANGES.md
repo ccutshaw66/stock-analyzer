@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — FMP-primary across snapshot quote/fundamentals/chart + legacy getChart
+
+**Why:** Owner's stated goal: "tired of fighting data providers." With `FMP_TIER=ultimate` and the field-name fix in the previous commit, FMP can now answer authoritatively for everything Polygon Stocks Starter currently provides. This commit flips the chain order from "Polygon primary, FMP fallback" to "FMP primary, Polygon fallback" across every stock-data adapter. Polygon is kept as a safety net but should now be the source of last resort, not the default.
+
+This is the prerequisite for canceling the **Polygon Stocks Starter sub** (~$29/mo). Polygon Options Starter is untouched — that drop requires building `fmp-options.ts` and dual-sourcing for parity, separate work.
+
+**What:**
+
+1. **`server/snapshot/quote.ts`** — new `fmpQuoteFull()` that calls `/quote` + `/profile` + `/ratios-ttm` in parallel and merges into one `CompanyQuote`. Covers price, marketCap, trailingPE, beta, dividendYield, EPS, 52w range. Forward PE not exposed on FMP basic stable endpoints — left null. Chain reordered: FMP → Polygon → Yahoo. Latency cost: 3 FMP calls (~600ms) vs Polygon's single call (~250ms). Acceptable.
+
+2. **`server/snapshot/fundamentals.ts`** — chain reordered to FMP → Polygon. The FMP fallback was repaired in the previous commit (correct stable-API field names) so it actually works now.
+
+3. **`server/snapshot/chart.ts`** — chain reordered to FMP → Polygon → Yahoo for the snapshot pipeline. Snapshot consumers (Conviction Compass, etc.) now get FMP first.
+
+4. **`server/routes.ts` legacy `getChart`** — used by `/api/analyze`, `/api/trade-analysis`, watchlist refresh, scanner-v2 indicators, etc. New `fmpChartShortRange()` helper converts FMP `/historical-price-eod/full` to Yahoo-shape. Short/mid range: FMP → Polygon. Long range (10y/25y): disk cache → FMP → Polygon → stale disk cache (FMP inserted between disk cache and Polygon — FMP can do ~20y vs Polygon's ~5y).
+
+**Notes:**
+- Polygon stays in code as a fallback; if anything breaks, it'll quietly take over rather than fail.
+- The dropping of `Polygon Stocks Starter` sub is now safe **once verification passes** — no code path requires it as primary. Recommend leaving the sub active for ~1 week to confirm FMP carries the load on real production traffic before canceling.
+- Forward P/E will become null for most tickers after this. The `Valuation Sanity` scoring already tolerates null on this field; impact is small.
+
+Rollback tag: `safe/2026-05-06-pre-fmp-primary`.
+
+---
 ## 2026-05-06 — Fix actual FMP field names + repair fundamentalsFromFmp wholesale
 
 **Why:** Hit `/api/diag/fmp/PLTR` and inspected the raw FMP response. The actual stable-API field for D/E is **`debtToEquityRatioTTM`** — note the "To" with capital T plus the "Ratio" middle. None of the variants my prior fallback tried matched (I had `debtEquityRatioTTM`, `debtEquityRatio`, `debtToEquityTTM`, `debtToEquity` — all subtly wrong).

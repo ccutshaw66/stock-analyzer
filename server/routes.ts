@@ -451,6 +451,44 @@ async function getQuoteLight(ticker: string): Promise<any> {
   return getQuote(ticker);
 }
 
+/** Convert a Yahoo-style range string to a "days back" number for FMP from-date math. */
+function rangeStringToDays(range: string): number {
+  const map: Record<string, number> = {
+    "1d": 5, "5d": 10, "1mo": 35, "3mo": 95, "6mo": 185,
+    "1y": 370, "2y": 740, "3y": 1100, "5y": 1830, "10y": 3660,
+  };
+  return map[range] ?? 370;
+}
+
+/**
+ * FMP /historical-price-eod/full → Yahoo-shape converter for the short/mid
+ * range path. Single call (FMP caps at ~5000 rows ≈ 20y).
+ */
+async function fmpChartShortRange(symbol: string, range: string): Promise<any> {
+  const days = rangeStringToDays(range);
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  try {
+    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol, from, to });
+    const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+    if (rows.length === 0) return null;
+    const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return {
+      timestamp: asc.map(r => Math.floor(new Date(r.date).getTime() / 1000)),
+      indicators: { quote: [{
+        close: asc.map(r => Number(r.close)),
+        open: asc.map(r => Number(r.open)),
+        high: asc.map(r => Number(r.high)),
+        low: asc.map(r => Number(r.low)),
+        volume: asc.map(r => Number(r.volume)),
+      }] },
+    };
+  } catch (err) {
+    console.log(`[chart] FMP failed for ${symbol} ${range}:`, (err as Error).message);
+    return null;
+  }
+}
+
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
   const cacheKey = `chart:${ticker.toUpperCase()}:${range}:${interval}`;
   const cached = getCached(cacheKey);
@@ -459,10 +497,9 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     return cached;
   }
 
-  // Phase 3.7: Yahoo is a BACKGROUND cache filler only — never invoked on
-  // the request path. For long-range (10y/25y/max) we read from a disk cache
-  // that a daily cron populates from Yahoo. If the disk cache is cold we
-  // fall back to Polygon (capped ~5y) rather than hit Yahoo live.
+  // Long-range (10y/25y/max): cron-populated disk cache is authoritative
+  // (deepest history). FMP fallback covers ~20y when disk is cold. Polygon
+  // is last-ditch (capped ~5y).
   const isLongRange = range === "10y" || range === "25y" || range === "max";
 
   if (isLongRange) {
@@ -472,7 +509,13 @@ async function getChart(ticker: string, range: string, interval: string): Promis
       setCache(cacheKey, cached, TTL.chart);
       return cached;
     }
-    // 2) Polygon as best-effort (capped ~5y)
+    // 2) FMP — covers ~20y, deeper than Polygon
+    const fmpResult = await fmpChartShortRange(ticker, range);
+    if (fmpResult && fmpResult.timestamp?.length) {
+      setCache(cacheKey, fmpResult, TTL.chart);
+      return fmpResult;
+    }
+    // 3) Polygon as best-effort (capped ~5y)
     try {
       const result = await getPolygonChart(ticker, range, interval);
       if (result && result.timestamp?.length) {
@@ -482,7 +525,7 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     } catch (err) {
       console.log(`[chart] Polygon long-range failed for ${ticker} ${range}:`, (err as Error).message);
     }
-    // 3) Stale disk cache (better than null)
+    // 4) Stale disk cache (better than null)
     const stale = readLongRange(ticker, range, interval);
     if (stale?.payload) {
       console.log(`[chart] Serving stale long-range cache for ${ticker} ${range} (age ${Math.round((Date.now() - stale.fetchedAt) / 3600000)}h)`);
@@ -492,7 +535,12 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     return null;
   }
 
-  // Short/mid ranges: Polygon only
+  // Short/mid ranges: FMP primary, Polygon fallback.
+  const fmpResult = await fmpChartShortRange(ticker, range);
+  if (fmpResult && fmpResult.timestamp?.length) {
+    setCache(cacheKey, fmpResult, TTL.chart);
+    return fmpResult;
+  }
   try {
     const result = await getPolygonChart(ticker, range, interval);
     if (result && result.timestamp?.length) {

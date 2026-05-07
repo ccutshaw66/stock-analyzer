@@ -1,13 +1,16 @@
 /**
  * Fundamentals adapter.
  *
- * Provider chain: derived from quote summary (Polygon-shaped) primary, FMP
- * /ratios-ttm + /income-statement fallback.
+ * Provider chain (FMP-primary as of 2026-05-06):
+ *   1. FMP — /ratios-ttm + /income-statement merged (now using the correct
+ *      stable-API TTM field names — see CHANGES.md 2026-05-06 for the
+ *      systemic-bug fix that made this path actually work).
+ *   2. Polygon — Yahoo-shaped quoteSummary blob with a financialData
+ *      sub-object. Kept as fallback for resilience.
  *
- * The Polygon quote summary already includes a financialData block populated
- * from Polygon's /vX/reference/financials TTM call. We extract from there
- * first because it's already cached and aligns with the quote we just
- * fetched. Only on miss do we make a separate FMP call.
+ * Field-level FMP enrichment still runs after `tryProviders` for D/E and
+ * ROE specifically — these are the fields where FMP and Polygon's primary
+ * sources have differed in coverage even when both partially succeed.
  */
 
 import type { CompanyFundamentals, FieldHealth } from "./types";
@@ -105,13 +108,6 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
   const result = await tryProviders<CompanyFundamentals>(
     [
       {
-        source: "polygon",
-        fetch: async () => {
-          const summary = await getPolygonQuoteSummary(T);
-          return fundamentalsFromQuoteSummary(summary);
-        },
-      },
-      {
         source: "fmp",
         fetch: async () => {
           const [ratiosRows, incomeRows] = await Promise.all([
@@ -121,6 +117,13 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
           const ratios = Array.isArray(ratiosRows) && ratiosRows.length ? ratiosRows[0] : null;
           const income = Array.isArray(incomeRows) && incomeRows.length ? incomeRows[0] : null;
           return fundamentalsFromFmp(ratios, income);
+        },
+      },
+      {
+        source: "polygon",
+        fetch: async () => {
+          const summary = await getPolygonQuoteSummary(T);
+          return fundamentalsFromQuoteSummary(summary);
         },
       },
     ],
