@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page: $100M cutoff + CIK-keyed QoQ + deeper prior-quarter baseline
+
+**Why:** First QoQ pass shipped real numbers for the top ~16 holders but exposed two artifacts on MSFT: (1) most rows below #16 showed `0.0%` because the prior-quarter fetch was capped at 100 rows — a current top-100 holder who ranked #101+ last quarter had no baseline; (2) duplicate-name filers (UBS GROUP AG ×3, HSBC HOLDINGS PLC ×2) showed wildly negative changeQoQ (-93%, -94%) because `priorByName` summed all UBS/HSBC subsidiaries into one bucket, then each individual current row was diff'd against that aggregate. Chris also called for a display cutoff: hide bottom-feeder filers entirely.
+
+**What:**
+- `server/data/providers/fmp-institutional.ts`:
+  - Prior-quarter QoQ now keys primarily on `cik` (`priorByCik`), falling back to normalized name (`priorByName`) only when CIK is missing on either side. CIK is unique per legal-entity filer, so the UBS-subsidiaries-collapsing bug is fixed.
+  - Prior-quarter `limit` bumped from 100 → 1000 so a current top-100 holder who ranked #101+ last quarter still has a baseline. Cost: one larger FMP response, still 24h-cached.
+  - Cache key bumped `fmp-inst:v4` → `v5`.
+- `server/routes.ts` `parseInstitutionalData`: applies a `MIN_DISPLAY_VALUE = $100M` filter to both `topInstitutions` and `topFunds` before returning. The snapshot/scoring pipeline (`server/snapshot/institutional.ts`) is intentionally untouched — flow scoring still operates on the full holder list. This is a display cut, not a scoring cut.
+
+**Files:** `server/data/providers/fmp-institutional.ts`, `server/routes.ts`.
+
+**Notes:** For megacaps (MSFT, AAPL) the page now shows ~25-40 holders instead of 100. For smaller stocks, fewer or even zero holders may surface — that's accurate (those companies genuinely don't have many $100M+ institutional positions). If a stock surfaces zero holders post-filter and Chris wants the threshold tunable per ticker class, that's a follow-up.
+
+Rollback tag: `safe/2026-05-06-inst-100m-cut`.
+
+---
 ## 2026-05-06 — Institutional page QoQ %: real numbers instead of all-zeros
 
 **Why:** Top Institutions and Top Funds tables on the Institutional page both showed `0.0%` in the "QoQ Change" column for every row. Root cause: `parseInstitutionalData` (`server/routes.ts`) merged QoQ deltas from Yahoo's `institutionOwnership.pctChange`, but under `FMP_TIER=ultimate` Yahoo is killed in `getInstitutionalData`, so the merge map was always empty and every row fell back to 0. The FMP-Ultimate path (`getFmpInstitutional`) did not compute QoQ at all — `topHolders` had no `changeQoQ` field and `topFunds` hardcoded it to `0` with a comment explicitly flagging the gap.

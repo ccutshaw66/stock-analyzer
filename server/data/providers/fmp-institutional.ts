@@ -279,7 +279,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v4:${T}`; // v4 — adds changeQoQ on topHolders
+  const cacheKey = `fmp-inst:v5:${T}`; // v5 — CIK-keyed QoQ + deeper prior fetch
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -338,10 +338,22 @@ export async function getFmpInstitutional(
       }
     }
 
-    // Prior-quarter holders for QoQ computation. One extra FMP call per
-    // ticker on cache miss (cheap on Ultimate's 3000 req/min budget). Empty
-    // map on failure → all rows fall back to changeQoQ=0 instead of breaking
-    // the response.
+    // Prior-quarter holders for QoQ computation.
+    //
+    // Two indexes:
+    //   - priorByCik: primary match. CIK uniquely identifies the filer entity,
+    //     so this disambiguates "UBS GROUP AG" rows that come from multiple
+    //     UBS subsidiaries (UBS AG vs UBS Asset Mgmt vs UBS Securities) — each
+    //     has its own CIK and gets compared against its own prior baseline.
+    //   - priorByName: fallback for rows missing CIK. Sums multiple filings
+    //     under the same normalized name; less precise but covers the gap.
+    //
+    // Limit bumped to 1000 (vs current quarter's 100) so a current top-100
+    // holder who ranked #101+ last quarter still has a baseline to compare
+    // against. Long-tail mid-cap filers shuffle in and out of the top 100
+    // each quarter — without the deeper baseline they'd all show 0.0%.
+    // Cost: one larger FMP response, still 24h-cached.
+    const priorByCik = new Map<string, number>();
     const priorByName = new Map<string, number>();
     if (usedQuarter) {
       const prevQ = previousQuarter(usedQuarter);
@@ -350,25 +362,35 @@ export async function getFmpInstitutional(
         year: prevQ.year,
         quarter: prevQ.quarter,
         page: 0,
-        limit: 100,
+        limit: 1000,
       }).catch((e: any) => {
         log.debug({ ticker: T, prevQ, err: String(e?.message || e) }, "prior-quarter holders fetch failed");
         return null;
       });
       if (Array.isArray(priorRows)) {
         for (const ph of priorRows) {
-          const k = normalizeOrgName(String(ph.investorName || ph.holder || ph.name || ""));
-          if (!k) continue;
           const prevShares = Number(ph.sharesNumber || ph.shares || ph.position || 0);
-          // Sum if multiple report rows per filer (e.g. amended filings).
-          priorByName.set(k, (priorByName.get(k) ?? 0) + prevShares);
+          if (!prevShares) continue;
+          const cik = ph.cik ? String(ph.cik) : "";
+          if (cik) {
+            priorByCik.set(cik, (priorByCik.get(cik) ?? 0) + prevShares);
+          }
+          const k = normalizeOrgName(String(ph.investorName || ph.holder || ph.name || ""));
+          if (k) priorByName.set(k, (priorByName.get(k) ?? 0) + prevShares);
         }
       }
     }
 
-    const qoqPct = (name: string, currentShares: number): number => {
+    const qoqPct = (name: string, cik: string | null, currentShares: number): number => {
       if (!Number.isFinite(currentShares) || currentShares <= 0) return 0;
-      const prev = priorByName.get(normalizeOrgName(name)) ?? 0;
+      // CIK-first: precise per-filer baseline. Falls back to name only when
+      // either side lacks a CIK.
+      let prev = 0;
+      if (cik && priorByCik.has(cik)) {
+        prev = priorByCik.get(cik) ?? 0;
+      } else {
+        prev = priorByName.get(normalizeOrgName(name)) ?? 0;
+      }
       if (prev <= 0) return 0; // unknown prior baseline — report 0 rather than +∞
       return ((currentShares - prev) / prev) * 100;
     };
@@ -379,6 +401,7 @@ export async function getFmpInstitutional(
       topHolders = holders.map((h: any) => {
         const name = String(h.investorName || h.holder || h.name || "Unknown");
         const shares = Number(h.sharesNumber || h.shares || h.position || 0);
+        const cik = h.cik ? String(h.cik) : null;
         return {
           name,
           shares,
@@ -386,10 +409,10 @@ export async function getFmpInstitutional(
           // FMP returns weight as a percentage (e.g. 9.65). EDGAR shape uses a
           // fraction (0.0965). Convert.
           pctHeld: Number(h.weight || h.weightPercent || h.ownership || 0) / 100,
-          changeQoQ: qoqPct(name, shares),
+          changeQoQ: qoqPct(name, cik, shares),
           reportDate: (h.date || h.dateReported || null) as string | null,
           accession: null,
-          cik: h.cik ? String(h.cik) : null,
+          cik,
         };
       });
       // Sort by shares descending to mirror EDGAR's ordering.

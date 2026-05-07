@@ -798,6 +798,16 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
+  // Display cutoff: hide holders below $100M market value. Per Chris's call —
+  // the long tail of sub-$100M filers crowds the page with names that don't
+  // move the stock and where data quality (CIK matching, prior-quarter
+  // pagination overlap) is weakest. The snapshot/scoring pipeline keeps
+  // operating on the full list — this is purely display.
+  const MIN_DISPLAY_VALUE = 100_000_000;
+  const topInstitutionsFiltered = topInstitutions.filter((h: any) => Number(h.value) >= MIN_DISPLAY_VALUE);
+  const topFundsFiltered = topFunds.filter((f: any) => Number(f.value) >= MIN_DISPLAY_VALUE);
+  topInstitutions = topInstitutionsFiltered;
+
   // Insider holders (current positions).
   // PRIMARY: Yahoo's insiderHolders module (only populated when Yahoo is
   // enabled, which it isn't on FMP_TIER=ultimate).
@@ -981,7 +991,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
 
     // Detailed lists
     topInstitutions,
-    topFunds,
+    topFunds: topFundsFiltered,
     insiders,
     recentInsiderTxns,
   };
