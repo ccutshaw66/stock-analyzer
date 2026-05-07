@@ -58,19 +58,39 @@ function fundamentalsFromFmp(ratios: any, income: any): CompanyFundamentals | nu
   const r = ratios || {};
   const i = income || {};
 
+  // Helper: try TTM-suffixed field name first (FMP stable API), fall back to
+  // non-suffixed (FMP v3 legacy). The stable migration in Aug 2025 changed
+  // most ratio/key-metric fields to add TTM. The non-suffixed names are
+  // kept as fallback in case a different endpoint returns them.
+  const pick = (...keys: string[]): number | null => {
+    for (const k of keys) {
+      const v = num(r[k]);
+      if (v !== null) return v;
+    }
+    return null;
+  };
+
+  const grossMargin     = pick("grossProfitMarginTTM", "grossProfitMargin");
+  const operatingMargin = pick("operatingProfitMarginTTM", "operatingProfitMargin");
+  const profitMargin    = pick("netProfitMarginTTM", "netProfitMargin");
+  const payout          = pick("dividendPayoutRatioTTM", "payoutRatioTTM", "payoutRatio");
+  const debtToEquity    = pick("debtToEquityRatioTTM", "debtEquityRatioTTM", "debtToEquity", "debtEquityRatio");
+  const currentRatio    = pick("currentRatioTTM", "currentRatio");
+  const returnOnEquity  = pick("returnOnEquityTTM", "returnOnEquity", "roeTTM", "roe");
+
   const out: CompanyFundamentals = {
     revenue: num(i.revenue),
     revenueGrowth: null,            // would need YoY comparison of two periods
-    grossMargin: num(r.grossProfitMargin) !== null ? num(r.grossProfitMargin)! * 100 : null,
-    operatingMargin: num(r.operatingProfitMargin) !== null ? num(r.operatingProfitMargin)! * 100 : null,
-    profitMargin: num(r.netProfitMargin) !== null ? num(r.netProfitMargin)! * 100 : null,
+    grossMargin: grossMargin !== null ? grossMargin * 100 : null,
+    operatingMargin: operatingMargin !== null ? operatingMargin * 100 : null,
+    profitMargin: profitMargin !== null ? profitMargin * 100 : null,
     ebitdaMargin: null,
     netIncome: num(i.netIncome),
     earningsGrowth: null,
-    payoutRatio: num(r.payoutRatio) !== null ? num(r.payoutRatio)! * 100 : null,
-    debtToEquity: num(r.debtEquityRatio) !== null ? num(r.debtEquityRatio)! * 100 : null,
-    currentRatio: num(r.currentRatio),
-    returnOnEquity: num(r.returnOnEquity) !== null ? num(r.returnOnEquity)! * 100 : null,
+    payoutRatio: payout !== null ? payout * 100 : null,
+    debtToEquity: debtToEquity !== null ? debtToEquity * 100 : null,
+    currentRatio,
+    returnOnEquity: returnOnEquity !== null ? returnOnEquity * 100 : null,
     totalDebt: null,
     totalCash: null,
     freeCashFlow: num(i.freeCashFlow),
@@ -154,11 +174,13 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
       const patched = { ...result.value };
 
       if (patched.debtToEquity === null) {
+        // The actual stable-API field is `debtToEquityRatioTTM` (with "To"
+        // and Ratio suffix). Other variants kept as defensive fallbacks.
         const der = pickNum(
-          "debtEquityRatioTTM", "debtEquityRatio",
-          "debtToEquityTTM", "debtToEquity",
+          "debtToEquityRatioTTM", "debtEquityRatioTTM",
+          "debtToEquity", "debtEquityRatio",
         );
-        // FMP returns these as fractions (0.777 = 77.7%) consistently
+        // FMP returns these as fractions (0.025 = 2.5%) consistently
         // across /ratios-ttm and /key-metrics-ttm. Match the existing
         // fundamentalsFromFmp convention: multiply by 100.
         if (der !== null) patched.debtToEquity = der * 100;

@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Fix actual FMP field names + repair fundamentalsFromFmp wholesale
+
+**Why:** Hit `/api/diag/fmp/PLTR` and inspected the raw FMP response. The actual stable-API field for D/E is **`debtToEquityRatioTTM`** — note the "To" with capital T plus the "Ratio" middle. None of the variants my prior fallback tried matched (I had `debtEquityRatioTTM`, `debtEquityRatio`, `debtToEquityTTM`, `debtToEquity` — all subtly wrong).
+
+Bigger discovery: **the existing `fundamentalsFromFmp` function (the FMP fallback that fires when Polygon entirely fails) has been broken since the FMP migration to the stable API in August 2025.** Every field name it reads — `grossProfitMargin`, `operatingProfitMargin`, `netProfitMargin`, `payoutRatio`, `debtEquityRatio`, `currentRatio`, `returnOnEquity` — is the v3-style legacy name. The stable API returns all of these with TTM suffixes (`grossProfitMarginTTM`, `dividendPayoutRatioTTM`, `debtToEquityRatioTTM`, `currentRatioTTM`, `returnOnEquityTTM`). The function was producing all-nulls for any ticker that hit the FMP fallback — the only reason this hadn't surfaced sooner is that Polygon's `quoteSummary.financialData` succeeds for 95%+ of tickers.
+
+**What:**
+- `fundamentalsFromFmp` rewritten to try TTM-suffixed names first, falling back to legacy v3 names. Uses a `pick()` helper to coalesce across variants. Affects every field the function returns.
+- Per-field FMP enrichment in `getFundamentalsSnapshot` updated to include `debtToEquityRatioTTM` as the first variant tried. ROE coverage was already correct.
+
+**Files:** `server/snapshot/fundamentals.ts`.
+
+**Expected impact:** PLTR's D/E will now show **~2.5%** (PLTR has very low debt — `totalDebt $229M / equity $7.4B`). Balance Sheet Quality category will score ~8 (D/E < 30 → +2, current ratio > 2 → +1). KO and F should also populate properly.
+
+Rollback tag: `safe/2026-05-06-pre-fmp-stable-fields`.
+
+---
 ## 2026-05-06 — Fundamentals FMP fallback: try multiple FMP field-name variants
 
 **Why:** Owner reports D/E still N/A on PLTR after the previous fallback shipped. Diagnosis: FMP's stable API returns ratio fields with a `TTM` suffix on the `/ratios-ttm` endpoint (e.g. `debtEquityRatioTTM`), not the v3-style `debtEquityRatio` the existing `fundamentalsFromFmp` was reading. The fallback was firing but reading `r.debtEquityRatio` which doesn't exist on the stable response, so it always got null. Confirmed by owner that MSFT (which Polygon returns D/E for) shows correctly — so the issue was specifically that the FMP fallback never produced a value.
