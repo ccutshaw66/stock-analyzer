@@ -164,7 +164,7 @@ export async function getOwnershipSnapshot(
           shares: f.shares,
           value: f.value,
           pctHeld: f.pctHeld * 100,
-          changeQoQ: 0, // fund-tab QoQ is a follow-up
+          changeQoQ: f.changeQoQ,
           reportDate: f.reportDate,
         }));
 

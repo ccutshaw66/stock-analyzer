@@ -39,6 +39,7 @@ export interface FmpInstitutionalSummary {
     shares: number;
     value: number;
     pctHeld: number;       // 0..1 fraction (matches EDGAR shape)
+    changeQoQ: number;     // Percent change vs prior quarter (e.g. +5.2). 0 when no prior baseline.
     reportDate: string | null;
     accession: string | null;
     cik: string | null;
@@ -51,7 +52,7 @@ export interface FmpInstitutionalSummary {
     shares: number;
     value: number;
     pctHeld: number;
-    changeQoQ: number;     // 0 — FMP holders endpoint doesn't expose pctChange
+    changeQoQ: number;     // Percent change vs prior quarter; computed from a second FMP fetch.
     reportDate: string | null;
   }>;
   institutionPct: number;       // percentage 0..100 (matches EDGAR shape)
@@ -236,6 +237,23 @@ function quarterEndDate(year: number, quarter: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function previousQuarter(q: { year: number; quarter: number }): { year: number; quarter: number } {
+  let { year, quarter } = q;
+  quarter -= 1;
+  if (quarter < 1) { quarter = 4; year -= 1; }
+  return { year, quarter };
+}
+
+/** Match the org-name normalizer used by other QoQ-merging code paths. */
+function normalizeOrgName(s: string): string {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[.,&'/]/g, " ")
+    .replace(/\b(inc|incorporated|corp|corporation|ltd|limited|llc|lp|llp|plc|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Returns true when FMP Ultimate-tier institutional endpoints should be
  * used as the primary source. Reads `FMP_TIER` env var. Default off.
@@ -261,7 +279,7 @@ export async function getFmpInstitutional(
   ticker: string,
 ): Promise<FmpInstitutionalSummary | null> {
   const T = ticker.toUpperCase();
-  const cacheKey = `fmp-inst:v3:${T}`;
+  const cacheKey = `fmp-inst:v4:${T}`; // v4 — adds changeQoQ on topHolders
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
     recordCacheHit();
@@ -320,20 +338,60 @@ export async function getFmpInstitutional(
       }
     }
 
+    // Prior-quarter holders for QoQ computation. One extra FMP call per
+    // ticker on cache miss (cheap on Ultimate's 3000 req/min budget). Empty
+    // map on failure → all rows fall back to changeQoQ=0 instead of breaking
+    // the response.
+    const priorByName = new Map<string, number>();
+    if (usedQuarter) {
+      const prevQ = previousQuarter(usedQuarter);
+      const priorRows = await fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", {
+        symbol: T,
+        year: prevQ.year,
+        quarter: prevQ.quarter,
+        page: 0,
+        limit: 100,
+      }).catch((e: any) => {
+        log.debug({ ticker: T, prevQ, err: String(e?.message || e) }, "prior-quarter holders fetch failed");
+        return null;
+      });
+      if (Array.isArray(priorRows)) {
+        for (const ph of priorRows) {
+          const k = normalizeOrgName(String(ph.investorName || ph.holder || ph.name || ""));
+          if (!k) continue;
+          const prevShares = Number(ph.sharesNumber || ph.shares || ph.position || 0);
+          // Sum if multiple report rows per filer (e.g. amended filings).
+          priorByName.set(k, (priorByName.get(k) ?? 0) + prevShares);
+        }
+      }
+    }
+
+    const qoqPct = (name: string, currentShares: number): number => {
+      if (!Number.isFinite(currentShares) || currentShares <= 0) return 0;
+      const prev = priorByName.get(normalizeOrgName(name)) ?? 0;
+      if (prev <= 0) return 0; // unknown prior baseline — report 0 rather than +∞
+      return ((currentShares - prev) / prev) * 100;
+    };
+
     // Top holders mapped to the EDGAR-compatible shape.
     let topHolders: FmpInstitutionalSummary["topHolders"] = [];
     if (Array.isArray(holders)) {
-      topHolders = holders.map((h: any) => ({
-        name: String(h.investorName || h.holder || h.name || "Unknown"),
-        shares: Number(h.sharesNumber || h.shares || h.position || 0),
-        value: Number(h.marketValue || h.value || 0),
-        // FMP returns weight as a percentage (e.g. 9.65). EDGAR shape uses a
-        // fraction (0.0965). Convert.
-        pctHeld: Number(h.weight || h.weightPercent || h.ownership || 0) / 100,
-        reportDate: (h.date || h.dateReported || null) as string | null,
-        accession: null,
-        cik: h.cik ? String(h.cik) : null,
-      }));
+      topHolders = holders.map((h: any) => {
+        const name = String(h.investorName || h.holder || h.name || "Unknown");
+        const shares = Number(h.sharesNumber || h.shares || h.position || 0);
+        return {
+          name,
+          shares,
+          value: Number(h.marketValue || h.value || 0),
+          // FMP returns weight as a percentage (e.g. 9.65). EDGAR shape uses a
+          // fraction (0.0965). Convert.
+          pctHeld: Number(h.weight || h.weightPercent || h.ownership || 0) / 100,
+          changeQoQ: qoqPct(name, shares),
+          reportDate: (h.date || h.dateReported || null) as string | null,
+          accession: null,
+          cik: h.cik ? String(h.cik) : null,
+        };
+      });
       // Sort by shares descending to mirror EDGAR's ordering.
       topHolders.sort((a, b) => b.shares - a.shares);
     }
@@ -365,7 +423,7 @@ export async function getFmpInstitutional(
         shares: h.shares,
         value: h.value,
         pctHeld: h.pctHeld,
-        changeQoQ: 0,
+        changeQoQ: h.changeQoQ,
         reportDate: h.reportDate,
       }));
 

@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-06 — Institutional page QoQ %: real numbers instead of all-zeros
+
+**Why:** Top Institutions and Top Funds tables on the Institutional page both showed `0.0%` in the "QoQ Change" column for every row. Root cause: `parseInstitutionalData` (`server/routes.ts`) merged QoQ deltas from Yahoo's `institutionOwnership.pctChange`, but under `FMP_TIER=ultimate` Yahoo is killed in `getInstitutionalData`, so the merge map was always empty and every row fell back to 0. The FMP-Ultimate path (`getFmpInstitutional`) did not compute QoQ at all — `topHolders` had no `changeQoQ` field and `topFunds` hardcoded it to `0` with a comment explicitly flagging the gap.
+
+**What:**
+- `server/data/providers/fmp-institutional.ts`: added `changeQoQ: number` to the `topHolders` interface. After fetching the current quarter's holders, the function now also fetches the prior quarter from `/institutional-ownership/extract-analytics/holder` and builds a normalized name → prevShares map. For each top holder and each top fund, computes `(current - prev) / prev * 100`. Returns 0 for new positions (unknown baseline) rather than `+∞`. Cache key bumped `fmp-inst:v3` → `v4` so stale pre-fix entries don't serve `undefined` for the new field. One extra FMP call per ticker on cache miss (cheap on Ultimate's 3000 req/min budget); existing 24h cache absorbs it.
+- `server/routes.ts` `parseInstitutionalData`: top-holders mapping now reads `h.changeQoQ` directly from the FMP response (with a fallback to the legacy Yahoo merge for the EDGAR-only emergency path, which under Ultimate is empty anyway). Funds path was already reading `f.changeQoQ` so it just starts working as soon as FMP populates the field.
+- `server/snapshot/institutional.ts`: the FMP-path top-funds mapping previously hardcoded `changeQoQ: 0` ("fund-tab QoQ is a follow-up"); now reads `f.changeQoQ` from the unified FMP source. The institutions-side prior-quarter diff in this file (lines 117-155) is now redundant with the FMP-side computation but still correct — leaving for a separate cleanup pass.
+
+**Files:** `server/data/providers/fmp-institutional.ts`, `server/routes.ts`, `server/snapshot/institutional.ts`.
+
+Rollback tag: `safe/2026-05-06-inst-qoq`.
+
+---
 ## 2026-05-06 — FMP YoY revenueGrowth + earningsGrowth (regression fix from FMP-primary cutover)
 
 **Why:** Verifying the FMP-primary cutover on PLTR diag, every field was correctly sourced from FMP, BUT Business Quality reasoning showed `"Rev growth N/A"` where Polygon used to give 56.2%. FMP `/ratios-ttm` doesn't expose `revenueGrowth` or `earningsGrowth` because those metrics need YoY comparison of two periods. The existing `fundamentalsFromFmp` even commented this out: `// would need YoY comparison of two periods`.

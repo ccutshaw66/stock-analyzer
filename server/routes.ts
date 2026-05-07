@@ -717,13 +717,13 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const fundOwnership: any[] = raw?.fundOwnership?.ownershipList || [];
   const majorBreakdown: any = raw?.majorHoldersBreakdown || {};
 
-  // Build a name -> pctChange index from Yahoo's institutionOwnership so we
-  // can merge real QoQ changes into the EDGAR-sourced rows. EDGAR has the
-  // authoritative shares/value/% held figures (more recent and complete than
-  // Yahoo) but does not expose quarter-over-quarter delta — that comes from
-  // Yahoo. Names rarely match exactly across the two sources (EDGAR uses
-  // legal entity names with full corp suffixes, Yahoo trims), so we
-  // normalize both sides before joining.
+  // QoQ change source:
+  //   - FMP Ultimate path: `getFmpInstitutional` now diffs the prior 13F quarter
+  //     and writes `changeQoQ` directly onto each top holder. We just read it.
+  //   - EDGAR fallback path: `topHolders` from EDGAR has no QoQ field. Yahoo's
+  //     `institutionOwnership.pctChange` was the historical merge source, but
+  //     under FMP_TIER=ultimate the Yahoo modules are nulled out by
+  //     getInstitutionalData, so this map will be empty and rows fall back to 0.
   const normalizeOrgName = (s: string): string =>
     String(s || "")
       .toLowerCase()
@@ -740,16 +740,16 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     if (Number.isFinite(pct)) yahooQoQByName.set(key, pct);
   }
 
-  // Top institutional holders (EDGAR 13F + Yahoo QoQ delta where available)
-  let topInstitutions = (edgar?.topHolders ?? []).map(h => ({
+  // Top institutional holders. FMP path provides changeQoQ directly; EDGAR
+  // path tries the (likely empty) Yahoo merge as a last-ditch.
+  let topInstitutions = (edgar?.topHolders ?? []).map((h: any) => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
     pctHeld: h.pctHeld,
-    // changeQoQ: Yahoo's pctChange is a fraction (0.05 = 5%); convert to
-    // the percent the frontend renders. Falls back to 0 when no match,
-    // which is preferable to omitting the column entirely.
-    changeQoQ: (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
+    changeQoQ: Number.isFinite(h.changeQoQ)
+      ? Number(h.changeQoQ)
+      : (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
     reportDate: h.reportDate,
     accession: h.accession,
     cik: h.cik,
