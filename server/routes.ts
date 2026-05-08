@@ -3277,10 +3277,15 @@ export async function registerRoutes(
         combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from any strategy";
       }
 
-      // Chart data (subsample for frontend — every 3rd bar for ~80-90 points)
+      // Chart data — uniformly sampled at `step` PLUS any bar with a signal,
+      // so dots are never silently dropped by the subsampling. Was: pure
+      // every-step sampling, which meant signals on non-sampled bars never
+      // rendered (5Y chart showed 2 dots out of dozens of fires; 1Y showed 0).
       const step = Math.max(1, Math.floor(closes.length / 120));
       const chartDataArr: any[] = [];
-      for (let i = 0; i < closes.length; i += step) {
+      for (let i = 0; i < closes.length; i++) {
+        const hasSignal = !!(bbtcSignals[i] || verSignals[i]);
+        if (i % step !== 0 && !hasSignal) continue;
         chartDataArr.push({
           date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
           close: Number(closes[i].toFixed(2)),
