@@ -174,10 +174,14 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
     const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
     const trendStrong = !isNaN(adx14[i]) && adx14[i] >= MIN_ADX_FOR_ENTRY;
-    // Regime gates: long entries when price > SMA200 (or SMA200 not yet
-    // computed), short entries only when price < SMA200 (real bear regime).
+    // Regime gates. Symmetric: when SMA200 is NaN (early in series, before
+    // 200-bar warmup completes), both sides default to true and rely on the
+    // other entry conditions (EMA50 side + ADX). Without this symmetry the
+    // SMA200=NaN bars silently blocked all shorts on charts shorter than
+    // 200 bars (Trade Analysis 1Y fetches give SMA200 valid only for the
+    // last ~50 bars), producing the "no short dots ever" UI bug.
     const longRegimeOk = isNaN(sma200[i]) ? true : closes[i] > sma200[i];
-    const shortRegimeOk = !isNaN(sma200[i]) && closes[i] < sma200[i];
+    const shortRegimeOk = isNaN(sma200[i]) ? true : closes[i] < sma200[i];
 
     if (!inPosition) {
       if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk) {
