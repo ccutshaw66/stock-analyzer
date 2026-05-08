@@ -5022,6 +5022,32 @@ export async function registerRoutes(
   // dropped (i.e., what computeScoring effectively does today).
   // ================================================================
 
+  // Strategy evaluator. Runs computeBBTC + computeVER on a basket of tickers
+  // for the past N days and returns per-fire metadata + win-rate aggregates.
+  // Used to ground strategy-tuning decisions in data instead of intuition.
+  //
+  //   GET /api/diag/strategy-eval?symbols=AAPL,MSFT,...&days=365[&detail=1]
+  //
+  // Default omits per-fire detail to keep the payload small. Pass detail=1
+  // to include every fire record per ticker. Cap of 100 symbols per call.
+  app.get("/api/diag/strategy-eval", async (req, res) => {
+    try {
+      const { runStrategyEval } = await import("./diag/strategy-eval");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 730);
+      const detail = String(req.query.detail || "") === "1";
+      const result = await runStrategyEval(symbols, days, detail);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-eval failed" });
+    }
+  });
+
   // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
   // exactly what FMP's symbol-positions-summary + extract-analytics/holder
   // endpoints return for a ticker. Used for diagnosing field-name drift on
