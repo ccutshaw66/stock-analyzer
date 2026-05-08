@@ -43,6 +43,46 @@ Rollback tag: `safe/2026-05-07-scanner-diversity`.
 Rollback tag: `safe/2026-05-07-scanner-fixes`.
 
 ---
+## 2026-05-08 — Strategy overhaul (data-driven, from /api/diag/strategy-eval results)
+
+**Why:** Owner's visual inspection of ORCL/NVTS/GLW/DOCS/TOST/BABA charts flagged that buy/sell dots were firing at the wrong RSI levels. Built `/api/diag/strategy-eval` (read-only, runs `computeBBTC` + `computeVER` over a basket and reports forward-return win rates) and pulled an 81-ticker, 11-sector basket over 365 days (1,321 fires, SPY benchmark +25.64%). Data confirmed the visual diagnosis and surfaced more.
+
+**Key data findings:**
+- **BBTC_BUY (542 fires)**: zero fires below RSI 50. Median RSI at fire = **57.2**. Win rate 53% at +5d, 52% at +20d. Mean +20d return only +0.96% vs SPY's ~6.8%/20d. 30% stopped within 20 days. The chart legend "Buy (RSI<30)" was structurally false because BBTC requires price > EMA50, which correlates with mid/high RSI.
+- **BBTC_SELL (447 fires)**: 47% win rate at +5d (worse than random). Median +20d return **-0.62%** (shorts went up). 34% stopped. Net loser.
+- **BBTC_ADD_LONG (80 fires)**: 71% win rate at +20d, +2.41% median return. The one strategy with real edge.
+- **VER_BUY post-tightening (4 fires)**: too rare to be useful even when win rate looked OK.
+- **VER_SELL (4 fires)**: 0% win rate at +20d (4/4 wrong-way), 100% stopped. Structurally broken.
+- **BBTC_STOP_HIT**: positive forward returns after stops (+0.85% median +20d) — stops were premature.
+- **BBTC_REDUCE**: -2.02% mean +20d return after trim — exits firing too early; price kept running.
+
+**Changes shipped:**
+
+1. **BBTC long-only.** Dropped the short-entry path entirely (the !inPosition crossBelow branch). The 447-fire money-losing path is gone. SELL signal still fires as an exit-from-long but never opens a short position.
+2. **BBTC ADX gate.** Entries (BUY and ADD_LONG) now require ADX(14) ≥ 20. Rejects EMA crossings during chop. ADX is computed inline if not passed in input — no caller updates required.
+3. **BBTC stop widened.** 2.0× ATR → 2.5× ATR. Premature stops were causing 30% of longs to get knocked out before a recovery.
+4. **BBTC REDUCE target widened.** 3.0× ATR → 5.0× ATR. Stops trimming winners during continuation.
+5. **VER BUY threshold loosened.** RSI<30 → RSI<35. The strict <30 only fired 4 times in the eval; <35 should produce 15-25× more density while staying in legitimate oversold zone.
+6. **VER short side removed.** SELL and WATCH_SELL signal types deleted from `VERSignal` and `VERTopSignal`. Strategy is now long-only + WATCH + STOP_HIT.
+7. **Chart legend honest.** "Buy (RSI<30)" / "Sell / Stop" / "Watch Sell" → "Entry" / "Watch (oversold setup)" / "Exit / Stop". Three colors, three meanings — no more sell-side dots.
+
+**Files:** `server/signals/strategies/bbtc.ts`, `server/signals/strategies/ver.ts`, `client/src/pages/trade-analysis.tsx`.
+
+**Verification path:** re-run `/api/diag/strategy-eval` with the same 81-ticker basket. Expected:
+- BBTC_BUY count drops ~50% (ADX gate); win rate should rise.
+- BBTC_SELL count → 0.
+- BBTC_ADD_LONG roughly unchanged.
+- BBTC_STOP_HIT count drops; win rate of survivors rises.
+- BBTC_REDUCE count drops sharply; remaining ones at higher RSI.
+- VER_BUY count up 15-25×.
+- VER_SELL / VER_WATCH_SELL → 0.
+- Total fires ~600-800 (was 1321). Aggregate win rate up.
+
+If verification matches expectation, we have a real edge. If not, the data is honest baseline for the next iteration.
+
+Rollback tag: `safe/2026-05-08-strategy-fixes`.
+
+---
 ## 2026-05-07 — Trade Tracker: brokerage cash balance + Total Portfolio card
 
 **Why:** The original cash-balance feature was reverted from main on 2026-05-03 after it broke prod (schema migration not run before deploy). Working code lived on dev but never made it back to main. Chris approved a rewrite + improvement.

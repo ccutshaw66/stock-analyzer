@@ -32,6 +32,10 @@ export interface BBTCInput {
   ema21: number[];
   ema50: number[];
   atr14: number[];
+  /** Optional ADX(14). When provided, BBTC requires ADX >= 20 at entry to
+   *  reject chop-market crossings. Computed inline from highs/lows/closes
+   *  if not passed. */
+  adx14?: number[];
 }
 
 export interface BBTCResult {
@@ -54,16 +58,85 @@ export interface BBTCResult {
 /**
  * Compute the full BBTC signal series.
  *
- * Assumes inputs are already aligned (same length) and indicator arrays have
- * NaN for warmup bars. The internal loop skips bars where any required
- * indicator is NaN.
+ * **Long-only as of 2026-05-08** — short side dropped after the strategy-eval
+ * diag showed BBTC_SELL had a 46.5% +5d win rate (worse than random) and a
+ * negative median return across 447 fires. The cost of those entries
+ * outweighed any value, so the !inPosition crossBelow branch is gone.
+ * SELL still fires as an exit-from-long signal but never opens a short.
+ *
+ * Other tunings from the same data (542 BBTC_BUY fires, 30% stop-out rate
+ * at 20d, REDUCE leaving money on the table):
+ *   - ATR stop widened 2.0× → 2.5× (was firing too tight; forward returns
+ *     after stop were positive, meaning many stops were premature).
+ *   - REDUCE target moved 3.0× → 5.0× (was triggering too early; mean +20d
+ *     return after REDUCE was negative because price kept running).
+ *   - ADX(14) gate at entry: only enter if ADX ≥ 20 (real trend strength).
+ *     Computed inline if not provided in input.
  */
+
+// Wilder's ADX series (14-period). Self-contained so callers don't have to
+// thread it through. Returns NaN for warmup bars.
+function computeADX(highs: number[], lows: number[], closes: number[], period = 14): number[] {
+  const len = closes.length;
+  const adx = new Array(len).fill(NaN);
+  if (len < period * 2 + 1) return adx;
+
+  const tr = new Array(len).fill(0);
+  tr[0] = highs[0] - lows[0];
+  for (let i = 1; i < len; i++) {
+    tr[i] = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1]),
+    );
+  }
+  const plusDM = new Array(len).fill(0);
+  const minusDM = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+    plusDM[i] = upMove > downMove && upMove > 0 ? upMove : 0;
+    minusDM[i] = downMove > upMove && downMove > 0 ? downMove : 0;
+  }
+  let smoothTR = 0, smoothPlusDM = 0, smoothMinusDM = 0;
+  for (let i = 1; i <= period; i++) {
+    smoothTR += tr[i];
+    smoothPlusDM += plusDM[i];
+    smoothMinusDM += minusDM[i];
+  }
+  const dx = new Array(len).fill(NaN);
+  const plusDI0 = (smoothPlusDM / smoothTR) * 100;
+  const minusDI0 = (smoothMinusDM / smoothTR) * 100;
+  dx[period] = (Math.abs(plusDI0 - minusDI0) / Math.max(plusDI0 + minusDI0, 1e-9)) * 100;
+  for (let i = period + 1; i < len; i++) {
+    smoothTR = smoothTR - smoothTR / period + tr[i];
+    smoothPlusDM = smoothPlusDM - smoothPlusDM / period + plusDM[i];
+    smoothMinusDM = smoothMinusDM - smoothMinusDM / period + minusDM[i];
+    const plusDI = (smoothPlusDM / Math.max(smoothTR, 1e-9)) * 100;
+    const minusDI = (smoothMinusDM / Math.max(smoothTR, 1e-9)) * 100;
+    dx[i] = (Math.abs(plusDI - minusDI) / Math.max(plusDI + minusDI, 1e-9)) * 100;
+  }
+  // ADX = Wilder smooth of DX
+  let sum = 0;
+  for (let i = period; i < period * 2; i++) sum += dx[i];
+  adx[period * 2 - 1] = sum / period;
+  for (let i = period * 2; i < len; i++) {
+    adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period;
+  }
+  return adx;
+}
+
+const ATR_STOP_MULT = 2.5;       // was 2.0 — too tight
+const ATR_TRAIL_MULT = 1.5;      // unchanged
+const ATR_TARGET_MULT = 5.0;     // was 3.0 — was reducing too early
+const MIN_ADX_FOR_ENTRY = 20;    // ADX < 20 = chop, skip entry
+
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
+  const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
 
   let inPosition = false;
-  let positionSide: "LONG" | "SHORT" | null = null;
   let entryPrice = 0;
   let highestSinceEntry = 0;
 
@@ -72,48 +145,32 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
 
     const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
     const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
+    const trendStrong = !isNaN(adx14[i]) && adx14[i] >= MIN_ADX_FOR_ENTRY;
 
     if (!inPosition) {
-      if (crossAbove && closes[i] > ema50[i]) {
+      // Long-only entry. Short side dropped per 2026-05-08 eval.
+      if (crossAbove && closes[i] > ema50[i] && trendStrong) {
         signals[i] = "BUY";
         inPosition = true;
-        positionSide = "LONG";
-        entryPrice = closes[i];
-        highestSinceEntry = highs[i];
-      } else if (crossBelow && closes[i] < ema50[i]) {
-        signals[i] = "SELL";
-        inPosition = true;
-        positionSide = "SHORT";
         entryPrice = closes[i];
         highestSinceEntry = highs[i];
       }
     } else {
       highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
-      if (positionSide === "LONG") {
-        const stopLoss = entryPrice - atr14[i] * 2.0;
-        const trailStop = highestSinceEntry - atr14[i] * 1.5;
-        const target = entryPrice + atr14[i] * 3.0;
-        if (lows[i] <= stopLoss || lows[i] <= trailStop) {
-          signals[i] = "STOP_HIT";
-          inPosition = false;
-          positionSide = null;
-        } else if (highs[i] >= target) {
-          signals[i] = "REDUCE";
-        } else if (crossAbove && closes[i] > ema50[i]) {
-          signals[i] = "ADD_LONG";
-        } else if (crossBelow && closes[i] < ema50[i]) {
-          signals[i] = "SELL";
-          inPosition = false;
-          positionSide = null;
-        }
-      } else if (positionSide === "SHORT") {
-        if (crossAbove && closes[i] > ema50[i]) {
-          signals[i] = "BUY";
-          inPosition = false;
-          positionSide = null;
-        } else if (crossBelow && closes[i] < ema50[i]) {
-          signals[i] = "ADD_LONG";
-        }
+      const stopLoss = entryPrice - atr14[i] * ATR_STOP_MULT;
+      const trailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
+      const target = entryPrice + atr14[i] * ATR_TARGET_MULT;
+      if (lows[i] <= stopLoss || lows[i] <= trailStop) {
+        signals[i] = "STOP_HIT";
+        inPosition = false;
+      } else if (highs[i] >= target) {
+        signals[i] = "REDUCE";
+      } else if (crossAbove && closes[i] > ema50[i] && trendStrong) {
+        signals[i] = "ADD_LONG";
+      } else if (crossBelow && closes[i] < ema50[i]) {
+        // Cross-down while in long = exit to flat. Does NOT open a short.
+        signals[i] = "SELL";
+        inPosition = false;
       }
     }
   }
