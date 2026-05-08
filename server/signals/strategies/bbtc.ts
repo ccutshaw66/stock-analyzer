@@ -204,6 +204,10 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
   let inPosition = false;
   let positionSide: "LONG" | "SHORT" | null = null;
   let entryPrice = 0;
+  let entryATR = 0; // ATR at the entry bar — locks the hard stop level for the
+                    // life of the position so an ATR contraction post-entry
+                    // doesn't pull the stop in closer to entry. Trail stop
+                    // continues to use the current bar's ATR (it should adapt).
   let highestSinceEntry = 0;
   let lowestSinceEntry = Number.POSITIVE_INFINITY;
 
@@ -233,6 +237,7 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         inPosition = true;
         positionSide = "LONG";
         entryPrice = closes[i];
+        entryATR = atr14[i];
         highestSinceEntry = highs[i];
         lowestSinceEntry = lows[i];
       } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk && shortRSIok) {
@@ -241,22 +246,22 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         inPosition = true;
         positionSide = "SHORT";
         entryPrice = closes[i];
+        entryATR = atr14[i];
         highestSinceEntry = highs[i];
         lowestSinceEntry = lows[i];
       }
     } else if (positionSide === "LONG") {
       highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
-      const stopLoss = entryPrice - atr14[i] * ATR_STOP_MULT;
+      // Hard stop locked at entry-bar ATR — does NOT shrink if ATR contracts
+      // post-entry (a real bug Chris hit on AAPL 5Y: enter on a volatile bar
+      // when ATR=$5, ATR contracts to $3 the next week, stop pulls in from
+      // $187.50 → $192.50 and a normal pullback inside trend triggers it).
+      const stopLoss = entryPrice - entryATR * ATR_STOP_MULT;
+      // Trail stop uses CURRENT ATR — it should adapt to live volatility, and
+      // it's gated below to only activate once it has ratcheted above entry.
       const rawTrailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
-      // Trailing stop only activates once it has ratcheted ABOVE entry —
-      // i.e. only as a profit-lock once peak > entry + 1.5×ATR. Until then,
-      // the hard 2.5×ATR stop is the sole exit. Without this gate the trail
-      // is anchored to the entry-bar high and can fire on the very next bar
-      // (e.g. AAPL 5Y showed BUY/STOP within a day of each other) — and the
-      // 10y eval confirmed the bug: BBTC_STOP_HIT had +1.06% median return
-      // at +20d post-stop, meaning stops were firing in profitable spots.
       const trailActive = rawTrailStop > entryPrice;
-      const target = entryPrice + atr14[i] * ATR_TARGET_MULT;
+      const target = entryPrice + entryATR * ATR_TARGET_MULT;
       if (lows[i] <= stopLoss || (trailActive && lows[i] <= rawTrailStop)) {
         signals[i] = "STOP_HIT";
         signalSides[i] = "LONG"; // long stop — show in long view only
@@ -281,12 +286,13 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       }
     } else if (positionSide === "SHORT") {
       lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
-      // Mirror of long-side stop math, just flipped. Trailing stop only
-      // activates once it has ratcheted BELOW entry (profit-lock for shorts).
-      const stopLoss = entryPrice + atr14[i] * ATR_STOP_MULT;
+      // Mirror of long-side stop math, just flipped. Hard stop uses entry-bar
+      // ATR (locked); trail uses current ATR (adapts) and only activates once
+      // it has ratcheted BELOW entry (profit-lock for shorts).
+      const stopLoss = entryPrice + entryATR * ATR_STOP_MULT;
       const rawTrailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
       const trailActive = rawTrailStop < entryPrice;
-      const target = entryPrice - atr14[i] * ATR_TARGET_MULT;
+      const target = entryPrice - entryATR * ATR_TARGET_MULT;
       if (highs[i] >= stopLoss || (trailActive && highs[i] >= rawTrailStop)) {
         signals[i] = "STOP_HIT";
         signalSides[i] = "SHORT"; // short stop — show in short view only

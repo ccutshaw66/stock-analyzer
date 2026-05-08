@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Fix: hard stop shrinks with ATR contraction (premature stop-outs)
+
+**Why:** Chris confirmed via tooltip that the green/red dot pairs on AAPL 5Y were `BBTC STOP_HIT (long)` — real hard-stop fires, not REDUCE or cross-down. The trail-fix from the prior commit didn't help because hard stops were firing first.
+
+Root cause: `stopLoss = entryPrice - atr14[i] * ATR_STOP_MULT` uses the *current* bar's ATR, not the entry bar's ATR. When ATR contracts after a volatile entry — which happens routinely as the post-cross volatility settles — the stop level pulls IN closer to entry. A normal pullback inside a continuing trend then trips it.
+
+**Concrete AAPL example:**
+- Enter at $200 with ATR $5 → expected stop $187.50 (6% below)
+- ATR contracts to $3 over the next week → stop now sits at $192.50 (3.75% below)
+- Routine 4% pullback inside trend triggers the stop
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — added `entryATR` position-state variable, captured at entry. Hard stop now locked at `entryPrice - 2.5 × entryATR` for the life of the position. Profit target also locked at `entryPrice + 5 × entryATR` for symmetry. Trailing stop continues to use the current bar's ATR (it should adapt with live volatility — that's the point of a trail). Mirror fix on the short side: hard stop locked at `entryPrice + 2.5 × entryATR`.
+
+**Expected impact:** dramatic reduction in same-week stop-outs on volatile-entry → quiet-followup setups. Long win rate at +20d should rise materially. The 10y eval claim (BBTC_STOP_HIT had +1.06% median return at +20d post-stop = stops firing in profitable spots) was actually evidence of THIS bug, not just the trail-stop one.
+
+**Files:** `server/signals/strategies/bbtc.ts`.
+
+Rollback tag: `safe/2026-05-08-stop-atr-lock`.
+
+---
 ## 2026-05-08 — Fix: trailing stop activates too early, choking entries
 
 **Why:** Chris noticed on AAPL 5Y that BUY and STOP_HIT dots were firing one bar apart. Reading the BBTC code revealed the cause: the trailing stop was anchored to `highestSinceEntry`, which equals the entry-bar high on day 1. The trail level (1.5×ATR below the high) was therefore ~2% below entry on the very first post-entry bar — *tighter than the hard 2.5×ATR stop*. Any normal pullback within a continuing trend triggered an immediate stop-out.
