@@ -5103,7 +5103,7 @@ export async function registerRoutes(
         .filter(Boolean)
         .slice(0, 100);
       if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
-      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 730);
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
       const detail = String(req.query.detail || "") === "1";
       const sideRaw = String(req.query.side || "both").toLowerCase();
       const side: "long" | "short" | "both" =
