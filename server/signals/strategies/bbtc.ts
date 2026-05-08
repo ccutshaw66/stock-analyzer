@@ -165,7 +165,13 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         inPosition = false;
       } else if (highs[i] >= target) {
         signals[i] = "REDUCE";
-      } else if (crossAbove && closes[i] > ema50[i] && trendStrong) {
+      } else if (crossAbove && closes[i] > ema50[i]) {
+        // ADD_LONG fires during pullback re-entries within an existing long.
+        // Critically, ADX is NOT required here — pullbacks naturally drag
+        // ADX below 20 even inside strong trends, so the gate would silently
+        // kill the highest-win-rate signal in the system. The initial BUY
+        // already validated trend strength; ADD_LONG just needs the EMA
+        // re-cross + price-above-EMA50 confirmation.
         signals[i] = "ADD_LONG";
       } else if (crossBelow && closes[i] < ema50[i]) {
         // Cross-down while in long = exit to flat. Does NOT open a short.
