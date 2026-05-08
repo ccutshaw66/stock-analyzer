@@ -464,6 +464,58 @@ function rangeStringToDays(range: string): number {
  * FMP /historical-price-eod/full → Yahoo-shape converter for the short/mid
  * range path. Single call (FMP caps at ~5000 rows ≈ 20y).
  */
+/**
+ * Fetch a chart with ~200 trading days of indicator warmup PREPENDED before
+ * the user-visible window. Indicators (SMA200, EMA50, etc.) need history to
+ * compute correctly; without warmup, a 1Y chart shows blank EMAs/SMA200 for
+ * the first ~200 of 252 bars. With this helper, the full returned series has
+ * valid indicators throughout, and `displayStartIdx` tells the caller where
+ * the user's actual window begins.
+ *
+ * Caller should compute strategies on the full series, then slice chartData
+ * for display at `displayStartIdx`.
+ */
+async function fmpChartWithWarmup(
+  symbol: string,
+  range: string,
+  warmupTradingDays = 200,
+): Promise<{ chart: any; displayStartIdx: number } | null> {
+  const displayDays = rangeStringToDays(range);
+  // Trading-days → calendar-days conversion factor ≈ 365/252 = 1.45.
+  const warmupCalendarDays = Math.round(warmupTradingDays * 1.45);
+  const totalDays = displayDays + warmupCalendarDays;
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - totalDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  try {
+    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol, from, to });
+    const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+    if (rows.length === 0) return null;
+    const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const displayStartTs = Math.floor((Date.now() - displayDays * 24 * 60 * 60 * 1000) / 1000);
+    let displayStartIdx = 0;
+    for (let i = 0; i < asc.length; i++) {
+      const ts = Math.floor(new Date(asc[i].date).getTime() / 1000);
+      if (ts >= displayStartTs) { displayStartIdx = i; break; }
+    }
+    return {
+      chart: {
+        timestamp: asc.map(r => Math.floor(new Date(r.date).getTime() / 1000)),
+        indicators: { quote: [{
+          close: asc.map(r => Number(r.close)),
+          open: asc.map(r => Number(r.open)),
+          high: asc.map(r => Number(r.high)),
+          low: asc.map(r => Number(r.low)),
+          volume: asc.map(r => Number(r.volume)),
+        }] },
+      },
+      displayStartIdx,
+    };
+  } catch (err) {
+    console.log(`[chart-warmup] FMP failed for ${symbol} ${range}:`, (err as Error).message);
+    return null;
+  }
+}
+
 async function fmpChartShortRange(symbol: string, range: string): Promise<any> {
   const days = rangeStringToDays(range);
   const to = new Date().toISOString().slice(0, 10);
@@ -3044,14 +3096,18 @@ export async function registerRoutes(
     const tf = parseTimeframe(req);
     try {
       await ensureReady();
-      // Primary daily bars use user-selected timeframe (drives RSI/BBTC/AMC).
-      // 2-year weekly is structural context for SMA200 and stays fixed.
-      const [chart1YResult, chart2YResult] = await Promise.allSettled([
-        getChart(ticker, tf.range, tf.interval),
+      // Primary daily bars: fetch user range + 200 trading days of warmup
+      // so SMA200/EMA50/etc. are valid throughout the displayed window.
+      // Without warmup, a 1Y chart had SMA200 NaN for the first ~200 bars.
+      // 2-year weekly stays fixed for separate weekly SMA200 context.
+      const [chart1YWarmup, chart2YResult] = await Promise.allSettled([
+        fmpChartWithWarmup(ticker, tf.range, 200),
         getChart(ticker, "2y", "1wk"),
       ]);
 
-      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+      const warmupResult = chart1YWarmup.status === "fulfilled" ? chart1YWarmup.value : null;
+      const chart1Y = warmupResult?.chart ?? null;
+      const displayStartIdx = warmupResult?.displayStartIdx ?? 0;
       const chart2Y = chart2YResult.status === "fulfilled" ? chart2YResult.value : null;
 
       if (!chart1Y || !chart1Y.timestamp) {
@@ -3277,15 +3333,18 @@ export async function registerRoutes(
         combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from any strategy";
       }
 
-      // Chart data — uniformly sampled at `step` PLUS any bar with a signal,
-      // so dots are never silently dropped by the subsampling. Was: pure
-      // every-step sampling, which meant signals on non-sampled bars never
-      // rendered (5Y chart showed 2 dots out of dozens of fires; 1Y showed 0).
-      const step = Math.max(1, Math.floor(closes.length / 120));
+      // Chart data — strategies computed on the full series (incl. warmup
+      // bars), but the chart only RENDERS from displayStartIdx forward so
+      // the user sees only their requested timeframe. Within that window,
+      // uniformly sample at `step` PLUS include any bar with a signal so
+      // dots aren't silently dropped.
+      const displayLen = closes.length - displayStartIdx;
+      const step = Math.max(1, Math.floor(displayLen / 120));
       const chartDataArr: any[] = [];
-      for (let i = 0; i < closes.length; i++) {
+      for (let i = displayStartIdx; i < closes.length; i++) {
         const hasSignal = !!(bbtcSignals[i] || verSignals[i]);
-        if (i % step !== 0 && !hasSignal) continue;
+        const offset = i - displayStartIdx;
+        if (offset % step !== 0 && !hasSignal) continue;
         chartDataArr.push({
           date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
           close: Number(closes[i].toFixed(2)),
