@@ -1289,7 +1289,7 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   // ── Strategies (SHARED helpers — single source of truth for BBTC/VER/AMC) ──
   // This is the ONLY computation path for scanner + watchlist + portfolio pip +
   // /api/analyze. Any divergence is a bug. Do NOT inline strategy logic here.
-  const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+  const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
   const bbtcSignal = bbtcResult.topSignal;
   const bbtcBias = bbtcResult.bias;
   const bbtcTrend = bbtcResult.trend;

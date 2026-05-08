@@ -164,11 +164,15 @@ function LoadingState() {
 // "short" hides buy-side dots, "both"/undefined shows everything.
 //
 // Color/shape tiers:
-//   green dot    — long entry (BBTC_BUY/ADD_LONG, VER BUY)
-//   amber dot    — long watch (VER WATCH_BUY, RSI 35-45)
-//   red dot      — long exit / short entry (BBTC_SELL, BBTC_STOP_HIT,
-//                  BBTC_REDUCE, VER_STOP_HIT, BBTC_SELL-as-short, VER SELL)
-//   orange dot   — short watch (VER WATCH_SELL, RSI 65-75)
+//   green dot       — long entry (BBTC_BUY/ADD_LONG, VER BUY)
+//   amber dot       — long watch (VER WATCH_BUY, RSI 35-45)
+//   red dot         — long exit / short entry (BBTC_SELL, BBTC_STOP_HIT,
+//                     BBTC_REDUCE, VER_STOP_HIT, VER SELL)
+//   hollow orange   — VER WATCH_SELL (RSI 65-80). INFO-ONLY: hollow ring
+//                     with no fill, signaling "RSI overbought — be aware,
+//                     not a tradeable signal." Per the 10-year backtest
+//                     this rule was a net loser (43% win, -1.06% median);
+//                     kept as an awareness marker pending rebuild.
 function SignalDot(props: any) {
   const { cx, cy, payload } = props;
   if (!payload) return null;
@@ -187,12 +191,26 @@ function SignalDot(props: any) {
 
   if (!isLongEntry && !isLongWatch && !isShortEntry && !isShortWatch && !isExit) return null;
 
+  // Info-only short watch: hollow ring, distinct from tradeable solid dots.
+  if (isShortWatch) {
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={3.5}
+        fill="none"
+        stroke="#f97316"
+        strokeWidth={1.5}
+        strokeDasharray="2 2"
+      />
+    );
+  }
+
   const fill =
     isLongEntry  ? "#22c55e" :
     isLongWatch  ? "#eab308" :
-    isShortWatch ? "#f97316" :
     "#ef4444"; // shortEntry + exit
-  const r = (isLongWatch || isShortWatch) ? 4 : 5;
+  const r = isLongWatch ? 4 : 5;
   return (
     <circle
       cx={cx}
@@ -927,8 +945,11 @@ export default function TradeAnalysis() {
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Short / Stop
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-orange-500" /> Short watch (RSI 65-75)
+                <span className="flex items-center gap-1.5" title="Info-only marker — RSI overbought condition. Not a tradeable signal per the 10-year backtest.">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: "transparent", border: "1.5px dashed #f97316" }}
+                  /> Short watch (info-only, RSI 65-80)
                 </span>
               </div>
             </CardContent>

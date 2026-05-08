@@ -1,13 +1,14 @@
 /**
  * VER — Volume Exhaustion Reversal strategy (single source of truth).
  *
- * **Both-sides, tightened-threshold (revised 2026-05-08).**
+ * **Tightened thresholds, WATCH_SELL info-only (revised 2026-05-08).**
  *
- * Earlier same-day commit dropped the short side after the eval showed 0/4
- * VER_SELL fires worked at +20d. That was over-correction — n=4 isn't a
- * verdict, and the eval window was a +26% bull tape where shorts of any
- * kind struggled. Restored both sides with tighter RSI thresholds so
- * SELL only fires on real exhaustion, not mild overbought.
+ * Per the 10-year backtest (3,006 fires across 80 tickers, 2015-2026):
+ *   - VER_BUY: 67% win rate at +20d, +2.26% median return — strongest signal in the system
+ *   - VER_SELL: 14% win rate at +20d (n=7), -4.53% median return — kept but tightened
+ *   - VER_WATCH_SELL: 43% win rate at +20d (n=82), -1.06% median — net loser across all
+ *     three tested windows (2y, 5y, 10y). Demoted to info-only; still computed for the
+ *     UI tooltip/legend but excluded from "tradeable signal" UX surfaces.
  *
  * Entry tiers (long side):
  *   BUY        — bullish RSI divergence + volume ≥ 2× 20-bar avg + lower BB
@@ -16,9 +17,12 @@
  *
  * Entry tiers (short side):
  *   SELL       — bearish RSI divergence + volume ≥ 2× 20-bar avg + upper BB
- *                touch + closed back inside, with RSI > 75 (was 70 — tighter
- *                so only deep exhaustion fires).
- *   WATCH_SELL — same conditions, RSI 65-75 (was 60-70).
+ *                touch + closed back inside, with RSI > 80 (was 75 — tightened
+ *                further so only the most extreme exhaustion fires).
+ *   WATCH_SELL — same conditions, RSI 65-80. Info-only; not tradeable.
+ *                See `tradeable` flag on the result. Slated for full rebuild
+ *                in a follow-up — current rule has been a net loser across
+ *                every backtested window.
  *
  * Exit:
  *   STOP_HIT   — fires when an active long (BUY) or short (SELL) busts. Long
@@ -30,6 +34,16 @@
 
 export type VERSignal = "BUY" | "WATCH_BUY" | "SELL" | "WATCH_SELL" | "STOP_HIT" | null;
 export type VERTopSignal = "HOLD" | "ENTER" | "WATCH" | "SELL" | "STOPPED";
+
+/**
+ * Whether a VER signal represents a tradeable action (entry/exit) vs an
+ * informational marker. WATCH_SELL is info-only as of the 2026-05-08 rebuild
+ * decision — net-loser across all backtested windows, kept for awareness only.
+ */
+export function isTradeableVERSignal(sig: VERSignal): boolean {
+  if (sig === "WATCH_SELL") return false;
+  return sig !== null;
+}
 
 export interface VERInput {
   closes: number[];
@@ -158,11 +172,14 @@ export function computeVER(input: VERInput): VERResult {
       const closedBackInsideUpper = closes[i] < bbUpper[i];
 
       if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
-        if (rsi14[i] > 75) {
+        if (rsi14[i] > 80) {
           signals[i] = "SELL";
           position = "short";
           entryPrice = closes[i];
         } else if (rsi14[i] > 65) {
+          // WATCH_SELL fires but is treated as info-only by callers (charts /
+          // alerts / UX). Still emitted so the UI can render an "RSI overbought"
+          // tooltip and so the eval continues to track it for the rebuild.
           signals[i] = "WATCH_SELL";
         }
       }

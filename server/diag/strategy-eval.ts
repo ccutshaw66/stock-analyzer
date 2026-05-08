@@ -211,7 +211,7 @@ async function evalTicker(symbol: string, days: number): Promise<TickerEval | nu
   const bb = computeBollinger(b.close, 20, 2);
   const volAvg20 = computeVolAvg(b.volume, 20);
 
-  const bbtc = computeBBTC({ closes: b.close, highs: b.high, lows: b.low, ema9, ema21, ema50, atr14 });
+  const bbtc = computeBBTC({ closes: b.close, highs: b.high, lows: b.low, ema9, ema21, ema50, atr14, rsi14 });
   const ver = computeVER({
     closes: b.close, highs: b.high, lows: b.low, volumes: b.volume,
     rsi14, bbUpper: bb.upper, bbLower: bb.lower, volAvg20, atr14,

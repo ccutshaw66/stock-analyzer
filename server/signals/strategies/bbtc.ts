@@ -36,6 +36,11 @@ export interface BBTCInput {
    *  reject chop-market crossings. Computed inline from highs/lows/closes
    *  if not passed. */
   adx14?: number[];
+  /** Optional RSI(14). When provided, BBTC requires RSI < 65 on long
+   *  entries (BUY/ADD_LONG) and RSI > 35 on short entries to filter out
+   *  late-cycle entries chasing extended momentum. Per 10-year eval, the
+   *  60-70 and >70 RSI buckets are the lower-edge entries we want to cut. */
+  rsi14?: number[];
 }
 
 export interface BBTCResult {
@@ -143,6 +148,31 @@ const ATR_STOP_MULT = 2.5;       // was 2.0 — too tight
 const ATR_TRAIL_MULT = 1.5;      // unchanged
 const ATR_TARGET_MULT = 5.0;     // was 3.0 — was reducing too early
 const MIN_ADX_FOR_ENTRY = 20;    // ADX < 20 = chop, skip entry
+const MAX_RSI_FOR_LONG_ENTRY = 65;  // RSI ceiling for long entries (10y eval cut)
+const MIN_RSI_FOR_SHORT_ENTRY = 35; // RSI floor for short entries (mirror)
+
+// RSI(14) — Wilder's. Self-contained so callers don't have to thread it.
+function computeRSISeries(closes: number[], period: number): number[] {
+  const rsi = new Array(closes.length).fill(NaN);
+  if (closes.length <= period) return rsi;
+  let gainSum = 0, lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = closes[i] - closes[i - 1];
+    if (ch > 0) gainSum += ch; else lossSum -= ch;
+  }
+  let avgGain = gainSum / period;
+  let avgLoss = lossSum / period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const ch = closes[i] - closes[i - 1];
+    const g = ch > 0 ? ch : 0;
+    const l = ch < 0 ? -ch : 0;
+    avgGain = (avgGain * (period - 1) + g) / period;
+    avgLoss = (avgLoss * (period - 1) + l) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return rsi;
+}
 
 // SMA200 — long-term regime indicator. Self-contained for the same reason
 // ADX is: callers don't need to thread it through.
@@ -159,6 +189,7 @@ function computeSMA(data: number[], period: number): number[] {
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
+  const rsi14 = input.rsi14 ?? computeRSISeries(closes, 14);
   const sma200 = computeSMA(closes, 200);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
 
@@ -182,16 +213,20 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     // last ~50 bars), producing the "no short dots ever" UI bug.
     const longRegimeOk = isNaN(sma200[i]) ? true : closes[i] > sma200[i];
     const shortRegimeOk = isNaN(sma200[i]) ? true : closes[i] < sma200[i];
+    // RSI gate. NaN bars (early in series) default to true so warmup doesn't
+    // silently block all entries — same defensive pattern as SMA200 above.
+    const longRSIok = isNaN(rsi14[i]) ? true : rsi14[i] < MAX_RSI_FOR_LONG_ENTRY;
+    const shortRSIok = isNaN(rsi14[i]) ? true : rsi14[i] > MIN_RSI_FOR_SHORT_ENTRY;
 
     if (!inPosition) {
-      if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk) {
+      if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk && longRSIok) {
         signals[i] = "BUY";
         inPosition = true;
         positionSide = "LONG";
         entryPrice = closes[i];
         highestSinceEntry = highs[i];
         lowestSinceEntry = lows[i];
-      } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk) {
+      } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk && shortRSIok) {
         signals[i] = "SELL";
         inPosition = true;
         positionSide = "SHORT";
@@ -210,10 +245,11 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         positionSide = null;
       } else if (highs[i] >= target) {
         signals[i] = "REDUCE";
-      } else if (crossAbove && closes[i] > ema50[i]) {
+      } else if (crossAbove && closes[i] > ema50[i] && longRSIok) {
         // ADD_LONG: pullback re-entry within an existing long. ADX is NOT
         // required here — pullbacks legitimately drag ADX below 20 inside
-        // strong trends.
+        // strong trends. RSI ceiling IS applied — adding to a long at
+        // RSI > 65 is exactly the late-cycle chase we want to avoid.
         signals[i] = "ADD_LONG";
       } else if (crossBelow && closes[i] < ema50[i]) {
         // Cross-down while in long = exit. Does NOT auto-flip to short.

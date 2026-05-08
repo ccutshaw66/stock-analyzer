@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Strategy tightening: BBTC RSI ceiling, VER_SELL > 80, WATCH_SELL info-only
+
+**Why:** 10-year strategy-eval backtest (3,006 fires across 80 tickers, Sep 2015 → May 2026) gave us fact-driven signal quality data across multiple market cycles. Three findings drove this commit, each one chosen as a direct conclusion from the 10y data — not patches:
+
+1. **BBTC long entries skewed to high RSI.** Median RSI at long entry was 57.4; the 60-70 RSI bucket fired 278 times and the 70+ bucket fired 15 times. Late-cycle entries are the lower-edge set we want to cut. **Fix:** RSI < 65 ceiling on BBTC `BUY` and `ADD_LONG`. Mirror floor RSI > 35 on BBTC `SELL` short entries for symmetry. ADX/SMA200 regime gates retained.
+2. **VER_SELL was bad even with the 75 threshold.** Only 7 fires in 10 years, 14% win at +20d, −4.53% median. Tightening rather than dropping (the rule is otherwise correctly structured — it just needs deeper exhaustion). **Fix:** RSI threshold 75 → 80.
+3. **VER_WATCH_SELL was a confirmed net loser across every backtested window.** 82 fires, 43% win at +20d, −1.06% median, −2.11% mean — losing in 2y, 5y, AND 10y windows. Not a single-regime fluke. **Fix:** demoted to info-only — still computed and rendered (hollow dashed orange ring on the chart, "info-only" label in the legend) so users see the RSI overbought condition, but it's no longer a tradeable signal. Full rebuild is queued as a follow-up TODO; do not re-enable as tradeable until a rebuild has positive backtest edge.
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — `BBTCInput` gains optional `rsi14`. Self-contained `computeRSISeries` helper added so callers don't have to thread it. Long-entry path requires `rsi14[i] < 65` (NaN → defaults to true to preserve early-window fires through warmup); short-entry path requires `rsi14[i] > 35`. Same RSI ceiling applies to `ADD_LONG` — adding to a long at high RSI is the late-cycle chase we're filtering.
+- **`server/signals/strategies/ver.ts`** — VER_SELL threshold raised to RSI > 80 (was 75). WATCH_SELL still emits at RSI 65-80 but commented as info-only. New exported `isTradeableVERSignal()` helper returns `false` for WATCH_SELL.
+- **`server/routes.ts`** — both BBTC call sites updated to pass `rsi14`. `/api/analyze` already had `rsi14` in scope; scanner site has `rsi14` computed; in the second site (`/api/scanner` line ~3754) RSI computation moved up before BBTC.
+- **`server/diag/strategy-eval.ts`** — passes `rsi14` to `computeBBTC` so the eval reflects the live strategy.
+- **`server/signal-engine.ts`** — passes `rsi14` to `computeBBTC` (single source of truth path used by scanner/watchlist/portfolio).
+- **`client/src/pages/trade-analysis.tsx`** — `SignalDot` renders WATCH_SELL as a dashed hollow orange ring (no fill) at radius 3.5 instead of a solid orange dot. Legend updated to "Short watch (info-only, RSI 65-80)" with a hollow-circle swatch.
+
+**Files:** `server/signals/strategies/bbtc.ts`, `server/signals/strategies/ver.ts`, `server/routes.ts`, `server/diag/strategy-eval.ts`, `server/signal-engine.ts`, `client/src/pages/trade-analysis.tsx`.
+
+**Validation:** typecheck clean for all touched files (preexisting baseline noise from routes.ts unrelated to this commit).
+
+**Follow-up TODOs (saved to memory):**
+- `todo_ver_watch_sell_rebuild.md` — full rebuild of WATCH_SELL with positive-edge requirement
+- `todo_timeframe_aware_bars.md` — replace zoom-only timeframe selector with real intraday/multi-day bar resolution
+
+Rollback tag: `safe/2026-05-08-strategy-final`.
+
+---
 ## 2026-05-07 — Scanner: shuffle the universe + bump default to 1500
 
 **Why:** After lifting the 200-row cap, the scanner still returned the same tech megacaps every run (ORCL, PLTR, NVDA…). Root cause: `fmpScreener` sorted by dollar volume desc, so the top of the result list was always the most-traded names — overwhelmingly tech.

@@ -3168,7 +3168,7 @@ export async function registerRoutes(
       const sma200Daily = computeSMA(closes, 200);
 
       // ---- Strategy 1: BBTC EMA Pyramid Risk ----
-      const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+      const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
       const bbtcSignals = bbtcResult.signals;
       const entryPrice = bbtcResult.entryPrice;
       const highestSinceEntry = bbtcResult.highestSinceEntry;
@@ -3750,15 +3750,18 @@ export async function registerRoutes(
             const ema21 = computeEMA(closes, 21);
             const ema50 = computeEMA(closes, 50);
             const atr14 = computeATR(highs, lows, closes, 14);
+            // RSI(14) computed up-front so BBTC can use it for the long-entry
+            // ceiling (RSI < 65) and short-entry floor (RSI > 35); VER reuses
+            // the same series below.
+            const rsi14 = computeRSI(closes, 14);
 
-            const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+            const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
             const bbtcSignals = bbtcResult.signals;
             const bbtcTopSignal = bbtcResult.topSignal;
             const bbtcTrend = bbtcResult.trend;
             const bbtcBias = bbtcResult.bias;
 
             // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
-            const rsi14 = computeRSI(closes, 14);
 
             const bbPeriodS = 20;
             const bbStdDevS = 2;
