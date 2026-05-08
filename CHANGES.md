@@ -9,6 +9,16 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Trade Analysis chart: signal name in tooltip
+
+**Why:** Hovering a dot showed price and EMA values but not which signal actually fired. Chris asked to surface the signal name in the existing rollover so a glance at any dot tells you what triggered there.
+
+**What:**
+- **`client/src/pages/trade-analysis.tsx`** — replaced the price-chart `Tooltip` formatter with a custom `content` render. Same look as before for price/EMA/SMA lines (one line each, color-matched), and when a bar has a BBTC or VER signal a divider + colored "Signal: BBTC BUY" / "Signal: VER WATCH_SELL (info-only)" line is appended below. Both can fire on the same bar — both will show. Dot color in the tooltip text matches the dot on the chart.
+
+**Files:** `client/src/pages/trade-analysis.tsx`.
+
+---
 ## 2026-05-08 — Strategy tightening: BBTC RSI ceiling, VER_SELL > 80, WATCH_SELL info-only
 
 **Why:** 10-year strategy-eval backtest (3,006 fires across 80 tickers, Sep 2015 → May 2026) gave us fact-driven signal quality data across multiple market cycles. Three findings drove this commit, each one chosen as a direct conclusion from the 10y data — not patches:

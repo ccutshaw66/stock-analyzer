@@ -892,10 +892,60 @@ export default function TradeAnalysis() {
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
-                      labelFormatter={(l) => l}
-                      formatter={(value: any, name: string) => {
-                        if (value === null) return ["N/A", name];
-                        return [`$${Number(value).toFixed(2)}`, name];
+                      content={({ active, payload, label }: any) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const row = payload[0]?.payload || {};
+                        const b: string | null = row.bbtcSignal || null;
+                        const v: string | null = row.verSignal || null;
+                        // Compose human-readable signal label. Both can fire on the
+                        // same bar; show both when that happens.
+                        const parts: { label: string; color: string }[] = [];
+                        const isInfoOnly = (s: string) => s === "WATCH_SELL";
+                        const colorFor = (s: string) => {
+                          if (s === "BUY" || s === "ADD_LONG") return "#22c55e";
+                          if (s === "WATCH_BUY") return "#eab308";
+                          if (s === "WATCH_SELL") return "#f97316";
+                          return "#ef4444"; // SELL / STOP_HIT / REDUCE
+                        };
+                        if (b) parts.push({ label: `BBTC ${b}`, color: colorFor(b) });
+                        if (v) {
+                          const suffix = isInfoOnly(v) ? " (info-only)" : "";
+                          parts.push({ label: `VER ${v}${suffix}`, color: colorFor(v) });
+                        }
+                        return (
+                          <div
+                            style={{
+                              background: "hsl(var(--card))",
+                              border: "1px solid hsl(var(--border))",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              padding: "8px 10px",
+                              minWidth: 140,
+                            }}
+                          >
+                            <div style={{ marginBottom: 6, fontWeight: 600 }}>{label}</div>
+                            {payload.map((p: any) => (
+                              <div key={p.dataKey} style={{ color: p.color, lineHeight: "16px" }}>
+                                {p.name}: {p.value === null || p.value === undefined ? "N/A" : `$${Number(p.value).toFixed(2)}`}
+                              </div>
+                            ))}
+                            {parts.length > 0 && (
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  paddingTop: 6,
+                                  borderTop: "1px solid hsl(var(--border))",
+                                }}
+                              >
+                                {parts.map((s) => (
+                                  <div key={s.label} style={{ color: s.color, fontWeight: 600, lineHeight: "16px" }}>
+                                    Signal: {s.label}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
                       }}
                     />
                     <Area
