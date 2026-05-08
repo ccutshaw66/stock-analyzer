@@ -58,20 +58,33 @@ export interface BBTCResult {
 /**
  * Compute the full BBTC signal series.
  *
- * **Long-only as of 2026-05-08** — short side dropped after the strategy-eval
- * diag showed BBTC_SELL had a 46.5% +5d win rate (worse than random) and a
- * negative median return across 447 fires. The cost of those entries
- * outweighed any value, so the !inPosition crossBelow branch is gone.
- * SELL still fires as an exit-from-long signal but never opens a short.
+ * **Both-sides, regime-gated as of 2026-05-08 (revised same day).**
  *
- * Other tunings from the same data (542 BBTC_BUY fires, 30% stop-out rate
- * at 20d, REDUCE leaving money on the table):
- *   - ATR stop widened 2.0× → 2.5× (was firing too tight; forward returns
- *     after stop were positive, meaning many stops were premature).
- *   - REDUCE target moved 3.0× → 5.0× (was triggering too early; mean +20d
- *     return after REDUCE was negative because price kept running).
- *   - ADX(14) gate at entry: only enter if ADX ≥ 20 (real trend strength).
- *     Computed inline if not provided in input.
+ * Earlier in the day shorts were dropped entirely after the eval showed
+ * BBTC_SELL at 47% +5d win rate. That call was flawed: the eval window was
+ * a +26% SPY year — shorts losing money in a 12-month bull tape doesn't
+ * prove shorts don't work, it proves shorts don't work *in bull regimes*.
+ * Restored with a market-regime gate.
+ *
+ * Long entries:
+ *   - EMA9 crosses up through EMA21 with price > EMA50
+ *   - ADX(14) ≥ 20 (real trend strength, filters chop)
+ *
+ * Short entries:
+ *   - EMA9 crosses down through EMA21 with price < EMA50
+ *   - ADX(14) ≥ 20
+ *   - **NEW: price < SMA200** (long-term bearish regime confirmation).
+ *     Without this gate, every cross-down in a bull market fires a short
+ *     that gets overrun. Requiring SMA200 = below filters out
+ *     bull-market false shorts; in bear markets, SMA200 will be above
+ *     price for most names and shorts can fire freely.
+ *
+ * Other tunings retained from earlier:
+ *   - ATR stop 2.5× (was 2.0× — too tight, forward returns after stop were
+ *     positive meaning premature)
+ *   - REDUCE target 5.0× ATR (was 3.0× — was exiting winners early)
+ *   - ADX gate on initial BUY only, NOT on ADD_LONG (pullbacks legitimately
+ *     drag ADX below 20 even inside strong trends)
  */
 
 // Wilder's ADX series (14-period). Self-contained so callers don't have to
@@ -131,14 +144,29 @@ const ATR_TRAIL_MULT = 1.5;      // unchanged
 const ATR_TARGET_MULT = 5.0;     // was 3.0 — was reducing too early
 const MIN_ADX_FOR_ENTRY = 20;    // ADX < 20 = chop, skip entry
 
+// SMA200 — long-term regime indicator. Self-contained for the same reason
+// ADX is: callers don't need to thread it through.
+function computeSMA(data: number[], period: number): number[] {
+  const out = new Array(data.length).fill(NaN);
+  if (data.length < period) return out;
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += data[i];
+  out[period - 1] = sum / period;
+  for (let i = period; i < data.length; i++) out[i] = out[i - 1] + (data[i] - data[i - period]) / period;
+  return out;
+}
+
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
+  const sma200 = computeSMA(closes, 200);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
 
   let inPosition = false;
+  let positionSide: "LONG" | "SHORT" | null = null;
   let entryPrice = 0;
   let highestSinceEntry = 0;
+  let lowestSinceEntry = Number.POSITIVE_INFINITY;
 
   for (let i = 1; i < closes.length; i++) {
     if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
@@ -146,16 +174,28 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
     const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
     const trendStrong = !isNaN(adx14[i]) && adx14[i] >= MIN_ADX_FOR_ENTRY;
+    // Regime gates: long entries when price > SMA200 (or SMA200 not yet
+    // computed), short entries only when price < SMA200 (real bear regime).
+    const longRegimeOk = isNaN(sma200[i]) ? true : closes[i] > sma200[i];
+    const shortRegimeOk = !isNaN(sma200[i]) && closes[i] < sma200[i];
 
     if (!inPosition) {
-      // Long-only entry. Short side dropped per 2026-05-08 eval.
-      if (crossAbove && closes[i] > ema50[i] && trendStrong) {
+      if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk) {
         signals[i] = "BUY";
         inPosition = true;
+        positionSide = "LONG";
         entryPrice = closes[i];
         highestSinceEntry = highs[i];
+        lowestSinceEntry = lows[i];
+      } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk) {
+        signals[i] = "SELL";
+        inPosition = true;
+        positionSide = "SHORT";
+        entryPrice = closes[i];
+        highestSinceEntry = highs[i];
+        lowestSinceEntry = lows[i];
       }
-    } else {
+    } else if (positionSide === "LONG") {
       highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
       const stopLoss = entryPrice - atr14[i] * ATR_STOP_MULT;
       const trailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
@@ -163,21 +203,42 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       if (lows[i] <= stopLoss || lows[i] <= trailStop) {
         signals[i] = "STOP_HIT";
         inPosition = false;
+        positionSide = null;
       } else if (highs[i] >= target) {
         signals[i] = "REDUCE";
       } else if (crossAbove && closes[i] > ema50[i]) {
-        // ADD_LONG fires during pullback re-entries within an existing long.
-        // Critically, ADX is NOT required here — pullbacks naturally drag
-        // ADX below 20 even inside strong trends, so the gate would silently
-        // kill the highest-win-rate signal in the system. The initial BUY
-        // already validated trend strength; ADD_LONG just needs the EMA
-        // re-cross + price-above-EMA50 confirmation.
+        // ADD_LONG: pullback re-entry within an existing long. ADX is NOT
+        // required here — pullbacks legitimately drag ADX below 20 inside
+        // strong trends.
         signals[i] = "ADD_LONG";
       } else if (crossBelow && closes[i] < ema50[i]) {
-        // Cross-down while in long = exit to flat. Does NOT open a short.
+        // Cross-down while in long = exit. Does NOT auto-flip to short.
         signals[i] = "SELL";
         inPosition = false;
+        positionSide = null;
       }
+    } else if (positionSide === "SHORT") {
+      lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
+      // Mirror of long-side stop math, just flipped.
+      const stopLoss = entryPrice + atr14[i] * ATR_STOP_MULT;
+      const trailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
+      const target = entryPrice - atr14[i] * ATR_TARGET_MULT;
+      if (highs[i] >= stopLoss || highs[i] >= trailStop) {
+        signals[i] = "STOP_HIT";
+        inPosition = false;
+        positionSide = null;
+      } else if (lows[i] <= target) {
+        signals[i] = "REDUCE";
+      } else if (crossAbove && closes[i] > ema50[i]) {
+        // Cross-up while in short = exit. Does NOT auto-flip to long.
+        signals[i] = "BUY";
+        inPosition = false;
+        positionSide = null;
+      }
+      // Note: no pyramid-the-short branch. Pre-2026-05-08 code emitted
+      // "ADD_LONG" while in SHORT for added-bearishness — that was a label
+      // bug and inflated the eval's ADD_LONG count. Cleaner to skip the
+      // short-pyramid entirely than to introduce a new ADD_SHORT type.
     }
   }
 

@@ -1,33 +1,35 @@
 /**
  * VER — Volume Exhaustion Reversal strategy (single source of truth).
  *
- * **Long-only as of 2026-05-08** — short side dropped after the strategy-eval
- * diag showed VER_SELL had a 0% +20d win rate (4/4 went the wrong way) and
- * VER_WATCH_SELL decayed from positive at +5d to 39% win at +20d. Shorting
- * overbought conditions in this market regime is a losing strategy.
+ * **Both-sides, tightened-threshold (revised 2026-05-08).**
  *
- * Tiered entries (strict vs watch) + position-aware exit.
+ * Earlier same-day commit dropped the short side after the eval showed 0/4
+ * VER_SELL fires worked at +20d. That was over-correction — n=4 isn't a
+ * verdict, and the eval window was a +26% bull tape where shorts of any
+ * kind struggled. Restored both sides with tighter RSI thresholds so
+ * SELL only fires on real exhaustion, not mild overbought.
  *
- * Entry tiers:
+ * Entry tiers (long side):
  *   BUY        — bullish RSI divergence + volume ≥ 2× 20-bar avg + lower BB
- *                touch + closed back inside, with RSI < 35 (oversold zone).
- *                Was < 30; relaxed to 35 because strict <30 only fired 4
- *                times in 365 days × 80 tickers — too rare to be useful.
- *   WATCH_BUY  — same conditions but RSI 35-45 (slightly oversold).
+ *                touch + closed back inside, with RSI < 35.
+ *   WATCH_BUY  — same conditions, RSI 35-45.
+ *
+ * Entry tiers (short side):
+ *   SELL       — bearish RSI divergence + volume ≥ 2× 20-bar avg + upper BB
+ *                touch + closed back inside, with RSI > 75 (was 70 — tighter
+ *                so only deep exhaustion fires).
+ *   WATCH_SELL — same conditions, RSI 65-75 (was 60-70).
  *
  * Exit:
- *   STOP_HIT   — fired only when an active VER long (entered on BUY, NOT
- *                WATCH_BUY) breaches a 2× ATR stop OR a -7% hard stop from
- *                entry.
+ *   STOP_HIT   — fires when an active long (BUY) or short (SELL) busts. Long
+ *                stop = -7% or -2× ATR; short stop = +7% or +2× ATR.
  *
- * Removed types (existed pre-2026-05-08): SELL, WATCH_SELL.
- *
- * This is the ONLY place VER is computed. Trade Analysis and Scanner call
- * into here. Do NOT inline VER in routes.ts or pages.
+ * Note: WATCH_BUY and WATCH_SELL never enter position state — they're
+ * informational tags only.
  */
 
-export type VERSignal = "BUY" | "WATCH_BUY" | "STOP_HIT" | null;
-export type VERTopSignal = "HOLD" | "ENTER" | "WATCH" | "STOPPED";
+export type VERSignal = "BUY" | "WATCH_BUY" | "SELL" | "WATCH_SELL" | "STOP_HIT" | null;
+export type VERTopSignal = "HOLD" | "ENTER" | "WATCH" | "SELL" | "STOPPED";
 
 export interface VERInput {
   closes: number[];
@@ -65,11 +67,11 @@ export function computeVER(input: VERInput): VERResult {
   const n = closes.length;
   const signals: VERSignal[] = new Array(n).fill(null);
 
-  // Position state — long-only (see header). Entered on a strict BUY.
-  // WATCH_BUY does NOT enter position state; it's a visible tag. The exit
-  // check fires per-bar while in position:
-  //   long busted → price fell to entry × (1 - 7%) OR entry - 2×ATR
-  let position: "long" | null = null;
+  // Position state — long or short. Entered on a strict BUY/SELL.
+  // WATCH_BUY/WATCH_SELL never enter position state; they're tags only.
+  //   long busted  → price fell to entry × (1 - 7%) OR entry - 2×ATR
+  //   short busted → price rose to entry × (1 + 7%) OR entry + 2×ATR
+  let position: "long" | "short" | null = null;
   let entryPrice = 0;
 
   for (let i = 2; i < n; i++) {
@@ -81,12 +83,24 @@ export function computeVER(input: VERInput): VERResult {
       isNaN(volAvg20[i])
     ) continue;
 
-    // ─── Position-aware exit check (runs every bar while in a long) ───────
+    // ─── Position-aware exit check (runs every bar while in a position) ──
     if (position === "long") {
       const pctStopBreached = closes[i] <= entryPrice * (1 - STOP_PCT);
       const atrStopBreached =
         atr14 && !isNaN(atr14[i])
           ? closes[i] <= entryPrice - STOP_ATR_MULT * atr14[i]
+          : false;
+      if (pctStopBreached || atrStopBreached) {
+        signals[i] = "STOP_HIT";
+        position = null;
+        entryPrice = 0;
+        continue;
+      }
+    } else if (position === "short") {
+      const pctStopBreached = closes[i] >= entryPrice * (1 + STOP_PCT);
+      const atrStopBreached =
+        atr14 && !isNaN(atr14[i])
+          ? closes[i] >= entryPrice + STOP_ATR_MULT * atr14[i]
           : false;
       if (pctStopBreached || atrStopBreached) {
         signals[i] = "STOP_HIT";
@@ -116,18 +130,43 @@ export function computeVER(input: VERInput): VERResult {
       const closedBackInside = closes[i] > bbLower[i];
 
       if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) {
-        // RSI tier decides BUY vs WATCH_BUY.
         if (rsi14[i] < 35) {
           signals[i] = "BUY";
           position = "long";
           entryPrice = closes[i];
         } else {
           signals[i] = "WATCH_BUY";
-          // Watch doesn't enter position state — it's a visible tag only.
         }
       }
     }
-    // Short-side entries (SELL / WATCH_SELL) removed 2026-05-08 — see header.
+
+    // ─── Bearish reversal entry (SELL / WATCH_SELL) ───────────────────────
+    if (i >= 5 && signals[i] === null) {
+      // Look for a lower-high RSI divergence vs price's higher high. Threshold
+      // for divergence search is > 55 (covers WATCH_SELL > 65 + SELL > 75).
+      let hasBearishDiv = false;
+      for (let lookback = 5; lookback <= Math.min(20, i); lookback++) {
+        const prevIdx = i - lookback;
+        if (prevIdx < 0 || isNaN(rsi14[prevIdx])) continue;
+        if (closes[i] > closes[prevIdx] && rsi14[i] < rsi14[prevIdx] && rsi14[i] > 55) {
+          hasBearishDiv = true;
+          break;
+        }
+      }
+
+      const touchedUpperBB = highs[i] >= bbUpper[i] || closes[i - 1] >= bbUpper[i - 1];
+      const closedBackInsideUpper = closes[i] < bbUpper[i];
+
+      if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
+        if (rsi14[i] > 75) {
+          signals[i] = "SELL";
+          position = "short";
+          entryPrice = closes[i];
+        } else if (rsi14[i] > 65) {
+          signals[i] = "WATCH_SELL";
+        }
+      }
+    }
   }
 
   // Summarize the most recent event.
@@ -141,7 +180,8 @@ export function computeVER(input: VERInput): VERResult {
 
   let topSignal: VERTopSignal = "HOLD";
   if (lastSignal === "BUY") topSignal = "ENTER";
-  else if (lastSignal === "WATCH_BUY") topSignal = "WATCH";
+  else if (lastSignal === "SELL") topSignal = "SELL";
+  else if (lastSignal === "WATCH_BUY" || lastSignal === "WATCH_SELL") topSignal = "WATCH";
   else if (lastSignal === "STOP_HIT") topSignal = "STOPPED";
 
   return { signals, lastSignal, topSignal };

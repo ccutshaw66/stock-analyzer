@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe, TIMEFRAME_LABELS } from "@/contexts/TimeframeContext";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -155,25 +156,43 @@ function LoadingState() {
   );
 }
 
-// Custom dot for signal markers on price chart. Long-only as of 2026-05-08
-// — short-side dots removed because BBTC_SELL and VER_SELL had losing win
-// rates in the strategy-eval data.
+// Custom dot for signal markers on price chart. Both sides as of 2026-05-08
+// (revised same day after over-correcting to long-only earlier — restored
+// shorts with regime gate + tighter RSI thresholds).
 //
-// Tiered colors:
-//   green — entry (BBTC_BUY/ADD_LONG with ADX≥20 trend gate, or VER BUY at RSI<35)
-//   amber — VER WATCH_BUY (RSI 35-45, divergence setup forming)
-//   red   — exit (BBTC SELL/STOP_HIT/REDUCE, VER STOP_HIT)
+// Side filter: payload.sideFilter === "long" hides sell-side dots,
+// "short" hides buy-side dots, "both"/undefined shows everything.
+//
+// Color/shape tiers:
+//   green dot    — long entry (BBTC_BUY/ADD_LONG, VER BUY)
+//   amber dot    — long watch (VER WATCH_BUY, RSI 35-45)
+//   red dot      — long exit / short entry (BBTC_SELL, BBTC_STOP_HIT,
+//                  BBTC_REDUCE, VER_STOP_HIT, BBTC_SELL-as-short, VER SELL)
+//   orange dot   — short watch (VER WATCH_SELL, RSI 65-75)
 function SignalDot(props: any) {
   const { cx, cy, payload } = props;
   if (!payload) return null;
   const v = payload.verSignal;
   const b = payload.bbtcSignal;
-  const isEntry = b === "BUY" || b === "ADD_LONG" || v === "BUY";
-  const isWatch = v === "WATCH_BUY";
-  const isExit = b === "SELL" || b === "STOP_HIT" || b === "REDUCE" || v === "STOP_HIT";
-  if (!isEntry && !isWatch && !isExit) return null;
-  const fill = isEntry ? "#22c55e" : isWatch ? "#eab308" : "#ef4444";
-  const r = isWatch ? 4 : 5;
+  const sideFilter: "long" | "short" | "both" | undefined = payload.sideFilter;
+
+  const isLongEntry = b === "BUY" || b === "ADD_LONG" || v === "BUY";
+  const isLongWatch = v === "WATCH_BUY";
+  const isShortEntry = b === "SELL" || v === "SELL";
+  const isShortWatch = v === "WATCH_SELL";
+  const isExit = b === "STOP_HIT" || b === "REDUCE" || v === "STOP_HIT";
+
+  if (sideFilter === "long" && (isShortEntry || isShortWatch)) return null;
+  if (sideFilter === "short" && (isLongEntry || isLongWatch)) return null;
+
+  if (!isLongEntry && !isLongWatch && !isShortEntry && !isShortWatch && !isExit) return null;
+
+  const fill =
+    isLongEntry  ? "#22c55e" :
+    isLongWatch  ? "#eab308" :
+    isShortWatch ? "#f97316" :
+    "#ef4444"; // shortEntry + exit
+  const r = (isLongWatch || isShortWatch) ? 4 : 5;
   return (
     <circle
       cx={cx}
@@ -191,6 +210,15 @@ export default function TradeAnalysis() {
   const { isAnalysisExhausted } = useSubscription();
   const { timeframe } = useTimeframe();
   const tfLabel = TIMEFRAME_LABELS[timeframe];
+
+  // Side filter for the price-chart dots: "both" / "long" / "short".
+  // Both sides are ALWAYS computed by the strategies — this just hides the
+  // dot for the side the user isn't focused on.
+  const [chartSideFilter, setChartSideFilter] = useState<"both" | "long" | "short">("both");
+  const chartDataWithFilter = useMemo(() => {
+    if (!data?.chartData) return data?.chartData;
+    return data.chartData.map((row: any) => ({ ...row, sideFilter: chartSideFilter }));
+  }, [data?.chartData, chartSideFilter]);
 
   return (
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
@@ -788,12 +816,34 @@ export default function TradeAnalysis() {
           {/* Price Chart with Overlays */}
           <Card data-testid="card-price-chart">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Price Chart ({tfLabel}) with EMA Overlays</CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold">Price Chart ({tfLabel}) with EMA Overlays</CardTitle>
+                {/* Side filter — toggle which signal dots to display.
+                    Both sides are ALWAYS computed by the strategy; this just
+                    controls visibility on this chart. */}
+                <div className="inline-flex rounded-md border border-card-border overflow-hidden text-[10px] font-semibold">
+                  {(["both", "long", "short"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => setChartSideFilter(opt)}
+                      className={`px-2.5 py-1 uppercase tracking-wider transition-colors ${
+                        chartSideFilter === opt
+                          ? opt === "long" ? "bg-green-500/20 text-green-300" :
+                            opt === "short" ? "bg-red-500/20 text-red-300" :
+                            "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={data.chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+                  <ComposedChart data={chartDataWithFilter} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                     <defs>
                       <linearGradient id="closeGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
@@ -869,13 +919,16 @@ export default function TradeAnalysis() {
                   <span className="w-3 h-0.5 bg-purple-500 rounded border-dashed" style={{ borderTop: "1px dashed #a855f7", height: 0 }} /> SMA 200
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Entry
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Long entry
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-yellow-500" /> Watch (oversold setup)
+                  <span className="w-2 h-2 rounded-full bg-yellow-500" /> Long watch (RSI 35-45)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Exit / Stop
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Short / Stop
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-orange-500" /> Short watch (RSI 65-75)
                 </span>
               </div>
             </CardContent>
