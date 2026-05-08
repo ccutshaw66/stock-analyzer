@@ -5041,7 +5041,10 @@ export async function registerRoutes(
       if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
       const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 730);
       const detail = String(req.query.detail || "") === "1";
-      const result = await runStrategyEval(symbols, days, detail);
+      const sideRaw = String(req.query.side || "both").toLowerCase();
+      const side: "long" | "short" | "both" =
+        sideRaw === "long" ? "long" : sideRaw === "short" ? "short" : "both";
+      const result = await runStrategyEval(symbols, days, detail, side);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-eval failed" });

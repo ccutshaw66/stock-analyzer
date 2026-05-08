@@ -182,6 +182,14 @@ function isStopOrExit(t: string): boolean {
   return t === "BBTC_STOP_HIT" || t === "BBTC_REDUCE" || t === "VER_STOP_HIT";
 }
 
+export type SideFilter = "long" | "short" | "both";
+
+function directionOf(t: string): "long" | "short" | "exit" {
+  if (isLongSide(t)) return "long";
+  if (isShortSide(t)) return "short";
+  return "exit";
+}
+
 interface TickerEval {
   symbol: string;
   bars: number;
@@ -350,18 +358,53 @@ function aggregate(allFires: FireRecord[]): Record<string, PerTypeAgg> {
 // ─── Top-level ──────────────────────────────────────────────────────────────
 
 export interface StrategyEvalResult {
-  basket: { symbols: string[]; days: number };
+  basket: { symbols: string[]; days: number; side: SideFilter };
   generatedAt: string;
   benchmark: { spyTotalReturnPct: number | null };
   perTicker: Array<TickerEval & { summary: { fires: number; longs: number; shorts: number; stops: number } }>;
   aggregate: {
     totalFires: number;
     bySignalType: Record<string, PerTypeAgg>;
+    byDirection: Record<"long" | "short" | "exit", PerTypeAgg & { signalTypes: string[] }>;
   };
   notes: string[];
 }
 
-export async function runStrategyEval(symbols: string[], days: number, includeDetail: boolean): Promise<StrategyEvalResult> {
+function aggregateDirection(allFires: FireRecord[]): StrategyEvalResult["aggregate"]["byDirection"] {
+  const dirs: Array<"long" | "short" | "exit"> = ["long", "short", "exit"];
+  const out: any = {};
+  for (const dir of dirs) {
+    const subset = allFires.filter(f => directionOf(f.type) === dir);
+    const r1 = subset.map(f => f.fwd1).filter((v): v is number => v != null);
+    const r5 = subset.map(f => f.fwd5).filter((v): v is number => v != null);
+    const r20 = subset.map(f => f.fwd20).filter((v): v is number => v != null);
+    const rsis = subset.map(f => f.rsi).filter((v): v is number => v != null);
+    const buckets: PerTypeAgg["rsiBuckets"] = { "<30": 0, "30-40": 0, "40-50": 0, "50-60": 0, "60-70": 0, ">70": 0 };
+    for (const r of rsis) buckets[bucketRsi(r)]++;
+    const stopped5 = subset.filter(f => f.stopped5).length;
+    const stopped20 = subset.filter(f => f.stopped20).length;
+    const types = Array.from(new Set(subset.map(f => f.type)));
+    out[dir] = {
+      count: subset.length,
+      winRate1d: winRate(r1),
+      winRate5d: winRate(r5),
+      winRate20d: winRate(r20),
+      medianReturn1d: r1.length ? Number((median(r1)!).toFixed(4)) : null,
+      medianReturn5d: r5.length ? Number((median(r5)!).toFixed(4)) : null,
+      medianReturn20d: r20.length ? Number((median(r20)!).toFixed(4)) : null,
+      meanReturn5d: r5.length ? Number((r5.reduce((a, b) => a + b, 0) / r5.length).toFixed(4)) : null,
+      meanReturn20d: r20.length ? Number((r20.reduce((a, b) => a + b, 0) / r20.length).toFixed(4)) : null,
+      stoppedRate5d: subset.length ? Number((stopped5 / subset.length).toFixed(3)) : null,
+      stoppedRate20d: subset.length ? Number((stopped20 / subset.length).toFixed(3)) : null,
+      rsiBuckets: buckets,
+      medianRSI: rsis.length ? Number(median(rsis)!.toFixed(1)) : null,
+      signalTypes: types,
+    };
+  }
+  return out;
+}
+
+export async function runStrategyEval(symbols: string[], days: number, includeDetail: boolean, side: SideFilter = "both"): Promise<StrategyEvalResult> {
   // Fetch in concurrent batches of 12 to stay polite to FMP.
   const BATCH = 12;
   const tickerEvals: TickerEval[] = [];
@@ -374,6 +417,19 @@ export async function runStrategyEval(symbols: string[], days: number, includeDe
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
+  // Apply side filter to all fires before aggregation. Tickers retain
+  // their full fire list internally for the perTicker summary, but the
+  // filtered list is what flows into bySignalType / byDirection.
+  const sideFilterFn = (f: FireRecord): boolean => {
+    if (side === "both") return true;
+    if (side === "long")  return isLongSide(f.type) || isStopOrExit(f.type);
+    if (side === "short") return isShortSide(f.type) || isStopOrExit(f.type);
+    return true;
+  };
+  // Filter per-ticker fires too (so the detail view matches the aggregate).
+  for (const t of tickerEvals) {
+    t.fires = t.fires.filter(sideFilterFn);
+  }
   const allFires: FireRecord[] = tickerEvals.flatMap(t => t.fires);
 
   // SPY benchmark (close-to-close return over the same window).
@@ -392,18 +448,21 @@ export async function runStrategyEval(symbols: string[], days: number, includeDe
   }));
 
   return {
-    basket: { symbols, days },
+    basket: { symbols, days, side },
     generatedAt: new Date().toISOString(),
     benchmark: { spyTotalReturnPct: spyReturn },
     perTicker,
     aggregate: {
       totalFires: allFires.length,
       bySignalType: aggregate(allFires),
+      byDirection: aggregateDirection(allFires),
     },
     notes: [
       "Forward returns are dir-adjusted: long-side fires use +1, short-side use -1, so a positive forward return = trade went the predicted direction.",
       "stoppedRate is the % of fires where price would have hit a 7% stop within the forward window.",
       "winRate is the % of fires with a positive (dir-adjusted) forward return.",
+      "byDirection rolls all long-side signal types into one block, all short-side into another, exits separately.",
+      "Pass &side=long or &side=short to restrict the response to one direction (exits/stops always included).",
       "Add ?detail=1 to include per-ticker fire records.",
     ],
   };
