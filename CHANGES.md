@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Fix: trailing stop activates too early, choking entries
+
+**Why:** Chris noticed on AAPL 5Y that BUY and STOP_HIT dots were firing one bar apart. Reading the BBTC code revealed the cause: the trailing stop was anchored to `highestSinceEntry`, which equals the entry-bar high on day 1. The trail level (1.5×ATR below the high) was therefore ~2% below entry on the very first post-entry bar — *tighter than the hard 2.5×ATR stop*. Any normal pullback within a continuing trend triggered an immediate stop-out.
+
+This is the bug behind the puzzling 10-year eval result: **BBTC_STOP_HIT had +1.06% median return at +20d post-stop**. Stops fire in profitable spots → stops are firing prematurely → trades would have worked.
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — long side: trailing stop now only activates when `highestSinceEntry - 1.5×ATR > entryPrice`, i.e. peak has run up at least 1.5×ATR above entry. Until then, only the hard 2.5×ATR stop applies. Trail behaves as a profit-lock, not as a tight initial stop.
+- Same mirror fix on the short side: trail only fires once `lowestSinceEntry + 1.5×ATR < entryPrice`.
+
+The hard stop logic, profit target, and entry conditions are unchanged.
+
+**Expected impact:** materially fewer same-week stop-outs on long entries. Win rate at +20d should rise (currently 57.6% — a chunk of the losing/break-even fires were premature trail-stops on entries that would have worked). REDUCE rate may also rise as trades are given room to reach the 5×ATR target.
+
+**Files:** `server/signals/strategies/bbtc.ts`.
+
+Rollback tag: `safe/2026-05-08-trail-stop-fix` (created at HEAD before this commit).
+
+---
 ## 2026-05-08 — Side-aware stops/exits on Trade Analysis chart
 
 **Why:** The Long/Short side filter was leaking exit dots: a `STOP_HIT` after a long position showed in the Short view (and vice versa) because the chart payload only carried the signal *name*, not which direction the trade was. Same problem for `REDUCE` (long profit-take vs short profit-take) and the cross-exit `BUY`/`SELL` signals (a `BUY` emitted while in a short = short cover, not a new long entry).

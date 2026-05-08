@@ -247,9 +247,17 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     } else if (positionSide === "LONG") {
       highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
       const stopLoss = entryPrice - atr14[i] * ATR_STOP_MULT;
-      const trailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
+      const rawTrailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
+      // Trailing stop only activates once it has ratcheted ABOVE entry —
+      // i.e. only as a profit-lock once peak > entry + 1.5×ATR. Until then,
+      // the hard 2.5×ATR stop is the sole exit. Without this gate the trail
+      // is anchored to the entry-bar high and can fire on the very next bar
+      // (e.g. AAPL 5Y showed BUY/STOP within a day of each other) — and the
+      // 10y eval confirmed the bug: BBTC_STOP_HIT had +1.06% median return
+      // at +20d post-stop, meaning stops were firing in profitable spots.
+      const trailActive = rawTrailStop > entryPrice;
       const target = entryPrice + atr14[i] * ATR_TARGET_MULT;
-      if (lows[i] <= stopLoss || lows[i] <= trailStop) {
+      if (lows[i] <= stopLoss || (trailActive && lows[i] <= rawTrailStop)) {
         signals[i] = "STOP_HIT";
         signalSides[i] = "LONG"; // long stop — show in long view only
         inPosition = false;
@@ -273,11 +281,13 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       }
     } else if (positionSide === "SHORT") {
       lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
-      // Mirror of long-side stop math, just flipped.
+      // Mirror of long-side stop math, just flipped. Trailing stop only
+      // activates once it has ratcheted BELOW entry (profit-lock for shorts).
       const stopLoss = entryPrice + atr14[i] * ATR_STOP_MULT;
-      const trailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
+      const rawTrailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
+      const trailActive = rawTrailStop < entryPrice;
       const target = entryPrice - atr14[i] * ATR_TARGET_MULT;
-      if (highs[i] >= stopLoss || highs[i] >= trailStop) {
+      if (highs[i] >= stopLoss || (trailActive && highs[i] >= rawTrailStop)) {
         signals[i] = "STOP_HIT";
         signalSides[i] = "SHORT"; // short stop — show in short view only
         inPosition = false;
