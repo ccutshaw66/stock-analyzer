@@ -178,16 +178,36 @@ function SignalDot(props: any) {
   if (!payload) return null;
   const v = payload.verSignal;
   const b = payload.bbtcSignal;
+  const bSide: "LONG" | "SHORT" | null = payload.bbtcSide || null;
+  const vSide: "LONG" | "SHORT" | null = payload.verSide || null;
   const sideFilter: "long" | "short" | "both" | undefined = payload.sideFilter;
 
+  // Side filter applies to ALL signals — entries, exits, stops alike. The
+  // strategies emit `bbtcSide`/`verSide` to disambiguate (e.g. STOP_HIT after
+  // a long is `LONG`, STOP_HIT after a short is `SHORT`; "BUY" emitted as a
+  // short-cover is `SHORT`, etc.). Bar is hidden if BOTH the BBTC and VER
+  // signals on this bar are on the wrong side.
+  if (sideFilter === "long") {
+    if (b && bSide === "SHORT") return null;
+    if (v && vSide === "SHORT") return null;
+    if (!b && !v) return null;
+  } else if (sideFilter === "short") {
+    if (b && bSide === "LONG") return null;
+    if (v && vSide === "LONG") return null;
+    if (!b && !v) return null;
+  }
+
+  // Visual classification (independent of side — drives color/shape):
   const isLongEntry = b === "BUY" || b === "ADD_LONG" || v === "BUY";
   const isLongWatch = v === "WATCH_BUY";
-  const isShortEntry = b === "SELL" || v === "SELL";
+  const isShortEntry = (b === "SELL" && bSide === "SHORT") || v === "SELL";
   const isShortWatch = v === "WATCH_SELL";
-  const isExit = b === "STOP_HIT" || b === "REDUCE" || v === "STOP_HIT";
-
-  if (sideFilter === "long" && (isShortEntry || isShortWatch)) return null;
-  if (sideFilter === "short" && (isLongEntry || isLongWatch)) return null;
+  const isExit =
+    b === "STOP_HIT" ||
+    b === "REDUCE" ||
+    (b === "SELL" && bSide === "LONG") || // long exit via cross-down
+    (b === "BUY" && bSide === "SHORT") || // short cover via cross-up
+    v === "STOP_HIT";
 
   if (!isLongEntry && !isLongWatch && !isShortEntry && !isShortWatch && !isExit) return null;
 
@@ -897,8 +917,12 @@ export default function TradeAnalysis() {
                         const row = payload[0]?.payload || {};
                         const b: string | null = row.bbtcSignal || null;
                         const v: string | null = row.verSignal || null;
+                        const bSide: "LONG" | "SHORT" | null = row.bbtcSide || null;
+                        const vSide: "LONG" | "SHORT" | null = row.verSide || null;
                         // Compose human-readable signal label. Both can fire on the
-                        // same bar; show both when that happens.
+                        // same bar; show both when that happens. STOP_HIT, REDUCE,
+                        // and the cross-exit BUY/SELL get a "(long)"/"(short)" tag
+                        // since the same signal name can mean either side.
                         const parts: { label: string; color: string }[] = [];
                         const isInfoOnly = (s: string) => s === "WATCH_SELL";
                         const colorFor = (s: string) => {
@@ -907,9 +931,15 @@ export default function TradeAnalysis() {
                           if (s === "WATCH_SELL") return "#f97316";
                           return "#ef4444"; // SELL / STOP_HIT / REDUCE
                         };
-                        if (b) parts.push({ label: `BBTC ${b}`, color: colorFor(b) });
+                        const sideTag = (sig: string, side: "LONG" | "SHORT" | null) => {
+                          // Tag only the direction-ambiguous signals.
+                          const ambiguous = sig === "STOP_HIT" || sig === "REDUCE" || sig === "BUY" || sig === "SELL";
+                          if (!ambiguous || !side) return "";
+                          return ` (${side.toLowerCase()})`;
+                        };
+                        if (b) parts.push({ label: `BBTC ${b}${sideTag(b, bSide)}`, color: colorFor(b) });
                         if (v) {
-                          const suffix = isInfoOnly(v) ? " (info-only)" : "";
+                          const suffix = isInfoOnly(v) ? " (info-only)" : sideTag(v, vSide);
                           parts.push({ label: `VER ${v}${suffix}`, color: colorFor(v) });
                         }
                         return (

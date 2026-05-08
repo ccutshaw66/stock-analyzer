@@ -23,6 +23,7 @@ export type BBTCSignal =
 export type BBTCTopSignal = "HOLD" | "ENTER" | "SELL";
 export type BBTCTrend = "UP" | "DOWN" | "SIDEWAYS";
 export type BBTCBias = "LONG" | "SHORT" | "FLAT";
+export type BBTCSignalSide = "LONG" | "SHORT" | null;
 
 export interface BBTCInput {
   closes: number[];
@@ -46,6 +47,12 @@ export interface BBTCInput {
 export interface BBTCResult {
   /** Per-bar signals, same length as closes. null where no event. */
   signals: BBTCSignal[];
+  /** Per-bar side of the trade the signal pertains to. Same length as signals.
+   *  "LONG" for long entries / long exits / long stops / pyramid adds.
+   *  "SHORT" for short entries / short exits / short stops.
+   *  Null where signals[i] is null. Used by chart rendering to filter
+   *  STOP_HIT and exit dots into the correct long/short view. */
+  signalSides: BBTCSignalSide[];
   /** Most recent non-null signal, or null if none. */
   lastSignal: BBTCSignal;
   /** UI-level summary of lastSignal: ENTER on entries/adds, SELL on exits, HOLD otherwise. */
@@ -192,6 +199,7 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
   const rsi14 = input.rsi14 ?? computeRSISeries(closes, 14);
   const sma200 = computeSMA(closes, 200);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
+  const signalSides: BBTCSignalSide[] = new Array(closes.length).fill(null);
 
   let inPosition = false;
   let positionSide: "LONG" | "SHORT" | null = null;
@@ -221,6 +229,7 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     if (!inPosition) {
       if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk && longRSIok) {
         signals[i] = "BUY";
+        signalSides[i] = "LONG";
         inPosition = true;
         positionSide = "LONG";
         entryPrice = closes[i];
@@ -228,6 +237,7 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         lowestSinceEntry = lows[i];
       } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk && shortRSIok) {
         signals[i] = "SELL";
+        signalSides[i] = "SHORT";
         inPosition = true;
         positionSide = "SHORT";
         entryPrice = closes[i];
@@ -241,19 +251,23 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       const target = entryPrice + atr14[i] * ATR_TARGET_MULT;
       if (lows[i] <= stopLoss || lows[i] <= trailStop) {
         signals[i] = "STOP_HIT";
+        signalSides[i] = "LONG"; // long stop — show in long view only
         inPosition = false;
         positionSide = null;
       } else if (highs[i] >= target) {
         signals[i] = "REDUCE";
+        signalSides[i] = "LONG"; // long profit-take
       } else if (crossAbove && closes[i] > ema50[i] && longRSIok) {
         // ADD_LONG: pullback re-entry within an existing long. ADX is NOT
         // required here — pullbacks legitimately drag ADX below 20 inside
         // strong trends. RSI ceiling IS applied — adding to a long at
         // RSI > 65 is exactly the late-cycle chase we want to avoid.
         signals[i] = "ADD_LONG";
+        signalSides[i] = "LONG";
       } else if (crossBelow && closes[i] < ema50[i]) {
         // Cross-down while in long = exit. Does NOT auto-flip to short.
         signals[i] = "SELL";
+        signalSides[i] = "LONG"; // long exit, NOT a short entry — show in long view
         inPosition = false;
         positionSide = null;
       }
@@ -265,13 +279,16 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       const target = entryPrice - atr14[i] * ATR_TARGET_MULT;
       if (highs[i] >= stopLoss || highs[i] >= trailStop) {
         signals[i] = "STOP_HIT";
+        signalSides[i] = "SHORT"; // short stop — show in short view only
         inPosition = false;
         positionSide = null;
       } else if (lows[i] <= target) {
         signals[i] = "REDUCE";
+        signalSides[i] = "SHORT"; // short profit-take
       } else if (crossAbove && closes[i] > ema50[i]) {
         // Cross-up while in short = exit. Does NOT auto-flip to long.
         signals[i] = "BUY";
+        signalSides[i] = "SHORT"; // short exit, NOT a long entry — show in short view
         inPosition = false;
         positionSide = null;
       }
@@ -315,5 +332,5 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         : "FLAT"
     : "FLAT";
 
-  return { signals, lastSignal, topSignal, trend, bias, entryPrice, highestSinceEntry };
+  return { signals, signalSides, lastSignal, topSignal, trend, bias, entryPrice, highestSinceEntry };
 }

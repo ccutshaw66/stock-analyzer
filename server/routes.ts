@@ -3170,12 +3170,14 @@ export async function registerRoutes(
       // ---- Strategy 1: BBTC EMA Pyramid Risk ----
       const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
       const bbtcSignals = bbtcResult.signals;
+      const bbtcSignalSides = bbtcResult.signalSides;
       const entryPrice = bbtcResult.entryPrice;
       const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
       const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
       const verSignals = verResult.signals;
+      const verSignalSides = verResult.signalSides;
 
       // ---- Build response ----
       const lastIdx = closes.length - 1;
@@ -3355,6 +3357,8 @@ export async function registerRoutes(
           rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
           bbtcSignal: bbtcSignals[i] || null,
           verSignal: verSignals[i] || null,
+          bbtcSide: bbtcSignalSides[i] || null,
+          verSide: verSignalSides[i] || null,
         });
       }
       // Always include the last bar
@@ -3369,6 +3373,8 @@ export async function registerRoutes(
           rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
           bbtcSignal: bbtcSignals[lastIdx] || null,
           verSignal: verSignals[lastIdx] || null,
+          bbtcSide: bbtcSignalSides[lastIdx] || null,
+          verSide: verSignalSides[lastIdx] || null,
         });
       }
 

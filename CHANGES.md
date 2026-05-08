@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Side-aware stops/exits on Trade Analysis chart
+
+**Why:** The Long/Short side filter was leaking exit dots: a `STOP_HIT` after a long position showed in the Short view (and vice versa) because the chart payload only carried the signal *name*, not which direction the trade was. Same problem for `REDUCE` (long profit-take vs short profit-take) and the cross-exit `BUY`/`SELL` signals (a `BUY` emitted while in a short = short cover, not a new long entry).
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — added `BBTCSignalSide = "LONG" | "SHORT" | null` and `signalSides: BBTCSignalSide[]` to `BBTCResult`. Annotated every signal emission point with its position side: long entries/adds/exits/stops/reduces tagged `LONG`; short entries/exits/stops/reduces tagged `SHORT`. The cross-down-while-in-long `SELL` and the cross-up-while-in-short `BUY` are tagged with the side they're closing, not the side they'd be opening.
+- **`server/signals/strategies/ver.ts`** — same treatment. `VERSignalSide` + `signalSides` array. BUY/WATCH_BUY/long-stop tagged `LONG`; SELL/WATCH_SELL/short-stop tagged `SHORT`.
+- **`server/routes.ts`** — `/api/analyze` chart payload now includes `bbtcSide` and `verSide` per bar (both subsampled and last-bar paths).
+- **`client/src/pages/trade-analysis.tsx`** — `SignalDot` filter rewritten to use `bbtcSide`/`verSide` directly: a long-view filter hides any bar whose BBTC or VER signal is on the SHORT side (and vice versa). Stops, reduces, and cross-exit buys/sells now route to the correct side. Tooltip enhanced with `(long)` or `(short)` suffix on direction-ambiguous signal names (STOP_HIT, REDUCE, BUY, SELL) so a hovered dot reads e.g. "Signal: BBTC STOP_HIT (long)".
+
+**Files:** `server/signals/strategies/bbtc.ts`, `server/signals/strategies/ver.ts`, `server/routes.ts`, `client/src/pages/trade-analysis.tsx`.
+
+---
 ## 2026-05-08 — Trade Analysis chart: signal name in tooltip
 
 **Why:** Hovering a dot showed price and EMA values but not which signal actually fired. Chris asked to surface the signal name in the existing rollover so a glance at any dot tells you what triggered there.

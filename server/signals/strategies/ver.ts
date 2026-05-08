@@ -34,6 +34,7 @@
 
 export type VERSignal = "BUY" | "WATCH_BUY" | "SELL" | "WATCH_SELL" | "STOP_HIT" | null;
 export type VERTopSignal = "HOLD" | "ENTER" | "WATCH" | "SELL" | "STOPPED";
+export type VERSignalSide = "LONG" | "SHORT" | null;
 
 /**
  * Whether a VER signal represents a tradeable action (entry/exit) vs an
@@ -62,6 +63,11 @@ export interface VERInput {
 export interface VERResult {
   /** Per-bar signals, same length as closes. null where no event. */
   signals: VERSignal[];
+  /** Per-bar side of the trade the signal pertains to. Same length as signals.
+   *  "LONG" for BUY/WATCH_BUY/long-stop. "SHORT" for SELL/WATCH_SELL/short-stop.
+   *  Null where signals[i] is null. Used by chart rendering to filter
+   *  STOP_HIT into the correct long/short view. */
+  signalSides: VERSignalSide[];
   /** Most recent non-null signal, or null if none. */
   lastSignal: VERSignal;
   /** UI-level summary of lastSignal. */
@@ -80,6 +86,7 @@ export function computeVER(input: VERInput): VERResult {
   const { closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 } = input;
   const n = closes.length;
   const signals: VERSignal[] = new Array(n).fill(null);
+  const signalSides: VERSignalSide[] = new Array(n).fill(null);
 
   // Position state — long or short. Entered on a strict BUY/SELL.
   // WATCH_BUY/WATCH_SELL never enter position state; they're tags only.
@@ -106,6 +113,7 @@ export function computeVER(input: VERInput): VERResult {
           : false;
       if (pctStopBreached || atrStopBreached) {
         signals[i] = "STOP_HIT";
+        signalSides[i] = "LONG"; // long stop — show in long view only
         position = null;
         entryPrice = 0;
         continue;
@@ -118,6 +126,7 @@ export function computeVER(input: VERInput): VERResult {
           : false;
       if (pctStopBreached || atrStopBreached) {
         signals[i] = "STOP_HIT";
+        signalSides[i] = "SHORT"; // short stop — show in short view only
         position = null;
         entryPrice = 0;
         continue;
@@ -146,10 +155,12 @@ export function computeVER(input: VERInput): VERResult {
       if (hasBullishDiv && volumeSpike && touchedLowerBB && closedBackInside) {
         if (rsi14[i] < 35) {
           signals[i] = "BUY";
+          signalSides[i] = "LONG";
           position = "long";
           entryPrice = closes[i];
         } else {
           signals[i] = "WATCH_BUY";
+          signalSides[i] = "LONG";
         }
       }
     }
@@ -174,6 +185,7 @@ export function computeVER(input: VERInput): VERResult {
       if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
         if (rsi14[i] > 80) {
           signals[i] = "SELL";
+          signalSides[i] = "SHORT";
           position = "short";
           entryPrice = closes[i];
         } else if (rsi14[i] > 65) {
@@ -181,6 +193,7 @@ export function computeVER(input: VERInput): VERResult {
           // alerts / UX). Still emitted so the UI can render an "RSI overbought"
           // tooltip and so the eval continues to track it for the rebuild.
           signals[i] = "WATCH_SELL";
+          signalSides[i] = "SHORT";
         }
       }
     }
@@ -201,5 +214,5 @@ export function computeVER(input: VERInput): VERResult {
   else if (lastSignal === "WATCH_BUY" || lastSignal === "WATCH_SELL") topSignal = "WATCH";
   else if (lastSignal === "STOP_HIT") topSignal = "STOPPED";
 
-  return { signals, lastSignal, topSignal };
+  return { signals, signalSides, lastSignal, topSignal };
 }
