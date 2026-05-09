@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Chart: differentiate exit dot colors so trade outcomes are visible
+
+**Why:** Chris's complaint on the AAPL 5Y chart was "all I see are enter/exit a few days later, over and over." Looking carefully, the chart was lumping THREE completely different exit events into one red dot:
+1. **STOP_HIT** — hard/trailing stop triggered — a LOSS
+2. **REDUCE** — profit target hit at 5×ATR — a WIN
+3. **SELL via EMA cross-down** — trend reversed, clean exit — neutral
+
+So every chart looked like "constant whipsaw" even when many of those reds were winning trades or clean exits. The visual conflation made the strategy look broken when it wasn't.
+
+**What:**
+- **`client/src/pages/trade-analysis.tsx`** — `SignalDot` rewritten with distinct fill colors per event type. New palette:
+  - 🟢 Green — long entry
+  - 🟡 Yellow — long watch (RSI 35-45)
+  - 🔵 Teal (#14b8a6) — REDUCE / profit target hit (WIN)
+  - 🔴 Red — STOP_HIT (LOSS)
+  - ⚫ Slate (#94a3b8) — cross-down SELL on long / cross-up BUY on short (clean trend exit)
+  - 🟣 Magenta (#d946ef) — short entry
+  - ⭕ Hollow dashed orange — info-only WATCH_SELL (unchanged)
+- Tooltip `colorFor()` updated to mirror — hovered tooltip line color now matches the dot on the chart, including direction-aware coloring (a `BUY` is green when it's a long entry, slate when it's a short cover).
+- Legend below chart expanded to show each new color with hover-tooltips explaining: "Profit target (WIN)", "Stopped (LOSS)", "Trend exit", "Short entry".
+
+**Impact:** No strategy logic changed — every fire that used to render as red still renders as a dot, just in the *correct* color for what it actually is. Charts now read at-a-glance: green→teal sequences = winning trades, green→red = losing trades, green→slate = neutral exits.
+
+**Files:** `client/src/pages/trade-analysis.tsx`.
+
+Rollback tag: `safe/2026-05-08-dot-colors`.
+
+---
 ## 2026-05-08 — Stop: 5% percent floor for low-volatility names
 
 **Why:** The post-fix 10y eval validated the ATR-lock fix (BBTC_STOP_HIT count dropped 29%, post-stop premium dropped from +1.06% to +0.65%), but AAPL specifically still showed 11/11 entries stopping with 0 REDUCE hits. Root cause: AAPL's daily ATR is only ~1.4% of price, so 2.5×ATR = ~3.5% stop — tighter than normal in-trend pullbacks. The strategy was buying continuations and stopping on routine pullbacks before the trend resumed.
