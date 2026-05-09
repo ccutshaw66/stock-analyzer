@@ -5124,6 +5124,35 @@ export async function registerRoutes(
     }
   });
 
+  // Per-trade DOLLAR P&L evaluator. Pairs each long entry with its exit,
+  // computes round-trip dollar P&L assuming a fixed position size, and
+  // aggregates per-ticker and basket-wide. Complements strategy-eval (which
+  // measures forward-N-day edge) with the practical "did it make money" view.
+  //
+  //   GET /api/diag/strategy-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1]
+  //
+  // - days: 30..3650 (default 365)
+  // - positionSize: dollars per trade (default 10000, min 100, max 1000000)
+  // - detail=1 to include per-trade records
+  app.get("/api/diag/strategy-pnl", async (req, res) => {
+    try {
+      const { runStrategyPnL } = await import("./diag/strategy-pnl");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const result = await runStrategyPnL(symbols, days, positionSize, detail);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-pnl failed" });
+    }
+  });
+
   // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
   // exactly what FMP's symbol-positions-summary + extract-analytics/holder
   // endpoints return for a ticker. Used for diagnosing field-name drift on

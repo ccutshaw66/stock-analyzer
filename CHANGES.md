@@ -9,6 +9,41 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Per-trade dollar P&L evaluator
+
+**Why:** Chris's exact words: "Percentages don't mean shit if there ain't any money made." The existing strategy-eval endpoint measures forward-N-day dir-adjusted returns from each fire — useful for measuring per-fire EDGE but not actual P&L. Need a way to answer "did this strategy actually make money on AAPL? on NVDA? across the basket?"
+
+**What:**
+- **`server/diag/strategy-pnl.ts`** (NEW) — full per-trade P&L evaluator that walks each ticker's signal series, pairs LONG entries with their exits, and computes:
+  - **Per-trade**: entryDate, entryPrice, exitDate, exitPrice, returnPct, **pnlDollar** (returnPct × position size), holdBars, exitReason, strategy (BBTC or VER)
+  - **Per-ticker**: closed/open trade counts, win rate, avg win % and $, avg loss % and $, **totalPnLDollar**, R-multiple, compoundReturnPct (chained 1+r), **compoundReturnDollar**, best/worst trade %, avgHoldBars, maxDrawdownPct, buyAndHoldReturnPct (benchmark)
+  - **Basket aggregate**: totalSymbols, totalClosedTrades, basketWinRate, totalPnLDollar, avgPnLPerTrade, avgPnLPerTicker, basketCompoundReturnPct, profitable vs unprofitable ticker counts, top10 + bottom10 performers by $ P&L, SPY buy-and-hold benchmark
+- **BBTC and VER trades tracked SEPARATELY** then merged. They have independent position state in the live strategy (BBTC = trend continuation, VER = oversold reversal — often fire on different setups). Tracking separately means a VER_BUY at a pullback bottom is paired with the next VER_STOP_HIT, not closed early by a BBTC exit.
+- **Long-only** — strategy is long-only post-2026-05-08 short demote, so no short trades to pair. Validating shorts post-hoc would require a "synthetic shorts" mode (apply same stop logic to short setups) — flagged for a future iteration.
+- **`server/routes.ts`** — new endpoint:
+  ```
+  GET /api/diag/strategy-pnl?symbols=AAPL,MSFT,...&days=3650[&positionSize=10000][&detail=1]
+  ```
+  - days: 30..3650 (default 365)
+  - positionSize: dollars per trade, 100..1000000 (default 10000)
+  - detail=1 to include per-trade records
+
+**No commissions or slippage applied.** Real-world P&L would be lower by ~$1–5 per round trip plus 0.05–0.1% slippage. Note included in the response.
+
+**Open trades excluded from $ aggregates** but counted in trade-count metrics. A position open at end of window has unrealized P&L not booked.
+
+**Files:** `server/diag/strategy-pnl.ts` (new), `server/routes.ts`.
+
+**Usage example for Chris's morning review:**
+```
+curl -s "https://stockotter.ai/api/diag/strategy-pnl?symbols=AAPL,MSFT,NVDA,AMD,...&days=3650&positionSize=10000"
+```
+
+Returns JSON with `aggregate.totalPnLDollar` (the basket-wide $ made/lost), `aggregate.topPerformers` (top 10 tickers by $ P&L), and `perTicker[].totalPnLDollar` for the ticker-by-ticker view he asked for.
+
+Rollback tag: not needed — strictly additive (new file + new endpoint, no existing code changed).
+
+---
 ## 2026-05-08 — Shorts demoted to info-only
 
 **Why:** Post-pivot 10-year broad-basket eval showed shorts have no edge in the current market regime:
