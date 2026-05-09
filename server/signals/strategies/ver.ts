@@ -184,14 +184,17 @@ export function computeVER(input: VERInput): VERResult {
 
       if (hasBearishDiv && volumeSpike && touchedUpperBB && closedBackInsideUpper) {
         if (rsi14[i] > 80) {
+          // VER_SELL demoted to info-only on 2026-05-08 alongside BBTC short
+          // demote. Per broad-basket eval, short side has no edge in current
+          // regime. Signal still emits so users see the bearish exhaustion
+          // setup; strategy does NOT enter a short position. Chart renders
+          // as hollow magenta dashed dot, marked "not tradeable" in legend.
           signals[i] = "SELL";
           signalSides[i] = "SHORT";
-          position = "short";
-          entryPrice = closes[i];
+          // position = "short"; entryPrice = closes[i]; ← intentionally not entering
         } else if (rsi14[i] > 65) {
-          // WATCH_SELL fires but is treated as info-only by callers (charts /
-          // alerts / UX). Still emitted so the UI can render an "RSI overbought"
-          // tooltip and so the eval continues to track it for the rebuild.
+          // WATCH_SELL — info-only marker. RSI 65-80 with the divergence /
+          // volume / BB-touch pattern. Same info-only treatment as full SELL.
           signals[i] = "WATCH_SELL";
           signalSides[i] = "SHORT";
         }

@@ -174,6 +174,14 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
   let entryATR = 0;
   let highestSinceEntry = 0;
   let lowestSinceEntry = Number.POSITIVE_INFINITY;
+  // Track short-conditions edge for info-only emission. Shorts demoted to
+  // info-only on 2026-05-08 after broad-basket eval showed 42.9% win at +20d
+  // and -1.25% median return per fire over 10 years — no edge in current
+  // market regime. Strategy is long-only; short setups still emit a signal
+  // ONCE on the rising edge so users see "the system identified a short
+  // setup" but the chart renders them as hollow info-only dots and the
+  // strategy never enters a short position.
+  let shortConditionPrev = false;
 
   for (let i = 1; i < closes.length; i++) {
     if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
@@ -216,22 +224,22 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     const longStackOk = ema9[i] > ema21[i] && closes[i] > ema50[i];
     const shortStackOk = ema9[i] < ema21[i] && closes[i] < ema50[i];
 
+    // Short conditions evaluated every bar for info-only emission.
+    const shortConditionsNow = shortStackOk && trendStrong && shortRegimeOk && shortRSIok;
+    const shortRisingEdge = shortConditionsNow && !shortConditionPrev;
+
     if (!inPosition) {
-      // ─── Entry: state-based ─────────────────────────────────────────
+      // ─── Entry: state-based, LONG ONLY ──────────────────────────────
+      // Short entries demoted to info-only — strategy does NOT enter short
+      // positions. Short setups emit a single SELL signal on the rising
+      // edge (see info-only emission block after the long entry/manage
+      // chain) so users see the bearish setup on the chart, marked as
+      // not-tradeable in the legend.
       if (longStackOk && trendStrong && longRegimeOk && longRSIok) {
         signals[i] = "BUY";
         signalSides[i] = "LONG";
         inPosition = true;
         positionSide = "LONG";
-        entryPrice = closes[i];
-        entryATR = atr14[i];
-        highestSinceEntry = highs[i];
-        lowestSinceEntry = lows[i];
-      } else if (shortStackOk && trendStrong && shortRegimeOk && shortRSIok) {
-        signals[i] = "SELL";
-        signalSides[i] = "SHORT";
-        inPosition = true;
-        positionSide = "SHORT";
         entryPrice = closes[i];
         entryATR = atr14[i];
         highestSinceEntry = highs[i];
@@ -268,41 +276,47 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       }
       // Note: no REDUCE / profit target. Trail handles profit-taking.
       // Note: no ADD_LONG. State-based entries don't pyramid.
-    } else if (positionSide === "SHORT") {
-      // ─── Short management: mirror of long ───────────────────────────
-      lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
-      const hardStop = entryPrice + entryATR * ATR_STOP_MULT;
-      const trailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
-      // For shorts, effective stop = whichever is LOWER (closer to current).
-      const effectiveStop = Math.min(hardStop, trailStop);
-
-      if (highs[i] >= effectiveStop) {
-        signals[i] = "STOP_HIT";
-        signalSides[i] = "SHORT";
-        inPosition = false;
-        positionSide = null;
-      } else if (ema9[i] > ema21[i] && closes[i] > ema50[i]) {
-        // State-based exit: trend stack flipped to bullish.
-        signals[i] = "BUY";
-        signalSides[i] = "SHORT"; // short cover, NOT a new long entry
-        inPosition = false;
-        positionSide = null;
-      }
     }
+    // (Short management block removed — strategy is long-only as of
+    //  2026-05-08. Short conditions were tracked but had -1.25% median
+    //  return per fire over 10y. See info-only emission block below.)
+
+    // ─── Info-only short signal (after main entry/manage chain) ─────
+    // Emit a SELL signal with side=SHORT on the rising edge of short
+    // conditions, only when flat and no other signal has already fired
+    // on this bar. Strategy does NOT enter a position — chart renders
+    // these as hollow magenta dashed dots, legend marks "not tradeable".
+    if (!inPosition && signals[i] === null && shortRisingEdge) {
+      signals[i] = "SELL";
+      signalSides[i] = "SHORT";
+    }
+    shortConditionPrev = shortConditionsNow;
   }
 
   // ─── Summarize last event for UI ─────────────────────────────────────
   let lastSignal: BBTCSignal = null;
+  let lastSignalSide: BBTCSignalSide = null;
   for (let i = closes.length - 1; i >= 0; i--) {
     if (signals[i]) {
       lastSignal = signals[i];
+      lastSignalSide = signalSides[i];
       break;
     }
   }
 
+  // topSignal reflects long-only state. Info-only short SELL events
+  // (lastSignalSide === "SHORT") do NOT set topSignal to "SELL" — that
+  // semantic is reserved for actual long-position exits.
   let topSignal: BBTCTopSignal = "HOLD";
-  if (lastSignal === "BUY" || lastSignal === "ADD_LONG") topSignal = "ENTER";
-  else if (lastSignal === "SELL" || lastSignal === "STOP_HIT" || lastSignal === "REDUCE") topSignal = "SELL";
+  if ((lastSignal === "BUY" && lastSignalSide === "LONG") || lastSignal === "ADD_LONG") {
+    topSignal = "ENTER";
+  } else if (
+    (lastSignal === "SELL" && lastSignalSide === "LONG") ||
+    (lastSignal === "STOP_HIT" && lastSignalSide === "LONG") ||
+    lastSignal === "REDUCE"
+  ) {
+    topSignal = "SELL";
+  }
 
   const lastIdx = closes.length - 1;
   const stackReady =

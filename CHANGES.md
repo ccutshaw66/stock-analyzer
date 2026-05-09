@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Shorts demoted to info-only
+
+**Why:** Post-pivot 10-year broad-basket eval showed shorts have no edge in the current market regime:
+
+| Metric | Pre-pivot (event-based) | Post-pivot (state-based) |
+|---|---:|---:|
+| Short fires | 522 | 3,403 (6.5x more) |
+| Short win rate +20d | 48.0% | **42.9%** |
+| Short median return +20d | −0.38% | **−1.25%** |
+
+The state-based entry pivot caught more short setups (good for visibility) but each setup lost more on average than the prior event-based design (bad for capital). 10-year cumulative: 3,403 × −1.25% = ~42% of capital deployed in shorts would have been lost. Even with 2018, 2020, and 2022 bear cycles in the window, shorts didn't recover. Long side is doing the work; shorts are dragging.
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — short side demoted. Strategy is now LONG-ONLY at the position-state level. Short conditions still evaluated every bar; on the rising edge of "short conditions met (after being false)", a single `SELL` signal with `signalSides[i] = "SHORT"` is emitted for chart visibility. Strategy does NOT enter a short position. The entire `else if (positionSide === "SHORT")` management block was removed — dead code now. `topSignal` logic updated to ignore info-only short SELL events (won't trigger UI "exit a long" semantics).
+- **`server/signals/strategies/ver.ts`** — VER_SELL demoted to info-only with the same treatment. Strategy no longer sets `position = "short"` on VER_SELL. The dormant SHORT management block in ver.ts is left in place but never fires.
+- **`client/src/pages/trade-analysis.tsx`** — `SignalDot` renders `isShortEntry` as a hollow magenta dashed ring (mirrors VER_WATCH_SELL's hollow orange treatment). Tooltip color and "(info-only)" suffix added. Legend updated: "Short entry" → "Short setup (info-only)" with hover tooltip explaining the demote.
+
+**Impact:**
+- All 3,400+ short fires per 10-year basket now render as hollow magenta dots (one per bearish setup, not per bar)
+- Long side strategy and rendering unchanged — green entries, teal REDUCE wins, red stops, slate trend exits
+- Visible dot density on charts drops materially (hollow info dots are visually quieter)
+- Honest UX: users see "the system identified a short setup" without misleading them that this is a tradeable signal
+- Reversible: rebuild the short side later as a separate effort. The eval will continue to track short setup performance for the rebuild discussion.
+
+**Files:** `server/signals/strategies/bbtc.ts`, `server/signals/strategies/ver.ts`, `client/src/pages/trade-analysis.tsx`.
+
+Rollback tag: `safe/2026-05-08-shorts-info-only`.
+
+---
 ## 2026-05-08 — Major: BBTC pivots to real trend follower
 
 **Why:** Two structural problems forced this rewrite, both surfaced via charts (NVDA 5Y dead zone 2022→2024, AAPB charts with deep EMA9 crosses that didn't fire entries):

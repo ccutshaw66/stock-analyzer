@@ -214,7 +214,7 @@ function SignalDot(props: any) {
   if (!isLongEntry && !isLongWatch && !isShortEntry && !isShortWatch &&
       !isReduceWin && !isStopLoss && !isCleanExit) return null;
 
-  // Info-only short watch: hollow dashed ring, distinct from tradeable dots.
+  // Info-only short watch (VER_WATCH_SELL): hollow dashed orange ring.
   if (isShortWatch) {
     return (
       <circle
@@ -229,10 +229,26 @@ function SignalDot(props: any) {
     );
   }
 
+  // Info-only short entry (BBTC_SELL bSide=SHORT, VER_SELL): hollow dashed
+  // magenta ring. Strategy is long-only; short setups are visualized for
+  // awareness only, NOT tradeable. 2026-05-08 demote.
+  if (isShortEntry) {
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={4}
+        fill="none"
+        stroke="#d946ef"
+        strokeWidth={1.5}
+        strokeDasharray="2 2"
+      />
+    );
+  }
+
   const fill =
     isLongEntry   ? "#22c55e" :  // green — entry
     isLongWatch   ? "#eab308" :  // yellow — watch
-    isShortEntry  ? "#d946ef" :  // magenta — short entry
     isReduceWin   ? "#14b8a6" :  // teal — profit-take win
     isCleanExit   ? "#94a3b8" :  // slate — clean trend exit
     "#ef4444";                    // red — stop loss
@@ -930,9 +946,12 @@ export default function TradeAnalysis() {
                         // and the cross-exit BUY/SELL get a "(long)"/"(short)" tag
                         // since the same signal name can mean either side.
                         const parts: { label: string; color: string }[] = [];
-                        const isInfoOnly = (s: string) => s === "WATCH_SELL";
-                        // Color must match the SignalDot palette so a hovered tooltip
-                        // line matches the dot color on the chart.
+                        // Info-only signals — short side is now non-tradeable
+                        // across both BBTC and VER (2026-05-08 demote).
+                        const isShortInfo = (sig: string, side: "LONG" | "SHORT" | null) =>
+                          (sig === "SELL" && side === "SHORT") || sig === "WATCH_SELL";
+                        // Color must match the SignalDot palette so a hovered
+                        // tooltip line matches the dot color on the chart.
                         const colorFor = (sig: string, side: "LONG" | "SHORT" | null) => {
                           if (sig === "WATCH_BUY") return "#eab308";          // yellow
                           if (sig === "WATCH_SELL") return "#f97316";         // hollow orange
@@ -944,7 +963,7 @@ export default function TradeAnalysis() {
                             return side === "SHORT" ? "#94a3b8" : "#22c55e";
                           }
                           if (sig === "SELL") {
-                            // Short entry → magenta; long exit via cross-down → slate
+                            // Short entry (info-only) → magenta; long exit → slate
                             return side === "LONG" ? "#94a3b8" : "#d946ef";
                           }
                           return "#ef4444"; // fallback
@@ -954,9 +973,12 @@ export default function TradeAnalysis() {
                           if (!ambiguous || !side) return "";
                           return ` (${side.toLowerCase()})`;
                         };
-                        if (b) parts.push({ label: `BBTC ${b}${sideTag(b, bSide)}`, color: colorFor(b, bSide) });
+                        if (b) {
+                          const suffix = isShortInfo(b, bSide) ? " (info-only)" : sideTag(b, bSide);
+                          parts.push({ label: `BBTC ${b}${suffix}`, color: colorFor(b, bSide) });
+                        }
                         if (v) {
-                          const suffix = isInfoOnly(v) ? " (info-only)" : sideTag(v, vSide);
+                          const suffix = isShortInfo(v, vSide) ? " (info-only)" : sideTag(v, vSide);
                           parts.push({ label: `VER ${v}${suffix}`, color: colorFor(v, vSide) });
                         }
                         return (
@@ -1048,10 +1070,13 @@ export default function TradeAnalysis() {
                 <span className="flex items-center gap-1.5" title="Trend reversed — EMA cross-down exited a long, or EMA cross-up covered a short. Clean exit, neither pure win nor loss.">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#94a3b8" }} /> Trend exit
                 </span>
-                <span className="flex items-center gap-1.5" title="Short entry — bearish setup met all gates.">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#d946ef" }} /> Short entry
+                <span className="flex items-center gap-1.5" title="Short setup detected — bearish trend conditions met. Info-only: short side has no edge per 10-year backtest (42.9% win, -1.25% median return). Strategy does NOT enter short positions.">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: "transparent", border: "1.5px dashed #d946ef" }}
+                  /> Short setup (info-only)
                 </span>
-                <span className="flex items-center gap-1.5" title="Info-only marker — RSI overbought condition. Not a tradeable signal per the 10-year backtest.">
+                <span className="flex items-center gap-1.5" title="Info-only marker — RSI overbought + bearish divergence. Not a tradeable signal per the 10-year backtest.">
                   <span
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ background: "transparent", border: "1.5px dashed #f97316" }}
