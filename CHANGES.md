@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Stop: 5% percent floor for low-volatility names
+
+**Why:** The post-fix 10y eval validated the ATR-lock fix (BBTC_STOP_HIT count dropped 29%, post-stop premium dropped from +1.06% to +0.65%), but AAPL specifically still showed 11/11 entries stopping with 0 REDUCE hits. Root cause: AAPL's daily ATR is only ~1.4% of price, so 2.5×ATR = ~3.5% stop — tighter than normal in-trend pullbacks. The strategy was buying continuations and stopping on routine pullbacks before the trend resumed.
+
+**What:**
+- **`server/signals/strategies/bbtc.ts`** — `MIN_STOP_PCT = 0.05` (5% percent floor) added. Hard stop distance now `max(2.5 × entryATR, 5% × entryPrice)`. Low-vol names (AAPL, KO, JNJ, utilities) get 5% breathing room regardless of ATR. High-vol names (TSLA, NVDA, AMD) where 2.5×ATR > 5% are completely unchanged — this is a one-sided fix that only widens stops, never tightens them.
+
+**Concrete impact (AAPL example):**
+- Entry $292, entry-bar ATR $4 → 2.5×ATR = $10 (3.4% stop). Pre-floor stop at $282.
+- 5% floor = $14.60 → post-floor stop at $277.40 (5%).
+- AAPL pullbacks of 4% within continuing uptrends will no longer stop.
+
+**Concrete impact (TSLA example):**
+- Entry $200, entry-bar ATR $8 → 2.5×ATR = $20 (10% stop). 5% = $10.
+- max(20, 10) = 20 → stop at $180 (10%). Unchanged.
+
+**Expected impact on broad eval:**
+- BBTC_BUY win rate at +20d should improve a few percentage points on low-vol names
+- BBTC_STOP_HIT count should drop another 5–15% (mostly from low-vol tickers)
+- BBTC_REDUCE count should rise (entries finally given room to reach 5×ATR target)
+
+**Files:** `server/signals/strategies/bbtc.ts`.
+
+Rollback tag: `safe/2026-05-08-stop-pct-floor`.
+
+---
 ## 2026-05-08 — Fix: hard stop shrinks with ATR contraction (premature stop-outs)
 
 **Why:** Chris confirmed via tooltip that the green/red dot pairs on AAPL 5Y were `BBTC STOP_HIT (long)` — real hard-stop fires, not REDUCE or cross-down. The trail-fix from the prior commit didn't help because hard stops were firing first.

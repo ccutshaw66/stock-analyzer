@@ -157,6 +157,13 @@ const ATR_TARGET_MULT = 5.0;     // was 3.0 — was reducing too early
 const MIN_ADX_FOR_ENTRY = 20;    // ADX < 20 = chop, skip entry
 const MAX_RSI_FOR_LONG_ENTRY = 65;  // RSI ceiling for long entries (10y eval cut)
 const MIN_RSI_FOR_SHORT_ENTRY = 35; // RSI floor for short entries (mirror)
+const MIN_STOP_PCT = 0.05;       // 5% percent floor on the hard stop. Low-rel-volatility
+                                 // names (AAPL ~1.4% daily ATR) had 2.5×ATR = ~3.5% stops,
+                                 // tighter than normal in-trend pullbacks. AAPL 5y eval
+                                 // showed 11/11 entries stopped, 0 REDUCE hits. Floor
+                                 // ensures stops give at least 5% room regardless of ATR;
+                                 // for high-vol names (ATR > 2%), 2.5×ATR is still wider
+                                 // and dominates, so this is purely a low-vol fix.
 
 // RSI(14) — Wilder's. Self-contained so callers don't have to thread it.
 function computeRSISeries(closes: number[], period: number): number[] {
@@ -256,7 +263,11 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       // post-entry (a real bug Chris hit on AAPL 5Y: enter on a volatile bar
       // when ATR=$5, ATR contracts to $3 the next week, stop pulls in from
       // $187.50 → $192.50 and a normal pullback inside trend triggers it).
-      const stopLoss = entryPrice - entryATR * ATR_STOP_MULT;
+      // Plus a 5% percent floor: max(2.5×entryATR, 5%×entryPrice). Low-vol
+      // names (AAPL ATR 1.4%) get 5% breathing room; high-vol names where
+      // 2.5×ATR exceeds 5% are unchanged.
+      const stopDistance = Math.max(entryATR * ATR_STOP_MULT, entryPrice * MIN_STOP_PCT);
+      const stopLoss = entryPrice - stopDistance;
       // Trail stop uses CURRENT ATR — it should adapt to live volatility, and
       // it's gated below to only activate once it has ratcheted above entry.
       const rawTrailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
@@ -287,9 +298,10 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     } else if (positionSide === "SHORT") {
       lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
       // Mirror of long-side stop math, just flipped. Hard stop uses entry-bar
-      // ATR (locked); trail uses current ATR (adapts) and only activates once
-      // it has ratcheted BELOW entry (profit-lock for shorts).
-      const stopLoss = entryPrice + entryATR * ATR_STOP_MULT;
+      // ATR (locked) plus 5% percent floor; trail uses current ATR (adapts)
+      // and only activates once it has ratcheted BELOW entry (profit-lock).
+      const stopDistance = Math.max(entryATR * ATR_STOP_MULT, entryPrice * MIN_STOP_PCT);
+      const stopLoss = entryPrice + stopDistance;
       const rawTrailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
       const trailActive = rawTrailStop < entryPrice;
       const target = entryPrice - entryATR * ATR_TARGET_MULT;
