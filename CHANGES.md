@@ -9,6 +9,73 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-08 — Major: BBTC pivots to real trend follower
+
+**Why:** Two structural problems forced this rewrite, both surfaced via charts (NVDA 5Y dead zone 2022→2024, AAPB charts with deep EMA9 crosses that didn't fire entries):
+
+1. **Entry side missed sustained trends.** BBTC required an EMA9 cross-up *event* to fire. In a continuing uptrend, EMA9 stays above EMA21, so no new cross fires. Once stopped out, the strategy waited for the EMAs to invert and re-cross — which can take months in a smooth trend. NVDA 2022-2024 had ONE entry early, got stopped, and the strategy sat out a 6x return. Multiple entry gates (SMA200 strict-above, RSI < 65 strict ceiling) compounded the problem by rejecting valid recovery setups.
+
+2. **Exit side capped winners and stopped winners.** Hard stop at 2.5×ATR (or 5% floor) plus profit target at 5×ATR meant: small losses (good) but small wins too (capped). Realized R-multiple was around 1.5:1 instead of the 3-5:1 trend followers need. Plus trail stop was anchored to entry-bar high and gated to "only fire above entry," which was a hack rather than a clean stop framework.
+
+Per Chris (the user): "We are looking for the profit not the percentage. I can lose 4 out of 5 times as long as the time I win is more than what I lost." That's R-multiple thinking — what trend followers actually do. The old strategy was built like a mean-reversion setup with high win rate aspirations and capped winners, fighting itself.
+
+**What changed in `server/signals/strategies/bbtc.ts`:**
+
+### Entry side — STATE-based, not event-based
+
+Old entry: `EMA9 crosses above EMA21` (event) + `close > EMA50` + `ADX >= 20` + `close > SMA200` (strict) + `RSI < 65` (strict).
+
+New entry, evaluated every flat bar:
+- `EMA9 > EMA21` (state, not event — fires on first qualifying bar after exit)
+- `close > EMA50` (medium-term trend stack)
+- `ADX >= 20` (chop filter, unchanged)
+- `close > SMA200` OR **SMA200 rising** over last 20 bars (catches early recoveries before price has fully reclaimed SMA200)
+- `RSI < 65` OR (`RSI < 75` AND **RSI turning up** over last 3 bars — catches continuation entries after pullbacks where RSI is recovering)
+
+Mirror conditions for shorts (EMA9 < EMA21, close < EMA50, SMA200 falling, RSI > 35 or > 25 with turning down).
+
+### Exit side — two-stop ladder (futures-style)
+
+```
+HARD STOP  = entryPrice − 2.5 × entryATR  (locked at entry, defines max loss)
+TRAIL STOP = highestSinceEntry − 3.0 × currentATR  (ratchets up with new highs)
+EFFECTIVE  = max(hardStop, trailStop)  (whichever is higher for longs)
+```
+
+- Trail multiplier widened from 1.5 to **3.0** so trail starts BELOW hard stop. Hard stop is active early — protects the "trade went to shit before it had a chance to develop" case. As price runs up, trail ratchets up. Once trail > hard, trail takes over. Classic futures stop-ladder Chris used.
+- 5% percent floor REMOVED — the trail handles "give the trade room" naturally, scaling per ticker volatility (AAPL ATR 1.4% → 4.2% trail; NVDA ATR 4.2% → 12.5% trail).
+- `trailActive` gate REMOVED — `max(hard, trail)` does the right thing automatically without the gate.
+- **Profit target REMOVED.** No more REDUCE signal. Winners run as long as the trail allows.
+- State-based exit: `EMA9 < EMA21 AND close < EMA50` (was event-based crossBelow + close < EMA50). Mirror for shorts.
+
+### Removed / never-emitted signals
+
+- `REDUCE` — no profit target → no REDUCE fires. Type retained for downstream tolerance; will simply never appear in new evals.
+- `ADD_LONG` — pyramid logic removed. State-based entries don't need it; once flat we re-enter on next qualifying bar via the main entry rule.
+
+### Why NO explicit cooldown on continuation entries
+
+Earlier draft had a 60-bar (3-month) cooldown after stop. Chris correctly pointed out 60 bars is far too long, and is also timeframe-dependent. Removed. The state-based conditions act as a natural cooldown:
+- After a stop, RSI is low and just turning. The "RSI turning up over 3 bars" requirement enforces a multi-bar recovery before re-entry.
+- Re-entry also requires close > EMA50 + EMA9 > EMA21 + ADX > 20 — the trade must have genuinely re-entered trend conditions.
+
+This makes the strategy timeframe-agnostic. Same code works on daily, hourly, or 5-minute bars when the timeframe-aware-bars TODO ships.
+
+### Expected impact (will validate via eval)
+
+- Long fire count: **rises** materially (state-based catches missed trends)
+- Win rate per fire: probably drops from ~57% to ~45-50% (more entries, more stops)
+- **Average win size doubles or triples** (no profit target cap)
+- Realized R-multiple: from ~1.5:1 to **~3:1+** on trending names
+- Total capital captured per ticker: substantially higher on trending stocks (NVDA, AMD, COST), modestly higher on choppy stocks (AAPL stays a hard case but at least participates more)
+- BBTC_REDUCE disappears from evals
+- BBTC_ADD_LONG disappears from evals
+
+**Files:** `server/signals/strategies/bbtc.ts`.
+
+Rollback tag: `safe/2026-05-08-trend-follower`.
+
+---
 ## 2026-05-08 — Chart: differentiate exit dot colors so trade outcomes are visible
 
 **Why:** Chris's complaint on the AAPL 5Y chart was "all I see are enter/exit a few days later, over and over." Looking carefully, the chart was lumping THREE completely different exit events into one red dot:

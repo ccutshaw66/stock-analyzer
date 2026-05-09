@@ -1,22 +1,26 @@
 /**
- * BBTC — EMA Pyramid Risk strategy (single source of truth).
+ * BBTC — Trend-following strategy (single source of truth).
  *
- * Entry:   EMA9 crosses EMA21 with price on correct side of EMA50
- * Manage:  ATR(14) hard stop at 2×ATR, trailing stop at 1.5×ATR from high,
- *          profit target at 3×ATR, re-entry on additional crosses
+ * **Major rewrite 2026-05-08:** pivoted from "balanced edge" (event-based
+ * entries with capped winners) to a real trend follower:
+ *   - State-based entries (no fresh EMA cross required — fires on first
+ *     bar where the trend stack is aligned). Catches sustained trends
+ *     that the event-based design was missing entirely (NVDA 2022-2024,
+ *     AAPB recoveries).
+ *   - Two-stop framework: hard stop locks in max loss at entry, trailing
+ *     stop ratchets up and takes over once it climbs above the hard stop
+ *     level. Classic futures stop-ladder.
+ *   - No profit target. Winners run as long as the trail allows.
  *
  * This is the ONLY place BBTC is computed. Scanner, Trade Analysis,
  * Track Record, and any future caller must import from here.
- *
- * Do NOT inline BBTC in routes.ts or pages. History: BBTC was duplicated
- * across three routes (PR #17, Phase 1.9) with subtle copy-paste drift.
  */
 
 export type BBTCSignal =
   | "BUY"        // open long
-  | "SELL"       // open short (or close long)
-  | "ADD_LONG"   // pyramid on additional cross while in LONG
-  | "REDUCE"     // hit 3×ATR target while in LONG
+  | "SELL"       // open short (or close long via state weakening)
+  | "ADD_LONG"   // legacy — no longer emitted (kept in type for downstream tolerance)
+  | "REDUCE"     // legacy — no longer emitted (no profit target)
   | "STOP_HIT"   // stop or trailing-stop hit
   | null;
 
@@ -34,73 +38,44 @@ export interface BBTCInput {
   ema50: number[];
   atr14: number[];
   /** Optional ADX(14). When provided, BBTC requires ADX >= 20 at entry to
-   *  reject chop-market crossings. Computed inline from highs/lows/closes
+   *  reject chop-market entries. Computed inline from highs/lows/closes
    *  if not passed. */
   adx14?: number[];
-  /** Optional RSI(14). When provided, BBTC requires RSI < 65 on long
-   *  entries (BUY/ADD_LONG) and RSI > 35 on short entries to filter out
-   *  late-cycle entries chasing extended momentum. Per 10-year eval, the
-   *  60-70 and >70 RSI buckets are the lower-edge entries we want to cut. */
+  /** Optional RSI(14). Used as a soft chase-filter (see entry conditions). */
   rsi14?: number[];
 }
 
 export interface BBTCResult {
-  /** Per-bar signals, same length as closes. null where no event. */
   signals: BBTCSignal[];
-  /** Per-bar side of the trade the signal pertains to. Same length as signals.
-   *  "LONG" for long entries / long exits / long stops / pyramid adds.
-   *  "SHORT" for short entries / short exits / short stops.
-   *  Null where signals[i] is null. Used by chart rendering to filter
-   *  STOP_HIT and exit dots into the correct long/short view. */
   signalSides: BBTCSignalSide[];
-  /** Most recent non-null signal, or null if none. */
   lastSignal: BBTCSignal;
-  /** UI-level summary of lastSignal: ENTER on entries/adds, SELL on exits, HOLD otherwise. */
   topSignal: BBTCTopSignal;
-  /** EMA-stack-based trend at the last bar. */
   trend: BBTCTrend;
-  /** LONG/SHORT/FLAT bias at the last bar (same logic as trend, different naming). */
   bias: BBTCBias;
-  /** Entry price of the most recent position (0 if never entered). Used by callers to compute stop/target prices. */
   entryPrice: number;
-  /** Highest high seen since the most recent entry (0 if never entered). Used by callers to compute trailing stop. */
   highestSinceEntry: number;
 }
 
-/**
- * Compute the full BBTC signal series.
- *
- * **Both-sides, regime-gated as of 2026-05-08 (revised same day).**
- *
- * Earlier in the day shorts were dropped entirely after the eval showed
- * BBTC_SELL at 47% +5d win rate. That call was flawed: the eval window was
- * a +26% SPY year — shorts losing money in a 12-month bull tape doesn't
- * prove shorts don't work, it proves shorts don't work *in bull regimes*.
- * Restored with a market-regime gate.
- *
- * Long entries:
- *   - EMA9 crosses up through EMA21 with price > EMA50
- *   - ADX(14) ≥ 20 (real trend strength, filters chop)
- *
- * Short entries:
- *   - EMA9 crosses down through EMA21 with price < EMA50
- *   - ADX(14) ≥ 20
- *   - **NEW: price < SMA200** (long-term bearish regime confirmation).
- *     Without this gate, every cross-down in a bull market fires a short
- *     that gets overrun. Requiring SMA200 = below filters out
- *     bull-market false shorts; in bear markets, SMA200 will be above
- *     price for most names and shorts can fire freely.
- *
- * Other tunings retained from earlier:
- *   - ATR stop 2.5× (was 2.0× — too tight, forward returns after stop were
- *     positive meaning premature)
- *   - REDUCE target 5.0× ATR (was 3.0× — was exiting winners early)
- *   - ADX gate on initial BUY only, NOT on ADD_LONG (pullbacks legitimately
- *     drag ADX below 20 even inside strong trends)
- */
+// ─── Tunable constants ─────────────────────────────────────────────────
+const ATR_STOP_MULT = 2.5;        // hard stop distance from entry, in entryATR units
+const ATR_TRAIL_MULT = 3.0;       // trail distance below highestSinceEntry, in current ATR units
+                                  // wider than hard stop so trail starts BELOW hard stop
+                                  // and the hard stop is the active level early in the trade.
+                                  // As price runs up, trail ratchets up and eventually
+                                  // takes over. Classic futures stop-ladder.
+const MIN_ADX_FOR_ENTRY = 20;     // ADX < 20 = chop, skip entry
+const RSI_CEILING_LONG = 65;      // base RSI ceiling for long entries
+const RSI_CEILING_LONG_RISING = 75;  // higher ceiling allowed when RSI is turning up
+                                     // from a pullback (catches continuation entries
+                                     // where the underlying trend is intact and RSI
+                                     // is recovering from a dip).
+const RSI_FLOOR_SHORT = 35;
+const RSI_FLOOR_SHORT_FALLING = 25;
+const SMA200_SLOPE_LOOKBACK = 20; // bars to compare SMA200 vs SMA200[i-N] for slope check
 
-// Wilder's ADX series (14-period). Self-contained so callers don't have to
-// thread it through. Returns NaN for warmup bars.
+// ─── Helpers ───────────────────────────────────────────────────────────
+
+// Wilder's ADX(14). Self-contained.
 function computeADX(highs: number[], lows: number[], closes: number[], period = 14): number[] {
   const len = closes.length;
   const adx = new Array(len).fill(NaN);
@@ -141,7 +116,6 @@ function computeADX(highs: number[], lows: number[], closes: number[], period = 
     const minusDI = (smoothMinusDM / Math.max(smoothTR, 1e-9)) * 100;
     dx[i] = (Math.abs(plusDI - minusDI) / Math.max(plusDI + minusDI, 1e-9)) * 100;
   }
-  // ADX = Wilder smooth of DX
   let sum = 0;
   for (let i = period; i < period * 2; i++) sum += dx[i];
   adx[period * 2 - 1] = sum / period;
@@ -151,21 +125,7 @@ function computeADX(highs: number[], lows: number[], closes: number[], period = 
   return adx;
 }
 
-const ATR_STOP_MULT = 2.5;       // was 2.0 — too tight
-const ATR_TRAIL_MULT = 1.5;      // unchanged
-const ATR_TARGET_MULT = 5.0;     // was 3.0 — was reducing too early
-const MIN_ADX_FOR_ENTRY = 20;    // ADX < 20 = chop, skip entry
-const MAX_RSI_FOR_LONG_ENTRY = 65;  // RSI ceiling for long entries (10y eval cut)
-const MIN_RSI_FOR_SHORT_ENTRY = 35; // RSI floor for short entries (mirror)
-const MIN_STOP_PCT = 0.05;       // 5% percent floor on the hard stop. Low-rel-volatility
-                                 // names (AAPL ~1.4% daily ATR) had 2.5×ATR = ~3.5% stops,
-                                 // tighter than normal in-trend pullbacks. AAPL 5y eval
-                                 // showed 11/11 entries stopped, 0 REDUCE hits. Floor
-                                 // ensures stops give at least 5% room regardless of ATR;
-                                 // for high-vol names (ATR > 2%), 2.5×ATR is still wider
-                                 // and dominates, so this is purely a low-vol fix.
-
-// RSI(14) — Wilder's. Self-contained so callers don't have to thread it.
+// RSI(14) — Wilder's. Self-contained.
 function computeRSISeries(closes: number[], period: number): number[] {
   const rsi = new Array(closes.length).fill(NaN);
   if (closes.length <= period) return rsi;
@@ -188,8 +148,7 @@ function computeRSISeries(closes: number[], period: number): number[] {
   return rsi;
 }
 
-// SMA200 — long-term regime indicator. Self-contained for the same reason
-// ADX is: callers don't need to thread it through.
+// SMA series. Used for SMA200 (regime check).
 function computeSMA(data: number[], period: number): number[] {
   const out = new Array(data.length).fill(NaN);
   if (data.length < period) return out;
@@ -200,6 +159,7 @@ function computeSMA(data: number[], period: number): number[] {
   return out;
 }
 
+// ─── Main strategy ─────────────────────────────────────────────────────
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
@@ -211,34 +171,54 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
   let inPosition = false;
   let positionSide: "LONG" | "SHORT" | null = null;
   let entryPrice = 0;
-  let entryATR = 0; // ATR at the entry bar — locks the hard stop level for the
-                    // life of the position so an ATR contraction post-entry
-                    // doesn't pull the stop in closer to entry. Trail stop
-                    // continues to use the current bar's ATR (it should adapt).
+  let entryATR = 0;
   let highestSinceEntry = 0;
   let lowestSinceEntry = Number.POSITIVE_INFINITY;
 
   for (let i = 1; i < closes.length; i++) {
     if (isNaN(ema9[i]) || isNaN(ema21[i]) || isNaN(ema50[i]) || isNaN(atr14[i])) continue;
 
-    const crossAbove = ema9[i] > ema21[i] && ema9[i - 1] <= ema21[i - 1];
-    const crossBelow = ema9[i] < ema21[i] && ema9[i - 1] >= ema21[i - 1];
+    // ─── Indicator state at this bar ─────────────────────────────────
     const trendStrong = !isNaN(adx14[i]) && adx14[i] >= MIN_ADX_FOR_ENTRY;
-    // Regime gates. Symmetric: when SMA200 is NaN (early in series, before
-    // 200-bar warmup completes), both sides default to true and rely on the
-    // other entry conditions (EMA50 side + ADX). Without this symmetry the
-    // SMA200=NaN bars silently blocked all shorts on charts shorter than
-    // 200 bars (Trade Analysis 1Y fetches give SMA200 valid only for the
-    // last ~50 bars), producing the "no short dots ever" UI bug.
-    const longRegimeOk = isNaN(sma200[i]) ? true : closes[i] > sma200[i];
-    const shortRegimeOk = isNaN(sma200[i]) ? true : closes[i] < sma200[i];
-    // RSI gate. NaN bars (early in series) default to true so warmup doesn't
-    // silently block all entries — same defensive pattern as SMA200 above.
-    const longRSIok = isNaN(rsi14[i]) ? true : rsi14[i] < MAX_RSI_FOR_LONG_ENTRY;
-    const shortRSIok = isNaN(rsi14[i]) ? true : rsi14[i] > MIN_RSI_FOR_SHORT_ENTRY;
+
+    // SMA200 regime: above-or-rising (longs), below-or-falling (shorts).
+    // Slope-based check catches early-stage recoveries before price has
+    // fully reclaimed SMA200 — fixes the NVDA 2022-2024 dead-zone where
+    // EMAs crossed up multiple times but price was still below SMA200.
+    const sma200Now = sma200[i];
+    const sma200Past = i >= SMA200_SLOPE_LOOKBACK ? sma200[i - SMA200_SLOPE_LOOKBACK] : NaN;
+    const sma200Rising = !isNaN(sma200Past) && !isNaN(sma200Now) && sma200Now > sma200Past;
+    const sma200Falling = !isNaN(sma200Past) && !isNaN(sma200Now) && sma200Now < sma200Past;
+    const longRegimeOk = isNaN(sma200Now) ? true : (closes[i] > sma200Now || sma200Rising);
+    const shortRegimeOk = isNaN(sma200Now) ? true : (closes[i] < sma200Now || sma200Falling);
+
+    // RSI direction over last 3 bars. Used as the "rising from pullback"
+    // / "falling from rebound" qualifier that lets entries fire at a
+    // higher absolute RSI than the base ceiling/floor would normally allow.
+    const rsiTurningUp =
+      i >= 2 && !isNaN(rsi14[i]) && !isNaN(rsi14[i - 1]) && !isNaN(rsi14[i - 2]) &&
+      rsi14[i] > rsi14[i - 1] && rsi14[i - 1] > rsi14[i - 2];
+    const rsiTurningDown =
+      i >= 2 && !isNaN(rsi14[i]) && !isNaN(rsi14[i - 1]) && !isNaN(rsi14[i - 2]) &&
+      rsi14[i] < rsi14[i - 1] && rsi14[i - 1] < rsi14[i - 2];
+    const longRSIok = isNaN(rsi14[i])
+      ? true
+      : (rsi14[i] < RSI_CEILING_LONG) ||
+        (rsi14[i] < RSI_CEILING_LONG_RISING && rsiTurningUp);
+    const shortRSIok = isNaN(rsi14[i])
+      ? true
+      : (rsi14[i] > RSI_FLOOR_SHORT) ||
+        (rsi14[i] > RSI_FLOOR_SHORT_FALLING && rsiTurningDown);
+
+    // EMA stack state (no cross-event required — state-based, fires on
+    // first bar where stack is aligned, catching sustained-trend re-entries
+    // that the prior cross-event design missed entirely).
+    const longStackOk = ema9[i] > ema21[i] && closes[i] > ema50[i];
+    const shortStackOk = ema9[i] < ema21[i] && closes[i] < ema50[i];
 
     if (!inPosition) {
-      if (crossAbove && closes[i] > ema50[i] && trendStrong && longRegimeOk && longRSIok) {
+      // ─── Entry: state-based ─────────────────────────────────────────
+      if (longStackOk && trendStrong && longRegimeOk && longRSIok) {
         signals[i] = "BUY";
         signalSides[i] = "LONG";
         inPosition = true;
@@ -247,7 +227,7 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         entryATR = atr14[i];
         highestSinceEntry = highs[i];
         lowestSinceEntry = lows[i];
-      } else if (crossBelow && closes[i] < ema50[i] && trendStrong && shortRegimeOk && shortRSIok) {
+      } else if (shortStackOk && trendStrong && shortRegimeOk && shortRSIok) {
         signals[i] = "SELL";
         signalSides[i] = "SHORT";
         inPosition = true;
@@ -258,76 +238,60 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         lowestSinceEntry = lows[i];
       }
     } else if (positionSide === "LONG") {
+      // ─── Long management: two-stop framework ────────────────────────
       highestSinceEntry = Math.max(highestSinceEntry, highs[i]);
-      // Hard stop locked at entry-bar ATR — does NOT shrink if ATR contracts
-      // post-entry (a real bug Chris hit on AAPL 5Y: enter on a volatile bar
-      // when ATR=$5, ATR contracts to $3 the next week, stop pulls in from
-      // $187.50 → $192.50 and a normal pullback inside trend triggers it).
-      // Plus a 5% percent floor: max(2.5×entryATR, 5%×entryPrice). Low-vol
-      // names (AAPL ATR 1.4%) get 5% breathing room; high-vol names where
-      // 2.5×ATR exceeds 5% are unchanged.
-      const stopDistance = Math.max(entryATR * ATR_STOP_MULT, entryPrice * MIN_STOP_PCT);
-      const stopLoss = entryPrice - stopDistance;
-      // Trail stop uses CURRENT ATR — it should adapt to live volatility, and
-      // it's gated below to only activate once it has ratcheted above entry.
-      const rawTrailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
-      const trailActive = rawTrailStop > entryPrice;
-      const target = entryPrice + entryATR * ATR_TARGET_MULT;
-      if (lows[i] <= stopLoss || (trailActive && lows[i] <= rawTrailStop)) {
+      // Hard stop locked at entry-bar ATR. Defines max loss. Doesn't move.
+      const hardStop = entryPrice - entryATR * ATR_STOP_MULT;
+      // Trail stop: ratchets up with new highs, uses current ATR (adapts
+      // to live volatility). Wider multiplier than hard stop so trail
+      // starts BELOW hard stop — hard stop active early, trail takes
+      // over once it climbs above hard stop level.
+      const trailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
+      // Effective stop = whichever is HIGHER (closer to current price).
+      // Early in trade: hardStop > trailStop, hard active.
+      // After price runs: trailStop > hardStop, trail active.
+      const effectiveStop = Math.max(hardStop, trailStop);
+
+      if (lows[i] <= effectiveStop) {
         signals[i] = "STOP_HIT";
-        signalSides[i] = "LONG"; // long stop — show in long view only
-        inPosition = false;
-        positionSide = null;
-      } else if (highs[i] >= target) {
-        signals[i] = "REDUCE";
-        signalSides[i] = "LONG"; // long profit-take
-      } else if (crossAbove && closes[i] > ema50[i] && longRSIok) {
-        // ADD_LONG: pullback re-entry within an existing long. ADX is NOT
-        // required here — pullbacks legitimately drag ADX below 20 inside
-        // strong trends. RSI ceiling IS applied — adding to a long at
-        // RSI > 65 is exactly the late-cycle chase we want to avoid.
-        signals[i] = "ADD_LONG";
         signalSides[i] = "LONG";
-      } else if (crossBelow && closes[i] < ema50[i]) {
-        // Cross-down while in long = exit. Does NOT auto-flip to short.
+        inPosition = false;
+        positionSide = null;
+      } else if (ema9[i] < ema21[i] && closes[i] < ema50[i]) {
+        // State-based exit: trend stack inverted (EMA9 below EMA21 AND
+        // close below EMA50). Confirms genuine trend weakness, not a
+        // single-bar dip. Mirrors the entry stack check.
         signals[i] = "SELL";
-        signalSides[i] = "LONG"; // long exit, NOT a short entry — show in long view
+        signalSides[i] = "LONG";
         inPosition = false;
         positionSide = null;
       }
+      // Note: no REDUCE / profit target. Trail handles profit-taking.
+      // Note: no ADD_LONG. State-based entries don't pyramid.
     } else if (positionSide === "SHORT") {
+      // ─── Short management: mirror of long ───────────────────────────
       lowestSinceEntry = Math.min(lowestSinceEntry, lows[i]);
-      // Mirror of long-side stop math, just flipped. Hard stop uses entry-bar
-      // ATR (locked) plus 5% percent floor; trail uses current ATR (adapts)
-      // and only activates once it has ratcheted BELOW entry (profit-lock).
-      const stopDistance = Math.max(entryATR * ATR_STOP_MULT, entryPrice * MIN_STOP_PCT);
-      const stopLoss = entryPrice + stopDistance;
-      const rawTrailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
-      const trailActive = rawTrailStop < entryPrice;
-      const target = entryPrice - entryATR * ATR_TARGET_MULT;
-      if (highs[i] >= stopLoss || (trailActive && highs[i] >= rawTrailStop)) {
+      const hardStop = entryPrice + entryATR * ATR_STOP_MULT;
+      const trailStop = lowestSinceEntry + atr14[i] * ATR_TRAIL_MULT;
+      // For shorts, effective stop = whichever is LOWER (closer to current).
+      const effectiveStop = Math.min(hardStop, trailStop);
+
+      if (highs[i] >= effectiveStop) {
         signals[i] = "STOP_HIT";
-        signalSides[i] = "SHORT"; // short stop — show in short view only
+        signalSides[i] = "SHORT";
         inPosition = false;
         positionSide = null;
-      } else if (lows[i] <= target) {
-        signals[i] = "REDUCE";
-        signalSides[i] = "SHORT"; // short profit-take
-      } else if (crossAbove && closes[i] > ema50[i]) {
-        // Cross-up while in short = exit. Does NOT auto-flip to long.
+      } else if (ema9[i] > ema21[i] && closes[i] > ema50[i]) {
+        // State-based exit: trend stack flipped to bullish.
         signals[i] = "BUY";
-        signalSides[i] = "SHORT"; // short exit, NOT a long entry — show in short view
+        signalSides[i] = "SHORT"; // short cover, NOT a new long entry
         inPosition = false;
         positionSide = null;
       }
-      // Note: no pyramid-the-short branch. Pre-2026-05-08 code emitted
-      // "ADD_LONG" while in SHORT for added-bearishness — that was a label
-      // bug and inflated the eval's ADD_LONG count. Cleaner to skip the
-      // short-pyramid entirely than to introduce a new ADD_SHORT type.
     }
   }
 
-  // Summarize the most recent event
+  // ─── Summarize last event for UI ─────────────────────────────────────
   let lastSignal: BBTCSignal = null;
   for (let i = closes.length - 1; i >= 0; i--) {
     if (signals[i]) {
