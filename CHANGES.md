@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-10 — TFT: ATR floor filter (Phase 1 tuning)
+
+**Why:** First TFT eval results came in. Shorts-off variant returned **$901K basket P&L** (vs $415K BBTC+VER baseline, +117%). But 21 of 80 tickers still bled — all low-volatility defensives (utilities ED/DUK/SO/AEP/XEL/EXC, telecom VZ, staples KO/PEP/MO, REITs CCI/AMT, pharma JNJ, etc.). Each lost $1-8K. Total drag from these 21 names: ~$80K. Pattern matches the original 2026-05-08 handoff prediction: trend follower bleeds on stocks that don't trend.
+
+Per Chris (the user): "I lean (1) → (3) → (2). Get the safe lift, ship it, then chase the moonshot in a separate experiment with rollback ready."
+
+**What:** ATR-as-percent-of-price floor filter on TFT entries. Refuses CORE and TACTICAL entries when `atr14[i] / closes[i]` is below the threshold. Exits are NEVER gated — open positions always close on their normal triggers.
+
+- **`server/signals/strategies/tft.ts`** — added `atrFloorPct` (fraction) to `TFTInput`. New helper `atrPassesFloor(i)` short-circuits to `true` when filter is 0 (default off). Gates `openCore` and `addTactical`. Filter applies symmetrically to long and short sides.
+- **`server/diag/strategy-tft-pnl.ts`** — threads `atrFloorPct` through `runStrategyTFTPnL` → `evalTickerTFT` → `simulateTFT`. Added `atrFloorPct` to basket result schema and notes.
+- **`server/routes.ts`** — `/api/diag/strategy-tft-pnl` accepts `&atrFloor=1.5` (percent). Converts to fraction internally (0.015). Caps at 20% for sanity. Default 0 preserves prior behavior.
+
+**Usage:**
+```
+# Phase 1 test — TFT shorts-off + 1.5% ATR floor
+/api/diag/strategy-tft-pnl?symbols=...&days=3650&shorts=off&atrFloor=1.5
+```
+
+Expected lift: **+$50K-$80K** (eliminating the bleed from 21 low-vol names without touching the moonshots). Brings basket from ~$901K toward ~$950K-$1M.
+
+Strictly additive (default `atrFloor=0` preserves prior behavior). Live website unaffected — TFT still lives only in the diag endpoint.
+
+Rollback tag: `safe/2026-05-10-pre-atr-floor`.
+
+Per Chris's plan: this is Phase 1 of the agreed (1)→(3)→(2) sequence:
+1. **ATR floor filter** (this commit) — small safe iteration
+2. Wider-stop variants for moonshot capture (NVDA, AMD) — separate experiment
+3. Wire TFT into the website chart — adopt as the live strategy
+
+---
 ## 2026-05-09 — TFT (Two-Layer Trend Continuation) strategy + evaluator
 
 **Why:** BBTC+VER 10y eval showed a $415K basket P&L on 80 tickers — beats SPY 15× — but on individual moonshots it leaves enormous money on the table. NVDA: strategy $31K, buy-and-hold $3.78M. AMD: strategy $25K, B&H $2.41M. AMZN, GOOGL, LLY, COST, CAT, MSFT — all show the same pattern. The 3×ATR trail stop gets shaken out by routine 20-30% pullbacks during sustained trends, then the strategy waits months for a fresh setup that may never come. Time-in-market on NVDA was only 45% over 10 years.

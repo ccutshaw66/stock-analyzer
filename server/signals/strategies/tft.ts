@@ -99,6 +99,19 @@ export interface TFTInput {
 
   positionSize: number;                       // dollars per unit
   enableShorts: boolean;                      // default true for TFT
+
+  /**
+   * Minimum ATR-as-percent-of-price at entry, expressed as a fraction (e.g.
+   * 0.015 = 1.5%). When set, CORE and TACTICAL entries are refused on bars
+   * where atr14[i] / closes[i] < atrFloorPct. Designed to skip low-volatility
+   * defensives (utilities, telecom, staples) where the trend follower bleeds
+   * on chop without ever having room to capture a real move.
+   *
+   * 0 (default) disables the filter. Recommended starting value: 0.015.
+   * Filter applies to entries only — never gates exits, so existing positions
+   * always close on their normal triggers.
+   */
+  atrFloorPct: number;
 }
 
 export interface TFTResult {
@@ -251,8 +264,15 @@ export function simulateTFT(input: TFTInput): TFTResult {
   const {
     dates, closes, highs, lows, atr14,
     bbtcSignals, bbtcSides, verSignals, verSides,
-    positionSize, enableShorts,
+    positionSize, enableShorts, atrFloorPct,
   } = input;
+
+  function atrPassesFloor(i: number): boolean {
+    if (atrFloorPct <= 0) return true;
+    const atr = atr14[i];
+    if (!Number.isFinite(atr) || closes[i] <= 0) return false;
+    return atr / closes[i] >= atrFloorPct;
+  }
 
   const n = closes.length;
   const agg = aggregateWeekly(dates, closes);
@@ -314,6 +334,7 @@ export function simulateTFT(input: TFTInput): TFTResult {
   function openCore(side: "LONG" | "SHORT", i: number): void {
     const atr = atr14[i];
     if (!Number.isFinite(atr)) return;
+    if (!atrPassesFloor(i)) return;
     // Volatility-adjusted: high-vol names get half-size core
     const atrPct = atr / closes[i];
     const units = atrPct > HIGH_VOL_ATR_PCT ? 0.5 : 1.0;
@@ -332,6 +353,7 @@ export function simulateTFT(input: TFTInput): TFTResult {
     if (absUnits() + 0.5 > MAX_TOTAL_UNITS) return false;
     const atr = atr14[i];
     if (!Number.isFinite(atr)) return false;
+    if (!atrPassesFloor(i)) return false;
     layers.push({
       type: "TACTICAL",
       side,

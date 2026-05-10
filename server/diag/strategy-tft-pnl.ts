@@ -258,7 +258,7 @@ function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simu
   };
 }
 
-async function evalTickerTFT(symbol: string, days: number, positionSize: number, enableShorts: boolean): Promise<TFTTickerPnL | null> {
+async function evalTickerTFT(symbol: string, days: number, positionSize: number, enableShorts: boolean, atrFloorPct: number): Promise<TFTTickerPnL | null> {
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
 
@@ -302,6 +302,7 @@ async function evalTickerTFT(symbol: string, days: number, positionSize: number,
     verSides: ver.signalSides.slice(startIdx) as Array<string | undefined>,
     positionSize,
     enableShorts,
+    atrFloorPct,
   });
 
   return summarizeTicker(symbol, slicedBars, sim, positionSize);
@@ -422,7 +423,7 @@ function aggregateBasket(perTicker: TFTTickerPnL[], spyTicker: TFTTickerPnL | nu
 // ─── Top-level ──────────────────────────────────────────────────────────────
 
 export interface TFTStrategyPnLResult {
-  basket: { symbols: string[]; days: number; positionSize: number; enableShorts: boolean };
+  basket: { symbols: string[]; days: number; positionSize: number; enableShorts: boolean; atrFloorPct: number };
   generatedAt: string;
   perTicker: TFTTickerPnL[];
   aggregate: TFTBasketAgg;
@@ -435,26 +436,27 @@ export async function runStrategyTFTPnL(
   positionSize: number,
   includeTradeDetail: boolean,
   enableShorts: boolean,
+  atrFloorPct: number,
 ): Promise<TFTStrategyPnLResult> {
   const BATCH = 12;
   const tickerResults: TFTTickerPnL[] = [];
   for (let i = 0; i < symbols.length; i += BATCH) {
     const slice = symbols.slice(i, i + BATCH);
-    const results = await Promise.allSettled(slice.map(s => evalTickerTFT(s, days, positionSize, enableShorts)));
+    const results = await Promise.allSettled(slice.map(s => evalTickerTFT(s, days, positionSize, enableShorts, atrFloorPct)));
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) tickerResults.push(r.value);
     }
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
-  const spy = await evalTickerTFT("SPY", days, positionSize, enableShorts).catch(() => null);
+  const spy = await evalTickerTFT("SPY", days, positionSize, enableShorts, atrFloorPct).catch(() => null);
 
   const perTicker = includeTradeDetail
     ? tickerResults
     : tickerResults.map(t => ({ ...t, trades: [] }));
 
   return {
-    basket: { symbols, days, positionSize, enableShorts },
+    basket: { symbols, days, positionSize, enableShorts, atrFloorPct },
     generatedAt: new Date().toISOString(),
     perTicker,
     aggregate: aggregateBasket(tickerResults, spy),
@@ -470,6 +472,7 @@ export async function runStrategyTFTPnL(
       "marketExposurePct = bars with nonzero position / total bars × 100. Compare to BBTC+VER which historically held ~45% on NVDA. TFT target is 80%+ on names in confirmed regimes.",
       "capturedBuyAndHoldPct per ticker = totalPnLDollar / buyAndHoldDollar × 100. Tells you what fraction of the simple-hold return the strategy captured.",
       "shorts=on by default (the whole point of TFT is two-sided coverage). Add ?shorts=off for ablation testing.",
+      "atrFloor (percent) refuses entries on bars where ATR/close is below the threshold. Default 0 (no filter). Recommended starting value: 1.5 (filters most low-vol defensives like utilities, telecom, staples without touching trending names).",
       "No commissions or slippage applied. Real-world P&L would be lower by ~$1-5 per round trip plus 0.05-0.1% slippage. Higher trade count than strategy-pnl.ts, so slippage matters more.",
       "Add ?detail=1 to include per-trade records (every layer entry/exit) for each ticker.",
     ],

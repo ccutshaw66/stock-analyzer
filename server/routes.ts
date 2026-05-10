@@ -5164,13 +5164,15 @@ export async function registerRoutes(
   // position throughout a confirmed regime and uses BBTC/VER as a tactical
   // scaling layer. Stop-and-reverse on regime flip.
   //
-  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off]
+  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off][&atrFloor=1.5]
   //
   // - days: 30..3650 (default 365). 350 bars warmup needed for 40W SMA; tickers with <300 bars are skipped.
   // - positionSize: dollars per UNIT (default 10000). Max position = 2.0 units = 2× positionSize notional.
   //   THIS DIFFERS FROM strategy-pnl which deploys ONE positionSize per trade.
-  // - detail=1 to include every layer-trade record per ticker
+  // - detail=1 to include per-trade records
   // - shorts=on (default) or off — ablation toggle
+  // - atrFloor: percent (e.g. 1.5 = 1.5%). Refuses entries when ATR/price is below the threshold.
+  //   Default 0 (no filter). Use 1.5 to filter out low-vol defensives that bleed on chop.
   app.get("/api/diag/strategy-tft-pnl", async (req, res) => {
     try {
       const { runStrategyTFTPnL } = await import("./diag/strategy-tft-pnl");
@@ -5184,7 +5186,12 @@ export async function registerRoutes(
       const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
       const detail = String(req.query.detail || "") === "1";
       const enableShorts = String(req.query.shorts || "on").toLowerCase() !== "off";
-      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts);
+      // atrFloor query param is a percent (e.g. "1.5"); convert to fraction (0.015) for the strategy.
+      const atrFloorPctRaw = Number(req.query.atrFloor);
+      const atrFloorPct = Number.isFinite(atrFloorPctRaw) && atrFloorPctRaw > 0
+        ? Math.min(atrFloorPctRaw, 20) / 100
+        : 0;
+      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts, atrFloorPct);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-tft-pnl failed" });
