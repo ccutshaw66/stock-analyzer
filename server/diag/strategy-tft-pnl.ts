@@ -170,7 +170,9 @@ export interface TFTTickerPnL {
   avgLossPct: number | null;
   avgWinDollar: number | null;
   avgLossDollar: number | null;
-  totalPnLDollar: number;          // sum of pnlDollar across closed layer-trades
+  totalPnLDollar: number;          // realized only — sum of pnlDollar across closed layer-trades
+  unrealizedPnLDollar: number;     // mark-to-market on positions still open at end of window
+  totalPnLIncludingUnrealized: number; // realized + unrealized — the "if you closed today" answer
   rMultiple: number | null;
   bestTradePct: number | null;
   worstTradePct: number | null;
@@ -181,7 +183,8 @@ export interface TFTTickerPnL {
   peakUnitsDeployed: number;       // max simultaneous units (1.0, 1.5, or 2.0)
   daysInMarket: number;
   marketExposurePct: number;       // daysInMarket / totalBars × 100
-  capturedBuyAndHoldPct: number | null; // totalPnLDollar / buyAndHoldDollar × 100 (when B&H > 0)
+  capturedBuyAndHoldPct: number | null;          // realized totalPnLDollar / buyAndHoldDollar × 100
+  capturedBuyAndHoldPctIncludingUnrealized: number | null; // (realized+unrealized) / B&H × 100 — the honest moonshot capture metric
 }
 
 function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simulateTFT>, positionSize: number): TFTTickerPnL {
@@ -195,6 +198,11 @@ function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simu
   const avgWinPct = wins.length ? wins.reduce((a, t) => a + (t.returnPct || 0), 0) / wins.length : null;
   const avgLossPct = losses.length ? losses.reduce((a, t) => a + (t.returnPct || 0), 0) / losses.length : null;
   const totalPnLDollar = closed.reduce((a, t) => a + (t.pnlDollar || 0), 0);
+  // END_OF_WINDOW open trades have pnlDollar populated by the simulator (mark-to-last-close).
+  // For modes like catastrophic-only that intentionally hold cores forever, the unrealized
+  // gains are the bulk of the strategy's value and MUST be reported alongside realized.
+  const unrealizedPnLDollar = open.reduce((a, t) => a + (t.pnlDollar || 0), 0);
+  const totalPnLIncludingUnrealized = totalPnLDollar + unrealizedPnLDollar;
 
   // Drawdown on per-trade equity curve (sequential)
   let cum = 0;
@@ -221,6 +229,9 @@ function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simu
   const captured = buyAndHoldDollar > 0
     ? Number((totalPnLDollar / buyAndHoldDollar * 100).toFixed(1))
     : null;
+  const capturedInclUnrealized = buyAndHoldDollar > 0
+    ? Number((totalPnLIncludingUnrealized / buyAndHoldDollar * 100).toFixed(1))
+    : null;
 
   return {
     symbol,
@@ -244,6 +255,8 @@ function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simu
     avgWinDollar: avgWinPct != null ? Number((avgWinPct * positionSize).toFixed(2)) : null,
     avgLossDollar: avgLossPct != null ? Number((avgLossPct * positionSize).toFixed(2)) : null,
     totalPnLDollar: Number(totalPnLDollar.toFixed(2)),
+    unrealizedPnLDollar: Number(unrealizedPnLDollar.toFixed(2)),
+    totalPnLIncludingUnrealized: Number(totalPnLIncludingUnrealized.toFixed(2)),
     rMultiple: (avgWinPct != null && avgLossPct != null && avgLossPct < 0)
       ? Number((avgWinPct / Math.abs(avgLossPct)).toFixed(2))
       : null,
@@ -255,6 +268,7 @@ function summarizeTicker(symbol: string, bars: Bars, sim: ReturnType<typeof simu
     daysInMarket: sim.daysInMarket,
     marketExposurePct: sim.totalBars > 0 ? Number((sim.daysInMarket / sim.totalBars * 100).toFixed(1)) : 0,
     capturedBuyAndHoldPct: captured,
+    capturedBuyAndHoldPctIncludingUnrealized: capturedInclUnrealized,
   };
 }
 
@@ -330,22 +344,27 @@ export interface TFTBasketAgg {
   totalWins: number;
   totalLosses: number;
   basketWinRate: number | null;
-  totalPnLDollar: number;
+  totalPnLDollar: number;                       // realized only (legacy)
+  totalUnrealizedPnLDollar: number;             // mark-to-market on open positions
+  totalPnLIncludingUnrealized: number;          // realized + unrealized — the headline number
   avgPnLPerTrade: number | null;
   avgPnLPerTicker: number;
   profitableTickers: number;
   unprofitableTickers: number;
   flatTickers: number;
-  avgMarketExposurePct: number;        // mean across tickers
-  avgPeakUnitsDeployed: number;        // mean peak units across tickers
-  totalBuyAndHoldDollar: number;       // sum of B&H $ across all tickers
-  basketCapturedBuyAndHoldPct: number; // totalPnLDollar / totalBuyAndHoldDollar × 100
+  avgMarketExposurePct: number;                 // mean across tickers
+  avgPeakUnitsDeployed: number;                 // mean peak units across tickers
+  totalBuyAndHoldDollar: number;                // sum of B&H $ across all tickers
+  basketCapturedBuyAndHoldPct: number;          // realized / B&H × 100 (legacy)
+  basketCapturedBuyAndHoldPctIncludingUnrealized: number; // (realized+unrealized) / B&H × 100 — moonshot capture
   topPerformers: Array<{
-    symbol: string; pnlDollar: number; trades: number; winRate: number | null;
+    symbol: string; pnlDollar: number; pnlIncludingUnrealized: number;
+    trades: number; winRate: number | null;
     rMultiple: number | null; capturedBnH: number | null; exposurePct: number;
   }>;
   bottomPerformers: Array<{
-    symbol: string; pnlDollar: number; trades: number; winRate: number | null;
+    symbol: string; pnlDollar: number; pnlIncludingUnrealized: number;
+    trades: number; winRate: number | null;
     rMultiple: number | null; capturedBnH: number | null; exposurePct: number;
   }>;
   spyBuyAndHoldReturnPct: number | null;
@@ -362,10 +381,14 @@ function aggregateBasket(perTicker: TFTTickerPnL[], spyTicker: TFTTickerPnL | nu
   const totalWins = perTicker.reduce((a, t) => a + t.wins, 0);
   const totalLosses = perTicker.reduce((a, t) => a + t.losses, 0);
   const totalPnLDollar = perTicker.reduce((a, t) => a + t.totalPnLDollar, 0);
+  const totalUnrealizedPnLDollar = perTicker.reduce((a, t) => a + t.unrealizedPnLDollar, 0);
+  const totalPnLIncludingUnrealized = totalPnLDollar + totalUnrealizedPnLDollar;
 
-  const profitable = perTicker.filter(t => t.totalPnLDollar > 0).length;
-  const unprofitable = perTicker.filter(t => t.totalPnLDollar < 0).length;
-  const flat = perTicker.filter(t => t.totalPnLDollar === 0).length;
+  // "Profitable" now uses realized+unrealized so catastrophic-only-style modes
+  // aren't penalized for legitimately holding open positions.
+  const profitable = perTicker.filter(t => t.totalPnLIncludingUnrealized > 0).length;
+  const unprofitable = perTicker.filter(t => t.totalPnLIncludingUnrealized < 0).length;
+  const flat = perTicker.filter(t => t.totalPnLIncludingUnrealized === 0).length;
 
   const avgExposure = perTicker.length
     ? perTicker.reduce((a, t) => a + t.marketExposurePct, 0) / perTicker.length
@@ -378,24 +401,31 @@ function aggregateBasket(perTicker: TFTTickerPnL[], spyTicker: TFTTickerPnL | nu
   const basketCaptured = totalBnH > 0
     ? Number((totalPnLDollar / totalBnH * 100).toFixed(1))
     : 0;
+  const basketCapturedInclUnrealized = totalBnH > 0
+    ? Number((totalPnLIncludingUnrealized / totalBnH * 100).toFixed(1))
+    : 0;
 
-  const sortedByPnL = [...perTicker].sort((a, b) => b.totalPnLDollar - a.totalPnLDollar);
+  // Sort by realized+unrealized so the "best performer" headline includes
+  // open moonshot positions (the whole point of catastrophic-only mode).
+  const sortedByPnL = [...perTicker].sort((a, b) => b.totalPnLIncludingUnrealized - a.totalPnLIncludingUnrealized);
   const top = sortedByPnL.slice(0, 10).map(t => ({
     symbol: t.symbol,
     pnlDollar: t.totalPnLDollar,
+    pnlIncludingUnrealized: t.totalPnLIncludingUnrealized,
     trades: t.closedTradeCount,
     winRate: t.winRate,
     rMultiple: t.rMultiple,
-    capturedBnH: t.capturedBuyAndHoldPct,
+    capturedBnH: t.capturedBuyAndHoldPctIncludingUnrealized,
     exposurePct: t.marketExposurePct,
   }));
   const bottom = sortedByPnL.slice(-10).reverse().map(t => ({
     symbol: t.symbol,
     pnlDollar: t.totalPnLDollar,
+    pnlIncludingUnrealized: t.totalPnLIncludingUnrealized,
     trades: t.closedTradeCount,
     winRate: t.winRate,
     rMultiple: t.rMultiple,
-    capturedBnH: t.capturedBuyAndHoldPct,
+    capturedBnH: t.capturedBuyAndHoldPctIncludingUnrealized,
     exposurePct: t.marketExposurePct,
   }));
 
@@ -412,8 +442,10 @@ function aggregateBasket(perTicker: TFTTickerPnL[], spyTicker: TFTTickerPnL | nu
     totalLosses,
     basketWinRate: totalClosedTrades > 0 ? Number((totalWins / totalClosedTrades).toFixed(3)) : null,
     totalPnLDollar: Number(totalPnLDollar.toFixed(2)),
+    totalUnrealizedPnLDollar: Number(totalUnrealizedPnLDollar.toFixed(2)),
+    totalPnLIncludingUnrealized: Number(totalPnLIncludingUnrealized.toFixed(2)),
     avgPnLPerTrade: totalClosedTrades > 0 ? Number((totalPnLDollar / totalClosedTrades).toFixed(2)) : null,
-    avgPnLPerTicker: perTicker.length > 0 ? Number((totalPnLDollar / perTicker.length).toFixed(2)) : 0,
+    avgPnLPerTicker: perTicker.length > 0 ? Number((totalPnLIncludingUnrealized / perTicker.length).toFixed(2)) : 0,
     profitableTickers: profitable,
     unprofitableTickers: unprofitable,
     flatTickers: flat,
@@ -421,6 +453,7 @@ function aggregateBasket(perTicker: TFTTickerPnL[], spyTicker: TFTTickerPnL | nu
     avgPeakUnitsDeployed: Number(avgPeak.toFixed(2)),
     totalBuyAndHoldDollar: Number(totalBnH.toFixed(2)),
     basketCapturedBuyAndHoldPct: basketCaptured,
+    basketCapturedBuyAndHoldPctIncludingUnrealized: basketCapturedInclUnrealized,
     topPerformers: top,
     bottomPerformers: bottom,
     spyBuyAndHoldReturnPct: spyTicker ? spyTicker.buyAndHoldReturnPct : null,
@@ -486,7 +519,8 @@ export async function runStrategyTFTPnL(
       "Whipsaw guard: regime must hold for 2 consecutive weekly closes before flipping direction. Single-week violations don't kick the core out.",
       "Volatility-adjusted core: if entry-bar ATR > 5% of price, core entry is 0.5 unit instead of 1.0 (keeps dollar-risk consistent on high-vol names like TSLA).",
       "POSITION SIZE NOTE: each unit = positionSize dollars. Max position = 2.0 units = 2× positionSize notional. THIS IS DIFFERENT FROM strategy-pnl.ts which deploys ONE positionSize per trade. To compare apples-to-apples on capital deployment, see `aggregate.avgPeakUnitsDeployed` (mean peak units across tickers).",
-      "totalPnLDollar = sum of (returnPct × units × positionSize) across all closed layer-trades.",
+      "totalPnLDollar = sum of (returnPct × units × positionSize) across all CLOSED layer-trades. totalPnLIncludingUnrealized adds open positions marked-to-last-close — use this for honest comparison across coreStop modes (catastrophic-only intentionally holds open positions).",
+      "basketCapturedBuyAndHoldPctIncludingUnrealized is the headline moonshot-capture metric. Compare across coreStop modes to see which actually captures the runs (NVDA, AMD, etc).",
       "marketExposurePct = bars with nonzero position / total bars × 100. Compare to BBTC+VER which historically held ~45% on NVDA. TFT target is 80%+ on names in confirmed regimes.",
       "capturedBuyAndHoldPct per ticker = totalPnLDollar / buyAndHoldDollar × 100. Tells you what fraction of the simple-hold return the strategy captured.",
       "shorts=on by default (the whole point of TFT is two-sided coverage). Add ?shorts=off for ablation testing.",

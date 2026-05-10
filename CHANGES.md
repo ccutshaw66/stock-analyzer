@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-10 — TFT eval: report unrealized P&L on open positions
+
+**Why:** Phase 3 catastrophic-only run came back with a basket total of $110K — looked terrible. Diagnosed as a measurement bug, not a strategy failure: catastrophic-only intentionally holds CORE positions forever (the whole point), and 119 of those positions were still open at end-of-window. The eval was excluding ALL open trade P&L from `totalPnLDollar`. NVDA's core entered around 2019 and was sitting on a massive unrealized gain that didn't show up anywhere in the basket totals.
+
+**What:** Added unrealized P&L tracking to TFT evaluator. Strictly additive — existing `totalPnLDollar` field unchanged for backward compat.
+
+- **`server/diag/strategy-tft-pnl.ts`** — new fields on `TFTTickerPnL`:
+  - `unrealizedPnLDollar` — mark-to-market on positions still open at end of window
+  - `totalPnLIncludingUnrealized` — realized + unrealized; the "if you closed today" answer
+  - `capturedBuyAndHoldPctIncludingUnrealized` — honest moonshot-capture metric
+- New fields on `TFTBasketAgg`:
+  - `totalUnrealizedPnLDollar`
+  - `totalPnLIncludingUnrealized`
+  - `basketCapturedBuyAndHoldPctIncludingUnrealized`
+- `profitableTickers` / `unprofitableTickers` now use `totalPnLIncludingUnrealized` (so catastrophic-only isn't penalized for holding winners)
+- `topPerformers` / `bottomPerformers` now sort by `totalPnLIncludingUnrealized` and report both numbers per ticker
+- `avgPnLPerTicker` switched to including unrealized
+
+Sim layer (tft.ts) was already populating `pnlDollar` on END_OF_WINDOW open trades — no change needed there.
+
+### Why this isn't double-counting
+
+Realized P&L is fully booked at the moment a layer closes. Unrealized P&L is the would-realize amount if positions were liquidated at the last bar's close. They're disjoint sets — closed trades and open trades are tracked separately. Sum is the honest "what is this strategy worth right now."
+
+Strictly additive change. Live website unaffected. Existing TFT URLs return the new fields alongside the old ones.
+
+Rollback tag: `safe/2026-05-10-pre-unrealized-fix`.
+
+---
 ## 2026-05-10 — TFT: wider-stop variants for moonshot capture (Phase 3 tuning)
 
 **Why:** Phase 1 (ATR floor) didn't help — measured drag of -$8K to -$174K depending on threshold. Phase 3 chases the other side of the gap: NVDA still captured only 3.6% of its $3.78M B&H even at the $901K basket high. The 40W weekly-close stop kicks the core out during routine trend pullbacks. Going wider should capture more of the move.
