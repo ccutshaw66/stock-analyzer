@@ -5164,7 +5164,7 @@ export async function registerRoutes(
   // position throughout a confirmed regime and uses BBTC/VER as a tactical
   // scaling layer. Stop-and-reverse on regime flip.
   //
-  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off][&atrFloor=1.5]
+  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off][&atrFloor=1.5][&coreStop=40w|60w|catastrophic-only]
   //
   // - days: 30..3650 (default 365). 350 bars warmup needed for 40W SMA; tickers with <300 bars are skipped.
   // - positionSize: dollars per UNIT (default 10000). Max position = 2.0 units = 2× positionSize notional.
@@ -5172,7 +5172,11 @@ export async function registerRoutes(
   // - detail=1 to include per-trade records
   // - shorts=on (default) or off — ablation toggle
   // - atrFloor: percent (e.g. 1.5 = 1.5%). Refuses entries when ATR/price is below the threshold.
-  //   Default 0 (no filter). Use 1.5 to filter out low-vol defensives that bleed on chop.
+  //   Default 0 (no filter). Phase 1 testing showed it hurts more than helps.
+  // - coreStop: 40w (default) | 60w | catastrophic-only.
+  //     40w — current behavior (weekly close vs 40W SMA + regime exits + -15%)
+  //     60w — same exits but uses 60W SMA; slower trigger for moonshot capture
+  //     catastrophic-only — core only exits on -15% from entry; SMA + regime exits SKIPPED for core
   app.get("/api/diag/strategy-tft-pnl", async (req, res) => {
     try {
       const { runStrategyTFTPnL } = await import("./diag/strategy-tft-pnl");
@@ -5191,7 +5195,12 @@ export async function registerRoutes(
       const atrFloorPct = Number.isFinite(atrFloorPctRaw) && atrFloorPctRaw > 0
         ? Math.min(atrFloorPctRaw, 20) / 100
         : 0;
-      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts, atrFloorPct);
+      const csRaw = String(req.query.coreStop || "40w").toLowerCase();
+      const coreStopMode: "40w" | "60w" | "catastrophic-only" =
+        csRaw === "60w" ? "60w" :
+        (csRaw === "catastrophic-only" || csRaw === "catastrophic" || csRaw === "thesis") ? "catastrophic-only" :
+        "40w";
+      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts, atrFloorPct, coreStopMode);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-tft-pnl failed" });

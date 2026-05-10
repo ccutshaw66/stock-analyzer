@@ -50,6 +50,24 @@ export type TFTSide = "LONG" | "SHORT" | "FLAT";
 export type TFTRegime = "BULLISH" | "BEARISH" | "NEUTRAL";
 export type TFTLayerType = "CORE" | "TACTICAL";
 
+/**
+ * Core-stop sensitivity, governing how aggressively the CORE layer exits.
+ *   - "40w" (default) — exit on weekly close < 40W SMA OR regime flip OR
+ *     regime neutral OR -15% catastrophic. Same as the original TFT design.
+ *   - "60w" — same exit triggers but uses a 60W SMA instead of 40W. Slower,
+ *     captures more of long secular runs at the cost of bigger drawdowns
+ *     when trends finally break.
+ *   - "catastrophic-only" — ignores ALL regime / SMA-based exits. Core only
+ *     closes on the -15% catastrophic stop from entry. Designed to capture
+ *     the full NVDA-style moonshot at the cost of holding through worse
+ *     drawdowns on names that genuinely roll over (NFLX 2022, MTCH, etc.).
+ *     Tactical layers still trail-stop normally; only core is sticky.
+ *
+ * Regime detection itself always uses the 40W SMA; coreStopMode only changes
+ * which SMA gates the core exit. Entry confirmation stays consistent.
+ */
+export type TFTCoreStopMode = "40w" | "60w" | "catastrophic-only";
+
 export type TFTExitReason =
   | "WEEKLY_REGIME_BREAK"   // weekly close through 40W SMA → core exit
   | "REGIME_FLIP"           // regime reversed → exit current core, possibly reverse
@@ -112,6 +130,9 @@ export interface TFTInput {
    * always close on their normal triggers.
    */
   atrFloorPct: number;
+
+  /** Core-stop sensitivity (see TFTCoreStopMode). */
+  coreStopMode: TFTCoreStopMode;
 }
 
 export interface TFTResult {
@@ -133,8 +154,9 @@ export interface TFTResult {
 interface WeeklyAgg {
   weekIdx: number[];        // length = daily bars; -1 until the first week completes
   weeklyClose: number[];    // length = number of weeks
-  weeklySma40: number[];    // length = number of weeks
-  weeklySma40_4WkAgo: number[]; // length = number of weeks; SMA40[w-4]
+  weeklySma40: number[];    // length = number of weeks; used by regime + 40w core stop
+  weeklySma40_4WkAgo: number[]; // length = number of weeks; SMA40[w-4] (slope check)
+  weeklySma60: number[];    // length = number of weeks; used by 60w core stop only
 }
 
 function aggregateWeekly(dates: string[], closes: number[]): WeeklyAgg {
@@ -185,7 +207,15 @@ function aggregateWeekly(dates: string[], closes: number[]): WeeklyAgg {
     weeklySma40_4WkAgo[w] = weeklySma40[w - 4];
   }
 
-  return { weekIdx, weeklyClose, weeklySma40, weeklySma40_4WkAgo };
+  // 60-week SMA on weekly closes (used only when coreStopMode = "60w")
+  const weeklySma60 = new Array(weeklyClose.length).fill(NaN);
+  for (let w = 59; w < weeklyClose.length; w++) {
+    let s = 0;
+    for (let j = w - 59; j <= w; j++) s += weeklyClose[j];
+    weeklySma60[w] = s / 60;
+  }
+
+  return { weekIdx, weeklyClose, weeklySma40, weeklySma40_4WkAgo, weeklySma60 };
 }
 
 // ─── Per-bar regime computation ────────────────────────────────────────────
@@ -264,7 +294,7 @@ export function simulateTFT(input: TFTInput): TFTResult {
   const {
     dates, closes, highs, lows, atr14,
     bbtcSignals, bbtcSides, verSignals, verSides,
-    positionSize, enableShorts, atrFloorPct,
+    positionSize, enableShorts, atrFloorPct, coreStopMode,
   } = input;
 
   function atrPassesFloor(i: number): boolean {
@@ -401,21 +431,23 @@ export function simulateTFT(input: TFTInput): TFTResult {
         : close >= core.entryPrice * (1 + CATASTROPHIC_STOP_PCT);
       if (catastrophicHit) {
         closeAllLayers(today, close, "CATASTROPHIC_STOP", i);
-      } else {
+      } else if (coreStopMode !== "catastrophic-only") {
         // 2b) Regime-based core exits — only act on the LAST DAILY BAR of a week
         // (when weekly close just settled). Approximated by detecting week boundary.
+        // Skipped entirely in catastrophic-only mode where the core only closes
+        // on the -15% catastrophic stop above.
         const isLastBarOfWeek = (i + 1 < n && agg.weekIdx[i + 1] !== agg.weekIdx[i]) || (i === n - 1);
         if (isLastBarOfWeek) {
           const w = agg.weekIdx[i];
           const weeklyClose = agg.weeklyClose[w];
-          const sma40 = agg.weeklySma40[w];
+          const stopSma = coreStopMode === "60w" ? agg.weeklySma60[w] : agg.weeklySma40[w];
           const regimeFlipped =
             (core.side === "LONG" && todayRegime === "BEARISH") ||
             (core.side === "SHORT" && todayRegime === "BULLISH");
           const regimeNeutral = todayRegime === "NEUTRAL";
-          const weeklyBreak = !isNaN(sma40) && (
-            (core.side === "LONG" && weeklyClose < sma40) ||
-            (core.side === "SHORT" && weeklyClose > sma40)
+          const weeklyBreak = !isNaN(stopSma) && (
+            (core.side === "LONG" && weeklyClose < stopSma) ||
+            (core.side === "SHORT" && weeklyClose > stopSma)
           );
           if (regimeFlipped) {
             closeAllLayers(today, close, "REGIME_FLIP", i);

@@ -9,6 +9,38 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-10 — TFT: wider-stop variants for moonshot capture (Phase 3 tuning)
+
+**Why:** Phase 1 (ATR floor) didn't help — measured drag of -$8K to -$174K depending on threshold. Phase 3 chases the other side of the gap: NVDA still captured only 3.6% of its $3.78M B&H even at the $901K basket high. The 40W weekly-close stop kicks the core out during routine trend pullbacks. Going wider should capture more of the move.
+
+Per Chris (the user): "phase 3" — explicit go on this iteration after the Phase 1 verdict came in.
+
+**What:** New `coreStop` query param controlling how aggressively the CORE layer exits. Three modes:
+
+- **`40w`** (default, unchanged) — weekly close < 40W SMA, regime flip, regime neutral, or -15% catastrophic
+- **`60w`** — same triggers but uses a 60W SMA instead. Moderate widening; trend has to break harder before exit
+- **`catastrophic-only`** — core only exits on -15% catastrophic from entry. **All SMA-based and regime-based exits SKIPPED for the core.** Tactical layers still trail-stop normally; only the core is sticky. Maximum moonshot capture; expects bigger drawdowns when trends genuinely roll over (NFLX 2022 type)
+
+Regime detection still uses the 40W SMA across all modes — `coreStopMode` only changes which SMA gates the CORE exit and whether SMA/regime exits fire at all. Entry confirmation stays consistent.
+
+### Files
+
+- **`server/signals/strategies/tft.ts`** — added `TFTCoreStopMode` type and `coreStopMode` to `TFTInput`. `aggregateWeekly` now also computes `weeklySma60`. Core exit block in `simulateTFT` branches: skipped entirely when `catastrophic-only`, otherwise selects between `weeklySma40` and `weeklySma60` based on mode.
+- **`server/diag/strategy-tft-pnl.ts`** — threads `coreStopMode` through `runStrategyTFTPnL` → `evalTickerTFT` → `simulateTFT`. Added per-mode note in the response.
+- **`server/routes.ts`** — `/api/diag/strategy-tft-pnl` accepts `&coreStop=40w|60w|catastrophic-only`. Default `40w` preserves prior behavior. Aliases: `catastrophic`, `thesis` → `catastrophic-only`.
+
+### Expected outcomes
+
+- **`60w`** should add roughly $50K-$200K to basket P&L, with most of the lift on names where the 40W broke prematurely (NVDA, AMD, MSFT, COST). Drawdowns will be moderately larger.
+- **`catastrophic-only`** is the high-variance bet. NVDA core entry early in the 2015-2026 window should hold the entire run (price never dropped 15% from a $5 entry), which could 10-20× NVDA's contribution alone. But NFLX 2022 type names will lose ~15% before exit instead of getting out earlier on regime break.
+
+Strictly additive (default `40w` preserves prior behavior). Live website unaffected.
+
+Rollback tag: `safe/2026-05-10-pre-phase3`.
+
+Per Chris's plan: this is Phase 3 of the (1)→(3)→(2) sequence. Phase 1 done with negative result; Phase 2 (wire to website) is next after a winner is picked from these variants.
+
+---
 ## 2026-05-10 — TFT: ATR floor filter (Phase 1 tuning)
 
 **Why:** First TFT eval results came in. Shorts-off variant returned **$901K basket P&L** (vs $415K BBTC+VER baseline, +117%). But 21 of 80 tickers still bled — all low-volatility defensives (utilities ED/DUK/SO/AEP/XEL/EXC, telecom VZ, staples KO/PEP/MO, REITs CCI/AMT, pharma JNJ, etc.). Each lost $1-8K. Total drag from these 21 names: ~$80K. Pattern matches the original 2026-05-08 handoff prediction: trend follower bleeds on stocks that don't trend.
