@@ -198,21 +198,23 @@ function categorizeDot(s: ChartSignalDot): DotCategory {
 }
 
 // ─── Custom dot shape — handles highlighted state ─────────────────────────
+// Closure over `category` and `highlightedTradeNum` so each Scatter draws its
+// own color and reads its own trade-num field on the shared row to decide
+// whether to render in highlighted form.
 
 interface DotShapeProps {
   cx?: number;
   cy?: number;
-  payload?: { highlighted?: boolean };
-  fill?: string;
-  filled?: boolean;
+  payload?: Record<string, any>;
 }
 
-function makeDotShape(category: DotCategory, hollow: boolean) {
+function makeDotShape(category: DotCategory, hollow: boolean, highlightedTradeNum: number | null) {
   return function DotShape(props: DotShapeProps) {
     const { cx, cy, payload } = props;
     if (cx == null || cy == null) return <g />;
     const color = CATEGORY_COLOR[category];
-    const isHi = payload?.highlighted === true;
+    const tradeNum = payload?.[`tradeNum_${category}`];
+    const isHi = tradeNum != null && tradeNum === highlightedTradeNum;
     const r = isHi ? 7 : 4;
     return (
       <circle
@@ -266,49 +268,50 @@ function StrategyChart({ data, highlightedTradeNum }: {
   data: ChartDataResponse;
   highlightedTradeNum: number | null;
 }) {
-  // Build base chartData: one row per bar with close price.
-  // Then group signals by dot category and overlay them as separate Scatters.
-  // Each row carries optional sig* fields the tooltip reads.
-  const { chartData, scatterDataByCategory } = useMemo(() => {
-    // Index bars by date for fast lookup.
-    const dateToBar = new Map<string, ChartBar>();
-    for (const b of data.bars) dateToBar.set(b.date, b);
-
-    const base = data.bars.map(b => ({ date: b.date, close: b.close }));
-
-    // Build per-category scatter datasets. Each row has y=price for its
-    // category and the highlighted/label/tradeNum metadata for tooltip.
-    const byCat: Record<DotCategory, Array<{
-      date: string;
-      y: number;
-      sigLabel: string;
-      sigTradeNum: number | null;
-      sigPrice: number;
-      highlighted: boolean;
-    }>> = {
-      core_entry: [], tactical_entry: [], long_entry: [],
-      exit_win: [], exit_loss: [], exit_clean: [],
-      watch: [], info: [],
-    };
-
+  // Build a SINGLE chartData array that all series share. Each row has:
+  //   - date (categorical X axis)
+  //   - close (Line dataKey)
+  //   - y_<category> (Scatter dataKey for that category, null if no signal)
+  //   - tradeNum_<category> (read by the dot shape closure to highlight)
+  //   - sigLabel / sigTradeNum / sigPrice (read by the tooltip)
+  //
+  // Sharing one data array is critical: when each Scatter has its OWN data
+  // array, Recharts builds the categorical X axis from each series
+  // independently and they don't merge — dates jumble. Single source = stable
+  // chronological X axis.
+  const chartData = useMemo(() => {
+    // Index signals by date for O(N) lookup
+    const sigsByDate = new Map<string, ChartSignalDot[]>();
     for (const s of data.signals) {
-      // Skip dots whose date isn't in the displayed bars (defensive — backend
-      // already slices to displayBars but TFT simulator could in principle
-      // emit a date outside the slice).
-      if (!dateToBar.has(s.date)) continue;
-      const cat = categorizeDot(s);
-      byCat[cat].push({
-        date: s.date,
-        y: s.price,
-        sigLabel: s.label,
-        sigTradeNum: s.tradeNumber,
-        sigPrice: s.price,
-        highlighted: highlightedTradeNum != null && s.tradeNumber === highlightedTradeNum,
-      });
+      if (!sigsByDate.has(s.date)) sigsByDate.set(s.date, []);
+      sigsByDate.get(s.date)!.push(s);
     }
 
-    return { chartData: base, scatterDataByCategory: byCat };
-  }, [data.bars, data.signals, highlightedTradeNum]);
+    return data.bars.map(b => {
+      const row: Record<string, any> = { date: b.date, close: b.close };
+      const sigs = sigsByDate.get(b.date) || [];
+      for (const s of sigs) {
+        const cat = categorizeDot(s);
+        // If multiple signals of same category fire on same bar, last-wins
+        // (rare; e.g. BBTC_BUY + VER_BUY both = long_entry).
+        row[`y_${cat}`] = s.price;
+        row[`tradeNum_${cat}`] = s.tradeNumber;
+        row[`label_${cat}`] = s.label;
+      }
+      // Aggregate metadata for the tooltip (combines all signals firing on
+      // this bar, if any).
+      if (sigs.length > 0) {
+        row.sigLabel = sigs.map(s => s.label).join(" + ");
+        // Surface the lowest trade number among signals on this bar (entries
+        // are usually first, so this picks the entry's number when an entry
+        // and a same-bar exit both happen).
+        const tradeNums = sigs.map(s => s.tradeNumber).filter((n): n is number => n != null);
+        row.sigTradeNum = tradeNums.length > 0 ? Math.min(...tradeNums) : null;
+        row.sigPrice = sigs[0].price;
+      }
+      return row;
+    });
+  }, [data.bars, data.signals]);
 
   const regimeAreas = useMemo(() => {
     return data.regimeBands
@@ -320,6 +323,16 @@ function StrategyChart({ data, highlightedTradeNum }: {
         key: `regime-${i}`,
       }));
   }, [data.regimeBands]);
+
+  // Determine which categories actually have any dots — skip empty Scatters
+  // to keep the legend clean and avoid useless DOM nodes.
+  const activeCategories = useMemo(() => {
+    const seen = new Set<DotCategory>();
+    for (const s of data.signals) {
+      seen.add(categorizeDot(s));
+    }
+    return Array.from(seen);
+  }, [data.signals]);
 
   return (
     <div className="w-full" style={{ height: 420 }}>
@@ -362,22 +375,18 @@ function StrategyChart({ data, highlightedTradeNum }: {
             isAnimationActive={false}
           />
 
-          {/* One Scatter per dot category — Recharts renders each scatter
-              independently with its own color/shape. xAxisId matches the
-              shared category axis. dataKey="y" pulls the price out of each
-              row. The shape function customizes per-point rendering for the
-              highlighted state. */}
-          {(Object.keys(scatterDataByCategory) as DotCategory[]).map(cat => {
-            const rows = scatterDataByCategory[cat];
-            if (rows.length === 0) return null;
+          {/* One Scatter per dot category, all sharing chartData. dataKey
+              picks out the per-category y field (e.g. "y_core_entry");
+              rows where that field is null/undefined render no dot. Shared
+              chartData = shared categorical axis = correctly ordered dates. */}
+          {activeCategories.map(cat => {
             const hollow = cat === "info";
             return (
               <Scatter
                 key={cat}
                 name={cat}
-                data={rows}
-                dataKey="y"
-                shape={makeDotShape(cat, hollow)}
+                dataKey={`y_${cat}`}
+                shape={makeDotShape(cat, hollow, highlightedTradeNum)}
                 isAnimationActive={false}
               />
             );
