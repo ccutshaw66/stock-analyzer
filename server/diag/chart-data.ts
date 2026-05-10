@@ -196,6 +196,12 @@ export interface ChartSignalDot {
   color: string;
   /** false = info-only (e.g. demoted shorts, watch signals). */
   filled: boolean;
+  /**
+   * 1-indexed trade number this signal belongs to (entry order, stable
+   * regardless of how the trade list is sorted in the UI). null for
+   * info-only signals (WATCH, demoted shorts) that don't pair to a trade.
+   */
+  tradeNumber: number | null;
 }
 
 export interface RegimeBand {
@@ -207,6 +213,8 @@ export interface RegimeBand {
 }
 
 export interface ChartTrade {
+  /** 1-indexed trade number, assigned by entry-date order. STABLE — does not change when the UI re-sorts the trade list. CORE trades on TFT always get the lowest numbers since they enter first. */
+  tradeNumber: number;
   /** "CORE" / "TACTICAL" only on TFT; "PAIR" on bbtc-ver/amc. */
   layer: "CORE" | "TACTICAL" | "PAIR";
   side: "LONG" | "SHORT";
@@ -320,6 +328,7 @@ function adaptBBTCVer(
         label: `BBTC_${bs}`,
         color: bbtcDotColor(bs, bSide),
         filled: bSide !== "SHORT", // shorts demoted to info-only
+        tradeNumber: null,
       });
     }
     const vs = ver.signals[i];
@@ -333,6 +342,7 @@ function adaptBBTCVer(
         label: `VER_${vs}`,
         color: verDotColor(vs, vSide),
         filled: !(vs === "WATCH_BUY" || vs === "WATCH_SELL" || vSide === "SHORT"),
+        tradeNumber: null,
       });
     }
   }
@@ -360,6 +370,7 @@ function adaptBBTCVer(
         const exitPrice = closes[i];
         const ret = (exitPrice - openEntryPrice) / openEntryPrice;
         trades.push({
+          tradeNumber: 0,
           layer: "PAIR",
           side: "LONG",
           entryDate: openEntryDate,
@@ -387,6 +398,7 @@ function adaptBBTCVer(
       const lastClose = closes[lastIdx];
       const ret = (lastClose - openEntryPrice) / openEntryPrice;
       trades.push({
+        tradeNumber: 0,
         layer: "PAIR",
         side: "LONG",
         entryDate: openEntryDate,
@@ -520,12 +532,13 @@ function adaptAMC(
       signals.push({
         date: dates[i], price: closes[i], type: "ENTRY", side: "LONG",
         label: `AMC ${momentumEntry ? "ENTER (M)" : "ENTER (R)"}`,
-        color: "#10b981", filled: true,
+        color: "#10b981", filled: true, tradeNumber: null,
       });
     } else if (openEntryIdx >= 0 && isSell) {
       const exitPrice = closes[i];
       const ret = (exitPrice - openEntryPrice) / openEntryPrice;
       trades.push({
+        tradeNumber: 0,
         layer: "PAIR", side: "LONG",
         entryDate: openEntryDate, entryPrice: Number(openEntryPrice.toFixed(2)),
         exitDate: dates[i], exitPrice: Number(exitPrice.toFixed(2)),
@@ -536,7 +549,7 @@ function adaptAMC(
       });
       signals.push({
         date: dates[i], price: closes[i], type: "EXIT", side: "LONG",
-        label: "AMC SELL", color: "#ef4444", filled: true,
+        label: "AMC SELL", color: "#ef4444", filled: true, tradeNumber: null,
       });
       openEntryIdx = -1;
     }
@@ -547,6 +560,7 @@ function adaptAMC(
     const lastClose = closes[lastIdx];
     const ret = (lastClose - openEntryPrice) / openEntryPrice;
     trades.push({
+      tradeNumber: 0,
       layer: "PAIR", side: "LONG",
       entryDate: openEntryDate, entryPrice: Number(openEntryPrice.toFixed(2)),
       exitDate: dates[lastIdx], exitPrice: Number(lastClose.toFixed(2)),
@@ -611,6 +625,7 @@ function adaptTFT(
 
   // Convert TFT trades to chart trades (already nicely structured).
   const trades: ChartTrade[] = sim.trades.map((t: TFTTrade) => ({
+    tradeNumber: 0, // assigned in normalize step
     layer: t.layerType,
     side: t.side,
     entryDate: t.entryDate,
@@ -638,6 +653,7 @@ function adaptTFT(
       label: `TFT ${t.layerType} ${t.side}`,
       color: t.layerType === "CORE" ? "#0ea5e9" : "#10b981", // sky for CORE, green for TACTICAL
       filled: true,
+      tradeNumber: null, // assigned in normalize step
     });
     // Exit dot if closed
     if (!t.isOpen && t.exitDate && t.exitPrice != null) {
@@ -651,6 +667,7 @@ function adaptTFT(
         label: `TFT EXIT (${t.exitReason})`,
         color: won ? "#14b8a6" : "#ef4444", // teal win, red loss
         filled: true,
+        tradeNumber: null, // assigned in normalize step
       });
     }
   }
@@ -788,6 +805,36 @@ export async function getChartData(
     exposurePct = totalBars > 0 ? Number((Math.min(heldBars, totalBars) / totalBars * 100).toFixed(1)) : 0;
   } else {
     return null;
+  }
+
+  // Normalize trade numbers — sort by entry date, assign 1..N. CORE trades
+  // on TFT enter early so they always get the lowest numbers (CORE = #1).
+  // Stable across UI re-sorting; pure metadata field on the trade record.
+  const sortedForNumbering = [...adapter.trades].sort((a, b) =>
+    a.entryDate.localeCompare(b.entryDate),
+  );
+  const tradeNumberByKey = new Map<string, number>();
+  sortedForNumbering.forEach((t, i) => {
+    t.tradeNumber = i + 1;
+    // Tag every trade-related ENTRY signal by entry date+layer+side, and
+    // every EXIT signal by exit date+layer+side. Keys collide-resistant
+    // because TFT puts at most one CORE plus 1-2 tactical adds per bar.
+    tradeNumberByKey.set(`${t.entryDate}|ENTRY|${t.layer}|${t.side}`, i + 1);
+    if (t.exitDate) {
+      tradeNumberByKey.set(`${t.exitDate}|EXIT|${t.layer}|${t.side}`, i + 1);
+    }
+  });
+
+  // Now tag signals. ENTRY/EXIT type signals get matched against the trade
+  // map. Other signal types (WATCH, INFO from demoted shorts) stay null.
+  for (const sig of adapter.signals) {
+    if (sig.tradeNumber != null) continue;
+    if (sig.type === "ENTRY" || sig.type === "EXIT") {
+      const layerKey = sig.layer ?? "PAIR";
+      const key = `${sig.date}|${sig.type}|${layerKey}|${sig.side}`;
+      const num = tradeNumberByKey.get(key);
+      if (num != null) sig.tradeNumber = num;
+    }
   }
 
   // Bars for display (sliced).

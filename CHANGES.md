@@ -9,6 +9,43 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-10 — Strategy Chart fixes: Scatter dots, hover tooltips, sortable trades, removed misleading badge
+
+**Why:** Chris tested the v1 chart page and flagged five issues:
+1. "One of the dots are not defined" — some signal dots silently failing to render on the chart
+2. "On the hover you could put the trade reference number" — no tooltip on hover
+3. "I don't like the 5.28M basket on the button, that implies too much" — replaced misleading badge
+4. "the dates need to be able to sort by entry or exit. But the trade number has to be by when you enter the trade not when you exit" — trade list needed sortable columns with stable trade numbering
+5. "You have CORE trades on one chart and not the other... but it mysteriously shows up on the 1y. Where did that trade go?" — likely caused by issue #1 (dot rendering)
+
+**What:**
+
+### Backend (`server/diag/chart-data.ts`)
+
+- Added `tradeNumber` field to both `ChartTrade` (required, stable) and `ChartSignalDot` (nullable — info-only signals don't pair to a trade).
+- New normalize step in `getChartData` after the strategy adapter runs: sorts trades by `entryDate`, assigns `tradeNumber = 1..N`. CORE trades on TFT enter first by definition so they always get the lowest numbers (CORE = #1).
+- Tags ENTRY and EXIT signals with the matching trade's number by date+layer+side lookup. Backend now ships `tradeNumber` on every dot.
+
+### Frontend (`client/src/pages/chart.tsx`)
+
+- **Replaced `ReferenceDot` with `Scatter` overlays** for signal dots. ReferenceDot on a categorical X axis with thousands of bars (5Y/10Y window) silently drops dots that don't fall on rendered ticks — that's the "missing dots" / "mysterious CORE" complaint. `Scatter` renders one point per data row regardless of axis density, AND supports hover tooltips out of the box.
+- **One Scatter per dot category** (`core_entry`, `tactical_entry`, `long_entry`, `exit_win`, `exit_loss`, `exit_clean`, `watch`, `info`). Each gets its own consistent color and a custom shape function so highlighted dots can render larger (r=7 vs r=4) with thicker strokes.
+- **Custom `ChartTooltip` component** distinguishes line hover from dot hover. Dot hover shows: date, signal label (e.g. "TFT CORE LONG", "BBTC_BUY"), **trade number** (e.g. "Trade #5"), price.
+- **Removed the "$5.28M basket" badge** from the TFT Catastrophic button. Replaced with a methodology block below the strategy/timeframe row: *"Backtest methodology: All five strategies were backtested over 10 years (2015–2026) on an 80-ticker basket spanning all 11 sectors plus SPY/QQQ/DIA/IWM benchmarks. Results vary widely by ticker — this page shows you exactly how each strategy traded the active ticker, not basket averages. Past results don't guarantee future performance."* Per Chris: the basket is OUR test methodology, not a user-facing guarantee.
+- **Sortable trade list columns**: # / Entry / Exit / Return / P/L $. Click a column header to sort by it; click again to flip direction. The `#` column is the **stable** trade number (set server-side by entry date) — it does NOT change when you re-sort. Default sort: `tradeNumber asc` so CORE trades always appear at the top in TFT modes.
+- **Highlight by trade number**, not row index. Click a row → its entry/exit dots on the chart pulse larger; the link is the trade number, so re-sorting doesn't break highlighting.
+- Legend gained: "hover any dot to see its trade #".
+
+### Files
+
+- `server/diag/chart-data.ts` — added tradeNumber field + normalize step
+- `client/src/pages/chart.tsx` — full rewrite of chart rendering (Scatter), tooltip component, sortable trade list
+
+Strictly additive changes — backend response shape gained two new fields, both safe to ignore by older clients. Existing `/trade` page, scanners, etc. completely unaffected.
+
+Rollback tag: `safe/2026-05-10-chart-page-v1` (rolls back to the buggy-but-working v1 chart page; `safe/2026-05-10-pre-chart-page` rolls back to before any chart-page work).
+
+---
 ## 2026-05-10 — Strategy Chart page (visual backtester)
 
 **Why:** Phase 2 of the TFT rollout — instead of replacing BBTC+VER on existing pages (high UX risk), build a **separate** chart page where users toggle between strategies side-by-side. Existing trade-analysis page and scanners stay completely untouched. Per Chris on 2026-05-10: "a separate chart page that someone could toggle between the different strategies… add some context to the trades like P/L on the trade and some percentage stuff."

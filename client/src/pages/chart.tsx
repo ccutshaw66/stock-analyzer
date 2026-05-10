@@ -3,13 +3,18 @@
  * modes on the active ticker. Toggle strategies via dropdown and see:
  *   - Price chart with regime bands (TFT) and entry/exit dots
  *   - Summary stats: total $ P/L, win rate, R-multiple, captured B&H
- *   - Scrollable trade list — click a trade to highlight its dots
+ *   - Sortable trade list — click a trade to highlight its dots
  *
  * Data: GET /api/chart/:ticker?strategy=X&days=Y
  *
  * Page is the new "Strategy Chart" route at /chart. Active ticker comes from
  * TickerContext (matches the rest of the site). Existing /trade page is
  * untouched — this is purely additive.
+ *
+ * Dot rendering: uses Scatter overlays (one per dot category) instead of
+ * ReferenceDot, because ReferenceDot on dense categorical X axes silently
+ * drops dots that don't fall on rendered ticks. Scatter renders one point
+ * per data row regardless of axis density.
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,17 +24,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
-import { LineChart as LineChartIcon, TrendingUp, TrendingDown, Target } from "lucide-react";
+import { LineChart as LineChartIcon, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   ResponsiveContainer,
   ComposedChart,
   Line,
+  Scatter,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   ReferenceArea,
-  ReferenceDot,
 } from "recharts";
 
 // ─── Types matching server/diag/chart-data.ts response ────────────────────
@@ -53,6 +58,7 @@ interface ChartSignalDot {
   label: string;
   color: string;
   filled: boolean;
+  tradeNumber: number | null;
 }
 interface RegimeBand {
   startDate: string;
@@ -60,6 +66,7 @@ interface RegimeBand {
   regime: "BULLISH" | "BEARISH" | "NEUTRAL";
 }
 interface ChartTrade {
+  tradeNumber: number;
   layer: "CORE" | "TACTICAL" | "PAIR";
   side: "LONG" | "SHORT";
   entryDate: string;
@@ -113,12 +120,12 @@ interface ChartDataResponse {
 
 // ─── Strategy + timeframe option metadata ─────────────────────────────────
 
-const STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string; badge?: string }[] = [
+const STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string }[] = [
   { value: "bbtc-ver", label: "BBTC + VER", description: "Current website Ready/Set/Go strategy" },
   { value: "amc", label: "AMC only", description: "Adaptive Momentum Confluence (the 'Set' indicator alone)" },
   { value: "tft-40w", label: "TFT 40W", description: "Two-Layer Trend Continuation, weekly 40W SMA stop" },
   { value: "tft-60w", label: "TFT 60W", description: "TFT with slower 60W stop" },
-  { value: "tft-catastrophic", label: "TFT Catastrophic", description: "TFT, core only exits on -15% catastrophic. Maximum moonshot capture", badge: "$5.28M basket" },
+  { value: "tft-catastrophic", label: "TFT Catastrophic", description: "TFT, core only exits on -15% catastrophic. Maximum moonshot capture" },
 ];
 
 const TIMEFRAME_OPTIONS: { value: number; label: string }[] = [
@@ -147,20 +154,162 @@ function fmtDate(d: string | null): string {
   return d;
 }
 
+// ─── Dot category bucketing ───────────────────────────────────────────────
+// Each dot gets bucketed into one of these visual categories. A separate
+// Scatter component is rendered per category so colors stay consistent and
+// hover tooltips can identify the dot type.
+
+type DotCategory =
+  | "core_entry"
+  | "tactical_entry"
+  | "long_entry"        // BBTC/VER/AMC entries (no layer)
+  | "exit_win"          // teal — REDUCE / win exits
+  | "exit_loss"         // red — STOP / catastrophic
+  | "exit_clean"        // slate — trend exits
+  | "watch"             // yellow — VER_WATCH_BUY etc
+  | "info";             // hollow magenta/orange — info-only (shorts, watch_sell)
+
+const CATEGORY_COLOR: Record<DotCategory, string> = {
+  core_entry: "#0ea5e9",
+  tactical_entry: "#10b981",
+  long_entry: "#10b981",
+  exit_win: "#14b8a6",
+  exit_loss: "#ef4444",
+  exit_clean: "#64748b",
+  watch: "#eab308",
+  info: "#d946ef",
+};
+
+function categorizeDot(s: ChartSignalDot): DotCategory {
+  if (s.type === "ENTRY" && s.layer === "CORE") return "core_entry";
+  if (s.type === "ENTRY" && s.layer === "TACTICAL") return "tactical_entry";
+  if (s.type === "ENTRY") return "long_entry";
+  if (s.type === "WATCH") return "watch";
+  if (!s.filled) return "info";
+  if (s.type === "EXIT") {
+    // Color signal preserves win/loss/clean distinction set by the backend.
+    if (s.color === "#14b8a6") return "exit_win";
+    if (s.color === "#ef4444") return "exit_loss";
+    return "exit_clean";
+  }
+  if (s.type === "REDUCE") return "exit_win";
+  if (s.type === "INFO") return "info";
+  return "info";
+}
+
+// ─── Custom dot shape — handles highlighted state ─────────────────────────
+
+interface DotShapeProps {
+  cx?: number;
+  cy?: number;
+  payload?: { highlighted?: boolean };
+  fill?: string;
+  filled?: boolean;
+}
+
+function makeDotShape(category: DotCategory, hollow: boolean) {
+  return function DotShape(props: DotShapeProps) {
+    const { cx, cy, payload } = props;
+    if (cx == null || cy == null) return <g />;
+    const color = CATEGORY_COLOR[category];
+    const isHi = payload?.highlighted === true;
+    const r = isHi ? 7 : 4;
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={hollow ? "transparent" : color}
+        stroke={color}
+        strokeWidth={isHi ? 2.5 : 1.5}
+      />
+    );
+  };
+}
+
+// ─── Tooltip — distinguish dot hover from line hover ──────────────────────
+
+function ChartTooltip({ active, payload }: { active?: boolean; payload?: any[] }) {
+  if (!active || !payload?.length) return null;
+  // The Recharts active payload is per-series. Find the entry that has signal
+  // metadata (label/tradeNum) — that's a dot-hover. Otherwise fall back to
+  // the line value (close price).
+  const sigPayload = payload.find((p: any) => p?.payload?.sigLabel);
+  const closePayload = payload.find((p: any) => p?.dataKey === "close");
+  if (sigPayload) {
+    const p = sigPayload.payload;
+    return (
+      <div className="bg-popover border border-border rounded px-2 py-1.5 text-xs shadow-lg">
+        <div className="font-mono text-muted-foreground">{p.date}</div>
+        <div className="font-semibold text-foreground">{p.sigLabel}</div>
+        {p.sigTradeNum != null && (
+          <div className="text-blue-400">Trade #{p.sigTradeNum}</div>
+        )}
+        <div className="text-muted-foreground">@ ${typeof p.sigPrice === "number" ? p.sigPrice.toFixed(2) : "—"}</div>
+      </div>
+    );
+  }
+  if (closePayload) {
+    return (
+      <div className="bg-popover border border-border rounded px-2 py-1 text-xs shadow-lg">
+        <div className="font-mono text-muted-foreground">{closePayload.payload.date}</div>
+        <div className="text-foreground">${Number(closePayload.value).toFixed(2)}</div>
+      </div>
+    );
+  }
+  return null;
+}
+
 // ─── Chart subcomponent ────────────────────────────────────────────────────
 
-function StrategyChart({ data, highlightedTradeIdx }: {
+function StrategyChart({ data, highlightedTradeNum }: {
   data: ChartDataResponse;
-  highlightedTradeIdx: number | null;
+  highlightedTradeNum: number | null;
 }) {
-  // Build a date-indexed lookup so ReferenceDot x-coordinates align with the
-  // categorical X axis. Recharts categorical axes need exact-match strings.
-  const chartData = useMemo(() => {
-    return data.bars.map(b => ({ date: b.date, close: b.close }));
-  }, [data.bars]);
+  // Build base chartData: one row per bar with close price.
+  // Then group signals by dot category and overlay them as separate Scatters.
+  // Each row carries optional sig* fields the tooltip reads.
+  const { chartData, scatterDataByCategory } = useMemo(() => {
+    // Index bars by date for fast lookup.
+    const dateToBar = new Map<string, ChartBar>();
+    for (const b of data.bars) dateToBar.set(b.date, b);
 
-  // Regime band fills. Bullish = subtle green tint, Bearish = subtle red,
-  // Neutral = transparent (no band drawn). Drawn as ReferenceArea behind the line.
+    const base = data.bars.map(b => ({ date: b.date, close: b.close }));
+
+    // Build per-category scatter datasets. Each row has y=price for its
+    // category and the highlighted/label/tradeNum metadata for tooltip.
+    const byCat: Record<DotCategory, Array<{
+      date: string;
+      y: number;
+      sigLabel: string;
+      sigTradeNum: number | null;
+      sigPrice: number;
+      highlighted: boolean;
+    }>> = {
+      core_entry: [], tactical_entry: [], long_entry: [],
+      exit_win: [], exit_loss: [], exit_clean: [],
+      watch: [], info: [],
+    };
+
+    for (const s of data.signals) {
+      // Skip dots whose date isn't in the displayed bars (defensive — backend
+      // already slices to displayBars but TFT simulator could in principle
+      // emit a date outside the slice).
+      if (!dateToBar.has(s.date)) continue;
+      const cat = categorizeDot(s);
+      byCat[cat].push({
+        date: s.date,
+        y: s.price,
+        sigLabel: s.label,
+        sigTradeNum: s.tradeNumber,
+        sigPrice: s.price,
+        highlighted: highlightedTradeNum != null && s.tradeNumber === highlightedTradeNum,
+      });
+    }
+
+    return { chartData: base, scatterDataByCategory: byCat };
+  }, [data.bars, data.signals, highlightedTradeNum]);
+
   const regimeAreas = useMemo(() => {
     return data.regimeBands
       .filter(b => b.regime !== "NEUTRAL")
@@ -172,16 +321,6 @@ function StrategyChart({ data, highlightedTradeIdx }: {
       }));
   }, [data.regimeBands]);
 
-  // Highlighted trade — find its entry/exit dates so we can pulse those dots.
-  const highlightedDates = useMemo(() => {
-    if (highlightedTradeIdx == null) return new Set<string>();
-    const t = data.trades[highlightedTradeIdx];
-    if (!t) return new Set<string>();
-    const set = new Set<string>([t.entryDate]);
-    if (t.exitDate) set.add(t.exitDate);
-    return set;
-  }, [highlightedTradeIdx, data.trades]);
-
   return (
     <div className="w-full" style={{ height: 420 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -192,17 +331,15 @@ function StrategyChart({ data, highlightedTradeIdx }: {
             tick={{ fontSize: 10, fill: "#94a3b8" }}
             interval="preserveStartEnd"
             minTickGap={50}
+            type="category"
+            allowDuplicatedCategory={false}
           />
           <YAxis
             tick={{ fontSize: 10, fill: "#94a3b8" }}
             domain={["auto", "auto"]}
             tickFormatter={v => `$${typeof v === "number" ? v.toFixed(0) : v}`}
           />
-          <Tooltip
-            contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1f2937", borderRadius: 6, fontSize: 12 }}
-            labelStyle={{ color: "#e2e8f0" }}
-            formatter={(value: any) => [`$${Number(value).toFixed(2)}`, "Close"]}
-          />
+          <Tooltip content={<ChartTooltip />} />
 
           {/* Regime bands behind the price line */}
           {regimeAreas.map(area => (
@@ -210,8 +347,6 @@ function StrategyChart({ data, highlightedTradeIdx }: {
               key={area.key}
               x1={area.x1}
               x2={area.x2}
-              y1={undefined}
-              y2={undefined}
               fill={area.regime === "BULLISH" ? "#10b981" : "#ef4444"}
               fillOpacity={0.06}
               ifOverflow="extendDomain"
@@ -227,20 +362,23 @@ function StrategyChart({ data, highlightedTradeIdx }: {
             isAnimationActive={false}
           />
 
-          {/* Signal dots — rendered as ReferenceDot so we can highlight on click */}
-          {data.signals.map((s, i) => {
-            const isHighlighted = highlightedDates.has(s.date);
+          {/* One Scatter per dot category — Recharts renders each scatter
+              independently with its own color/shape. xAxisId matches the
+              shared category axis. dataKey="y" pulls the price out of each
+              row. The shape function customizes per-point rendering for the
+              highlighted state. */}
+          {(Object.keys(scatterDataByCategory) as DotCategory[]).map(cat => {
+            const rows = scatterDataByCategory[cat];
+            if (rows.length === 0) return null;
+            const hollow = cat === "info";
             return (
-              <ReferenceDot
-                key={`sig-${i}`}
-                x={s.date}
-                y={s.price}
-                r={isHighlighted ? 7 : 4}
-                fill={s.filled ? s.color : "transparent"}
-                stroke={s.color}
-                strokeWidth={isHighlighted ? 2.5 : 1.5}
-                isFront
-                ifOverflow="extendDomain"
+              <Scatter
+                key={cat}
+                name={cat}
+                data={rows}
+                dataKey="y"
+                shape={makeDotShape(cat, hollow)}
+                isAnimationActive={false}
               />
             );
           })}
@@ -280,17 +418,85 @@ function SummaryStats({ summary }: { summary: ChartSummary }) {
   );
 }
 
-// ─── Trade list ────────────────────────────────────────────────────────────
+// ─── Trade list with sortable columns ─────────────────────────────────────
+
+type SortKey = "tradeNumber" | "entryDate" | "exitDate" | "pnlDollar" | "returnPct";
+type SortDir = "asc" | "desc";
+
+function SortHeader({
+  label,
+  sortKey,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: boolean;
+  dir: SortDir;
+  onClick: (k: SortKey) => void;
+}) {
+  return (
+    <button
+      onClick={() => onClick(sortKey)}
+      className={`flex items-center gap-1 text-left font-medium ${
+        active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+      }`}
+      data-testid={`sort-${sortKey}`}
+    >
+      {label}
+      {active ? (
+        dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
+  );
+}
 
 function TradeList({
   trades,
-  highlightedIdx,
+  highlightedTradeNum,
   onHighlight,
 }: {
   trades: ChartTrade[];
-  highlightedIdx: number | null;
-  onHighlight: (idx: number | null) => void;
+  highlightedTradeNum: number | null;
+  onHighlight: (tradeNum: number | null) => void;
 }) {
+  const [sortKey, setSortKey] = useState<SortKey>("tradeNumber");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const sorted = useMemo(() => {
+    const copy = [...trades];
+    copy.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "tradeNumber":
+          cmp = a.tradeNumber - b.tradeNumber;
+          break;
+        case "entryDate":
+          cmp = a.entryDate.localeCompare(b.entryDate);
+          break;
+        case "exitDate":
+          cmp = (a.exitDate ?? "").localeCompare(b.exitDate ?? "");
+          break;
+        case "pnlDollar":
+          cmp = (a.pnlDollar ?? 0) - (b.pnlDollar ?? 0);
+          break;
+        case "returnPct":
+          cmp = (a.returnPct ?? 0) - (b.returnPct ?? 0);
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }, [trades, sortKey, sortDir]);
+
+  function toggleSort(k: SortKey) {
+    if (k === sortKey) setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir(k === "tradeNumber" || k === "entryDate" ? "asc" : "desc"); }
+  }
+
   if (trades.length === 0) {
     return <p className="text-sm text-muted-foreground p-4">No trades fired in this window.</p>;
   }
@@ -299,32 +505,42 @@ function TradeList({
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="sticky top-0 bg-card z-10">
-          <tr className="text-left text-muted-foreground border-b border-card-border">
-            <th className="px-2 py-2 font-medium">#</th>
-            <th className="px-2 py-2 font-medium">Layer</th>
-            <th className="px-2 py-2 font-medium">Source</th>
-            <th className="px-2 py-2 font-medium">Side</th>
-            <th className="px-2 py-2 font-medium">Entry</th>
-            <th className="px-2 py-2 font-medium">Exit</th>
-            <th className="px-2 py-2 font-medium">Hold</th>
-            <th className="px-2 py-2 font-medium text-right">Return</th>
-            <th className="px-2 py-2 font-medium text-right">P/L $</th>
-            <th className="px-2 py-2 font-medium">Reason</th>
+          <tr className="text-left border-b border-card-border">
+            <th className="px-2 py-2">
+              <SortHeader label="#" sortKey="tradeNumber" active={sortKey === "tradeNumber"} dir={sortDir} onClick={toggleSort} />
+            </th>
+            <th className="px-2 py-2 text-muted-foreground font-medium">Layer</th>
+            <th className="px-2 py-2 text-muted-foreground font-medium">Source</th>
+            <th className="px-2 py-2 text-muted-foreground font-medium">Side</th>
+            <th className="px-2 py-2">
+              <SortHeader label="Entry" sortKey="entryDate" active={sortKey === "entryDate"} dir={sortDir} onClick={toggleSort} />
+            </th>
+            <th className="px-2 py-2">
+              <SortHeader label="Exit" sortKey="exitDate" active={sortKey === "exitDate"} dir={sortDir} onClick={toggleSort} />
+            </th>
+            <th className="px-2 py-2 text-muted-foreground font-medium">Hold</th>
+            <th className="px-2 py-2 text-right">
+              <SortHeader label="Return" sortKey="returnPct" active={sortKey === "returnPct"} dir={sortDir} onClick={toggleSort} />
+            </th>
+            <th className="px-2 py-2 text-right">
+              <SortHeader label="P/L $" sortKey="pnlDollar" active={sortKey === "pnlDollar"} dir={sortDir} onClick={toggleSort} />
+            </th>
+            <th className="px-2 py-2 text-muted-foreground font-medium">Reason</th>
           </tr>
         </thead>
         <tbody>
-          {trades.map((t, i) => {
+          {sorted.map(t => {
             const won = (t.returnPct ?? 0) > 0;
-            const isHi = highlightedIdx === i;
+            const isHi = highlightedTradeNum === t.tradeNumber;
             return (
               <tr
-                key={i}
-                onClick={() => onHighlight(isHi ? null : i)}
+                key={t.tradeNumber}
+                onClick={() => onHighlight(isHi ? null : t.tradeNumber)}
                 className={`border-b border-card-border/60 cursor-pointer transition-colors ${
                   isHi ? "bg-blue-500/10" : "hover:bg-card-foreground/5"
                 }`}
               >
-                <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{i + 1}</td>
+                <td className="px-2 py-1.5 text-muted-foreground tabular-nums font-semibold">{t.tradeNumber}</td>
                 <td className="px-2 py-1.5">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                     t.layer === "CORE" ? "bg-sky-500/20 text-sky-300" :
@@ -369,7 +585,7 @@ export default function ChartPage() {
   const { activeTicker } = useTicker();
   const [strategy, setStrategy] = useState<ChartStrategy>("bbtc-ver");
   const [days, setDays] = useState<number>(1825); // 5y default
-  const [highlightedTradeIdx, setHighlightedTradeIdx] = useState<number | null>(null);
+  const [highlightedTradeNum, setHighlightedTradeNum] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery<ChartDataResponse>({
     queryKey: ["/api/chart", activeTicker, strategy, days],
@@ -400,7 +616,7 @@ export default function ChartPage() {
                 {STRATEGY_OPTIONS.map(opt => (
                   <button
                     key={opt.value}
-                    onClick={() => { setStrategy(opt.value); setHighlightedTradeIdx(null); }}
+                    onClick={() => { setStrategy(opt.value); setHighlightedTradeNum(null); }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                       strategy === opt.value
                         ? "bg-blue-500 border-blue-500 text-white"
@@ -410,11 +626,6 @@ export default function ChartPage() {
                     data-testid={`strategy-${opt.value}`}
                   >
                     {opt.label}
-                    {opt.badge && (
-                      <span className={`ml-1.5 text-[10px] px-1 py-0.5 rounded ${strategy === opt.value ? "bg-white/20" : "bg-amber-500/20 text-amber-300"}`}>
-                        {opt.badge}
-                      </span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -425,7 +636,7 @@ export default function ChartPage() {
                 {TIMEFRAME_OPTIONS.map(opt => (
                   <button
                     key={opt.value}
-                    onClick={() => { setDays(opt.value); setHighlightedTradeIdx(null); }}
+                    onClick={() => { setDays(opt.value); setHighlightedTradeNum(null); }}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                       days === opt.value
                         ? "bg-blue-500 border-blue-500 text-white"
@@ -438,6 +649,13 @@ export default function ChartPage() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Methodology context — replaces the misleading "$5.28M basket" badge.
+              The basket result is OUR test methodology, not a user-experience
+              guarantee. */}
+          <div className="mt-2 text-[11px] text-muted-foreground bg-muted/30 border border-card-border rounded p-2 leading-relaxed">
+            <strong className="text-foreground">Backtest methodology:</strong> All five strategies were backtested over 10 years (2015–2026) on an 80-ticker basket spanning all 11 sectors plus SPY/QQQ/DIA/IWM benchmarks. Results vary widely by ticker — this page shows you exactly how each strategy traded the active ticker, not basket averages. Past results don&apos;t guarantee future performance.
           </div>
         </CardContent>
       </Card>
@@ -480,7 +698,7 @@ export default function ChartPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3">
-              <StrategyChart data={data} highlightedTradeIdx={highlightedTradeIdx} />
+              <StrategyChart data={data} highlightedTradeNum={highlightedTradeNum} />
               {/* Legend */}
               <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] text-muted-foreground">
                 {data.regimeBands.length > 0 && (
@@ -534,6 +752,7 @@ export default function ChartPage() {
                     </span>
                   </>
                 )}
+                <span className="text-muted-foreground">· hover any dot to see its trade #</span>
               </div>
             </CardContent>
           </Card>
@@ -559,9 +778,9 @@ export default function ChartPage() {
                   <TrendingDown className="h-4 w-4" />
                   Trades ({data.trades.length})
                 </span>
-                {highlightedTradeIdx != null && (
+                {highlightedTradeNum != null && (
                   <button
-                    onClick={() => setHighlightedTradeIdx(null)}
+                    onClick={() => setHighlightedTradeNum(null)}
                     className="text-[10px] text-muted-foreground hover:text-foreground"
                   >
                     clear highlight
@@ -572,8 +791,8 @@ export default function ChartPage() {
             <CardContent className="p-0 max-h-[500px] overflow-y-auto">
               <TradeList
                 trades={data.trades}
-                highlightedIdx={highlightedTradeIdx}
-                onHighlight={setHighlightedTradeIdx}
+                highlightedTradeNum={highlightedTradeNum}
+                onHighlight={setHighlightedTradeNum}
               />
             </CardContent>
           </Card>
