@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-09 — AMC confirmation gate added to per-trade $ P&L evaluator
+
+**Why:** The `/api/diag/strategy-pnl` evaluator was scoring entries on BBTC + VER alone, which does NOT match what the live website tells users. The website's "Ready / Set / Go" chain is **VER (red) → AMC (yellow) → BBTC (green)** — a 3-phase confirmation chain. The evaluator was skipping AMC entirely, so the $419K basket P&L number didn't represent what an actual user following the website's signals would have seen. Need to gate entries by AMC confirmation to get an honest read.
+
+**What:**
+- **`server/diag/strategy-pnl.ts`** — added MACD histogram, VAMI scaled, and SMA200 helpers (matching `routes.ts:3246–3267` canonical computations). Added `computeAMCSeries()` that inlines `computeAMC`'s logic per-bar so the full historical AMC score/signal series can be built without N² array slicing. New `AMCGateMode = "off" | "loose" | "strict"` type. `pairTrades` now accepts `amcGate` + AMC score/signal arrays and gates entries (NOT exits — open positions can always close):
+  - **off** (default): legacy behavior, no AMC requirement
+  - **loose**: AMC score ≥ 3 (3+ of 5 momentum conditions met) at the entry bar
+  - **strict**: AMC has signaled ENTER at the entry bar OR within the prior 10 bars — matches the live website's 3-phase confirmation chain
+  - SPY benchmark uses the same gate so the comparison stays apples-to-apples.
+- **`server/routes.ts`** — `/api/diag/strategy-pnl` now accepts `&amcGate=off|loose|strict`. Default remains `off` (no behavior change for existing callers).
+- AMC inputs match the live Trade Analysis configuration: `trendShortEma=EMA9, trendLongEma=EMA50, trendStrengthRefEma=EMA21, vamiScaled=VAMI×8, reversionRefLevel=SMA200×0.95, reversionDirection="above"`.
+
+**Usage:**
+```
+# off (legacy / current website-eval-doesn't-match-website behavior)
+/api/diag/strategy-pnl?symbols=...&days=3650
+
+# loose: at least 3 of 5 AMC conditions at entry bar
+/api/diag/strategy-pnl?symbols=...&days=3650&amcGate=loose
+
+# strict: matches what the live website actually requires
+/api/diag/strategy-pnl?symbols=...&days=3650&amcGate=strict
+```
+
+**Files:** `server/diag/strategy-pnl.ts`, `server/routes.ts`.
+
+Rollback tag: `safe/2026-05-09-pre-amc-gate`. Strictly additive (default `amcGate=off` preserves prior behavior).
+
+---
 ## 2026-05-08 — Per-trade dollar P&L evaluator
 
 **Why:** Chris's exact words: "Percentages don't mean shit if there ain't any money made." The existing strategy-eval endpoint measures forward-N-day dir-adjusted returns from each fire — useful for measuring per-fire EDGE but not actual P&L. Need a way to answer "did this strategy actually make money on AAPL? on NVDA? across the basket?"

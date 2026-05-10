@@ -5129,11 +5129,13 @@ export async function registerRoutes(
   // aggregates per-ticker and basket-wide. Complements strategy-eval (which
   // measures forward-N-day edge) with the practical "did it make money" view.
   //
-  //   GET /api/diag/strategy-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1]
+  //   GET /api/diag/strategy-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&amcGate=off|loose|strict]
   //
   // - days: 30..3650 (default 365)
   // - positionSize: dollars per trade (default 10000, min 100, max 1000000)
   // - detail=1 to include per-trade records
+  // - amcGate: off (default) | loose (AMC score ≥3 at entry) | strict (AMC ENTER at entry or within prior 10 bars).
+  //   Strict matches the live website's 3-phase Ready/Set/Go chain (VER → AMC → BBTC).
   app.get("/api/diag/strategy-pnl", async (req, res) => {
     try {
       const { runStrategyPnL } = await import("./diag/strategy-pnl");
@@ -5146,7 +5148,10 @@ export async function registerRoutes(
       const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
       const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
       const detail = String(req.query.detail || "") === "1";
-      const result = await runStrategyPnL(symbols, days, positionSize, detail);
+      const amcRaw = String(req.query.amcGate || "off").toLowerCase();
+      const amcGate: "off" | "loose" | "strict" =
+        amcRaw === "loose" ? "loose" : amcRaw === "strict" ? "strict" : "off";
+      const result = await runStrategyPnL(symbols, days, positionSize, detail, amcGate);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-pnl failed" });

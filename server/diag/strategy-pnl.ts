@@ -23,6 +23,9 @@
 import { fmpGet } from "../data/providers/fmp.client";
 import { computeBBTC, type BBTCSignal, type BBTCSignalSide } from "../signals/strategies/bbtc";
 import { computeVER, type VERSignal, type VERSignalSide } from "../signals/strategies/ver";
+import { scoreAMC, type AMCInput } from "../signals/strategies/amc";
+
+export type AMCGateMode = "off" | "loose" | "strict";
 
 // ─── Indicator helpers (duplicated from strategy-eval — same math) ──────────
 
@@ -110,6 +113,75 @@ function computeVolAvg(volumes: number[], period: number): number[] {
   return out;
 }
 
+// MACD histogram (12/26/9), matching routes.ts:3246–3254 canonical computation.
+function computeMACDHistogram(closes: number[]): number[] {
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const macdLine = closes.map((_, i) =>
+    !isNaN(ema12[i]) && !isNaN(ema26[i]) ? ema12[i] - ema26[i] : NaN,
+  );
+  const validMacd: number[] = [];
+  const validIdx: number[] = [];
+  macdLine.forEach((v, i) => { if (!isNaN(v)) { validMacd.push(v); validIdx.push(i); } });
+  const sigEma = computeEMA(validMacd, 9);
+  const signal = new Array(closes.length).fill(NaN);
+  validIdx.forEach((idx, j) => { signal[idx] = sigEma[j]; });
+  return closes.map((_, i) =>
+    !isNaN(macdLine[i]) && !isNaN(signal[i]) ? macdLine[i] - signal[i] : NaN,
+  );
+}
+
+// VAMI scaled ×8, matching routes.ts:3256–3267 canonical computation.
+function computeVAMIScaled(closes: number[], volumes: number[]): number[] {
+  const vami = new Array(closes.length).fill(0);
+  const avgVol20 = computeSMA(volumes.map(v => v || 0), 20);
+  const k = 2 / (12 + 1);
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i - 1] === 0 || isNaN(avgVol20[i]) || avgVol20[i] === 0) continue;
+    const ret = ((closes[i] - closes[i - 1]) / closes[i - 1]) * 100;
+    const vr = Math.min(2.5, Math.max(0.5, volumes[i] / avgVol20[i]));
+    const wr = ret * vr;
+    vami[i] = wr * k + vami[i - 1] * (1 - k);
+  }
+  return vami.map(v => v * 8);
+}
+
+// Per-bar AMC signal series (ENTER/HOLD/SELL). Inlines computeAMC's logic so we
+// can score every historical bar without N² array slicing. Matches the live
+// Trade Analysis configuration: trendShortEma=EMA9, trendLongEma=EMA50,
+// trendStrengthRefEma=EMA21, reversionRefLevel=SMA200×0.95, direction="above".
+function computeAMCSeries(input: AMCInput): { score: number[]; signal: ("ENTER" | "HOLD" | "SELL")[] } {
+  const { closes, histogram, rsi14, vamiScaled, reversionRefLevel, reversionDirection } = input;
+  const n = closes.length;
+  const score: number[] = new Array(n).fill(0);
+  const signal: ("ENTER" | "HOLD" | "SELL")[] = new Array(n).fill("HOLD");
+  for (let i = 1; i < n; i++) {
+    const sc = scoreAMC(i, input);
+    score[i] = sc;
+    const greenClose = closes[i] > closes[i - 1];
+    const momentumEntry = sc >= 4 && greenClose;
+    let reversionEntry = false;
+    if (
+      !isNaN(rsi14[i]) && rsi14[i] < 30 &&
+      !isNaN(reversionRefLevel[i]) && greenClose &&
+      vamiScaled[i] > vamiScaled[i - 1]
+    ) {
+      reversionEntry = reversionDirection === "above"
+        ? closes[i] > reversionRefLevel[i]
+        : closes[i] <= reversionRefLevel[i];
+    }
+    let s: "ENTER" | "HOLD" | "SELL" = "HOLD";
+    if (momentumEntry || reversionEntry) s = "ENTER";
+    if (!isNaN(rsi14[i]) && rsi14[i] > 75) s = "SELL";
+    if (
+      !isNaN(histogram[i]) && histogram[i] < 0 &&
+      !isNaN(histogram[i - 1]) && histogram[i - 1] >= 0
+    ) s = "SELL";
+    signal[i] = s;
+  }
+  return { score, signal };
+}
+
 // ─── FMP fetcher (same as strategy-eval) ────────────────────────────────────
 
 interface Bars {
@@ -186,7 +258,26 @@ function pairTrades(
   dates: string[],
   rsi14: number[],
   positionSize: number,
+  amcGate: AMCGateMode,
+  amcScore: number[],
+  amcSignal: ("ENTER" | "HOLD" | "SELL")[],
 ): Trade[] {
+  // AMC confirmation gate semantics:
+  //   "off"    — no gate; current/legacy behavior
+  //   "loose"  — at the entry bar, AMC score must be >= 3 (3+ of 5 conditions met)
+  //   "strict" — AMC must have signaled ENTER at the entry bar OR within prior 10 bars
+  // Returns true when an entry at bar `i` is allowed.
+  const STRICT_LOOKBACK = 10;
+  function amcAllows(i: number): boolean {
+    if (amcGate === "off") return true;
+    if (amcGate === "loose") return amcScore[i] >= 3;
+    // strict
+    const start = Math.max(0, i - STRICT_LOOKBACK);
+    for (let j = start; j <= i; j++) {
+      if (amcSignal[j] === "ENTER") return true;
+    }
+    return false;
+  }
   // Helper that walks a single signal/side pair stream and produces trades.
   function pairOne(
     strategy: "BBTC" | "VER",
@@ -220,7 +311,7 @@ function pairTrades(
         trades.push(openTrade);
         openTrade = null;
         openEntryBar = -1;
-      } else if (!openTrade && isEntry(sig, side)) {
+      } else if (!openTrade && isEntry(sig, side) && amcAllows(i)) {
         openTrade = {
           strategy,
           entryDate: dates[i],
@@ -370,7 +461,7 @@ function summarizeTicker(symbol: string, bars: Bars, trades: Trade[], positionSi
   };
 }
 
-async function evalTickerPnL(symbol: string, days: number, positionSize: number): Promise<TickerPnL | null> {
+async function evalTickerPnL(symbol: string, days: number, positionSize: number, amcGate: AMCGateMode): Promise<TickerPnL | null> {
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
 
@@ -390,6 +481,29 @@ async function evalTickerPnL(symbol: string, days: number, positionSize: number)
     closes: bars.close, highs: bars.high, lows: bars.low, volumes: bars.volume,
     rsi14, bbUpper: bb.upper, bbLower: bb.lower, volAvg20, atr14,
   });
+
+  // AMC inputs match the live Trade Analysis configuration (routes.ts:3269–3282).
+  let amcScore: number[] = new Array(bars.close.length).fill(0);
+  let amcSignal: ("ENTER" | "HOLD" | "SELL")[] = new Array(bars.close.length).fill("HOLD");
+  if (amcGate !== "off") {
+    const histogram = computeMACDHistogram(bars.close);
+    const vamiScaled = computeVAMIScaled(bars.close, bars.volume);
+    const sma200 = computeSMA(bars.close, 200);
+    const sma200Scaled = sma200.map(v => isNaN(v) ? NaN : v * 0.95);
+    const amc = computeAMCSeries({
+      closes: bars.close,
+      histogram,
+      rsi14,
+      trendShortEma: ema9,
+      trendLongEma: ema50,
+      trendStrengthRefEma: ema21,
+      vamiScaled,
+      reversionRefLevel: sma200Scaled,
+      reversionDirection: "above",
+    });
+    amcScore = amc.score;
+    amcSignal = amc.signal;
+  }
 
   // Restrict eval window to the requested days (with warmup margin).
   const startIdx = Math.max(0, bars.close.length - days - 25);
@@ -411,6 +525,9 @@ async function evalTickerPnL(symbol: string, days: number, positionSize: number)
     slicedBars.date,
     rsi14.slice(startIdx),
     positionSize,
+    amcGate,
+    amcScore.slice(startIdx),
+    amcSignal.slice(startIdx),
   );
 
   return summarizeTicker(symbol, slicedBars, trades, positionSize);
@@ -494,7 +611,7 @@ function aggregateBasket(perTicker: TickerPnL[], spyTicker: TickerPnL | null, po
 // ─── Top-level ──────────────────────────────────────────────────────────────
 
 export interface StrategyPnLResult {
-  basket: { symbols: string[]; days: number; positionSize: number };
+  basket: { symbols: string[]; days: number; positionSize: number; amcGate: AMCGateMode };
   generatedAt: string;
   perTicker: TickerPnL[];
   aggregate: BasketAgg;
@@ -506,32 +623,41 @@ export async function runStrategyPnL(
   days: number,
   positionSize: number,
   includeTradeDetail: boolean,
+  amcGate: AMCGateMode = "off",
 ): Promise<StrategyPnLResult> {
   const BATCH = 12;
   const tickerResults: TickerPnL[] = [];
   for (let i = 0; i < symbols.length; i += BATCH) {
     const slice = symbols.slice(i, i + BATCH);
-    const results = await Promise.allSettled(slice.map(s => evalTickerPnL(s, days, positionSize)));
+    const results = await Promise.allSettled(slice.map(s => evalTickerPnL(s, days, positionSize, amcGate)));
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) tickerResults.push(r.value);
     }
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
-  // SPY benchmark.
-  const spy = await evalTickerPnL("SPY", days, positionSize).catch(() => null);
+  // SPY benchmark uses the same AMC gate so the comparison is apples-to-apples.
+  const spy = await evalTickerPnL("SPY", days, positionSize, amcGate).catch(() => null);
 
   // Optionally strip per-trade detail to keep payload small.
   const perTicker = includeTradeDetail
     ? tickerResults
     : tickerResults.map(t => ({ ...t, trades: [] }));
 
+  const amcNote =
+    amcGate === "off"
+      ? "AMC confirmation gate is OFF — entries scored on BBTC + VER alone (does not match the website's 3-phase Ready/Set/Go chain)."
+      : amcGate === "loose"
+      ? "AMC LOOSE gate active — each BBTC/VER long entry only counts if AMC scored ≥3/5 (3+ of 5 momentum conditions met) at the entry bar."
+      : "AMC STRICT gate active — each BBTC/VER long entry only counts if AMC signaled ENTER at the entry bar or within the prior 10 bars (matches the live website's 3-phase confirmation chain).";
+
   return {
-    basket: { symbols, days, positionSize },
+    basket: { symbols, days, positionSize, amcGate },
     generatedAt: new Date().toISOString(),
     perTicker,
     aggregate: aggregateBasket(tickerResults, spy, positionSize),
     notes: [
+      amcNote,
       "Long-only evaluator. Short signals are info-only since 2026-05-08 demote and never form pairable trades here.",
       "Each LONG entry is paired with its corresponding exit (STOP_HIT, REDUCE, or cross-down SELL). Open trades at end of window are excluded from $ P&L aggregates.",
       "positionSize is the assumed dollar amount per trade. totalPnLDollar = sum of (returnPct × positionSize) across closed trades.",
@@ -540,6 +666,7 @@ export async function runStrategyPnL(
       "maxDrawdownPct is the worst peak-to-trough drop on the per-trade equity curve.",
       "No commissions or slippage applied. Real-world P&L would be lower by ~$1-5 per round trip plus 0.05-0.1% slippage.",
       "Add ?detail=1 to include per-trade records (entryDate, entryPrice, exitDate, exitPrice, returnPct, etc.) for each ticker.",
+      "Add ?amcGate=loose|strict|off to require AMC confirmation. Strict matches the live Ready/Set/Go chain; loose accepts 3+/5 AMC conditions met.",
     ],
   };
 }
