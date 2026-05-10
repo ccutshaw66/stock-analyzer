@@ -9,6 +9,64 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-10 — Strategy Chart page (visual backtester)
+
+**Why:** Phase 2 of the TFT rollout — instead of replacing BBTC+VER on existing pages (high UX risk), build a **separate** chart page where users toggle between strategies side-by-side. Existing trade-analysis page and scanners stay completely untouched. Per Chris on 2026-05-10: "a separate chart page that someone could toggle between the different strategies… add some context to the trades like P/L on the trade and some percentage stuff."
+
+**What:** New `/chart` route. For one ticker, render bars + signal dots + (TFT only) regime bands + paired trades + summary stats, with a strategy selector that lets you toggle between **BBTC+VER**, **AMC**, **TFT 40w**, **TFT 60w**, **TFT catastrophic-only**. Click a trade row to highlight its entry/exit dots on the chart.
+
+### Backend
+
+- **`server/diag/chart-data.ts`** (NEW, ~570 lines) — unified chart-data module with 5 strategy adapters:
+  - `bbtc-ver` — fetches bars, runs `computeBBTC` + `computeVER`, pairs entries/exits per sub-strategy (same logic as `strategy-pnl.ts`), emits dots + trades.
+  - `amc` — recomputes MACD histogram + VAMI + EMAs + SMA200, walks `scoreAMC` per bar, pairs ENTER → SELL, emits dots + trades.
+  - `tft-40w` / `tft-60w` / `tft-catastrophic` — wraps `simulateTFT` with appropriate `coreStopMode`, converts TFT layer entries/exits into chart dots, collapses per-bar regime series into contiguous regime bands.
+  - Returns unified shape: `{ bars, signals, regimeBands, trades, summary, notes }`. Summary includes `totalPnLIncludingUnrealized`, `capturedBnHPct`, `marketExposurePct` (TFT only).
+- **`server/routes.ts`** — new endpoint `GET /api/chart/:ticker?strategy=X[&days=Y][&positionSize=Z]`. Auth-gated (inherits from `app.use("/api", requireAuth)`). Defaults: `strategy=bbtc-ver`, `days=1825` (5y), `positionSize=10000`.
+
+### Frontend
+
+- **`client/src/pages/chart.tsx`** (NEW, ~430 lines) — new page component. Layout:
+  1. PageHeader + Disclaimer
+  2. Strategy selector (5 pill buttons; TFT catastrophic-only badged "$5.28M basket" to surface the winner)
+  3. Timeframe selector (1Y / 3Y / 5Y / 10Y)
+  4. Chart card — Recharts `ComposedChart` with `Line` (close price) + `ReferenceArea` per regime band + `ReferenceDot` per signal. Highlighted dots enlarge from r=4 to r=7 with thicker stroke when their trade is selected in the list. Legend below chart adapts to TFT vs non-TFT strategy.
+  5. Summary stats grid — 8 cells: Total P/L (realized + unrealized), B&H Capture %, Win Rate, R-Multiple, Best/Worst, Max DD, Trades, Time in Market (TFT) / Position Type (others).
+  6. Trade list — scrollable table, click row to highlight. Columns: #, layer (CORE/TACTICAL/PAIR), source (BBTC/VER/AMC/TFT), side, entry, exit, hold bars, return %, P/L $, exit reason. Open trades flagged "OPEN" in blue.
+  7. Notes — strategy-specific disclaimer text from backend.
+- **`client/src/App.tsx`** — added `<Route path="/chart" component={ChartPage} />` between `/trade` and `/scanner`.
+- **`client/src/components/AppLayout.tsx`** — added "Strategy Chart" nav entry under "Company Research" group, positioned right after "Trade Analysis". Uses lucide `LineChart` icon.
+
+### How users find it
+
+- New sidebar entry: **Company Research → Strategy Chart**
+- Type a ticker into the global search bar (uses TickerContext like the rest of the site), then navigate to /chart.
+- Existing /trade page and all scanners are completely unaffected.
+
+### Default decisions Chris should review
+
+These were judgment calls per Chris's "do your recommendation and note it" instruction:
+1. **Default strategy on first load = BBTC+VER**, not TFT-catastrophic. Reasoning: feels familiar to existing users; they actively click TFT to see the lift. Trade-off: hides the winner on first paint.
+2. **Default timeframe = 5Y.** Long enough to show TFT's secular-trend benefit (NVDA, AMD, TSLA), short enough to keep the chart readable.
+3. **Toggle UI = pill buttons row, not dropdown.** 5 options fit cleanly on desktop and surface all options at once. TFT catastrophic gets a "$5.28M basket" amber badge.
+4. **Sidebar group = "Company Research"** alongside Trade Analysis. Could move to "Investment Opportunities" if it feels more discovery-oriented.
+5. **URL = `/chart`** (not `/strategies` / `/strategy-lab` / `/trade-analysis-v2`). Short.
+6. **Click-to-highlight only on trade list rows.** Hovering signal dots directly is deferred (would need Scatter overlay refactor).
+7. **No per-trade entry-to-exit lines on the chart** (would clutter past 50+ trades). Trade detail lives in the panel below.
+
+### Deferred to future session
+
+- Hover tooltips on signal dots (requires Scatter overlay; bigger refactor)
+- Mobile chart polish
+- Side-by-side comparison view (two strategies stacked)
+- Direct deep-link from /trade page → /chart for the same ticker
+- Eventually: more strategies (e.g. AMC + BBTC chained)
+
+Strictly additive — live trade-analysis, scanners, and other pages unchanged. Default flip on `/api/diag/strategy-tft-pnl` (catastrophic-only as default) was NOT made; that decision is still pending.
+
+Rollback tag: `safe/2026-05-10-pre-chart-page` (covers the earlier unrealized-P&L fix too).
+
+---
 ## 2026-05-10 — TFT eval: report unrealized P&L on open positions
 
 **Why:** Phase 3 catastrophic-only run came back with a basket total of $110K — looked terrible. Diagnosed as a measurement bug, not a strategy failure: catastrophic-only intentionally holds CORE positions forever (the whole point), and 119 of those positions were still open at end-of-window. The eval was excluding ALL open trade P&L from `totalPnLDollar`. NVDA's core entered around 2019 and was sitting on a massive unrealized gain that didn't show up anywhere in the basket totals.

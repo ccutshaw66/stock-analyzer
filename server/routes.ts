@@ -5158,6 +5158,37 @@ export async function registerRoutes(
     }
   });
 
+  // Comparison chart page — returns bars + strategy-specific signal dots +
+  // regime bands (TFT only) + paired trades + summary stats for one ticker.
+  // Powers the new /chart/:ticker frontend page where users toggle between
+  // BBTC+VER, AMC, and three TFT modes to compare strategies visually.
+  //
+  //   GET /api/chart/:ticker?strategy=bbtc-ver|amc|tft-40w|tft-60w|tft-catastrophic[&days=3650][&positionSize=10000]
+  //
+  // - days: 30..3650 (default 1825 = ~5y)
+  // - positionSize: dollars per unit (default 10000)
+  app.get("/api/chart/:ticker", async (req, res) => {
+    try {
+      const { getChartData } = await import("./diag/chart-data");
+      const ticker = String(req.params.ticker || "").trim().toUpperCase();
+      if (!ticker) return res.status(400).json({ error: "Provide :ticker" });
+      const stratRaw = String(req.query.strategy || "bbtc-ver").toLowerCase();
+      const strategy: "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-catastrophic" =
+        stratRaw === "amc" ? "amc" :
+        stratRaw === "tft-40w" ? "tft-40w" :
+        stratRaw === "tft-60w" ? "tft-60w" :
+        (stratRaw === "tft-catastrophic" || stratRaw === "tft-catastrophic-only") ? "tft-catastrophic" :
+        "bbtc-ver";
+      const days = Math.min(Math.max(Number(req.query.days) || 1825, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const result = await getChartData(ticker, strategy, days, positionSize);
+      if (!result) return res.status(404).json({ error: `No data available for "${ticker}"` });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "chart-data failed" });
+    }
+  });
+
   // TFT (Two-Layer Trend Continuation) per-ticker dollar P&L evaluator. Designed
   // to fix the BBTC+VER "sit on cash for months during secular trends" failure
   // mode (NVDA captured ~$31K vs $3.78M buy-and-hold over 10y). Holds a CORE
