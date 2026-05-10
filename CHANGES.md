@@ -9,6 +9,68 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-09 — TFT (Two-Layer Trend Continuation) strategy + evaluator
+
+**Why:** BBTC+VER 10y eval showed a $415K basket P&L on 80 tickers — beats SPY 15× — but on individual moonshots it leaves enormous money on the table. NVDA: strategy $31K, buy-and-hold $3.78M. AMD: strategy $25K, B&H $2.41M. AMZN, GOOGL, LLY, COST, CAT, MSFT — all show the same pattern. The 3×ATR trail stop gets shaken out by routine 20-30% pullbacks during sustained trends, then the strategy waits months for a fresh setup that may never come. Time-in-market on NVDA was only 45% over 10 years.
+
+Per Chris (the user) on 2026-05-09: "I don't mind leaving 50K on the table, we made 400K, BUT I am not willing to leave 3M.... I need both sides of the moves buy and sell and use the exit of one to determine the entry of the other or something. Test against whatever you want, But I expect a full strategy we can use."
+
+**What:** A new strategy that solves the "sit on cash" problem by holding a core position throughout a confirmed regime, using BBTC/VER as a tactical scaling layer on top, and stop-and-reverse on regime flip.
+
+### Layers
+
+- **CORE** — 1.0 unit (or 0.5 unit on high-vol names where ATR > 5% of price). Held continuously while regime is confirmed bullish/bearish. Exits ONLY on:
+  - Weekly close through the 40-week SMA
+  - Regime flip (immediately reverses to opposite side at 1.0 unit — stop-and-reverse)
+  - Regime going neutral (exits to cash, sits)
+  - -15% catastrophic stop from core entry
+
+- **TACTICAL** — 0.5-unit adds on BBTC_BUY / BBTC_ADD_LONG / VER_BUY while regime is bullish. Each tactical layer trails on 5×ATR (vs the old 3×ATR). Stops drop the layer; core stays on. BBTC_REDUCE trims one tactical layer. Max combined position = 2.0 units.
+
+### Regime detection (weekly)
+
+- **BULLISH:** weekly close > 40W SMA AND 40W SMA[t] > 40W SMA[t-4] (slope rising)
+- **BEARISH:** weekly close < 40W SMA AND 40W SMA[t] < 40W SMA[t-4]
+- **NEUTRAL:** anything else
+- **Whipsaw guard:** regime must hold for 2 consecutive weekly closes before flipping direction
+
+### Files
+
+- **`server/signals/strategies/tft.ts`** (NEW, ~340 lines) — pure strategy logic. Exports `simulateTFT(input): TFTResult`. Walks bars, manages a stack of layers (CORE bottom + TACTICAL on top, FIFO), produces per-bar regime + position-units arrays + complete trade records. Weekly aggregation done internally from daily bars (ISO week grouping; last-bar-of-week defines the weekly close).
+- **`server/diag/strategy-tft-pnl.ts`** (NEW, ~410 lines) — evaluator wrapping `simulateTFT`. Schema mirrors `strategy-pnl.ts` (`TFTTickerPnL` ≈ `TickerPnL`) with TFT-specific additions: `peakUnitsDeployed`, `daysInMarket`, `marketExposurePct`, `capturedBuyAndHoldPct`. Basket aggregate adds `avgMarketExposurePct`, `avgPeakUnitsDeployed`, `totalBuyAndHoldDollar`, `basketCapturedBuyAndHoldPct`.
+- **`server/routes.ts`** — new endpoint:
+  ```
+  GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off]
+  ```
+
+### Position sizing note (IMPORTANT for comparison)
+
+`positionSize` here means dollars per **UNIT**. A 1.0-unit core deploys $10K. A max 2.0-unit position deploys $20K notional. **This differs from `strategy-pnl.ts` where `positionSize` is per trade with 1× max deployment.** When comparing TFT to BBTC+VER:
+- Same `positionSize=10000` means TFT can deploy up to 2× the capital
+- For a fair "same capital" comparison, halve TFT's `positionSize` to 5000
+- Or look at `avgPeakUnitsDeployed` in the basket aggregate to see how often max deployment actually happened
+
+### Defensive behavior preserved
+
+- Long-only on names where regime never confirms bearish (e.g. KO, PG defensives) — they just sit out, generating no return rather than bleeding
+- Shorts demoted to info-only on BBTC/VER stays unchanged in those modules — TFT's shorts come from regime confirmation, not from BBTC_SELL/VER_SELL events
+- Default `shorts=on` because two-sided coverage is the design goal; `shorts=off` available for ablation
+
+### Usage example
+
+```bash
+# Full 80-ticker basket, 10 years, $10K per unit (max $20K notional), shorts on
+curl -s "https://stockotter.ai/api/diag/strategy-tft-pnl?days=3650&positionSize=10000&shorts=on&symbols=AAPL,MSFT,NVDA,..."
+
+# Apples-to-apples capital comparison vs strategy-pnl: $5K per unit (max $10K notional)
+curl -s "https://stockotter.ai/api/diag/strategy-tft-pnl?days=3650&positionSize=5000&symbols=..."
+```
+
+Strictly additive (new strategy file, new evaluator, new route — nothing in existing strategy code changed). Live website behavior unaffected — TFT does not run anywhere except this diag endpoint.
+
+Rollback tag: `safe/2026-05-09-pre-tft`.
+
+---
 ## 2026-05-09 — AMC confirmation gate added to per-trade $ P&L evaluator
 
 **Why:** The `/api/diag/strategy-pnl` evaluator was scoring entries on BBTC + VER alone, which does NOT match what the live website tells users. The website's "Ready / Set / Go" chain is **VER (red) → AMC (yellow) → BBTC (green)** — a 3-phase confirmation chain. The evaluator was skipping AMC entirely, so the $419K basket P&L number didn't represent what an actual user following the website's signals would have seen. Need to gate entries by AMC confirmation to get an honest read.

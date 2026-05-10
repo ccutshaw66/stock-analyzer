@@ -5158,6 +5158,39 @@ export async function registerRoutes(
     }
   });
 
+  // TFT (Two-Layer Trend Continuation) per-ticker dollar P&L evaluator. Designed
+  // to fix the BBTC+VER "sit on cash for months during secular trends" failure
+  // mode (NVDA captured ~$31K vs $3.78M buy-and-hold over 10y). Holds a CORE
+  // position throughout a confirmed regime and uses BBTC/VER as a tactical
+  // scaling layer. Stop-and-reverse on regime flip.
+  //
+  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off]
+  //
+  // - days: 30..3650 (default 365). 350 bars warmup needed for 40W SMA; tickers with <300 bars are skipped.
+  // - positionSize: dollars per UNIT (default 10000). Max position = 2.0 units = 2× positionSize notional.
+  //   THIS DIFFERS FROM strategy-pnl which deploys ONE positionSize per trade.
+  // - detail=1 to include every layer-trade record per ticker
+  // - shorts=on (default) or off — ablation toggle
+  app.get("/api/diag/strategy-tft-pnl", async (req, res) => {
+    try {
+      const { runStrategyTFTPnL } = await import("./diag/strategy-tft-pnl");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const enableShorts = String(req.query.shorts || "on").toLowerCase() !== "off";
+      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-tft-pnl failed" });
+    }
+  });
+
   // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
   // exactly what FMP's symbol-positions-summary + extract-analytics/holder
   // endpoints return for a ticker. Used for diagnosing field-name drift on
