@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-12 — Settings cash field is now a live override (re-anchor any time)
+
+**Why:** After yesterday's cash auto-derive change, Chris reported the page showed -$3,800 cash and $1,900 portfolio, and "the Settings cash won't let me adjust it." Settings *was* saving — but the field was the hidden anchor, so any value he typed got buried underneath all the trade flows. Page kept showing the derived (negative) cash and looked broken.
+
+**What:** Settings now treats the Brokerage Cash field as the **live current cash**. The server reverse-computes the anchor on save, so the value the user types is what they immediately see on the page.
+
+### `server/routes.ts`
+
+- New helper `computeCashFromActivity(userId)` — sums account_transactions + signed trade opens + signed trade closes − commissions. Single source of truth for the cash flow side of the equation.
+- `GET /api/account/settings` — returns `cashBalance = anchor + cashFromActivity` (live), so the Settings UI shows the same number the page shows.
+- `PATCH /api/account/settings` — when `cashBalance` is in the body, treats it as live cash and stores `anchor = entered − cashFromActivity`. User types $5,000, system stores whatever anchor makes the live number $5,000 right now. Trades from then on adjust it automatically.
+- `/api/trades/summary` continues to call the same helper (keeps cash math consistent across endpoints).
+
+### `client/src/pages/trade-tracker.tsx`
+
+- Settings label updated: "Brokerage Cash ($) — set this to whatever your broker shows right now."
+- Help block updated to tell the user: if cash drifts from broker, open Settings and re-type — the system re-anchors.
+
+**Files:** `server/routes.ts`, `client/src/pages/trade-tracker.tsx`
+
+---
 ## 2026-05-11 — Current Positions: cash auto-derives from trade ledger; Account Value card removed
 
 **Why:** Chris reported that the Brokerage Cash figure on Current Positions never followed his trades — every time he opened or closed a position he had to retype it in Settings. Total Portfolio was therefore always wrong unless he kept cash in sync manually. He also wanted the redundant "Account Value" card gone (Total Portfolio is the only number that matters) and the "Starting Account Value" Settings field gone (cash is the only anchor).

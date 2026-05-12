@@ -5834,6 +5834,27 @@ export async function registerRoutes(
     }
   });
 
+  // Sum of all cash flows from the trade ledger + transactions for a user.
+  // cashFromActivity = deposits + opens (signed) + closes (signed) - commissions.
+  // currentCash = anchor (settings.cashBalance) + cashFromActivity.
+  // Inverse: anchor = currentCash - cashFromActivity (used by PATCH settings to
+  // let the user re-anchor cash to whatever their broker shows right now).
+  async function computeCashFromActivity(userId: number): Promise<number> {
+    const all = await storage.getAllTrades(userId);
+    const closed = all.filter(t => t.closeDate);
+    const txs = await storage.getAccountTransactions(userId);
+    const txTotal = txs.reduce((s, tx) => s + tx.amount, 0);
+    const opens = all.reduce((s, t) => {
+      const mult = t.tradeCategory === 'Option' ? 100 : 1;
+      return s + (t.openPrice * t.contractsShares * mult) - (t.commIn || 0);
+    }, 0);
+    const closes = closed.reduce((s, t) => {
+      const mult = t.tradeCategory === 'Option' ? 100 : 1;
+      return s + ((t.closePrice || 0) * t.contractsShares * mult) - (t.commOut || 0);
+    }, 0);
+    return txTotal + opens + closes;
+  }
+
   // Get trade summary stats
   app.get("/api/trades/summary", async (req, res) => {
     try {
@@ -6159,7 +6180,12 @@ export async function registerRoutes(
   app.get("/api/account/settings", async (req, res) => {
     try {
       const settings = await storage.getAccountSettings(req.user!.id);
-      res.json(settings);
+      // Surface LIVE cash in the cashBalance field so the Settings UI shows
+      // the same number the page shows. Anchor stays in the column under the
+      // hood; PATCH below re-derives it when the user types a new value.
+      const anchor = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashFromActivity = await computeCashFromActivity(req.user!.id);
+      res.json({ ...settings, cashBalance: anchor + cashFromActivity });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get settings" });
     }
@@ -6167,8 +6193,20 @@ export async function registerRoutes(
 
   app.patch("/api/account/settings", async (req, res) => {
     try {
-      const settings = await storage.updateAccountSettings(req.user!.id, req.body);
-      res.json(settings);
+      const body = { ...req.body };
+      // The cashBalance field in the UI is the LIVE cash. To save it as the
+      // anchor we must subtract everything trades + transactions have already
+      // added to/subtracted from it.
+      if (typeof body.cashBalance === 'number') {
+        const cashFromActivity = await computeCashFromActivity(req.user!.id);
+        body.cashBalance = body.cashBalance - cashFromActivity;
+      }
+      await storage.updateAccountSettings(req.user!.id, body);
+      // Echo back live cash so the form shows the correct value after save.
+      const settings = await storage.getAccountSettings(req.user!.id);
+      const anchor = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashFromActivity = await computeCashFromActivity(req.user!.id);
+      res.json({ ...settings, cashBalance: anchor + cashFromActivity });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update settings" });
     }

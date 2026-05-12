@@ -748,7 +748,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
-            ["cashBalance", "Brokerage Cash ($) — your starting cash; trades adjust it automatically"],
+            ["cashBalance", "Brokerage Cash ($) — set this to whatever your broker shows right now"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
@@ -918,7 +918,7 @@ export default function TradeTracker() {
 
         <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
         <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
-        <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-derived from your starting cash + every trade's open/close cash flow + deposits. You don't have to update it. Set your initial cash in Settings.</p>
+        <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-tracks every trade's open/close cash flow. Doesn't match your broker? Open Settings and type in the current cash value — the system re-anchors and stays in sync from there.</p>
         <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
         <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
         <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
