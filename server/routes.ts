@@ -5871,9 +5871,26 @@ export async function registerRoutes(
       const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
-      // Account value
+      // Cash balance auto-derives from the trade ledger so the user never has
+      // to keep it in sync with their broker manually. The Settings "Brokerage
+      // Cash" value is the STARTING-cash anchor; one-time deposits/withdrawals
+      // come in via account_transactions.
+      //
+      // openPrice / closePrice are stored signed by cash-flow direction
+      // (negative for buys/debits, positive for sells/credits) — same
+      // convention used by the totalProfit calc above — so this works for
+      // longs, shorts, debits, and credits without special-casing.
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
-      const accountValue = settings.startingAccountValue + totalProfit + txTotal;
+      const cashFromOpens = allTrades.reduce((s, t) => {
+        const mult = t.tradeCategory === 'Option' ? 100 : 1;
+        return s + (t.openPrice * t.contractsShares * mult) - (t.commIn || 0);
+      }, 0);
+      const cashFromCloses = closedTrades.reduce((s, t) => {
+        const mult = t.tradeCategory === 'Option' ? 100 : 1;
+        return s + ((t.closePrice || 0) * t.contractsShares * mult) - (t.commOut || 0);
+      }, 0);
+      const startingCash = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashBalance = startingCash + txTotal + cashFromOpens + cashFromCloses;
 
       // Open P/L (stocks only — we have stock price for both open and current)
       // Options are excluded: currentPrice is the STOCK price, not the option premium,
@@ -5890,12 +5907,8 @@ export async function registerRoutes(
         return s + pl - (t.commIn || 0);
       }, 0);
 
-      // Allocated $
-      const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
-      const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
-
       // Open position market value — combined with cashBalance to produce
-      // a "Total Portfolio" figure that matches the user's broker app.
+      // the "Total Portfolio" figure that matches the user's broker app.
       //   - Stocks:  currentPrice × shares (live price × position size)
       //   - Options: allocation (best proxy without live option premiums)
       const openPositionMarketValue = openTrades.reduce((s, t) => {
@@ -5907,13 +5920,16 @@ export async function registerRoutes(
         }
         return s;
       }, 0);
-      const cashBalance = (settings as any).cashBalance ?? 0;
       const totalPortfolioValue = cashBalance + openPositionMarketValue;
+
+      // Allocated %: pct of total portfolio currently tied up in open trades.
+      const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
+      const allocatedPct = totalPortfolioValue > 0 ? allocated / totalPortfolioValue : 0;
 
       // Equity curve data points
       const equityCurve: { date: string; value: number }[] = [];
       const sortedTrades = [...closedTrades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-      let runningValue = settings.startingAccountValue;
+      let runningValue = startingCash;
       for (const t of sortedTrades) {
         const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
         const costToOpen = t.openPrice * t.contractsShares * multiplier;
@@ -5937,7 +5953,6 @@ export async function registerRoutes(
         totalProfit,
         totalWins,
         winRate: closedTrades.length > 0 ? totalWins / closedTrades.length : 0,
-        accountValue,
         cashBalance,
         openPositionMarketValue,
         totalPortfolioValue,

@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-11 — Current Positions: cash auto-derives from trade ledger; Account Value card removed
+
+**Why:** Chris reported that the Brokerage Cash figure on Current Positions never followed his trades — every time he opened or closed a position he had to retype it in Settings. Total Portfolio was therefore always wrong unless he kept cash in sync manually. He also wanted the redundant "Account Value" card gone (Total Portfolio is the only number that matters) and the "Starting Account Value" Settings field gone (cash is the only anchor).
+
+**What:**
+
+### Backend (`server/routes.ts` — `/api/trades/summary`)
+
+- `cashBalance` is now **derived from the trade ledger**, not read from settings as a static value:
+  ```
+  cash = settings.cashBalance              ← starting-cash anchor (Settings field)
+       + sum(account_transactions.amount)  ← deposits/withdrawals
+       + sum(allTrades:    openPrice·qty·mult − commIn)   ← cash flow at every open
+       + sum(closedTrades: closePrice·qty·mult − commOut) ← cash flow at every close
+  ```
+  Works for longs, shorts, debits, and credits without special cases because `openPrice` / `closePrice` are stored signed by cash-flow direction (same convention the existing `totalProfit` calc uses).
+- `totalPortfolioValue = cashBalance + openPositionMarketValue` — by construction this equals `startingCash + txTotal + realized P/L + unrealized P/L`.
+- Dropped `accountValue` from the response (no longer used by any UI).
+- `allocatedPct` now divides by `totalPortfolioValue` instead of the old `accountValue`.
+- Equity curve baseline switched from `settings.startingAccountValue` to `startingCash`.
+
+### Frontend (`client/src/pages/trade-tracker.tsx`)
+
+- Removed the **Account Value** stat card. Bottom row regridded 6→5 cols.
+- Settings: removed the **Starting Account Value** input. The remaining **Brokerage Cash** field is relabeled as the starting-cash anchor — Chris sets it once to his initial deposit, and trades adjust the live cash automatically from there.
+- Updated Help block to match (Total Portfolio / Brokerage Cash / Open Positions descriptions).
+- Dropped `accountValue` from the `Summary` interface.
+
+**Schema:** `account_settings.starting_account_value` column is left in place — no migration. The server now falls back to it only if `cashBalance` is unset on a legacy account.
+
+**Files:** `server/routes.ts`, `client/src/pages/trade-tracker.tsx`
+
+---
 ## 2026-05-10 — Strategy Chart fixes: Scatter dots, hover tooltips, sortable trades, removed misleading badge
 
 **Why:** Chris tested the v1 chart page and flagged five issues:

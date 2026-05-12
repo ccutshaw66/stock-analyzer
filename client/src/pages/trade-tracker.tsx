@@ -72,7 +72,7 @@ interface Trade {
 
 interface Summary {
   totalTrades: number; openTrades: number; totalProfit: number;
-  totalWins: number; winRate: number; accountValue: number; openPL: number;
+  totalWins: number; winRate: number; openPL: number;
   cashBalance?: number; openPositionMarketValue?: number; totalPortfolioValue?: number;
   allocated: number; allocatedPct: number;
   byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }>;
@@ -748,8 +748,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
-            ["startingAccountValue", "Starting Account Value ($)"],
-            ["cashBalance", "Brokerage Cash Balance ($) — set this to match your broker"],
+            ["cashBalance", "Brokerage Cash ($) — your starting cash; trades adjust it automatically"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
@@ -918,11 +917,13 @@ export default function TradeTracker() {
         <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-green-400">GO ↑</span>, <span className="text-red-400">GO ↓</span>, <span className="text-green-400">SET ↑</span>, <span className="text-red-400">SET ↓</span>, <span className="text-green-400">READY ↑</span>, <span className="text-red-400">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
 
         <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
-        <p><strong className="text-foreground">Account Value</strong> — Starting balance + all closed P/L + deposits/withdrawals. Set your starting balance in Settings.</p>
+        <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
+        <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-derived from your starting cash + every trade's open/close cash flow + deposits. You don't have to update it. Set your initial cash in Settings.</p>
+        <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
         <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
         <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
         <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-green-400">green 55%+</span>, <span className="text-yellow-400">yellow 45–54%</span>, <span className="text-red-400">red below 45%</span>.</p>
-        <p><strong className="text-foreground">Allocated</strong> — What percentage of your account is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
+        <p><strong className="text-foreground">Allocated</strong> — What percentage of your portfolio is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
 
         <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
         <p>Track your trading psychology by tagging each closed trade:</p>
@@ -939,8 +940,7 @@ export default function TradeTracker() {
             <SC label="Open Positions" value={formatCurrency(summary.openPositionMarketValue ?? 0)} icon={<BarChart3 className="h-4 w-4" />} color="text-foreground" />
           </div>
           {/* Bottom row — performance + activity */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            <SC label="Account Value" value={formatCurrency(summary.accountValue)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"} />
             <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
             <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
