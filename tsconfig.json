@@ -21,7 +21,7 @@
       "@data/*": ["./server/data/*"],
       "@indicators/*": ["./server/indicators/*"],
       "@signals/*": ["./server/signals/*"],
-      "@features/*": ["./server/features/*"],
+      "@compartments/*": ["./server/compartments/*"],
       "@platform/*": ["./server/platform/*"],
       "@api/*": ["./server/api/*"]
     }

@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-14 — Phase 1B kickoff: compartment scaffold + Favorites template compartment
+
+**Why:** Multi-round dashboard planning (`docs/DASHBOARD_PLAN.md`) crystallized into a site-wide architecture rule (`docs/MASTER_PATHWAY.md` Principle #6 + Phase 1B): every feature is a self-contained compartment with one canonical data accessor, pure logic, two presentation modes, and a registry entry. Otherwise every future dashboard widget becomes bespoke code. Round 4 ships the scaffold + Favorites as the worked-example template; no behavior changes to current pages.
+
+**What:**
+
+### Scaffold
+- Renamed `server/features/` → `server/compartments/` (10 paths, mostly stubs; rename detected by git). Updated TypeScript alias `@features/*` → `@compartments/*` in `tsconfig.json` and the one import in `server/api/routes/search.ts`.
+- New directories: `shared/compartments/`, `client/src/compartments/`.
+- `shared/compartments/types.ts` — universal `CompartmentMeta` type (id, name, tier, fullPageRoute, description). Import-safe from both server and client.
+- `server/compartments/types.ts` — `ServerCompartmentEntry` (meta + optional `mountRoutes(app)`).
+- `client/src/compartments/types.ts` — `ClientCompartmentEntry` (meta + optional `FullView`, `WidgetView`, `widgetDefaultSize`, `widgetMinSize`). Widget block is optional — compartments without a dashboard widget yet register without one (progressive contract).
+
+### Favorites compartment (template)
+- `server/compartments/favorites/index.ts` — manifest + `favoritesData` canonical accessor wrapping `storage.getFavorites` / `addFavorite` / `removeFavorite` / `getFavorite` / `updateFavoriteScore`. Existing `/api/favorites/*` routes in `server/routes.ts:2984-3034` stay put during strangler migration.
+- `client/src/compartments/favorites/useFavorites.ts` — canonical TanStack Query hook reading `/api/favorites/:listType`.
+- `client/src/compartments/favorites/WatchlistWidget.tsx` — compact dashboard widget rendering `useFavorites("watchlist")`. Clicking a row publishes to `TickerContext.activeTicker` (the existing shared bus); no direct prop coupling to other widgets.
+- `client/src/compartments/favorites/index.ts` — manifest with `WidgetView: WatchlistWidget`, `widgetDefaultSize: { w: 3, h: 4 }`.
+
+### Registries
+- `server/compartments/registry.ts` — `listServerCompartments()`, `getServerCompartment(id)`, `mountAllCompartmentRoutes(app)`.
+- `client/src/compartments/registry.ts` — `listClientCompartments()`, `getClientCompartment(id)`, `listWidgetCompartments()`.
+- Wired `mountAllCompartmentRoutes(app)` into `server/routes.ts:1539` (next to existing `registerSearchRoutes`). Favorites has no `mountRoutes` yet (routes stay in legacy `routes.ts`), so this is currently a no-op but exercises the registry import chain.
+
+**Files:** `tsconfig.json`, `CHANGES.md`, `shared/compartments/types.ts`, `server/compartments/types.ts`, `server/compartments/favorites/index.ts`, `server/compartments/registry.ts`, `client/src/compartments/types.ts`, `client/src/compartments/favorites/index.ts`, `client/src/compartments/favorites/useFavorites.ts`, `client/src/compartments/favorites/WatchlistWidget.tsx`, `client/src/compartments/registry.ts`, `server/routes.ts`, `server/api/routes/search.ts`, plus 10 git renames under `server/features/` → `server/compartments/`.
+
+**Branch:** `round4-favorites` (off main). Not merged. Merge to main on Chris's approval. See `docs/DASHBOARD_PLAN.md` Round log for context.
+
+---
 ## 2026-05-12 — Settings cash field is now a live override (re-anchor any time)
 
 **Why:** After yesterday's cash auto-derive change, Chris reported the page showed -$3,800 cash and $1,900 portfolio, and "the Settings cash won't let me adjust it." Settings *was* saving — but the field was the hidden anchor, so any value he typed got buried underneath all the trade flows. Page kept showing the derived (negative) cash and looked broken.
