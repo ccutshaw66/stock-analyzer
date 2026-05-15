@@ -7,9 +7,11 @@
  */
 import type { ClientCompartmentEntry } from "./types";
 import { favoritesCompartment } from "./favorites";
+import { scannerCompartment } from "./scanner";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   favoritesCompartment,
+  scannerCompartment,
 ];
 
 export function listClientCompartments(): readonly ClientCompartmentEntry[] {
