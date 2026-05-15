@@ -21,14 +21,19 @@ Run these in order. Stop and surface any error — never `--no-verify`, never `-
 
 Read the top of `CHANGES.md`. If the newest entry doesn't describe what you just did, **stop and add one** (see the `changes-entry` skill). Per Chris's rule: every code change ships with a CHANGES.md entry — summary per completed change, not commit-by-commit.
 
-### 2. Snapshot
+### 2. Snapshot (tag locally — do NOT push yet)
 
 ```bash
-git tag "safe/$(date +%Y%m%d-%H%M%S)" HEAD
-git push origin --tags
+SAFE_TAG="safe/$(date +%Y%m%d-%H%M%S)"
+git tag "$SAFE_TAG" HEAD
+echo "Tag: $SAFE_TAG"
 ```
 
-This is the rollback point. If anything goes wrong post-push, `git reset --hard safe/<timestamp>` and force-push (with explicit user OK).
+This is the rollback point. **Push the tag together with main in step 5 as a single push event** — not as a separate `git push origin --tags` here.
+
+**Why this matters:** GitHub fires a webhook for every push event. Pushing the tag and main as two separate events causes two deploys back-to-back. The first deploy (triggered by the tag push) resets production to whatever `origin/main` was at that instant — the OLD SHA, because main hasn't been pushed yet. Production runs the wrong code for ~60–90 seconds until the second deploy catches up. Observed live on 2026-05-15. Push both refs in **one** command to avoid the window.
+
+If anything goes wrong post-push, `git reset --hard $SAFE_TAG` and force-push with explicit user OK.
 
 ### 3. Show the diff
 
@@ -55,11 +60,17 @@ EOF
 
 Match the commit message style of recent commits (`git log --oneline -5`).
 
-### 5. Push to main
+### 5. Push to main — atomically with the safe tag
 
 ```bash
-git push origin main
+git push origin main "$SAFE_TAG"
 ```
+
+Pushing both refs in one command = **one** push event from git's side = **one** webhook event from GitHub = **one** deploy. Production resets straight to the new SHA. No race window.
+
+**Do NOT** do this as two separate commands (`git push origin main` then `git push origin --tags`, or vice versa). That produced the 60–90s wrong-SHA window observed on 2026-05-15.
+
+**Alternative (annotated tags only):** `git push origin main --follow-tags` works if step 2 used `git tag -a -m "..."` (annotated). `--follow-tags` ignores lightweight tags, so it's safer to push the tag by name explicitly as above.
 
 This triggers the GitHub webhook → pm2 reload on imt-uv-helpdesk. **No PR ceremony** — Chris's verbal approval is the gate (see `feedback_direct_main_push`).
 
@@ -81,4 +92,5 @@ git push origin main --force-with-lease  # requires explicit OK
 - Never `--no-verify`, never `--amend` after push.
 - Never push to main without a CHANGES.md entry for the change.
 - Never skip the `safe/` tag.
+- **Never push main and the safe tag as two separate `git push` commands.** One `git push origin main "$SAFE_TAG"` only. Two pushes = two webhooks = brief wrong-SHA window in production.
 - Report once at the end. No "ready for the next step?" prompts mid-job.

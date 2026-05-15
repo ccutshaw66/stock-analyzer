@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Ship skill: atomic main+tag push to eliminate deploy race
+
+**Why:** First ship of the new skill suite (commit `5312791`) revealed a 60–90 second window where production reported the OLD git SHA on `/api/health` while marking `last_deploy.success: true`. Root cause: the ship flow pushed the `safe/<timestamp>` tag and `main` as two separate `git push` commands. GitHub fired two webhooks; the first deploy (triggered by the tag push) reset production to `origin/main` BEFORE main had been pushed, so it landed on the prior SHA. The second deploy a moment later caught up, but production briefly ran the wrong code.
+
+**What:**
+
+- `/ship` skill now creates the tag locally only — no `git push origin --tags`.
+- `/ship` pushes both refs atomically in one command: `git push origin main "$SAFE_TAG"`.
+- One push event = one webhook = one deploy → production resets straight to the new SHA. No race window.
+- Added the 2026-05-15 observation inline so the rule's *why* is captured next to the rule itself.
+- Added to the skill's hard-rules list: **never push main and the safe tag as two separate commands.**
+- Considered `--follow-tags` instead — rejected because it ignores lightweight tags (and our `safe/` tags are lightweight). Documented as an alternative only for annotated-tag setups.
+
+**Files touched:** `.claude/skills/ship/SKILL.md`, `CHANGES.md`.
+
+**Not in this ship:** `docs/FMP_REFERENCE.md` modifications and `docs/FMP_API_DOCS_RAW.md` — still pre-existing in-progress work, separate from the skill change.
+
+---
 ## 2026-05-15 — Claude Code skill suite + `.claude/` hygiene
 
 **Why:** Chris asked what Claude skills would pay back fastest for stockotter. The repeatable workflows (ship, log changes, look up FMP endpoints, run P&L on a strategy, scaffold a new strategy, audit before ship) were being re-derived from memory every session. Encoding them as `/skill` commands makes the rules executable, not just documented.
