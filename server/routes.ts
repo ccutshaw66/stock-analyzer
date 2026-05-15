@@ -33,6 +33,7 @@ import { fmpAdapter, getFmpProfileBeta } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
+import { computeClosedTradeProfit, computeOpenStockPL } from "@shared/pnl";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -5870,14 +5871,9 @@ export async function registerRoutes(
       const closedTrades = allTrades.filter(t => t.closeDate);
       const openTrades = allTrades.filter(t => !t.closeDate);
 
-      // Compute P/L for each closed trade
-      const tradeResults = closedTrades.map(t => {
-        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
-        const costToOpen = t.openPrice * t.contractsShares * multiplier;
-        const costToClose = (t.closePrice || 0) * t.contractsShares * multiplier;
-        const profit = costToOpen + costToClose - (t.commIn || 0) - (t.commOut || 0);
-        return { ...t, profit };
-      });
+      // Compute P/L for each closed trade — canonical formula lives in
+      // shared/pnl/ so client widgets see the same number.
+      const tradeResults = closedTrades.map((t) => ({ ...t, profit: computeClosedTradeProfit(t) }));
 
       // Summary by trade type
       const byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }> = {};
@@ -5918,20 +5914,11 @@ export async function registerRoutes(
       const startingCash = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
       const cashBalance = startingCash + txTotal + cashFromOpens + cashFromCloses;
 
-      // Open P/L (stocks only — we have stock price for both open and current)
-      // Options are excluded: currentPrice is the STOCK price, not the option premium,
-      // so we can't compare it to openPrice (which is the option premium). The client-side
-      // computeOptionPL handles option P/L estimation using strike-based logic.
-      const openPL = openTrades.reduce((s, t) => {
-        if (!t.currentPrice) return s;
-        // Only calculate for stock trades where currentPrice and openPrice are comparable
-        if (t.tradeCategory !== 'Stock') return s;
-        const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
-        const pl = isShort
-          ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
-          : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
-        return s + pl - (t.commIn || 0);
-      }, 0);
+      // Open P/L (stocks only — we have stock price for both open and current).
+      // Options excluded here: currentPrice is the STOCK price, not the option
+      // premium, so we can't compare it to openPrice. Shared `computeOpenOptionPL`
+      // handles options via strike-based estimation when consumers need it.
+      const openPL = openTrades.reduce((s, t) => s + computeOpenStockPL(t), 0);
 
       // Open position market value — combined with cashBalance to produce
       // the "Total Portfolio" figure that matches the user's broker app.

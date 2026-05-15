@@ -9,6 +9,43 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-14 — Phase 1B Round 6: Trade Tracker compartment + shared/pnl/ module + My Trades widget
+
+**Why:** Third compartment in the Phase 1B sequence and the largest of the v1 trio (L effort per the audit). Locks Q-C3: trade P/L math moves to a shared pure-function module (`shared/pnl/`) imported by both the server `/api/trades/summary` route and the new client compartment. Previously the same formulas lived in two places (server `routes.ts:5874+` and client `trade-tracker.tsx:171+`) — drift waiting to happen.
+
+**What:**
+
+### Shared P/L module (Q-C3 lock-in)
+- `shared/pnl/index.ts` — pure functions, no React, no Express, no fetches. Imported by both sides.
+  - `computeClosedTradeProfit(trade)` — realized P/L on a closed trade
+  - `computeOpenStockPL(trade)` — unrealized P/L on an open stock (long or short)
+  - `computeOpenOptionPL(trade)` — strike-based option P/L estimation (covers credit spreads, debit spreads, naked calls/puts, butterflies/CTVs)
+  - `computeOpenPL(trade)` — dispatches by tradeCategory
+  - `aggregateOpenPositions(trades)` — groups open trades by `(symbol, type, strikes, expiration)` into `OpenPosition[]`
+- Verbatim port of existing server formulas + client option logic — bit-identical behavior, just relocated.
+
+### Server route migration
+- `server/routes.ts` `/api/trades/summary` — replaced inline closed-trade profit calc (was lines 5874-5880) with `computeClosedTradeProfit`. Replaced inline open stock P/L loop (was 5925-5934) with `computeOpenStockPL`. **No behavior change** — same formulas, same numbers, just one source of truth now.
+
+### Trade Tracker compartment (server)
+- `server/compartments/trades/index.ts` — manifest + `tradesData.list(userId)` / `tradesData.get(userId, id)` accessors wrapping `storage.getAllTrades` / `storage.getTrade`. Routes stay in legacy `server/routes.ts:5783-6180` for now; future round moves them behind `mountRoutes`.
+
+### Trade Tracker compartment (client)
+- `client/src/compartments/trades/useTrades.ts` — canonical hooks `useTrades()` + `useTradesSummary()`. Query keys match `["/api/trades"]` and `["/api/trades/summary"]` already used by `trade-tracker.tsx`, so mutations on the existing page automatically invalidate widget caches.
+- `client/src/compartments/trades/MyTradesWidget.tsx` — compact dashboard widget. Two-tile summary (realized P/L + win rate, open positions + unrealized P/L) plus recent-closed list. Clicking a row publishes the ticker to `TickerContext.activeTicker`. Per-trade rendering uses `computeClosedTradeProfit` from `shared/pnl/`.
+- `client/src/compartments/trades/index.ts` — manifest + exports.
+
+### Registries
+- `server/compartments/registry.ts` — added `tradesCompartment`.
+- `client/src/compartments/registry.ts` — added `tradesCompartment`.
+
+**What did NOT change:** `client/src/pages/trade-tracker.tsx` keeps its own client-side `computeStockPL` / `computeOptionPL` / `aggregateOpenPositions` (lines 115-297). Migration of the full page to `shared/pnl/` + `useTrades` is a follow-up task that also retires those duplicated functions. The widget shows numbers that match `/api/trades/summary` (canonical); the existing page's per-row table P/L is computed client-side as before.
+
+**Files:** `shared/pnl/index.ts`, `server/routes.ts`, `server/compartments/trades/index.ts`, `server/compartments/registry.ts`, `client/src/compartments/trades/index.ts`, `client/src/compartments/trades/useTrades.ts`, `client/src/compartments/trades/MyTradesWidget.tsx`, `client/src/compartments/registry.ts`, `CHANGES.md`.
+
+**Branch:** `round6-trade-tracker` (off main). Not merged. Merge to main on Chris's approval. With this round, all three v1 dashboard compartments (Favorites, Scanner v2, Trade Tracker) ship as the foundation for the dashboard route + widget host.
+
+---
 ## 2026-05-14 — Phase 1B Round 5: Scanner v2 compartment + Best Opps widget + persisted TanStack Query cache
 
 **Why:** Second compartment in the Phase 1B sequence (per `docs/DASHBOARD_PLAN.md` refactor order). Establishes the canonical hook for scanner v2 data — pages, dashboard widgets, alerts all import from one place — and replaces the legacy ad-hoc sessionStorage code in `scanner.tsx` at the queryClient layer rather than per-page. Locked Q-C1 decision: persisted TanStack Query cache.
