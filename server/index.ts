@@ -137,22 +137,63 @@ app.post("/api/deploy", express.raw({ type: '*/*' }), (req, res) => {
   // Use a shell script that runs detached from this process. Because `pm2 restart`
   // kills the current node process, an in-process exec callback never fires.
   // Instead we spawn a detached shell that writes its own status/log files.
+  //
+  // Hardened 2026-05-15: previous version used `git pull` which silently failed
+  // when the working tree had local tracked-file changes (e.g. an npm install
+  // that touched package-lock.json), then `npm install` + `npm run build` ran
+  // against the OLD code, build exit was 0, and the deploy was marked successful
+  // even though the new code was never pulled. Three rounds (5/6/7) went out
+  // looking like green ✓ on GitHub but the server stayed pinned to round 4.
+  //
+  // Now: `git fetch` + `git reset --hard origin/main` makes the prod tree match
+  // origin/main exactly. Tracked-file conflicts are impossible. Exit code of
+  // every git/build step is checked; deploy is marked failed if anything fails.
+  // Untracked files (.env, .bak files) are unaffected by reset --hard.
   const script = `
 (
+  set -o pipefail
   echo "=== Deploy started at $(date -u +%FT%TZ) ==="
-  cd /opt/stock-analyzer || exit 1
-  git pull origin main 2>&1
+  cd /opt/stock-analyzer || { echo "=== FATAL: cd to /opt/stock-analyzer failed ==="; exit 1; }
+
+  echo "=== git fetch origin ==="
+  git fetch origin 2>&1
+  FETCH_EXIT=$?
+  if [ $FETCH_EXIT -ne 0 ]; then
+    echo "=== FATAL: git fetch failed (exit $FETCH_EXIT) ==="
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    exit 1
+  fi
+
+  echo "=== git reset --hard origin/main ==="
+  git reset --hard origin/main 2>&1
+  RESET_EXIT=$?
+  if [ $RESET_EXIT -ne 0 ]; then
+    echo "=== FATAL: git reset failed (exit $RESET_EXIT) ==="
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    exit 1
+  fi
+
+  echo "=== npm install ==="
   NODE_ENV=development npm install 2>&1
+  INSTALL_EXIT=$?
+  if [ $INSTALL_EXIT -ne 0 ]; then
+    echo "=== FATAL: npm install failed (exit $INSTALL_EXIT) ==="
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    exit 1
+  fi
+
+  echo "=== npm run build ==="
   npm run build 2>&1
   BUILD_EXIT=$?
-  if [ $BUILD_EXIT -eq 0 ]; then
-    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":true,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
-    echo "=== Build succeeded, restarting pm2 ==="
-    pm2 restart stock-analyzer --update-env 2>&1
-  else
-    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+  if [ $BUILD_EXIT -ne 0 ]; then
     echo "=== Build FAILED (exit $BUILD_EXIT) ==="
+    echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":false,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+    exit 1
   fi
+
+  echo "=== Build succeeded, restarting pm2 ==="
+  echo "{\\"last_deploy_time\\":\\"$(date -u +%FT%TZ)\\",\\"last_deploy_success\\":true,\\"in_progress\\":false}" > ${DEPLOY_STATUS_PATH}
+  pm2 restart stock-analyzer --update-env 2>&1
 ) > ${DEPLOY_LOG_PATH} 2>&1
 `;
 
