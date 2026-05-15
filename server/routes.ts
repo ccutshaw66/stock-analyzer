@@ -1501,13 +1501,32 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
   if (!chartResult || !chartResult.timestamp) return { chartData: [], computedReturn: null };
 
   const timestamps = chartResult.timestamp;
-  const closes = chartResult.indicators?.quote?.[0]?.close || [];
+  const q = chartResult.indicators?.quote?.[0] || {};
+  const closes = q.close || [];
+  const opens = q.open || [];
+  const highs = q.high || [];
+  const lows = q.low || [];
+  const volumes = q.volume || [];
 
   const chartData = timestamps.map((t: number, i: number) => {
     const close = closes[i];
     if (close == null) return null;
     const date = new Date(t * 1000).toISOString().split("T")[0];
-    return { date, close: Number(close.toFixed(2)) };
+    // Include OHLC + volume so consumers can render candlesticks (Round 9 fix —
+    // previously only {date, close} was returned, which silently broke any
+    // candlestick chart trying to render off `chartData`).
+    const open = opens[i];
+    const high = highs[i];
+    const low = lows[i];
+    const volume = volumes[i];
+    return {
+      date,
+      close: Number(close.toFixed(2)),
+      open: open != null ? Number(Number(open).toFixed(2)) : Number(close.toFixed(2)),
+      high: high != null ? Number(Number(high).toFixed(2)) : Number(close.toFixed(2)),
+      low: low != null ? Number(Number(low).toFixed(2)) : Number(close.toFixed(2)),
+      volume: volume != null ? Number(volume) : 0,
+    };
   }).filter(Boolean);
 
   let computedReturn: number | null = null;

@@ -16,6 +16,7 @@ import { ChartHeader, type Timeframe } from "@/compartments/confluence-chart/Cha
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
 import { EmptyState } from "@/compartments/confluence-chart/EmptyState";
+import { HowToRead } from "@/compartments/confluence-chart/HowToRead";
 import { useConfluenceChart } from "@/compartments/confluence-chart/useConfluenceChart";
 import { Loader2 } from "lucide-react";
 
@@ -146,6 +147,9 @@ export default function ConfluenceChartPage() {
         <div className="border-t border-border px-2 py-1">
           <SignalPulse ticker={activeTicker} />
         </div>
+
+        {/* How to read this chart — collapsible explainer */}
+        <HowToRead />
 
         {/* MACD + RSI — drop-in existing component */}
         <div className="border-t border-border px-4 py-2 flex justify-center">

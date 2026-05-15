@@ -19,6 +19,10 @@ function verdictStyle(verdict: string | null | undefined): {
   plainEnglish: string;
 } {
   const v = (verdict ?? "").toUpperCase();
+  // "NO SETUP" / "GATES CLOSED" mean "no signal firing right now" — NOT "do
+  // not buy." Labeling them as AVOID was wrong; switched to neutral language
+  // so the strip doesn't tell users to avoid clearly-uptrending stocks just
+  // because the gate engine has nothing to say.
   if (v.startsWith("GO ↑"))
     return { bg: "bg-green-500", text: "text-white", label: verdict!, plainEnglish: "STRONG BUY" };
   if (v.startsWith("GO"))
@@ -34,8 +38,8 @@ function verdictStyle(verdict: string | null | undefined): {
   if (v.startsWith("PULLBACK"))
     return { bg: "bg-amber-500/30", text: "text-amber-300", label: verdict!, plainEnglish: "WAIT FOR PULLBACK" };
   if (v.startsWith("GATES"))
-    return { bg: "bg-muted", text: "text-muted-foreground", label: "GATES CLOSED", plainEnglish: "AVOID" };
-  return { bg: "bg-muted", text: "text-muted-foreground", label: verdict || "NO SETUP", plainEnglish: "AVOID" };
+    return { bg: "bg-muted", text: "text-muted-foreground", label: "GATES CLOSED", plainEnglish: "NO SIGNAL — WAIT" };
+  return { bg: "bg-muted", text: "text-muted-foreground", label: verdict || "NO SETUP", plainEnglish: "NO SIGNAL — WAIT" };
 }
 
 function formatAgo(ms: number): string {
