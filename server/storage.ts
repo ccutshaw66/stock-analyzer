@@ -8,7 +8,8 @@ import {
   type TradePriceHistory, type InsertTradePriceHistory,
   type DividendPortfolioItem, type InsertDividendPortfolioItem,
   type Alert, type InsertAlert, type AlertRule, type InsertAlertRule,
-  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio, alerts, alertRules,
+  type DashboardLayoutRow,
+  users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio, alerts, alertRules, dashboardLayouts,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -625,6 +626,25 @@ export class DatabaseStorage implements IStorage {
   }
   async touchAlertRule(id: number, state: string): Promise<void> {
     await db.update(alertRules).set({ lastFiredAt: new Date(), lastFiredState: state }).where(eq(alertRules.id, id));
+  }
+
+  // ─── Dashboard Layouts ─────────────────────────────────────────────────────
+
+  async getDashboardLayout(userId: number): Promise<DashboardLayoutRow | undefined> {
+    const rows = await db.select().from(dashboardLayouts).where(eq(dashboardLayouts.userId, userId));
+    return rows[0];
+  }
+
+  async saveDashboardLayout(userId: number, data: unknown): Promise<DashboardLayoutRow> {
+    const rows = await db
+      .insert(dashboardLayouts)
+      .values({ userId, data: data as object, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: dashboardLayouts.userId,
+        set: { data: data as object, updatedAt: new Date() },
+      })
+      .returning();
+    return rows[0];
   }
 }
 

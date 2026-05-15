@@ -1527,6 +1527,7 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 
 import { registerSearchRoutes } from "./api/routes/search";
 import { mountAllCompartmentRoutes } from "./compartments/registry";
+import { registerDashboardRoutes } from "./dashboard/routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1539,6 +1540,8 @@ export async function registerRoutes(
   // (Compartments without mountRoutes are silently skipped during the
   // strangler migration; routes still in legacy code below keep working.)
   mountAllCompartmentRoutes(app);
+  // ─── Phase 1B Round 7 — per-user dashboard layout persistence ──────────
+  registerDashboardRoutes(app);
 
   // Warm up Yahoo crumb on startup — API routes wait for this before making
   // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate

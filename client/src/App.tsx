@@ -39,6 +39,7 @@ import ResetPassword from "@/pages/reset-password";
 import LegalPage from "@/pages/legal";
 import TrackRecord from "@/pages/track-record";
 import AlertsPage from "@/pages/alerts";
+import Dashboard from "@/pages/dashboard";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -96,6 +97,7 @@ function AuthenticatedApp() {
         <AppLayout>
           <Switch>
             <Route path="/" component={MarketPulse} />
+            <Route path="/dashboard" component={Dashboard} />
             <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />

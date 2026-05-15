@@ -247,6 +247,18 @@ export const insertAccountTransactionSchema = createInsertSchema(accountTransact
 });
 
 export const insertTradePriceHistorySchema = createInsertSchema(tradePriceHistory).omit({ id: true });
+
+// ─── Dashboard Layouts (one row per user, JSONB blob) ─────────────────────────
+// Per-user customizable dashboard layout (Phase 1B Round 7). Single JSONB
+// column so the layout schema can evolve additively without migrations.
+// See `shared/dashboard/types.ts` for the typed shape of `data`.
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  data: jsonb("data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertDashboardLayoutSchema = createInsertSchema(dashboardLayouts).omit({ id: true });
 export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfolio).omit({ id: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
@@ -272,6 +284,8 @@ export type Alert = typeof alerts.$inferSelect;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
+export type DashboardLayoutRow = typeof dashboardLayouts.$inferSelect;
+export type InsertDashboardLayout = z.infer<typeof insertDashboardLayoutSchema>;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 

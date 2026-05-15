@@ -43,6 +43,7 @@ import {
   Trophy,
   Bell,
   Compass,
+  LayoutDashboard,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
@@ -521,6 +522,7 @@ function Sidebar({
     {
       label: "Trade Tracker",
       items: [
+        { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { path: "/market-pulse", label: "Market Pulse", icon: Activity },
         { path: "/tracker", label: "Current Positions", icon: ClipboardList },
         { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
