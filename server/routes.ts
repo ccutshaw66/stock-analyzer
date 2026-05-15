@@ -1525,6 +1525,7 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 // ============================================================
 
 import { registerSearchRoutes } from "./api/routes/search";
+import { mountAllCompartmentRoutes } from "./compartments/registry";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1533,6 +1534,10 @@ export async function registerRoutes(
 
   // ─── New compartmentalized routes (Phase 1 strangler) ──────────────────
   registerSearchRoutes(app);
+  // ─── Phase 1B compartment registry — wires each compartment's routes ───
+  // (Compartments without mountRoutes are silently skipped during the
+  // strangler migration; routes still in legacy code below keep working.)
+  mountAllCompartmentRoutes(app);
 
   // Warm up Yahoo crumb on startup — API routes wait for this before making
   // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate

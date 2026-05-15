@@ -29,6 +29,7 @@ Several features shipped that weren't on this plan and should be folded in: Sect
 3. **One voice for signals.** Scanner, watchlist, verdict, gate cards, and trade analysis all call the same `signals/confluence.ts`. No more VER ↔ Gate 1 ↔ SOFI/TAL contradictions.
 4. **Strangler migration, not big-bang.** Old code stays alive until the new code replaces its caller. No cutover weekends.
 5. **Reliability before growth.** Backups, monitoring, error capture, and graceful degradation ship before marketing does.
+6. **Every feature is a compartment, end-to-end.** *(Added 2026-05-14, locked R2.5 of dashboard plan.)* Server module → one canonical data hook → at minimum a Full view and a Widget view → one registry entry. New widgets and new surfaces (mobile, embed, alert preview) come from composing existing compartments, not from new bespoke code. Adding a new compartment is **one new file plus one registry line**. This is "one RSI reference" applied to every feature.
 
 ---
 
@@ -106,6 +107,47 @@ server/
 | 1.11 | Route `signals/confluence.ts` into Trade Analysis / Verdict signals | ✅ |
 | 1.12 | `platform/tiers/` middleware on protected routes | ✅ (`server/platform/tiers/middleware.ts` + `server/middleware/tier.ts`; smoke test in CI) |
 
+### Phase 1B — Universal Compartment Contract ⬜ (added 2026-05-14, locked R2.5)
+
+**Origin:** dashboard-planning session 2026-05-14 — Chris's realization that the dashboard requirement implies every feature should be a self-contained compartment with a widget-compatible interface. Otherwise every widget is bespoke code.
+
+**Goal:** Every existing user-facing feature becomes a compartment with a defined contract, so any new surface (Dashboard widgets, mobile, embed, alert previews) is composition, not net-new feature code.
+
+**Compartment contract (the four guarantees):**
+1. **One canonical data hook per compartment.** Pages, widgets, alerts, and API endpoints all call the same source. No parallel fetches or duplicated calc paths.
+2. **Pure logic layer.** Calculations are pure functions. No vendor calls inside calc. Preserves swap-ability (Principle #2).
+3. **At minimum two presentation modes:** Full view (existing page) + Widget view (compact, dashboard-ready). Additional modes (mobile, embed, alert preview) can be added later without touching data or logic.
+4. **Registry entry.** A manifest exporting `{ id, name, tier, defaultSize, WidgetComponent, fullPageRoute }`. Adding a new compartment is **one new file + one registry line**.
+
+**Execution model:** Strangler (Principle #4). One feature at a time, ordered by the next widget that needs it. Never break a working feature in a refactor sweep.
+
+| # | Task | Status |
+|---|---|---|
+| 1B.1 | Audit existing features against the compartment contract; produce a checklist of which features are already compartment-shaped vs need refactor | ✅ — see `~/.claude/plans/compartment-works-lock-it-velvet-pillow.md` for full audit (12 features scored on the 4-point contract, effort sized S/M/L) |
+| 1B.2 | Finalize the compartment contract (the 4 points below are locked R2.5) | ✅ |
+| 1B.3 | Define the registry shape — TypeScript types + the single registry file | ⬜ |
+| 1B.4 | First strangler refactor: Scanner v2 → compartment (driven by Dashboard's "Best Opps" widget need) | ⬜ |
+| 1B.5 | Second strangler refactor: Favorites/Watchlist → compartment (driven by Dashboard's "Watchlist" widget need) | ⬜ |
+| 1B.6 | Third strangler refactor: Trade Tracker → compartment (driven by Dashboard's "My Trades" widget need) | ⬜ |
+| 1B.7 | Subsequent compartments refactored on demand as their widgets get scheduled (dividend finder, earnings, verdict, MM exposure, sector heatmap, etc.) | ⬜ |
+
+**Dependency on the existing `features/*` layer:** The architecture target already defines a `server/features/*` layer that is mostly stubs. The compartment work is **finishing the `features/` migration + adding a client-side mirror** (the data hook + widget view + registry live on the client, calling into `features/*` on the server). It is **not** a parallel architecture.
+
+**Refactor order (locked R2.5, driven by dashboard widget dependencies):**
+1. Favorites / Watchlist (effort S) — also serves as the *template compartment* (worked example of the contract).
+2. Scanner v2 (effort M) — unblocks "Best Opps" widget.
+3. Trade Tracker (effort L) — unblocks "My Trades" widget; requires pre-decision on client vs server P/L ownership.
+4. Subsequent compartments (Earnings, Track Record, MM Exposure, Verdict, Dividend, Sector, Strategy Chart, Profile, Signal Pulse, Alerts, Admin) refactored on-demand when a widget round needs them.
+
+**Audit-flagged cross-feature tangles to design around:**
+- **Verdict score divergence** — `/api/verdict` calls both `scoreSnapshot()` and legacy `computeScoring()` with fallback (`server/routes.ts:4454-4525`). Touches Principle #3 ("one voice for signals"). Fix before any compartment depends on Verdict, or as part of Verdict's own refactor.
+- **Alerts have no pure eval function** — every alert type is a separate cron branch (`routes.ts:6373+`, `cron.ts`). Compartment refactor must extract `evaluateAlertRule(rule, tick) → bool`.
+- **Trade Tracker P/L ownership** — client (`trade-tracker.tsx:180-297`) and server (`routes.ts:5868-5930`) both implement P/L; needs design decision before refactor #3.
+
+**Standing risks:**
+- "Just wrap it" anti-pattern: wrapping tangled code in a function does not make it a compartment. The contract must be real.
+- Tests: compartments need unit-testable boundaries. **Zero of the 12 audited features have unit tests.** Compartment refactors add tests at the boundary (data hook + pure logic).
+
 ### Phase 2 — Foundation reliability 🟨 in progress
 
 | # | Task | Status |
@@ -182,7 +224,8 @@ server/
 - Design system / shared component library
 - Multi-region deployment
 - Multi-tenancy for enterprise customers
-- Finish strangler migration of `server/routes.ts` into `features/*` modules
+- Finish strangler migration of `server/routes.ts` into `features/*` modules *(folded into Phase 1B — see "Universal Compartment Contract")*
+- Customizable per-member Dashboard at `/dashboard` *(planning in flight 2026-05-14, see `docs/DASHBOARD_PLAN.md`; ship depends on Phase 1B compartment work)*
 
 ---
 
