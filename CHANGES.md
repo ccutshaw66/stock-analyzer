@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Claude Code skill suite + `.claude/` hygiene
+
+**Why:** Chris asked what Claude skills would pay back fastest for stockotter. The repeatable workflows (ship, log changes, look up FMP endpoints, run P&L on a strategy, scaffold a new strategy, audit before ship) were being re-derived from memory every session. Encoding them as `/skill` commands makes the rules executable, not just documented.
+
+**What:**
+
+### Six project-level skills under `.claude/skills/`
+- **`/ship`** — Chris's deploy flow: `safe/<timestamp>` tag, CHANGES.md check, explicit-file commit, push to `origin/main`, webhook reload. Hard rules: never `-A`, never `--no-verify`, never `--amend` after push.
+- **`/changes-entry`** — drafts the CHANGES.md entry for the current diff in the existing house style. One entry per completed change, not per commit. Prepends rather than appends.
+- **`/fmp-endpoint`** — given a data need, finds the canonical FMP endpoint + exact field name (reads `docs/FMP_REFERENCE.md` first, falls back to the raw docs), returns a copy-paste TS snippet. Stops the recurring field-name-guessing problem.
+- **`/strategy-pnl`** — runs `/api/diag/strategy-pnl` or `/api/diag/strategy-tft-pnl` against the 10y basket, reports per-trade dollar P&L, win rate, R-multiple, max DD per-ticker and aggregated. Enforces the "positive $ P&L before re-enable" gate for the demoted short side and VER_WATCH_SELL.
+- **`/new-strategy`** — scaffolds a strategy under `server/signals/strategies/`, wires it into the registry, adds a P&L harness pass. Foundation-first: pure compute, registry-driven toggle, additive schema.
+- **`/verify-work`** — pre-flight audit before ship. Refreshes the diff vs `origin/main` (never trusts a stale baseline), runs `npm run check`, scans for new Yahoo/Polygon refs, hard-coded ticker lists, missing cache layers, missing CHANGES entry, unbranded UI states. Reports verdict as READY / NOT READY / READY WITH NOTES. Never auto-fixes — surfaces findings, Chris decides.
+
+### `.gitignore` hardening
+- Added `.claude/settings.local.json` and `.claude/scheduled_tasks.lock` to keep machine-local Claude state out of the repo. The skills directory and the shared `.claude/settings.json` remain committable so the automation travels with the project.
+
+**Files touched:** `.claude/settings.json`, `.claude/skills/{ship,changes-entry,fmp-endpoint,strategy-pnl,new-strategy,verify-work}/SKILL.md`, `.gitignore`, `CHANGES.md`.
+
+**Not in this ship:** `docs/FMP_REFERENCE.md` modifications and `docs/FMP_API_DOCS_RAW.md` (new) — pre-existing in-progress work, separate from the skills.
+
+---
 ## 2026-05-15 — Round 9: Confluence Chart full-page rebuild (Stock Otter branded, candles, multi-pane)
 
 **Why:** The Round 8 Confluence Chart widget was three lines on black — Chris's reaction: *"Your chart is useless. I have this chart in 2 other places... I need it to look and perform PROFESSIONALLY, not like a 14yo wrote it in his moms basement."* Rebuilt as a full-page chart that surfaces Stockotter's actual tools, with candles, and brand identity.

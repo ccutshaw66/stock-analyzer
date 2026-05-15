@@ -10,3 +10,7 @@ vite.config.ts.*
 .env
 data.db
 data/long-range-cache/
+
+# Claude Code — keep skills + shared settings, exclude local/runtime state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
