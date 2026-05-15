@@ -9,6 +9,38 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Phase 1B Round 8: Confluence Chart compartment + per-widget config + auto-discovery of new compartments
+
+**Why:** First user-visible artifact of the per-widget `config` JSONB field designed into the schema in Round 7. Adds a "Confluence Chart" widget that follows the currently selected ticker (Watchlist / Best Opps / My Trades clicks all flow through `TickerContext.activeTicker`) and shows price + EMA overlays + a verdict pill. Inspired by a TradeStation multi-pane chart Chris shared; ships the compact-widget version (Option A from `docs/DASHBOARD_PLAN.md` Round 8a).
+
+**What:**
+
+### New compartment: `confluence-chart` (client-only, no server changes)
+- `client/src/compartments/confluence-chart/useConfluenceChart.ts` — canonical hook composing two existing canonical endpoints: `/api/analyze/:ticker` (for `chartData` with close + EMA9/21/50/SMA200) and `/api/scanner-v2/quick/:ticker` (verdict + gate score). Both refresh every 5 min while visible.
+- `client/src/compartments/confluence-chart/ConfluenceChartWidget.tsx` — the widget. Recharts `LineChart` with close + EMA21 + EMA50 overlays. Verdict pill (color-coded by GO/SET/READY/PULLBACK/CLOSED) + gate score (X/3) in a compact signal pane. Per-widget timeframe via a dropdown — persisted in `widget.config.timeframe`. Default `3M`. "Click any ticker" empty state when `activeTicker` is null. Click on body → `setActiveTicker` + `wouter` navigate to `/profile` for the full Trade Analysis view.
+- `client/src/compartments/confluence-chart/index.ts` — manifest. `widgetDefaultSize: { w: 6, h: 6 }` (a row taller and wider than the other widgets so the chart reads).
+- `client/src/compartments/registry.ts` — one new import + array entry.
+
+### Per-widget config plumbing (`WidgetView` now accepts props)
+- `client/src/compartments/types.ts` — `ClientCompartmentEntry.WidgetView` is now `ComponentType<WidgetViewProps>`. `WidgetViewProps = { config?: Record<string, unknown>; onConfigChange?: (next) => void }`. Both optional — existing prop-less widgets (Watchlist, Best Opps, My Trades) continue to work without changes.
+- `client/src/pages/dashboard.tsx` — passes `config` + `onConfigChange` to each `<WidgetView />`. New `updateWidgetConfig(compartmentId, next)` helper updates the local layout state and persists via the existing PATCH endpoint. First real use of the `WidgetSpec.config` field designed into `shared/dashboard/types.ts` in Round 7.
+
+### Auto-discovery of new compartments
+- `client/src/pages/dashboard.tsx` — when computing the header chip strip, also shows registry compartments that aren't in the current tab at all (not just hidden ones). New chips use `bg-primary/20` so users can distinguish "Add (new)" from "Restore (hidden)". `addWidget(compartmentId)` appends with `visible: true` at `y: 999`; the grid's vertical compactor packs it into the first available row.
+- Solves the otherwise-blocking UX problem: shipping a new compartment to existing users (Chris in particular) who already have a saved layout. They didn't have a way to add the new widget without resetting their layout. Now they get an "Add Confluence Chart" chip in the header.
+
+### Default layout
+- `server/dashboard/layout.ts` — confluence-chart added to the v1 default layout. New members see all four widgets on first visit.
+
+### Deviations from the locked Round 8 plan (documented honestly)
+- **Signal pane shows verdict + gate score, NOT "top 5 firing signals."** The locked plan assumed `/api/scanner-v2/quick/:ticker` returned per-signal data; verified it only returns `{ ticker, score, verdict }`. Per-signal breakdown requires extending the endpoint (small server change, deferred to a follow-up round). Gate score is Stockotter's native "one voice for signals" output (per MASTER_PATHWAY Principle #3), so the v1 widget is still aligned with site convention — just less granular than the screenshot inspiration.
+- **Close-price line chart, NOT candlesticks.** Recharts has no native candlestick component. At compact widget size (~6 cols wide) candles wouldn't read anyway. Matches the existing Strategy Chart page style.
+
+**Files:** `client/src/compartments/types.ts`, `client/src/compartments/registry.ts`, `client/src/compartments/confluence-chart/index.ts`, `client/src/compartments/confluence-chart/useConfluenceChart.ts`, `client/src/compartments/confluence-chart/ConfluenceChartWidget.tsx`, `client/src/pages/dashboard.tsx`, `server/dashboard/layout.ts`, `CHANGES.md`.
+
+**Branch:** `round8-confluence-chart` (off main). Auto-deploys on merge via the hardened webhook from PR #82.
+
+---
 ## 2026-05-14 — Phase 1B Round 7: /dashboard route + per-user customizable widget host
 
 **Why:** The compartment foundation (Rounds 4–6) was infrastructure invisible to members. Round 7 ships the first user-visible piece: a personalizable dashboard at `/dashboard` that mounts the three v1 widgets (Watchlist, Best Opps, My Trades). Members can drag widgets to reorder and hide individual widgets; the layout auto-saves and survives across sessions.

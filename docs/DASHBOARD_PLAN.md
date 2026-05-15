@@ -188,7 +188,44 @@ Open going into R3 — pick the next round's focus from this list:
   - **Q-C4c — Manifest type:** shared `CompartmentMeta` base in `shared/compartments/types.ts`, server and client each extend it with their own fields. Widget block is optional so a compartment can ship without a dashboard widget yet (progressive contract).
 - All five compartment-prerequisite questions now resolved. Next step is concrete code: the Favorites compartment refactor as the template.
 
-### Round 4 — *(next: Favorites compartment refactor — scaffold `compartments/` directories, write `shared/compartments/types.ts`, build the Favorites compartment + Watchlist widget as the worked example. First actual code change of this entire workstream.)*
+### Rounds 4–7 — Compartment foundation + dashboard route shipped (2026-05-14, 2026-05-15)
+- **Round 4 (#76):** Compartment scaffold + Favorites template compartment + Watchlist widget. `shared/compartments/types.ts`, `server/compartments/`, `client/src/compartments/`. Renamed `server/features/` → `server/compartments/` (10 paths).
+- **Round 5 (#77):** Scanner v2 compartment + Best Opps widget + persisted TanStack Query cache (Q-C1 lock-in landed). Added TanStack persistor libs; sessionStorage-backed; only `/api/scanner*` queries dehydrate.
+- **Round 6 (#78):** Trade Tracker compartment + `shared/pnl/` pure module + My Trades widget. Q-C3 lock-in. Server `/api/trades/summary` migrated to call `shared/pnl/`. Verbatim port — same numbers, one source of truth.
+- **Round 7 (#79):** `/dashboard` route live with the three v1 widgets, react-grid-layout v1.5.x drag-to-reorder, hide/restore, persistence to new `dashboard_layouts` JSONB table, auth-protected. Nav link added.
+- Post-Round 7 fixes: `requireAuth` per-route on dashboard endpoints (#80), drag-handle scoped to widget title strips + My Trades wins-line fix (#81), deploy script hardened with `git fetch + reset --hard` and per-step exit-code checks (#82).
+- **Phase 1B status:** Three v1 compartments live in production. `/dashboard` user-visible.
+
+### Round 8a — Confluence Chart widget, strategic shape (2026-05-15)
+- **Context:** Chris shared a TradeStation multi-pane reference chart (5 panes: price+MAs, cycle oscillator, RSI, TWMN Shift signal dots, 321 Liftoff histogram). Wants a similar "confluence chart" widget for the dashboard. Picked **Option A** (compact widget) over **Option B** (full multi-pane page) — compact fits dashboard context; click-through goes to the full view.
+- **Asked:** empty state, default timeframe, pane content, click-through.
+- **Decisions:**
+  - **Empty state:** "Click any ticker" placeholder message until `TickerContext.activeTicker` is set. No data fetched on idle dashboards.
+  - **Timeframe:** user-selectable inside the widget itself. **First real use of the `widget.config` JSONB field** from Round 7. Selection persists per-user.
+  - **Pane content:** price candles + 1 signal pane (scanner v2 confluence dots). Compact-readable.
+  - **Click-through:** routes to existing `/profile` (Trade Analysis) page for the ticker. Zero new page work.
+
+### Round 8b — Confluence Chart widget, behavior + refresh (2026-05-15)
+- **Asked:** default timeframe, signal pane content, refresh policy, price-overlay indicators.
+- **Decisions:**
+  - **Default timeframe:** **3M** when first added. User-selectable thereafter; persists per-widget in `widget.config.timeframe`.
+  - **Signal pane:** **Top 5 strongest signals firing + a small verdict badge as the headline.** Layout: small "GO / SET / READY / NO SETUP" pill at top of the signal pane, top 5 firing signals as labeled bars/rows below. Compact-readable.
+  - **Refresh policy:** poll every 5 minutes while widget is visible (TanStack Query `refetchInterval: 5*60*1000`). Pauses naturally when tab is hidden.
+  - **Price overlay:** candles + 20-day and 50-day SMA. Already-computed indicators in `server/indicators/`; no new calc work.
+
+### Round 8 — implementation plan (auto-decided per `feedback_no_jargon_quizzes`)
+- **New compartment id:** `confluence-chart`. Client-side only (no new server endpoints needed — reuses `/api/analyze/:ticker` for price+MAs and `/api/scanner-v2/quick/:ticker` for signals+verdict, both already canonical).
+- **Files:**
+  - `client/src/compartments/confluence-chart/useConfluenceChart.ts` — canonical hook, queryKey includes widget timeframe so cache stays separate from `TickerContext` analysis cache (which uses site-wide timeframe).
+  - `client/src/compartments/confluence-chart/ConfluenceChartWidget.tsx` — the widget. Reads `TickerContext.activeTicker` for ticker, owns its timeframe via `useState` initialized from `widget.config.timeframe` (loaded from layout JSONB). Renders Recharts candlestick + 20/50 SMA overlays + signal pane below. Click anywhere on widget body → `setActiveTicker` (no-op if already set) + `wouter` navigate to `/profile`. Hide button (X) inherits existing pattern. Drag handle = title strip.
+  - `client/src/compartments/confluence-chart/index.ts` — manifest, `WidgetView`, `widgetDefaultSize: { w: 6, h: 6 }` (a bit wider than other widgets so candles render legibly).
+  - `client/src/compartments/registry.ts` — one new import + array entry.
+- **Persistence-schema field:** `widget.config.timeframe` (free-form string like `"3M"`). First real use of the `WidgetSpec.config` field designed into `shared/dashboard/types.ts` in Round 7. Saved via the existing PATCH endpoint when the user changes the dropdown.
+- **Data:** Recharts already used in Strategy Chart page (`client/src/pages/chart.tsx`) — same component family. No new chart-lib dependency.
+- **No server compartment / route changes.**
+- **CHANGES.md entry** + typecheck + commit + push when complete. PR auto-deploys via the now-hardened webhook.
+
+### Round 8 — build phase pending Chris's go-ahead.
 
 ---
 

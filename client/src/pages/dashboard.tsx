@@ -59,6 +59,15 @@ export default function Dashboard() {
   const visibleWidgets = useMemo(() => activeTab?.widgets.filter((w) => w.visible) ?? [], [activeTab]);
   const hiddenWidgets = useMemo(() => activeTab?.widgets.filter((w) => !w.visible) ?? [], [activeTab]);
 
+  // Compartments in the registry that aren't in this tab at all — surfaced as
+  // "Add" chips alongside hidden widgets. Lets users mount newly-released
+  // compartments without resetting their saved layout.
+  const availableToAdd = useMemo(() => {
+    if (!activeTab) return [] as typeof compartments;
+    const inTab = new Set(activeTab.widgets.map((w) => w.compartmentId));
+    return compartments.filter((c) => !inTab.has(c.meta.id));
+  }, [activeTab, compartments]);
+
   // Persist whenever local layout diverges from server layout.
   const persist = useCallback(
     (next: DashboardLayout) => {
@@ -108,6 +117,33 @@ export default function Dashboard() {
     [localLayout, activeTab, persist],
   );
 
+  const addWidget = useCallback(
+    (compartmentId: string) => {
+      if (!localLayout || !activeTab) return;
+      const c = compartmentMap.get(compartmentId);
+      if (!c) return;
+      const w = c.widgetDefaultSize?.w ?? 4;
+      const h = c.widgetDefaultSize?.h ?? 4;
+      // Place at y=999; react-grid-layout's vertical compact will pack it
+      // into the first available row.
+      const next: WidgetSpec = { compartmentId, visible: true, x: 0, y: 999, w, h };
+      const updated = [...activeTab.widgets, next];
+      persist(withUpdatedTab(localLayout, activeTab.id, updated));
+    },
+    [localLayout, activeTab, persist, compartmentMap],
+  );
+
+  const updateWidgetConfig = useCallback(
+    (compartmentId: string, nextConfig: Record<string, unknown>) => {
+      if (!localLayout || !activeTab) return;
+      const updated = activeTab.widgets.map((w) =>
+        w.compartmentId === compartmentId ? { ...w, config: nextConfig } : w,
+      );
+      persist(withUpdatedTab(localLayout, activeTab.id, updated));
+    },
+    [localLayout, activeTab, persist],
+  );
+
   if (isLoading || !localLayout) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -148,15 +184,14 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <PageHeader title="Dashboard" icon={LayoutDashboard} />
-        {hiddenWidgets.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">{hiddenWidgets.length} hidden</span>
+        {(hiddenWidgets.length > 0 || availableToAdd.length > 0) && (
+          <div className="flex items-center gap-1.5 flex-wrap">
             {hiddenWidgets.map((w) => {
               const c = compartmentMap.get(w.compartmentId);
               if (!c) return null;
               return (
                 <button
-                  key={w.compartmentId}
+                  key={`show-${w.compartmentId}`}
                   onClick={() => showWidget(w.compartmentId)}
                   className="flex items-center gap-1 px-2 py-1 rounded bg-muted hover:bg-muted/70 text-xs text-foreground"
                   data-testid={`button-show-${w.compartmentId}`}
@@ -166,6 +201,17 @@ export default function Dashboard() {
                 </button>
               );
             })}
+            {availableToAdd.map((c) => (
+              <button
+                key={`add-${c.meta.id}`}
+                onClick={() => addWidget(c.meta.id)}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-primary/20 hover:bg-primary/30 text-xs text-primary"
+                data-testid={`button-add-${c.meta.id}`}
+              >
+                <Plus className="h-3 w-3" />
+                {c.meta.name}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -205,7 +251,10 @@ export default function Dashboard() {
               >
                 <X className="h-3 w-3" />
               </button>
-              <WidgetView />
+              <WidgetView
+                config={w.config}
+                onConfigChange={(next) => updateWidgetConfig(w.compartmentId, next)}
+              />
             </div>
           );
         })}
