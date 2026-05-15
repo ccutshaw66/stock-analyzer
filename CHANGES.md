@@ -9,6 +9,40 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-14 — Phase 1B Round 7: /dashboard route + per-user customizable widget host
+
+**Why:** The compartment foundation (Rounds 4–6) was infrastructure invisible to members. Round 7 ships the first user-visible piece: a personalizable dashboard at `/dashboard` that mounts the three v1 widgets (Watchlist, Best Opps, My Trades). Members can drag widgets to reorder and hide individual widgets; the layout auto-saves and survives across sessions.
+
+**⚠️ Deploy step required:** Before this round goes live, run `npm run db:push` on the server to create the new `dashboard_layouts` table. The route is defensive (returns a default layout if the table is missing) so the page still renders if you forget — saves will fail until the table exists.
+
+**What:**
+
+### Schema + persistence
+- `shared/schema.ts` — new `dashboardLayouts` table: `id`, `userId` (FK to users, UNIQUE so it's one row per user), `data` (JSONB), `updatedAt`. Insert schema + types exported.
+- `shared/dashboard/types.ts` — typed shape of the JSONB blob: `DashboardLayout` → `TabSpec[]` → `WidgetSpec[]` with `compartmentId`, `visible`, and `{x, y, w, h}` for grid placement. Versioned (`version: 1`) and additive-forward.
+- `server/storage.ts` — `getDashboardLayout(userId)` + `saveDashboardLayout(userId, data)` (Drizzle `onConflictDoUpdate` upsert on the unique `userId`).
+
+### Server route
+- `server/dashboard/layout.ts` — `buildDefaultDashboardLayout()` returns one "Overview" tab with all three v1 widgets visible (Watchlist 3w×4h, Best Opps 3w×4h, My Trades 4w×4h).
+- `server/dashboard/routes.ts` — `GET /api/dashboard/layout` returns the saved layout or the computed default (never 404s). `PATCH /api/dashboard/layout` upserts. Both require `req.user`.
+- Wired in via `registerDashboardRoutes(app)` alongside `mountAllCompartmentRoutes`.
+
+### Client page
+- Added deps: `react-grid-layout`, `@types/react-grid-layout`.
+- `client/src/lib/dashboard/useDashboardLayout.ts` — canonical hook. `useQuery` for load, `useMutation` (PATCH) for save. `setQueryData` on success keeps the cache in sync.
+- `client/src/pages/dashboard.tsx` — the page. Wraps `react-grid-layout` (`WidthProvider`-ed for auto-width, 12 columns, 60px rows, vertical compact, drag-but-not-resize). Hide button (X) overlays each widget's top-right; hidden widgets surface as restore chips in the page header. Layout auto-saves on every change with a no-op skip when the diff is empty so the initial render doesn't fire a redundant PATCH. CSS imports for `react-grid-layout/css/styles.css` + `react-resizable/css/styles.css`.
+- `client/src/App.tsx` — registered `/dashboard` route (auth-gated by the existing `AuthenticatedApp` wrapper; non-members never reach it).
+- `client/src/components/AppLayout.tsx` — added "Dashboard" as the first nav item under "Trade Tracker" with the `LayoutDashboard` icon.
+
+### Behavior changes for users
+- **New:** `/dashboard` page exists. First visit shows the default layout. Drag-and-drop reorders. X hides; "X hidden — <name>" chips above the grid restore.
+- Existing pages: unchanged.
+
+**Files:** `shared/dashboard/types.ts`, `shared/schema.ts`, `server/storage.ts`, `server/dashboard/layout.ts`, `server/dashboard/routes.ts`, `server/routes.ts`, `client/src/lib/dashboard/useDashboardLayout.ts`, `client/src/pages/dashboard.tsx`, `client/src/App.tsx`, `client/src/components/AppLayout.tsx`, `CHANGES.md`, `package.json`, `package-lock.json`.
+
+**Branch:** `round7-dashboard-route` (off main). After merge, run `npm run db:push` on the server. Multi-tab CRUD UI + widget resize + per-widget config are explicit follow-up rounds.
+
+---
 ## 2026-05-14 — Phase 1B Round 6: Trade Tracker compartment + shared/pnl/ module + My Trades widget
 
 **Why:** Third compartment in the Phase 1B sequence and the largest of the v1 trio (L effort per the audit). Locks Q-C3: trade P/L math moves to a shared pure-function module (`shared/pnl/`) imported by both the server `/api/trades/summary` route and the new client compartment. Previously the same formulas lived in two places (server `routes.ts:5874+` and client `trade-tracker.tsx:171+`) — drift waiting to happen.
