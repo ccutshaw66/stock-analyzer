@@ -46,7 +46,7 @@ export function WatchlistWidget() {
 
   return (
     <div className="flex flex-col h-full p-2" data-testid="watchlist-widget">
-      <div className="flex items-center gap-1.5 px-1 pb-2 border-b border-border">
+      <div className="widget-drag-handle cursor-grab active:cursor-grabbing flex items-center gap-1.5 px-1 pb-2 border-b border-border">
         <Star className="h-3.5 w-3.5 text-yellow-500" />
         <span className="text-xs font-semibold text-foreground">Watchlist</span>
       </div>

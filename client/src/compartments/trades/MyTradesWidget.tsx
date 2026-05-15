@@ -45,7 +45,7 @@ export function MyTradesWidget() {
 
   return (
     <div className="flex flex-col h-full p-2" data-testid="mytrades-widget">
-      <div className="flex items-center gap-1.5 px-1 pb-2 border-b border-border">
+      <div className="widget-drag-handle cursor-grab active:cursor-grabbing flex items-center gap-1.5 px-1 pb-2 border-b border-border">
         <ClipboardList className="h-3.5 w-3.5 text-blue-500" />
         <span className="text-xs font-semibold text-foreground">My Trades</span>
       </div>
@@ -63,7 +63,7 @@ export function MyTradesWidget() {
                   {fmtMoney(summary.data.totalProfit)}
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  {summary.data.totalWins}/{summary.data.totalTrades - summary.data.openTrades} wins ({summary.data.winRate.toFixed(0)}%)
+                  {summary.data.totalWins} wins ({summary.data.winRate.toFixed(0)}%)
                 </div>
               </div>
               <div>

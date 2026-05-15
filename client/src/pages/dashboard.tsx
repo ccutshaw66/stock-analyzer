@@ -179,6 +179,7 @@ export default function Dashboard() {
         isDraggable={true}
         compactType="vertical"
         margin={[12, 12]}
+        draggableHandle=".widget-drag-handle"
         draggableCancel=".widget-no-drag"
         onLayoutChange={handleLayoutChange}
       >

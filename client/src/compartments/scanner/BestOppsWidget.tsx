@@ -55,7 +55,7 @@ export function BestOppsWidget() {
 
   return (
     <div className="flex flex-col h-full p-2" data-testid="bestopps-widget">
-      <div className="flex items-center justify-between gap-1.5 px-1 pb-2 border-b border-border">
+      <div className="widget-drag-handle cursor-grab active:cursor-grabbing flex items-center justify-between gap-1.5 px-1 pb-2 border-b border-border">
         <div className="flex items-center gap-1.5">
           <Flame className="h-3.5 w-3.5 text-orange-500" />
           <span className="text-xs font-semibold text-foreground">Best Opps</span>
@@ -64,7 +64,7 @@ export function BestOppsWidget() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="text-muted-foreground hover:text-foreground p-0.5 disabled:opacity-50"
+            className="widget-no-drag text-muted-foreground hover:text-foreground p-0.5 disabled:opacity-50"
             data-testid="button-bestopps-refresh"
             aria-label="Refresh scan"
           >
