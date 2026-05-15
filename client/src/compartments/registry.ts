@@ -9,11 +9,13 @@ import type { ClientCompartmentEntry } from "./types";
 import { favoritesCompartment } from "./favorites";
 import { scannerCompartment } from "./scanner";
 import { tradesCompartment } from "./trades";
+import { confluenceChartCompartment } from "./confluence-chart";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   favoritesCompartment,
   scannerCompartment,
   tradesCompartment,
+  confluenceChartCompartment,
 ];
 
 export function listClientCompartments(): readonly ClientCompartmentEntry[] {
