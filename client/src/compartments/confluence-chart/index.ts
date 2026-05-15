@@ -1,29 +1,28 @@
 /**
  * Confluence Chart compartment — client side.
  *
- * Composes existing canonical accessors (analyze + scanner-v2 quick) into
- * an at-a-glance per-ticker view. Reuses TickerContext.activeTicker to pick
- * up whatever ticker the user clicked anywhere else on the dashboard.
+ * Manifest points the FullView to the new /chart/confluence/:ticker? page.
+ * The dashboard widget is the teaser tile that links to the full page.
  *
- * No new server compartment — this is a pure client consumer.
+ * The failed Round-8 ConfluenceChartWidget has been removed.
  */
 import type { ClientCompartmentEntry, CompartmentMeta } from "../types";
-import { ConfluenceChartWidget } from "./ConfluenceChartWidget";
+import { ConfluenceTeaser } from "./ConfluenceTeaser";
 
 const meta: CompartmentMeta = {
   id: "confluence-chart",
   name: "Confluence Chart",
   tier: "free",
-  fullPageRoute: "/profile",
-  description: "At-a-glance price chart + confluence verdict for the currently selected ticker. Per-widget timeframe.",
+  fullPageRoute: "/chart/confluence",
+  description: "Stock Otter-branded full-page chart with candles, signal pulse, MACD/RSI, and the confluence dashboard.",
 };
 
 export const confluenceChartCompartment: ClientCompartmentEntry = {
   meta,
-  WidgetView: ConfluenceChartWidget,
-  widgetDefaultSize: { w: 6, h: 6 },
-  widgetMinSize: { w: 4, h: 4 },
+  WidgetView: ConfluenceTeaser,
+  widgetDefaultSize: { w: 3, h: 4 },
+  widgetMinSize: { w: 2, h: 3 },
 };
 
-export { meta, ConfluenceChartWidget };
-export { useConfluenceChartData } from "./useConfluenceChart";
+export { meta, ConfluenceTeaser };
+export { useConfluenceChart } from "./useConfluenceChart";

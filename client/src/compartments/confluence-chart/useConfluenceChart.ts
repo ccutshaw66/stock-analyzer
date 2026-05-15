@@ -1,24 +1,24 @@
 /**
- * Canonical hook for the Confluence Chart compartment.
+ * Canonical hook for the Confluence Chart page. Composes three existing
+ * endpoints into one consumer-friendly shape:
+ *   - GET /api/analyze/:ticker — chartData (OHLC + EMA21/50/200 + SMA200)
+ *   - GET /api/scanner-v2/quick/:ticker — current 3-gate verdict + score
+ *   - GET /api/scanner-v2/indicators/:ticker — last ~60 bars MACD + RSI series
  *
- * Reuses two existing canonical endpoints:
- *   - GET /api/analyze/:ticker  → chartData (close prices + EMA21/EMA50/SMA200 overlays)
- *   - GET /api/scanner-v2/quick/:ticker → verdict + score (gate-based)
- *
- * No new server endpoints. Refresh interval matches the Round 8 lock (5 min
- * while visible) — TanStack Query auto-pauses when the tab is hidden.
+ * All three refetch every 5 minutes while the page is visible. TanStack
+ * Query pauses automatically when the tab is hidden.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 const FIVE_MIN = 5 * 60 * 1000;
 
-export interface ChartDataPoint {
+export interface CandleBar {
   date: string;
+  open: number;
+  high: number;
+  low: number;
   close: number;
-  open?: number;
-  high?: number;
-  low?: number;
   volume?: number;
   ema9?: number | null;
   ema21?: number | null;
@@ -26,16 +26,23 @@ export interface ChartDataPoint {
   sma200?: number | null;
 }
 
-export interface QuickScanResult {
+export interface QuickScan {
   ticker: string;
-  /** Number of gates cleared (0-3 in the 3-gate verdict system). */
   score: number | null;
-  /** Verdict string: "GO ↑" / "SET ↑" / "READY ↑" / "PULLBACK" / "GATES CLOSED" / "NO SETUP" / etc. */
   verdict: string | null;
   cached?: boolean;
 }
 
-export function useConfluenceChartData(ticker: string | null, timeframe: string) {
+export interface IndicatorBar {
+  t: number;
+  close: number;
+  macd: number;
+  signal: number;
+  hist: number;
+  rsi: number | null;
+}
+
+export function useConfluenceChart(ticker: string | null, timeframe: string) {
   const analyze = useQuery({
     queryKey: ["/api/analyze", ticker, timeframe],
     queryFn: async () => {
@@ -47,7 +54,7 @@ export function useConfluenceChartData(ticker: string | null, timeframe: string)
     refetchInterval: FIVE_MIN,
   });
 
-  const scan = useQuery<QuickScanResult>({
+  const quick = useQuery<QuickScan>({
     queryKey: ["/api/scanner-v2/quick", ticker, timeframe],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}?timeframe=${timeframe}`);
@@ -57,10 +64,25 @@ export function useConfluenceChartData(ticker: string | null, timeframe: string)
     refetchInterval: FIVE_MIN,
   });
 
+  const indicators = useQuery<{ ticker: string; series: IndicatorBar[]; reason?: string }>({
+    queryKey: ["/api/scanner-v2/indicators", ticker, 60, timeframe],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/scanner-v2/indicators/${ticker}?bars=60&timeframe=${timeframe}`);
+      return res.json();
+    },
+    enabled: !!ticker,
+    refetchInterval: FIVE_MIN,
+  });
+
+  const bars: CandleBar[] = (analyze.data?.chartData ?? []) as CandleBar[];
+  const quoteSummary = analyze.data?.quote ?? null;
+
   return {
-    chartData: (analyze.data?.chartData ?? []) as ChartDataPoint[],
-    scan: scan.data,
-    isLoading: analyze.isLoading || scan.isLoading,
-    error: analyze.error ?? scan.error,
+    bars,
+    quote: quoteSummary,
+    quick: quick.data,
+    indicators: indicators.data?.series ?? [],
+    isLoading: analyze.isLoading || quick.isLoading || indicators.isLoading,
+    error: analyze.error ?? quick.error ?? indicators.error,
   };
 }

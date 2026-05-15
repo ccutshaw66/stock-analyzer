@@ -24,7 +24,7 @@ export function buildDefaultDashboardLayout(): DashboardLayout {
           { compartmentId: "favorites", visible: true, x: 0, y: 0, w: 3, h: 4 },
           { compartmentId: "scanner-v2", visible: true, x: 3, y: 0, w: 3, h: 4 },
           { compartmentId: "trades", visible: true, x: 6, y: 0, w: 4, h: 4 },
-          { compartmentId: "confluence-chart", visible: true, x: 0, y: 4, w: 6, h: 6 },
+          { compartmentId: "confluence-chart", visible: true, x: 0, y: 4, w: 3, h: 4 },
         ],
       },
     ],

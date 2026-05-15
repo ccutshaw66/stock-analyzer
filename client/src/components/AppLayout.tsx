@@ -536,6 +536,7 @@ function Sidebar({
       items: [
         { path: "/profile", label: "Profile", icon: BarChart3 },
         { path: "/trade", label: "Trade Analysis", icon: Activity },
+        { path: "/chart/confluence", label: "Confluence Chart", icon: Activity },
         { path: "/chart", label: "Strategy Chart", icon: LineChart },
         ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
         { path: "/institutional", label: "Institutions", icon: Building2 },

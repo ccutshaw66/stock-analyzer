@@ -9,6 +9,50 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Round 9: Confluence Chart full-page rebuild (Stock Otter branded, candles, multi-pane)
+
+**Why:** The Round 8 Confluence Chart widget was three lines on black — Chris's reaction: *"Your chart is useless. I have this chart in 2 other places... I need it to look and perform PROFESSIONALLY, not like a 14yo wrote it in his moms basement."* Rebuilt as a full-page chart that surfaces Stockotter's actual tools, with candles, and brand identity.
+
+**What:**
+
+### Candles via TradingView Lightweight Charts
+- Added `lightweight-charts` dependency (~45KB gzipped, MIT, canvas-based, designed for OHLC).
+- New `CandlePane` component wrapping the library — brand-tuned candle colors, indigo crosshair, EMA21/50/200 overlays as toggle buttons, volume histogram in the lower portion of the pane, otter watermark in the corner.
+
+### Full-page route `/chart/confluence/:ticker?`
+- New `client/src/pages/confluence-chart.tsx` composing branded header + candle pane + Signal Pulse pane (drop-in existing component) + MACD/RSI pane (drop-in existing component) + Confluence Dashboard panel + sticky verdict strip.
+- Empty state with the otter mascot, friendly copy, ticker search + featured-ticker chips.
+- URL ticker syncs with `TickerContext.activeTicker` bus — click any ticker anywhere on the site, navigate to /chart/confluence, it follows.
+- Sticky branded header with Stock Otter logo, ticker info stack, timeframe segmented control, quick-jump chips to Profile / MM Exposure / Scanner.
+
+### Confluence Dashboard panel (computed client-side, no new endpoint for v1)
+- Rows: RSI(14), MACD Hist, EMA Stack, Price vs 200d, Vol vs 20d, 20-day Break, 60-day Break, Gate Verdict, Gate Score.
+- Each row: label + current value + BULL/BEAR/NEUTRAL badge.
+- Bias summary line: "X bull · Y bear · N total — **LONG/SHORT BIAS Z%**". Direct lift from the TradingView Advanced Confluence Dashboard reference cited in the plan.
+
+### Sticky verdict strip
+- Big color-coded verdict pill (GO ↑ / SET ↑ / READY ↑ / PULLBACK / CLOSED / NO SETUP).
+- Plain-English label next to it (STRONG BUY / GOOD BUY / MODERATE BUY / WAIT / AVOID).
+- Gate count, last-updated timestamp (live, ticks every second).
+
+### Dashboard widget replaced with a Teaser tile
+- The useless 3-line widget is deleted (`ConfluenceChartWidget.tsx` removed). The compartment manifest now exposes `ConfluenceTeaser` as the WidgetView — a small tile showing ticker / spot / day change / verdict pill + "Open full chart →" CTA that navigates to the full page.
+- Default size in the server layout dropped from 6×6 to 3×4 (matches the other widgets).
+- Existing users' saved layouts keep the same `compartment-id` slot; the new teaser renders in place.
+
+### Files
+- New: `client/src/pages/confluence-chart.tsx`, `client/src/compartments/confluence-chart/{CandlePane,ChartHeader,ConfluenceDashboardPanel,VerdictStrip,EmptyState,ConfluenceTeaser}.tsx`
+- Modified: `client/src/compartments/confluence-chart/{index.ts,useConfluenceChart.ts}`, `client/src/App.tsx`, `client/src/components/AppLayout.tsx`, `server/dashboard/layout.ts`, `CHANGES.md`, `package.json`, `package-lock.json`
+- Deleted: `client/src/compartments/confluence-chart/ConfluenceChartWidget.tsx`
+
+### Deferred to v2 (per the approved plan, separate round)
+- Scanner-signal markers on the candle pane (need an endpoint extension to expose per-bar signal firings)
+- Backtester trade entry/exit triangles
+- MM Exposure horizontal price lines (gamma flip, max pain, call/put walls)
+- Gate-history sub-pane (needs new `/api/scanner-v2/gates-history` endpoint)
+- Scanner-v2 per-signal breakdown (extending `/api/scanner-v2/quick`)
+
+---
 ## 2026-05-15 — Phase 1B Round 8: Confluence Chart compartment + per-widget config + auto-discovery of new compartments
 
 **Why:** First user-visible artifact of the per-widget `config` JSONB field designed into the schema in Round 7. Adds a "Confluence Chart" widget that follows the currently selected ticker (Watchlist / Best Opps / My Trades clicks all flow through `TickerContext.activeTicker`) and shows price + EMA overlays + a verdict pill. Inspired by a TradeStation multi-pane chart Chris shared; ships the compact-widget version (Option A from `docs/DASHBOARD_PLAN.md` Round 8a).

@@ -40,6 +40,7 @@ import LegalPage from "@/pages/legal";
 import TrackRecord from "@/pages/track-record";
 import AlertsPage from "@/pages/alerts";
 import Dashboard from "@/pages/dashboard";
+import ConfluenceChartPage from "@/pages/confluence-chart";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -98,6 +99,7 @@ function AuthenticatedApp() {
           <Switch>
             <Route path="/" component={MarketPulse} />
             <Route path="/dashboard" component={Dashboard} />
+            <Route path="/chart/confluence/:ticker?" component={ConfluenceChartPage} />
             <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
