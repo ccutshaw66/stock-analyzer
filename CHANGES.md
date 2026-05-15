@@ -9,6 +9,37 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-14 — Phase 1B Round 5: Scanner v2 compartment + Best Opps widget + persisted TanStack Query cache
+
+**Why:** Second compartment in the Phase 1B sequence (per `docs/DASHBOARD_PLAN.md` refactor order). Establishes the canonical hook for scanner v2 data — pages, dashboard widgets, alerts all import from one place — and replaces the legacy ad-hoc sessionStorage code in `scanner.tsx` at the queryClient layer rather than per-page. Locked Q-C1 decision: persisted TanStack Query cache.
+
+**What:**
+
+### Persisted TanStack Query cache (Q-C1)
+- Added `@tanstack/query-sync-storage-persister` and `@tanstack/react-query-persist-client` dependencies.
+- `client/src/lib/queryClient.ts` — exports a sessionStorage-backed `queryPersister` (key `stockotter:rq-cache`).
+- `client/src/App.tsx` — swapped `QueryClientProvider` for `PersistQueryClientProvider`. A `dehydrateOptions.shouldDehydrateQuery` filter persists ONLY query keys starting with `/api/scanner` so sessionStorage doesn't bloat with every API response. Same UX as legacy code (scan results survive page reload, gone on tab close), but the persistence logic lives at the queryClient layer instead of bespoke in `scanner.tsx`.
+
+### Scanner v2 compartment (server)
+- `server/compartments/scanner/index.ts` — manifest + `scannerData` canonical accessor wrapping `runScannerV2` from `server/scanner-v2.ts`. Routes (`/api/scanner/v2` at `server/routes.ts:4006`) stay in legacy code during strangler migration.
+- Removed redundant `server/compartments/scanner/.keep` (placeholder no longer needed).
+
+### Scanner v2 compartment (client)
+- `client/src/compartments/scanner/useScannerV2.ts` — canonical hook. `enabled` defaults to `false` so idle widgets don't auto-fire FMP scans on every dashboard mount; consumers call with `{ enabled: true }` or wire a button.
+- `client/src/compartments/scanner/BestOppsWidget.tsx` — compact dashboard widget. Opt-in "Run scan" CTA on first load; once a scan runs, results render and persist to sessionStorage for cross-reload survival within the tab. Refresh button on the header. Clicking a row publishes the ticker to `TickerContext.activeTicker` (the shared bus).
+- `client/src/compartments/scanner/index.ts` — manifest + exports.
+
+### Registries
+- `server/compartments/registry.ts` — added `scannerCompartment`.
+- `client/src/compartments/registry.ts` — added `scannerCompartment`.
+
+**What did NOT change:** `client/src/pages/scanner.tsx` keeps its existing sessionStorage code. Migration of the full Scanner page to `useScannerV2` is a follow-up task — not a Round 5 deliverable. The compartment provides the canonical hook so future widgets and alert rules can use it immediately.
+
+**Files:** `package.json`, `package-lock.json`, `client/src/lib/queryClient.ts`, `client/src/App.tsx`, `client/src/compartments/scanner/index.ts`, `client/src/compartments/scanner/useScannerV2.ts`, `client/src/compartments/scanner/BestOppsWidget.tsx`, `client/src/compartments/registry.ts`, `server/compartments/scanner/index.ts`, `server/compartments/registry.ts`, `CHANGES.md`, and removed `server/compartments/scanner/.keep`.
+
+**Branch:** `round5-scanner-v2` (off main). Not merged. Merge to main on Chris's approval.
+
+---
 ## 2026-05-14 — Phase 1B kickoff: compartment scaffold + Favorites template compartment
 
 **Why:** Multi-round dashboard planning (`docs/DASHBOARD_PLAN.md`) crystallized into a site-wide architecture rule (`docs/MASTER_PATHWAY.md` Principle #6 + Phase 1B): every feature is a self-contained compartment with one canonical data accessor, pure logic, two presentation modes, and a registry entry. Otherwise every future dashboard widget becomes bespoke code. Round 4 ships the scaffold + Favorites as the worked-example template; no behavior changes to current pages.

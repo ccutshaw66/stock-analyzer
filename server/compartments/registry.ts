@@ -9,9 +9,11 @@
 import type { Express } from "express";
 import type { ServerCompartmentEntry } from "./types";
 import { favoritesCompartment } from "./favorites";
+import { scannerCompartment } from "./scanner";
 
 const serverCompartments: ServerCompartmentEntry[] = [
   favoritesCompartment,
+  scannerCompartment,
 ];
 
 export function listServerCompartments(): readonly ServerCompartmentEntry[] {
