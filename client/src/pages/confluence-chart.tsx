@@ -9,10 +9,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { CandlePane } from "@/compartments/confluence-chart/CandlePane";
-import { ChartHeader, type Timeframe } from "@/compartments/confluence-chart/ChartHeader";
+import { ChartHeader } from "@/compartments/confluence-chart/ChartHeader";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
 import { EmptyState } from "@/compartments/confluence-chart/EmptyState";
@@ -20,13 +21,11 @@ import { HowToRead } from "@/compartments/confluence-chart/HowToRead";
 import { useConfluenceChart } from "@/compartments/confluence-chart/useConfluenceChart";
 import { Loader2 } from "lucide-react";
 
-const DEFAULT_TIMEFRAME: Timeframe = "3M";
-
 export default function ConfluenceChartPage() {
   const [match, params] = useRoute<{ ticker?: string }>("/chart/confluence/:ticker?");
   const { activeTicker, setActiveTicker } = useTicker();
+  const { timeframe } = useTimeframe();
   const [_, navigate] = useLocation();
-  const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const [showEma21, setShowEma21] = useState(true);
   const [showEma50, setShowEma50] = useState(true);
   const [showEma200, setShowEma200] = useState(false);
@@ -64,11 +63,7 @@ export default function ConfluenceChartPage() {
   if (!activeTicker) {
     return (
       <div className="flex flex-col min-h-[calc(100vh-3.5rem)] bg-background">
-        <ChartHeader
-          ticker={null}
-          timeframe={timeframe}
-          onTimeframeChange={setTimeframe}
-        />
+        <ChartHeader ticker={null} />
         <EmptyState />
       </div>
     );
@@ -81,8 +76,6 @@ export default function ConfluenceChartPage() {
         companyName={companyName}
         spotPrice={spotPrice}
         dayChangePct={dayChangePct}
-        timeframe={timeframe}
-        onTimeframeChange={setTimeframe}
       />
 
       {/* Candle pane — the centerpiece. ~55% of remaining height. */}

@@ -12,17 +12,11 @@ import { formatCurrency } from "@/lib/format";
 import { Activity, ArrowUpRight } from "lucide-react";
 import logoText from "@/assets/logo-text.png";
 
-const TIMEFRAMES = ["1M", "3M", "6M", "1Y", "2Y", "5Y"] as const;
-type Timeframe = (typeof TIMEFRAMES)[number];
-
 interface ChartHeaderProps {
   ticker: string | null;
   companyName?: string;
   spotPrice?: number | null;
   dayChangePct?: number | null;
-  timeframe: Timeframe;
-  onTimeframeChange: (tf: Timeframe) => void;
-  onSearch?: () => void;
 }
 
 export function ChartHeader({
@@ -30,8 +24,6 @@ export function ChartHeader({
   companyName,
   spotPrice,
   dayChangePct,
-  timeframe,
-  onTimeframeChange,
 }: ChartHeaderProps) {
   const changeColor =
     dayChangePct == null
@@ -78,25 +70,9 @@ export function ChartHeader({
           )}
         </div>
 
-        {/* Right side: timeframe + jump-out chips */}
+        {/* Right side: jump-out chips. Timeframe is controlled by the
+            global picker in the top nav bar (TimeframeContext). */}
         <div className="flex items-center gap-3 flex-shrink-0">
-          <div className="flex items-center rounded-md border border-border bg-background/50 overflow-hidden" role="group">
-            {TIMEFRAMES.map((tf) => (
-              <button
-                key={tf}
-                onClick={() => onTimeframeChange(tf)}
-                className={`text-[11px] font-semibold px-2 py-1 transition-colors ${
-                  tf === timeframe
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-                data-testid={`button-tf-${tf}`}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-
           {ticker && (
             <div className="hidden lg:flex items-center gap-1">
               <Link
@@ -124,6 +100,3 @@ export function ChartHeader({
     </div>
   );
 }
-
-export type { Timeframe };
-export { TIMEFRAMES };
