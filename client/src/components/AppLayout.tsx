@@ -44,6 +44,9 @@ import {
   Bell,
   Compass,
   LayoutDashboard,
+  Layers,
+  Microscope,
+  FlaskConical,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
@@ -535,9 +538,9 @@ function Sidebar({
       label: "Company Research",
       items: [
         { path: "/profile", label: "Profile", icon: BarChart3 },
-        { path: "/trade", label: "Trade Analysis", icon: Activity },
-        { path: "/chart/confluence", label: "Confluence Chart", icon: Activity },
-        { path: "/chart", label: "Strategy Chart", icon: LineChart },
+        { path: "/trade", label: "Trade Analysis", icon: Microscope },
+        { path: "/chart/confluence", label: "Confluence Chart", icon: Layers },
+        { path: "/chart", label: "Strategy Chart", icon: FlaskConical },
         ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
         { path: "/institutional", label: "Institutions", icon: Building2 },
         { path: "/conviction", label: "Conviction Compass", icon: Compass },

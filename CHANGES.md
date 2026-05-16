@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Sidebar menu icons synced with new page icons
+
+**Why:** Prior commit changed page-header icons but left the sidebar nav still pointing at the old icons. Trade Analysis, Confluence Chart, and Strategy Chart all showed `Activity` or `LineChart` in the sidebar even after their PageHeaders were swapped. The PageHeader's own docstring says "The icon should match the same page's sidebar icon" — they were out of sync.
+
+**What:**
+- `client/src/components/AppLayout.tsx` nav menu updated:
+  - Trade Analysis sidebar icon: `Activity` → `Microscope`
+  - Confluence Chart sidebar icon: `Activity` → `Layers`
+  - Strategy Chart sidebar icon: `LineChart` → `FlaskConical`
+  - Market Pulse and Payoff Diagram sidebar icons unchanged (intentional — Market Pulse kept per directive; Payoff kept `LineChart` since it's no longer a duplicate).
+- Imports for `Layers`, `Microscope`, `FlaskConical` added to AppLayout.
+
+**Files touched:** `client/src/components/AppLayout.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Confluence Chart standardized + unique page icons
 
 **Why:** Chris flagged the Confluence Chart page header was different from every other page on the site — branded sticky bar with the Stock Otter logo, "CONFLUENCE" wordmark, ticker chrome, and jump-out chips. Every other page uses the standard `<PageHeader icon=... title=... subtitle=... />` template (one line of chrome). Two-design-language problem. Also asked: pick a unique icon for Confluence and de-duplicate any other duplicate icons across pages, keeping Market Pulse unchanged.
