@@ -9,6 +9,18 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — `/verify-work` now runs `npm run build` (not just `tsc`)
+
+**Why:** The design-tokens ship earlier today (commit `9234f94`) passed `tsc` but failed `npm run build` because tsc is permissive about JSX patterns that vite/esbuild rejects (e.g. bare-identifier attribute values like `stroke=TOKEN` vs `stroke={TOKEN}`). Production build broke, deploy reported `last_deploy.success: false`, site stayed on the prior SHA until commit `3c11e27` fixed it. The verify pass should have caught this locally.
+
+**What:**
+- `/verify-work` Section A now requires BOTH `npm run check` and `npm run build` to pass. They run in parallel to keep the audit fast.
+- The 2026-05-15 incident is documented inline as the reason — future-Claude knows why both are mandatory.
+- Hard-rules section updated: "Never skip the type check or the build."
+
+**Files touched:** `.claude/skills/verify-work/SKILL.md`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Design tokens fix: wrap bare token identifiers in JSX braces
 
 **Why:** Initial design-tokens ship (commit `9234f94`) broke the deploy. The replace_all from `attribute="#hexvalue"` to `attribute=TOKEN_NAME` stripped the string quotes but did not add JSX expression braces, producing 40 invalid JSX attributes like `<Line stroke=SIGNAL_BULL>` where it should be `<Line stroke={SIGNAL_BULL}>`. `npm run check` (tsc) passed because TypeScript is permissive about JSX attribute syntax; `npm run build` (Vite/esbuild) caught the parse error. Production build failed, last_deploy.success was false, site stayed on the prior SHA.

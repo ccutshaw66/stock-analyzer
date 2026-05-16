@@ -50,15 +50,20 @@ Do not cache the diff from the start of the audit. If you edited a file 10 minut
 
 ## Checks
 
-Run these. Parallelize where possible (`npm run check` is the slow one — kick it off first, do the static checks while it runs).
+Run these. Parallelize where possible (`npm run check` and `npm run build` are the slow ones — kick them off first, do the static checks while they run).
 
-### A. Build & types (BLOCKER if fails)
+### A. Build & types (BLOCKER if either fails)
+
+Both checks must pass. Run them in parallel.
 
 ```bash
-npm run check
+npm run check    # tsc — catches type errors
+npm run build    # vite/esbuild — catches parse errors tsc misses
 ```
 
-Any TypeScript error is a blocker. Don't try to ship around it. If errors exist in files you didn't touch, surface them separately — they may be pre-existing.
+**Why both:** `tsc` is permissive about some JSX patterns (e.g. bare identifiers as attribute values like `<Line stroke=SIGNAL_BULL>` instead of `<Line stroke={SIGNAL_BULL}>`). Vite/esbuild rejects them at parse time. The 2026-05-15 design-tokens ship discovered this the hard way — `tsc` passed, build failed on the server, deploy reported `last_deploy.success: false`. Running `npm run build` locally would have caught it.
+
+Any error in either is a blocker. Don't try to ship around it. If errors exist in files you didn't touch, surface them separately — they may be pre-existing.
 
 ### B. Project-rule violations (BLOCKER)
 
@@ -185,7 +190,7 @@ Site-wide audit output is a categorized report with a count per category, top of
 ## Hard rules
 
 - **Never auto-fix during a verify pass.** Surface findings, let Chris decide. The point of verification is honesty, not optimism.
-- **Never skip the type check.** If `npm run check` won't run, that itself is a blocker — surface it.
+- **Never skip the type check or the build.** Both `npm run check` AND `npm run build` must pass. If either won't run, that itself is a blocker. `tsc` alone is not sufficient — it missed the 2026-05-15 JSX-braces bug that broke production.
 - **Never audit against a stale baseline.** `git fetch origin` at the start, ahead/behind check, refresh the diff right before each check group. A stale diff is worse than no audit — it produces false confidence.
 - **Don't fabricate cleanliness.** If you didn't check something (e.g. didn't load the page in a browser), say so explicitly: "UI behavior not verified — Chris should spot-check in the browser before ship."
 - **Be specific.** "Looks good" is not a verification. Every clean check should be named in the "What ran clean" section so Chris can see exactly what was and wasn't checked.
