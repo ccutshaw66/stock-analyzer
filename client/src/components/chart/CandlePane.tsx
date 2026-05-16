@@ -36,6 +36,7 @@
 import { useEffect, useRef } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   CandlestickSeries,
   LineSeries,
   HistogramSeries,
@@ -43,6 +44,7 @@ import {
   ColorType,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type Time,
   type UTCTimestamp,
   type SeriesMarker,
@@ -96,6 +98,9 @@ export function CandlePane({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** Per-overlay series refs, keyed by dataKey so we can update individually. */
   const overlaySeriesRef = useRef<Record<string, ISeriesApi<"Line">>>({});
+  /** Markers plugin — v5 API attaches markers via a separate plugin instance,
+   * not via `series.setMarkers`. Created once at chart init and reused. */
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   // Initialize chart once. All data updates flow through refs.
   useEffect(() => {
@@ -142,6 +147,10 @@ export function CandlePane({
     });
     candleSeriesRef.current = candles;
 
+    // Markers plugin — attaches to the candle series. v5 moved markers out
+    // of the series API into a standalone plugin function.
+    markersPluginRef.current = createSeriesMarkers(candles, []);
+
     // Volume histogram, scaled to bottom 20% of pane via overlay price scale.
     if (showVolume) {
       const volume = chart.addSeries(HistogramSeries, {
@@ -161,6 +170,7 @@ export function CandlePane({
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
       overlaySeriesRef.current = {};
+      markersPluginRef.current = null;
     };
   }, [showVolume]);
 
@@ -245,20 +255,19 @@ export function CandlePane({
       overlaySeriesRef.current[overlay.dataKey]?.setData(overlayData[overlay.dataKey]);
     }
 
-    // Markers attach to the candle series.
-    if (markers.length > 0 && candleSeriesRef.current) {
-      const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
-        time: dateToTime(m.date),
-        position: m.position,
-        shape: m.shape,
-        color: m.color,
-        text: m.text,
-      }));
-      // Lightweight Charts v5 API — setMarkers may have moved; guard for both.
-      const seriesAny = candleSeriesRef.current as unknown as {
-        setMarkers?: (ms: SeriesMarker<Time>[]) => void;
-      };
-      seriesAny.setMarkers?.(seriesMarkers);
+    // Markers — v5 attaches via the plugin instance created at chart init.
+    // Sort by time (Lightweight Charts requires markers in ascending order).
+    if (markersPluginRef.current) {
+      const seriesMarkers: SeriesMarker<Time>[] = markers
+        .map((m) => ({
+          time: dateToTime(m.date),
+          position: m.position,
+          shape: m.shape,
+          color: m.color,
+          text: m.text,
+        }))
+        .sort((a, b) => (a.time as number) - (b.time as number));
+      markersPluginRef.current.setMarkers(seriesMarkers);
     }
 
     chartRef.current?.timeScale().fitContent();

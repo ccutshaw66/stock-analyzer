@@ -3371,39 +3371,36 @@ export async function registerRoutes(
       const displayLen = closes.length - displayStartIdx;
       const step = Math.max(1, Math.floor(displayLen / 120));
       const chartDataArr: any[] = [];
+      const rowAt = (i: number) => ({
+        date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+        // OHLC + volume so the TV-style CandlePane can render candles.
+        // Fall back to close when individual OHLC fields are missing so the
+        // candle isn't dropped entirely (Yahoo occasionally returns null
+        // for opens/highs/lows on illiquid days).
+        open: opens[i] != null ? Number(Number(opens[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        high: highs[i] != null ? Number(Number(highs[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        low: lows[i] != null ? Number(Number(lows[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        close: Number(closes[i].toFixed(2)),
+        volume: volumes[i] != null ? Number(volumes[i]) : 0,
+        ema9: isNaN(ema9[i]) ? null : Number(ema9[i].toFixed(2)),
+        ema21: isNaN(ema21[i]) ? null : Number(ema21[i].toFixed(2)),
+        ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
+        sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
+        rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
+        bbtcSignal: bbtcSignals[i] || null,
+        verSignal: verSignals[i] || null,
+        bbtcSide: bbtcSignalSides[i] || null,
+        verSide: verSignalSides[i] || null,
+      });
       for (let i = displayStartIdx; i < closes.length; i++) {
         const hasSignal = !!(bbtcSignals[i] || verSignals[i]);
         const offset = i - displayStartIdx;
         if (offset % step !== 0 && !hasSignal) continue;
-        chartDataArr.push({
-          date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
-          close: Number(closes[i].toFixed(2)),
-          ema9: isNaN(ema9[i]) ? null : Number(ema9[i].toFixed(2)),
-          ema21: isNaN(ema21[i]) ? null : Number(ema21[i].toFixed(2)),
-          ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
-          sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
-          rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
-          bbtcSignal: bbtcSignals[i] || null,
-          verSignal: verSignals[i] || null,
-          bbtcSide: bbtcSignalSides[i] || null,
-          verSide: verSignalSides[i] || null,
-        });
+        chartDataArr.push(rowAt(i));
       }
       // Always include the last bar
       if (chartDataArr.length === 0 || chartDataArr[chartDataArr.length - 1].date !== new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0]) {
-        chartDataArr.push({
-          date: new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0],
-          close: Number(closes[lastIdx].toFixed(2)),
-          ema9: isNaN(ema9[lastIdx]) ? null : Number(ema9[lastIdx].toFixed(2)),
-          ema21: isNaN(ema21[lastIdx]) ? null : Number(ema21[lastIdx].toFixed(2)),
-          ema50: isNaN(ema50[lastIdx]) ? null : Number(ema50[lastIdx].toFixed(2)),
-          sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
-          rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
-          bbtcSignal: bbtcSignals[lastIdx] || null,
-          verSignal: verSignals[lastIdx] || null,
-          bbtcSide: bbtcSignalSides[lastIdx] || null,
-          verSide: verSignalSides[lastIdx] || null,
-        });
+        chartDataArr.push(rowAt(lastIdx));
       }
 
       // ── Run 3-Gate Signal Engine ──

@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — TV chart fixes: missing markers (v5 API) + Trade Analysis OHLC
+
+**Why:** Chris reported live: "not one dot on either chart and trade analysis has not dots and no candles." Two bugs in the just-shipped TV migration.
+
+**What:**
+
+### Markers were silently dropped — Lightweight Charts v5 API change
+- v5 moved markers out of `series.setMarkers(...)` into a standalone `createSeriesMarkers(series, markers)` plugin function.
+- The migration code had a defensive guard: `(series as any).setMarkers?.(markers)` — when the method didn't exist, the guard silently no-op'd. Every marker on every chart disappeared.
+- Fix: import `createSeriesMarkers` from `lightweight-charts`, create the markers plugin once at chart init, store the plugin instance in a ref, and call `markersPlugin.setMarkers(...)` whenever the markers prop changes. Also sort markers by time (v5 requires ascending order or it silently drops the list).
+- Defensive guards on third-party APIs are a quiet failure mode — this is a banked lesson for the verify-work skill (next iteration could check for `?.` guards on critical APIs).
+
+### Trade Analysis chart had no candles — server returned close-only
+- The `/api/trade-analysis/:ticker` endpoint built `chartDataArr` with `{ date, close, ema9, ema21, ema50, sma200, rsi, signals }` — no `open` / `high` / `low` / `volume`. The CandlePane needs OHLC to render candles; without it, the candle series renders blank.
+- Fix: include OHLC + volume in every chartDataArr row. Server-side `opens`/`highs`/`lows`/`volumes` arrays were already loaded — just needed to plumb them through. Falls back to `close` when an individual OHLC field is null (Yahoo occasionally returns nulls for illiquid days; better to render a doji than drop the bar).
+- Refactored the per-bar payload into a `rowAt(i)` helper so the loop body and the last-bar appender share one shape — eliminates the duplicate field list and the bug that caused the original migration to leak stray code on the last-bar branch.
+
+**Files touched:** `client/src/components/chart/CandlePane.tsx` (v5 markers plugin), `server/routes.ts` (trade-analysis OHLC), `CHANGES.md`.
+
+---
 ## 2026-05-15 — TV chart rollout: Trade Analysis + Strategy Chart migrated to CandlePane
 
 **Why:** Continuation of the TV-style chart rollout. The shared `CandlePane` primitive landed in the prior commit; this ship migrates the two highest-impact pages that still ran on Recharts — Trade Analysis (per-ticker signal walk-through) and Strategy Chart (`/chart` backtest visualizer). Both now use the same primitive Confluence Chart does, with declarative overlay configs and signal markers.
