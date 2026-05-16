@@ -297,10 +297,10 @@ export default function PayoffDiagram() {
         <p><strong className="text-foreground">X-axis:</strong> Stock price at expiration. <strong className="text-foreground">Y-axis:</strong> Your profit or loss in dollars.</p>
         <p><strong className="text-foreground">The horizontal line at $0</strong> is your breakeven — above it you profit, below you lose money.</p>
         <Example type="good">
-          <strong className="text-green-400">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
+          <strong className="text-bull-light">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
         </Example>
         <Example type="neutral">
-          <strong className="text-yellow-400">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
+          <strong className="text-watch-light">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
         </Example>
         <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
         <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
@@ -386,19 +386,19 @@ export default function PayoffDiagram() {
           <ResultCard
             label="Max Profit"
             value={summary.maxProfit === Infinity ? "Unlimited" : `$${summary.maxProfit.toFixed(2)}`}
-            color="text-green-400"
+            color="text-bull-light"
           />
           <ResultCard
             label="Max Loss"
             value={summary.maxLoss === -Infinity ? "Unlimited" : `$${summary.maxLoss.toFixed(2)}`}
-            color="text-red-400"
+            color="text-bear-light"
           />
           {summary.breakevens.map((be, i) => (
             <ResultCard
               key={i}
               label={summary.breakevens.length > 1 ? `Breakeven ${i + 1}` : "Breakeven"}
               value={`$${be.toFixed(2)}`}
-              color="text-yellow-400"
+              color="text-watch-light"
             />
           ))}
           {summary.breakevens.length === 0 && (
@@ -408,7 +408,7 @@ export default function PayoffDiagram() {
             <ResultCard
               label={`P/L @ $${currentStockPrice.toFixed(2)}`}
               value={`${currentPricePL >= 0 ? "+" : ""}$${currentPricePL.toFixed(2)}`}
-              color={currentPricePL >= 0 ? "text-green-400" : "text-red-400"}
+              color={currentPricePL >= 0 ? "text-bull-light" : "text-bear-light"}
             />
           )}
           {currentStockPrice != null && (

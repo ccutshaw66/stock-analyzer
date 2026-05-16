@@ -91,17 +91,17 @@ function fmtPct(v: number | null, digits = 2): string {
 }
 function pctColor(v: number | null): string {
   if (v == null) return "text-muted-foreground";
-  if (v > 0) return "text-green-400";
-  if (v < 0) return "text-red-400";
+  if (v > 0) return "text-bull-light";
+  if (v < 0) return "text-bear-light";
   return "text-muted-foreground";
 }
 
 const TIER_STYLE: Record<RegimeTier, { ring: string; text: string; bg: string; sub: string }> = {
-  "EUPHORIC":  { ring: "ring-yellow-400/40",  text: "text-yellow-300",  bg: "bg-yellow-500/10",  sub: "text-yellow-200/80" },
-  "RISK-ON":   { ring: "ring-green-400/40",   text: "text-green-300",   bg: "bg-green-500/10",   sub: "text-green-200/80" },
+  "EUPHORIC":  { ring: "ring-watch/40",  text: "text-watch-light",  bg: "bg-watch/10",  sub: "text-watch/80" },
+  "RISK-ON":   { ring: "ring-bull/40",   text: "text-bull-light",   bg: "bg-bull/10",   sub: "text-bull/80" },
   "NEUTRAL":   { ring: "ring-muted/40",       text: "text-foreground",  bg: "bg-muted/10",       sub: "text-muted-foreground" },
   "DEFENSIVE": { ring: "ring-orange-400/40",  text: "text-orange-300",  bg: "bg-orange-500/10",  sub: "text-orange-200/80" },
-  "RISK-OFF":  { ring: "ring-red-400/40",     text: "text-red-300",     bg: "bg-red-500/10",     sub: "text-red-200/80" },
+  "RISK-OFF":  { ring: "ring-bear/40",     text: "text-bear-light",     bg: "bg-bear/10",     sub: "text-bear/80" },
 };
 
 function timeAgo(ms: number): string {
@@ -239,13 +239,13 @@ export default function MarketPulsePage() {
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div>
               <div className="text-xs text-muted-foreground mb-1">New 52w highs</div>
-              <div className="text-base font-semibold text-green-400 tabular-nums">
+              <div className="text-base font-semibold text-bull-light tabular-nums">
                 {data.breadth.newHighs == null ? "—" : data.breadth.newHighs}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground mb-1">New 52w lows</div>
-              <div className="text-base font-semibold text-red-400 tabular-nums">
+              <div className="text-base font-semibold text-bear-light tabular-nums">
                 {data.breadth.newLows == null ? "—" : data.breadth.newLows}
               </div>
             </div>
@@ -267,7 +267,7 @@ export default function MarketPulsePage() {
             <div className="text-xs text-muted-foreground mb-1">Junk / Investment-Grade (HYG/LQD)</div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-foreground tabular-nums">{fmtNum(data.riskAppetite.junkInvestmentRatio, 3)}</span>
-              <span className={`text-xs font-semibold ${data.riskAppetite.junkRising5d ? "text-green-400" : "text-red-400"}`}>
+              <span className={`text-xs font-semibold ${data.riskAppetite.junkRising5d ? "text-bull-light" : "text-bear-light"}`}>
                 {data.riskAppetite.junkRising5d == null ? "" : data.riskAppetite.junkRising5d ? "rising 5d" : "falling 5d"}
               </span>
             </div>
@@ -276,7 +276,7 @@ export default function MarketPulsePage() {
             <div className="text-xs text-muted-foreground mb-1">Stocks / Long Bonds (SPY/TLT)</div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-foreground tabular-nums">{fmtNum(data.riskAppetite.stocksBondsRatio, 3)}</span>
-              <span className={`text-xs font-semibold ${data.riskAppetite.stocksRising5d ? "text-green-400" : "text-red-400"}`}>
+              <span className={`text-xs font-semibold ${data.riskAppetite.stocksRising5d ? "text-bull-light" : "text-bear-light"}`}>
                 {data.riskAppetite.stocksRising5d == null ? "" : data.riskAppetite.stocksRising5d ? "rising 5d" : "falling 5d"}
               </span>
             </div>
@@ -311,10 +311,10 @@ export default function MarketPulsePage() {
                 {idx.price == null ? "—" : formatCurrency(idx.price)}
               </div>
               <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
-                <span className={idx.above50d ? "text-green-400" : idx.above50d === false ? "text-red-400" : ""}>
+                <span className={idx.above50d ? "text-bull-light" : idx.above50d === false ? "text-bear-light" : ""}>
                   {idx.above50d == null ? "—" : (idx.above50d ? "✓" : "✗")} 50d
                 </span>
-                <span className={idx.above200d ? "text-green-400" : idx.above200d === false ? "text-red-400" : ""}>
+                <span className={idx.above200d ? "text-bull-light" : idx.above200d === false ? "text-bear-light" : ""}>
                   {idx.above200d == null ? "—" : (idx.above200d ? "✓" : "✗")} 200d
                 </span>
               </div>

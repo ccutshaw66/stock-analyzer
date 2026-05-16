@@ -44,7 +44,7 @@ export function QuickTradeAnalysis({ data }: QuickTradeAnalysisProps) {
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground">Sentiment</div>
           <div className="flex items-center gap-2">
-            <SentimentIcon className={`h-4 w-4 ${sentimentColor === "green" ? "text-green-500" : sentimentColor === "red" ? "text-red-500" : "text-yellow-500"}`} />
+            <SentimentIcon className={`h-4 w-4 ${sentimentColor === "green" ? "text-bull" : sentimentColor === "red" ? "text-bear" : "text-watch"}`} />
             <Badge variant="outline" className={`text-xs ${getBadgeBgColor(sentimentColor)}`} data-testid="text-sentiment">
               {sentiment}
             </Badge>
@@ -88,7 +88,7 @@ export function QuickTradeAnalysis({ data }: QuickTradeAnalysisProps) {
                 <div className="text-xs text-muted-foreground mt-1">
                   Current: <span className="font-semibold text-foreground tabular-nums">{formatCurrency(data.price)}</span>
                   {data.price && analystData.targetMean && (
-                    <span className={`ml-2 ${data.price < analystData.targetMean ? "text-green-500" : "text-red-500"}`}>
+                    <span className={`ml-2 ${data.price < analystData.targetMean ? "text-bull" : "text-bear"}`}>
                       ({data.price < analystData.targetMean ? "+" : ""}{(((analystData.targetMean - data.price) / data.price) * 100).toFixed(1)}% to target)
                     </span>
                   )}
@@ -110,19 +110,19 @@ export function QuickTradeAnalysis({ data }: QuickTradeAnalysisProps) {
             <>
               <div className="flex h-4 rounded-full overflow-hidden">
                 {buyPct > 0 && (
-                  <div className="bg-green-500 transition-all" style={{ width: `${buyPct}%` }} />
+                  <div className="bg-bull transition-all" style={{ width: `${buyPct}%` }} />
                 )}
                 {holdPct > 0 && (
-                  <div className="bg-yellow-500 transition-all" style={{ width: `${holdPct}%` }} />
+                  <div className="bg-watch transition-all" style={{ width: `${holdPct}%` }} />
                 )}
                 {sellPct > 0 && (
-                  <div className="bg-red-500 transition-all" style={{ width: `${sellPct}%` }} />
+                  <div className="bg-bear transition-all" style={{ width: `${sellPct}%` }} />
                 )}
               </div>
               <div className="flex justify-between text-xs tabular-nums">
-                <span className="text-green-500">Buy: {analystData.buy} ({buyPct.toFixed(0)}%)</span>
-                <span className="text-yellow-500">Hold: {analystData.hold} ({holdPct.toFixed(0)}%)</span>
-                <span className="text-red-500">Sell: {analystData.sell} ({sellPct.toFixed(0)}%)</span>
+                <span className="text-bull">Buy: {analystData.buy} ({buyPct.toFixed(0)}%)</span>
+                <span className="text-watch">Hold: {analystData.hold} ({holdPct.toFixed(0)}%)</span>
+                <span className="text-bear">Sell: {analystData.sell} ({sellPct.toFixed(0)}%)</span>
               </div>
             </>
           ) : (

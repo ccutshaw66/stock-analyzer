@@ -93,7 +93,7 @@ export default function AlertsPage() {
       <div className="mb-6 p-3 bg-muted/30 border border-card-border rounded-lg">
         <p className="text-xs font-semibold text-foreground mb-1">Delivery channels</p>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-micro font-bold px-2 py-0.5 rounded bg-green-500/15 text-green-400">In-app ✓</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-bull/15 text-bull-light">In-app ✓</span>
           <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">Email — coming soon</span>
           <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">SMS / Push — coming soon</span>
         </div>
@@ -144,7 +144,7 @@ export default function AlertsPage() {
                 </label>
                 <button
                   onClick={() => { if (confirm("Delete this alert rule?")) del.mutate(r.id); }}
-                  className="p-1.5 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-400 shrink-0"
+                  className="p-1.5 rounded-md hover:bg-bear/10 text-muted-foreground hover:text-bear-light shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

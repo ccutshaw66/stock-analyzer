@@ -114,10 +114,10 @@ export default function KellyCalculator() {
         <p>The Kelly Criterion calculates the <strong className="text-foreground">optimal fraction of your account to risk</strong> on each trade to maximize long-term growth.</p>
         <p><strong className="text-foreground">Formula:</strong> f* = W − (1−W) / R, where W = win rate, R = avg win / avg loss.</p>
         <Example type="good">
-          <strong className="text-green-400">Positive Edge:</strong> Win rate = 55%, Avg Win = $200, Avg Loss = $150. R = 1.33. Kelly = 0.55 − 0.45/1.33 = 21.2%. You should risk about 21% of your account per trade for maximum growth. In practice, Half Kelly (10.6%) is recommended to reduce volatility.
+          <strong className="text-bull-light">Positive Edge:</strong> Win rate = 55%, Avg Win = $200, Avg Loss = $150. R = 1.33. Kelly = 0.55 − 0.45/1.33 = 21.2%. You should risk about 21% of your account per trade for maximum growth. In practice, Half Kelly (10.6%) is recommended to reduce volatility.
         </Example>
         <Example type="bad">
-          <strong className="text-red-400">No Edge:</strong> Win rate = 40%, Avg Win = $100, Avg Loss = $120. R = 0.83. Kelly = 0.40 − 0.60/0.83 = −32.5%. Negative Kelly means you have no edge — don't trade this strategy.
+          <strong className="text-bear-light">No Edge:</strong> Win rate = 40%, Avg Win = $100, Avg Loss = $120. R = 0.83. Kelly = 0.40 − 0.60/0.83 = −32.5%. Negative Kelly means you have no edge — don't trade this strategy.
         </Example>
         <ScoreRange label="Full Kelly" range="> 0%" color="green" description="You have an edge — but Full Kelly is aggressive and leads to large drawdowns" />
         <ScoreRange label="Half Kelly" range="> 0%" color="yellow" description="Recommended for most traders — 75% of growth with much lower risk of ruin" />
@@ -212,9 +212,9 @@ export default function KellyCalculator() {
         </div>
 
         {!kelly.hasEdge && (
-          <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg mb-4">
-            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
-            <span className="text-xs text-red-400 font-medium">
+          <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/30 rounded-lg mb-4">
+            <AlertTriangle className="h-4 w-4 text-bear-light shrink-0" />
+            <span className="text-xs text-bear-light font-medium">
               Negative Kelly — you have no mathematical edge with these parameters. Do not risk capital on this strategy.
             </span>
           </div>
@@ -272,13 +272,13 @@ export default function KellyCalculator() {
 function KellyCard({ label, pct, amount, hasEdge, subtitle, recommended }: {
   label: string; pct: number; amount: number; hasEdge: boolean; subtitle: string; recommended?: boolean;
 }) {
-  const color = hasEdge ? "text-green-400" : "text-red-400";
+  const color = hasEdge ? "text-bull-light" : "text-bear-light";
   return (
-    <div className={`bg-muted/30 border rounded-lg p-3 ${recommended ? "border-green-500/40" : "border-card-border/50"}`}>
+    <div className={`bg-muted/30 border rounded-lg p-3 ${recommended ? "border-bull/40" : "border-card-border/50"}`}>
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
         {recommended && (
-          <span className="text-mini font-bold px-1.5 py-0.5 rounded bg-green-500/15 text-green-400">RECOMMENDED</span>
+          <span className="text-mini font-bold px-1.5 py-0.5 rounded bg-bull/15 text-bull-light">RECOMMENDED</span>
         )}
       </div>
       <span className={`text-lg font-bold tabular-nums font-mono ${color}`}>{pct.toFixed(2)}%</span>

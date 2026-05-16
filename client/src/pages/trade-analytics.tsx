@@ -179,9 +179,9 @@ export default function TradeAnalytics() {
     return (
       <div className="p-3 sm:p-4 md:p-6 max-w-[1200px] mx-auto">
         <PageHeader icon={PieChartIcon} title="Performance Analytics" />
-        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-          <AlertTriangle className="h-4 w-4 text-red-400" />
-          <span className="text-xs text-red-400">Failed to load analytics. Please try again.</span>
+        <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/30 rounded-lg">
+          <AlertTriangle className="h-4 w-4 text-bear-light" />
+          <span className="text-xs text-bear-light">Failed to load analytics. Please try again.</span>
         </div>
       </div>
     );
@@ -217,7 +217,7 @@ export default function TradeAnalytics() {
         <p><strong className="text-foreground">Win Rate:</strong> Percentage of trades that are profitable. Most successful options sellers target 65-80%. A 50% win rate can still be profitable with good risk management.</p>
         <p><strong className="text-foreground">Profit Factor:</strong> Gross profits ÷ gross losses. A value above 1.0 means you're profitable overall. Above 2.0 is excellent.</p>
         <Example type="good">
-          <strong className="text-green-400">Profit Factor = 2.5:</strong> For every $1 you lose, you make $2.50. This is a strong edge.
+          <strong className="text-bull-light">Profit Factor = 2.5:</strong> For every $1 you lose, you make $2.50. This is a strong edge.
         </Example>
         <p><strong className="text-foreground">Expectancy:</strong> Average amount you expect to make per trade = (Win Rate × Avg Win) − (Loss Rate × Avg Loss). Positive = profitable system.</p>
         <p><strong className="text-foreground">R-Multiple:</strong> How many "R" (initial risk) your trade returned. An R of 2.0 means you made 2× your initial risk. Negative R means you lost more than planned.</p>
@@ -246,42 +246,42 @@ export default function TradeAnalytics() {
           <MetricCard
             label="Win Rate"
             value={`${analytics.winRate}%`}
-            color={analytics.winRate >= 60 ? "text-green-400" : analytics.winRate >= 45 ? "text-yellow-400" : "text-red-400"}
+            color={analytics.winRate >= 60 ? "text-bull-light" : analytics.winRate >= 45 ? "text-watch-light" : "text-bear-light"}
             icon={<Percent className="h-3 w-3" />}
           />
           <MetricCard
             label="Profit Factor"
             value={analytics.profitFactor === Infinity ? "∞" : analytics.profitFactor.toFixed(2)}
-            color={analytics.profitFactor >= 1.5 ? "text-green-400" : analytics.profitFactor >= 1 ? "text-yellow-400" : "text-red-400"}
+            color={analytics.profitFactor >= 1.5 ? "text-bull-light" : analytics.profitFactor >= 1 ? "text-watch-light" : "text-bear-light"}
             icon={<TrendingUp className="h-3 w-3" />}
           />
           <MetricCard
             label="Expectancy"
             value={`$${analytics.expectancy.toFixed(2)}`}
-            color={analytics.expectancy >= 0 ? "text-green-400" : "text-red-400"}
+            color={analytics.expectancy >= 0 ? "text-bull-light" : "text-bear-light"}
             icon={<DollarSign className="h-3 w-3" />}
             subtitle="per trade"
           />
           <MetricCard
             label="Best Trade"
             value={`$${analytics.largestWin.toFixed(2)}`}
-            color="text-green-400"
+            color="text-bull-light"
             icon={<Award className="h-3 w-3" />}
           />
           <MetricCard
             label="Worst Trade"
             value={`$${analytics.largestLoss.toFixed(2)}`}
-            color="text-red-400"
+            color="text-bear-light"
             icon={<AlertTriangle className="h-3 w-3" />}
           />
         </div>
 
         {/* Win/Loss & R-Multiple Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          <MetricCard label="Avg Win" value={`$${analytics.avgWin.toFixed(2)}`} color="text-green-400" />
-          <MetricCard label="Avg Loss" value={`$${analytics.avgLoss.toFixed(2)}`} color="text-red-400" />
-          <MetricCard label="Avg R (Wins)" value={`${analytics.avgRWin}R`} color="text-green-400" />
-          <MetricCard label="Avg R (Losses)" value={`${analytics.avgRLoss}R`} color="text-red-400" />
+          <MetricCard label="Avg Win" value={`$${analytics.avgWin.toFixed(2)}`} color="text-bull-light" />
+          <MetricCard label="Avg Loss" value={`$${analytics.avgLoss.toFixed(2)}`} color="text-bear-light" />
+          <MetricCard label="Avg R (Wins)" value={`${analytics.avgRWin}R`} color="text-bull-light" />
+          <MetricCard label="Avg R (Losses)" value={`${analytics.avgRLoss}R`} color="text-bear-light" />
         </div>
       </div>
 
@@ -296,19 +296,19 @@ export default function TradeAnalytics() {
             <MetricCard
               label="Current"
               value={`${analytics.currentStreak > 0 ? "+" : ""}${analytics.currentStreak}`}
-              color={analytics.currentStreak > 0 ? "text-green-400" : analytics.currentStreak < 0 ? "text-red-400" : "text-muted-foreground"}
+              color={analytics.currentStreak > 0 ? "text-bull-light" : analytics.currentStreak < 0 ? "text-bear-light" : "text-muted-foreground"}
               subtitle={analytics.currentStreak > 0 ? "win streak" : analytics.currentStreak < 0 ? "loss streak" : "neutral"}
             />
             <MetricCard
               label="Best Streak"
               value={String(analytics.longestWinStreak)}
-              color="text-green-400"
+              color="text-bull-light"
               subtitle="consecutive wins"
             />
             <MetricCard
               label="Worst Streak"
               value={String(analytics.longestLossStreak)}
-              color="text-red-400"
+              color="text-bear-light"
               subtitle="consecutive losses"
             />
           </div>
@@ -324,7 +324,7 @@ export default function TradeAnalytics() {
               <MetricCard
                 label="Avg Exit Efficiency"
                 value={`${avgExitEfficiency}%`}
-                color={avgExitEfficiency >= 50 ? "text-green-400" : avgExitEfficiency >= 25 ? "text-yellow-400" : "text-red-400"}
+                color={avgExitEfficiency >= 50 ? "text-bull-light" : avgExitEfficiency >= 25 ? "text-watch-light" : "text-bear-light"}
                 subtitle="of available profit captured"
               />
             </div>
@@ -467,7 +467,7 @@ export default function TradeAnalytics() {
           }));
 
         const borderColor = (wr: number) =>
-          wr > 0.55 ? "border-green-500/40" : wr < 0.45 ? "border-red-500/40" : "border-yellow-500/40";
+          wr > 0.55 ? "border-bull/40" : wr < 0.45 ? "border-bear/40" : "border-watch/40";
 
         return (
           <div className="bg-card border border-card-border rounded-lg p-4" data-testid="duration-analysis-section">
@@ -482,10 +482,10 @@ export default function TradeAnalytics() {
               <p><strong className="text-foreground">Swing (8-45 days):</strong> Standard swing trades, monthly options. Holds through a move or earnings cycle.</p>
               <p><strong className="text-foreground">Long-term (45+ days):</strong> Position trades, LEAPs, or stock holds. Larger moves, less frequent.</p>
               <Example type="good">
-                <strong className="text-green-400">Compare win rates across durations</strong> to find your optimal holding period.
+                <strong className="text-bull-light">Compare win rates across durations</strong> to find your optimal holding period.
               </Example>
               <Example type="neutral">
-                If your <strong className="text-yellow-400">day trades have a low win rate</strong> but your <strong className="text-green-400">swings are profitable</strong>, you might be better suited for swing trading.
+                If your <strong className="text-watch-light">day trades have a low win rate</strong> but your <strong className="text-bull-light">swings are profitable</strong>, you might be better suited for swing trading.
               </Example>
             </HelpBlock>
 
@@ -514,7 +514,7 @@ export default function TradeAnalytics() {
                           </div>
                           {cat.data.count > 0 && (
                             <span className={`text-lg font-bold tabular-nums font-mono ${
-                              wrPct > 55 ? "text-green-400" : wrPct < 45 ? "text-red-400" : "text-yellow-400"
+                              wrPct > 55 ? "text-bull-light" : wrPct < 45 ? "text-bear-light" : "text-watch-light"
                             }`}>
                               {wrPct}%
                             </span>
@@ -528,13 +528,13 @@ export default function TradeAnalytics() {
                             </div>
                             <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Total P/L</span>
-                              <span className={`font-mono font-semibold ${cat.data.totalPL >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              <span className={`font-mono font-semibold ${cat.data.totalPL >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                                 ${cat.data.totalPL.toFixed(2)}
                               </span>
                             </div>
                             <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Avg P/L</span>
-                              <span className={`font-mono font-semibold ${cat.data.avgPL >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              <span className={`font-mono font-semibold ${cat.data.avgPL >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                                 ${cat.data.avgPL.toFixed(2)}
                               </span>
                             </div>
@@ -620,10 +620,10 @@ export default function TradeAnalytics() {
           <p><strong className="text-foreground">MAE (Maximum Adverse Excursion):</strong> The WORST your trade ever got before recovering — the maximum drawdown experienced during the trade.</p>
           <p><strong className="text-foreground">Exit Efficiency:</strong> What percentage of the maximum available profit you actually captured. Actual P/L ÷ MFE.</p>
           <Example type="good">
-            <strong className="text-green-400">Exit Efficiency = 75%:</strong> You captured 75% of the best price — excellent exit timing.
+            <strong className="text-bull-light">Exit Efficiency = 75%:</strong> You captured 75% of the best price — excellent exit timing.
           </Example>
           <Example type="bad">
-            <strong className="text-red-400">Exit Efficiency = 15%:</strong> The trade was up big but you gave most of it back before closing.
+            <strong className="text-bear-light">Exit Efficiency = 15%:</strong> The trade was up big but you gave most of it back before closing.
           </Example>
           <p>If your exit efficiency is consistently low, you're closing winners too early or holding too long after the peak.</p>
           <p>If your MAE is consistently large relative to your final P/L, your stops might be too wide.</p>
@@ -648,21 +648,21 @@ export default function TradeAnalytics() {
               <MetricCard
                 label="Avg MFE"
                 value={`$${mfeData.summary.avgMFE.toFixed(2)}`}
-                color="text-green-400"
+                color="text-bull-light"
                 icon={<TrendingUp className="h-3 w-3" />}
                 subtitle="avg peak profit"
               />
               <MetricCard
                 label="Avg MAE"
                 value={`$${mfeData.summary.avgMAE.toFixed(2)}`}
-                color="text-red-400"
+                color="text-bear-light"
                 icon={<AlertTriangle className="h-3 w-3" />}
                 subtitle="avg max drawdown"
               />
               <MetricCard
                 label="Avg Exit Efficiency"
                 value={`${mfeData.summary.avgExitEfficiency.toFixed(1)}%`}
-                color={mfeData.summary.avgExitEfficiency >= 70 ? "text-green-400" : mfeData.summary.avgExitEfficiency >= 30 ? "text-yellow-400" : "text-red-400"}
+                color={mfeData.summary.avgExitEfficiency >= 70 ? "text-bull-light" : mfeData.summary.avgExitEfficiency >= 30 ? "text-watch-light" : "text-bear-light"}
                 icon={<Target className="h-3 w-3" />}
                 subtitle="profit captured"
               />
@@ -711,8 +711,8 @@ export default function TradeAnalytics() {
                         return (
                           <div className="bg-card border border-card-border rounded-lg p-2 text-xs">
                             <p className="font-bold text-foreground">{d.symbol}</p>
-                            <p className="text-green-400">MFE: ${d.mfe.toFixed(2)}</p>
-                            <p className="text-red-400">MAE: ${d.mae.toFixed(2)}</p>
+                            <p className="text-bull-light">MFE: ${d.mfe.toFixed(2)}</p>
+                            <p className="text-bear-light">MAE: ${d.mae.toFixed(2)}</p>
                             <p className="text-muted-foreground">Efficiency: {d.efficiency}%</p>
                           </div>
                         );
@@ -776,7 +776,7 @@ export default function TradeAnalytics() {
                       <div key={trade.tradeId} className="border border-card-border/30 rounded-lg p-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-foreground">{trade.symbol} <span className="text-muted-foreground font-normal">({trade.tradeType})</span></span>
-                          <span className={`text-micro font-mono ${trade.exitEfficiency >= 50 ? "text-green-400" : trade.exitEfficiency >= 0 ? "text-yellow-400" : "text-red-400"}`}>
+                          <span className={`text-micro font-mono ${trade.exitEfficiency >= 50 ? "text-bull-light" : trade.exitEfficiency >= 0 ? "text-watch-light" : "text-bear-light"}`}>
                             Efficiency: {trade.exitEfficiency.toFixed(1)}%
                           </span>
                         </div>

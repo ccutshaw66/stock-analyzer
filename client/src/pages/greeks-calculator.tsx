@@ -115,26 +115,26 @@ function rhoInterpretation(rho: number, isCall: boolean): string {
 
 function deltaColor(delta: number): string {
   const ad = Math.abs(delta);
-  if (ad > 0.7) return "text-green-400";
-  if (ad > 0.4) return "text-yellow-400";
-  return "text-red-400";
+  if (ad > 0.7) return "text-bull-light";
+  if (ad > 0.4) return "text-watch-light";
+  return "text-bear-light";
 }
 
 function gammaColor(gamma: number): string {
-  if (gamma > 0.05) return "text-red-400";   // high gamma = risky near expiry
-  if (gamma > 0.02) return "text-yellow-400";
-  return "text-green-400";
+  if (gamma > 0.05) return "text-bear-light";   // high gamma = risky near expiry
+  if (gamma > 0.02) return "text-watch-light";
+  return "text-bull-light";
 }
 
 function thetaColor(theta: number): string {
-  if (theta < -0.05) return "text-red-400";
-  if (theta < -0.02) return "text-yellow-400";
-  return "text-green-400";
+  if (theta < -0.05) return "text-bear-light";
+  if (theta < -0.02) return "text-watch-light";
+  return "text-bull-light";
 }
 
 function vegaColor(vega: number): string {
-  if (vega > 0.15) return "text-green-400";
-  if (vega > 0.05) return "text-yellow-400";
+  if (vega > 0.15) return "text-bull-light";
+  if (vega > 0.05) return "text-watch-light";
   return "text-muted-foreground";
 }
 
@@ -218,12 +218,12 @@ export default function GreeksCalculator() {
         <p>The Greeks measure how an option's price changes when market conditions change. They help you manage risk.</p>
         <p><strong className="text-foreground">Delta (Δ):</strong> How much the option price moves per $1 stock move. A delta of 0.50 means the option gains ~$50 per contract per $1 stock increase. Calls have positive delta (0 to 1), puts have negative delta (-1 to 0).</p>
         <Example type="good">
-          <strong className="text-green-400">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
+          <strong className="text-bull-light">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
         </Example>
         <p><strong className="text-foreground">Gamma (Γ):</strong> How fast delta changes. High gamma near expiration means delta (and your position) can shift dramatically.</p>
         <p><strong className="text-foreground">Theta (Θ):</strong> Time decay — how much value the option loses each day. Negative for long options (you lose money each day), positive for short options (you benefit from decay).</p>
         <Example type="bad">
-          <strong className="text-red-400">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
+          <strong className="text-bear-light">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
         </Example>
         <p><strong className="text-foreground">Vega (ν):</strong> Sensitivity to implied volatility. A vega of 0.10 means a 1% IV increase adds $10 per contract. Buy options when you expect IV to rise, sell when you expect it to fall.</p>
         <p><strong className="text-foreground">Rho (ρ):</strong> Sensitivity to interest rates. Usually the least impactful Greek, but matters for LEAPS and in high-rate environments.</p>
@@ -359,7 +359,7 @@ export default function GreeksCalculator() {
               <GreekCard
                 label="Prob. ITM"
                 value={`${(greeks.probITM * 100).toFixed(2)}%`}
-                color={greeks.probITM > 0.5 ? "text-green-400" : greeks.probITM > 0.3 ? "text-yellow-400" : "text-red-400"}
+                color={greeks.probITM > 0.5 ? "text-bull-light" : greeks.probITM > 0.3 ? "text-watch-light" : "text-bear-light"}
                 icon={<Target className="h-3 w-3" />}
                 interpretation={`There is a ${(greeks.probITM * 100).toFixed(1)}% chance this option expires in the money.`}
               />
@@ -379,31 +379,31 @@ export default function GreeksCalculator() {
                   <tbody>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">Stock moves +$1</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.delta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.delta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {greeks.delta >= 0 ? "+" : ""}${(greeks.delta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">Stock moves -$1</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${-greeks.delta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${-greeks.delta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {-greeks.delta >= 0 ? "+" : ""}${(-greeks.delta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">One day passes</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.theta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.theta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {greeks.theta >= 0 ? "+" : ""}${(greeks.theta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">IV increases 1%</td>
-                      <td className="py-1.5 text-right tabular-nums font-mono text-green-400">
+                      <td className="py-1.5 text-right tabular-nums font-mono text-bull-light">
                         +${(greeks.vega * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr>
                       <td className="py-1.5 text-muted-foreground">IV decreases 1%</td>
-                      <td className="py-1.5 text-right tabular-nums font-mono text-red-400">
+                      <td className="py-1.5 text-right tabular-nums font-mono text-bear-light">
                         -${(greeks.vega * 100).toFixed(2)}
                       </td>
                     </tr>
@@ -414,7 +414,7 @@ export default function GreeksCalculator() {
           </>
         ) : (
           <div className="flex items-center gap-2 p-4 bg-muted/20 border border-card-border/50 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-yellow-400" />
+            <AlertTriangle className="h-4 w-4 text-watch-light" />
             <span className="text-xs text-muted-foreground">Enter valid positive values for stock price, strike, DTE, and IV to calculate Greeks.</span>
           </div>
         )}

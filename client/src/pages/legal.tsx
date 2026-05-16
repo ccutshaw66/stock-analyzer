@@ -62,7 +62,7 @@ function TermsOfService() {
       </Section>
 
       <Section title="2. Not Financial Advice">
-        <p><strong className="text-yellow-400">Stock Otter is NOT a registered investment advisor, broker-dealer, or financial planner.</strong> All data, scores, analysis, trade ideas, market maker positioning, and any other information provided by the Service are for <strong className="text-white">educational and informational purposes only.</strong></p>
+        <p><strong className="text-watch-light">Stock Otter is NOT a registered investment advisor, broker-dealer, or financial planner.</strong> All data, scores, analysis, trade ideas, market maker positioning, and any other information provided by the Service are for <strong className="text-white">educational and informational purposes only.</strong></p>
         <p>The Service does not provide personalized investment advice. Any "trade ideas" or "suggestions" are algorithmic outputs based on publicly available data and should not be construed as recommendations to buy, sell, or hold any security.</p>
         <p><strong className="text-white">You are solely responsible for your own investment decisions.</strong> Past performance does not guarantee future results. All investments carry risk, including the possible loss of principal.</p>
       </Section>

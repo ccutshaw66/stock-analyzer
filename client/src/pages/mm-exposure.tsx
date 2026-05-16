@@ -120,10 +120,10 @@ export default function MMExposure() {
         <p><strong className="text-foreground">Gamma Flip:</strong> Price where dealer gamma switches from positive to negative. Above = MMs dampen moves (range-bound). Below = MMs amplify moves (volatile).</p>
         <p><strong className="text-foreground">Max Pain:</strong> Price where the most options expire worthless. MMs profit most here — price gravitates to this level into expiration.</p>
         <Example type="good">
-          <strong className="text-green-400">Positive Gamma (Dealer Long):</strong> MMs buy dips, sell rallies. Tight range. Sell premium.
+          <strong className="text-bull-light">Positive Gamma (Dealer Long):</strong> MMs buy dips, sell rallies. Tight range. Sell premium.
         </Example>
         <Example type="bad">
-          <strong className="text-red-400">Negative Gamma (Dealer Short):</strong> MMs sell into drops, buy into rallies. Wild swings. Buy directional.
+          <strong className="text-bear-light">Negative Gamma (Dealer Short):</strong> MMs sell into drops, buy into rallies. Wild swings. Buy directional.
         </Example>
       </HelpBlock>
 
@@ -185,9 +185,9 @@ export default function MMExposure() {
           return <InvalidSymbol ticker={ticker} />;
         }
         return (
-          <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-red-400" />
-            <span className="text-xs text-red-400">{msg.replace(/^\d+:\s*/, "").replace(/[{}"]*/g, "").replace(/error:/i, "").trim() || "Failed to load MM exposure data"}</span>
+          <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/30 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-bear-light" />
+            <span className="text-xs text-bear-light">{msg.replace(/^\d+:\s*/, "").replace(/[{}"]*/g, "").replace(/error:/i, "").trim() || "Failed to load MM exposure data"}</span>
           </div>
         );
       })()}
@@ -218,15 +218,15 @@ export default function MMExposure() {
 
           {/* Regime Banner */}
           <div className={`p-4 rounded-lg border ${data.regime === "POSITIVE_GAMMA"
-            ? "bg-green-500/5 border-green-500/30"
-            : "bg-red-500/5 border-red-500/30"
+            ? "bg-bull/5 border-bull/30"
+            : "bg-bear/5 border-bear/30"
           }`} data-testid="regime-banner">
             <div className="flex items-center gap-2 mb-2">
               {data.regime === "POSITIVE_GAMMA"
-                ? <Shield className="h-5 w-5 text-green-400" />
-                : <Zap className="h-5 w-5 text-red-400" />
+                ? <Shield className="h-5 w-5 text-bull-light" />
+                : <Zap className="h-5 w-5 text-bear-light" />
               }
-              <span className={`text-sm font-bold ${data.regime === "POSITIVE_GAMMA" ? "text-green-400" : "text-red-400"}`}>
+              <span className={`text-sm font-bold ${data.regime === "POSITIVE_GAMMA" ? "text-bull-light" : "text-bear-light"}`}>
                 {data.regimeLabel}
               </span>
             </div>
@@ -240,7 +240,7 @@ export default function MMExposure() {
               value={data.callWall ? `$${data.callWall.strike}` : "N/A"}
               subtitle={data.callWall ? `${data.callWall.callOI.toLocaleString()} OI` : ""}
               icon={<TrendingDown className="h-3.5 w-3.5" />}
-              color="text-red-400"
+              color="text-bear-light"
               hint="Resistance"
             />
             <LevelCard
@@ -248,7 +248,7 @@ export default function MMExposure() {
               value={data.putWall ? `$${data.putWall.strike}` : "N/A"}
               subtitle={data.putWall ? `${data.putWall.putOI.toLocaleString()} OI` : ""}
               icon={<TrendingUp className="h-3.5 w-3.5" />}
-              color="text-green-400"
+              color="text-bull-light"
               hint="Support"
             />
             <LevelCard
@@ -256,7 +256,7 @@ export default function MMExposure() {
               value={data.gammaFlip ? `$${data.gammaFlip.toFixed(2)}` : "N/A"}
               subtitle={data.gammaFlip ? (data.spot > data.gammaFlip ? "Spot ABOVE" : "Spot BELOW") : ""}
               icon={<Activity className="h-3.5 w-3.5" />}
-              color="text-yellow-400"
+              color="text-watch-light"
               hint="Regime boundary"
             />
             <LevelCard
@@ -272,7 +272,7 @@ export default function MMExposure() {
               value={data.putCallRatioOI.toFixed(2)}
               subtitle={data.putCallRatioOI > 1.2 ? "Bearish positioning" : data.putCallRatioOI < 0.8 ? "Bullish positioning" : "Neutral"}
               icon={<BarChart3 className="h-3.5 w-3.5" />}
-              color={data.putCallRatioOI > 1.2 ? "text-red-400" : data.putCallRatioOI < 0.8 ? "text-green-400" : "text-foreground"}
+              color={data.putCallRatioOI > 1.2 ? "text-bear-light" : data.putCallRatioOI < 0.8 ? "text-bull-light" : "text-foreground"}
               hint="Put/Call"
             />
           </div>
@@ -343,16 +343,16 @@ export default function MMExposure() {
             <div className="space-y-3">
               {data.tradeIdeas.map((idea, i) => (
                 <div key={i} className="flex items-start gap-3 p-3 bg-muted/20 border border-card-border/50 rounded-lg">
-                  <div className={`shrink-0 mt-0.5 ${idea.sentiment === "Bullish" ? "text-green-400" : idea.sentiment === "Bearish" ? "text-red-400" : "text-yellow-400"}`}>
+                  <div className={`shrink-0 mt-0.5 ${idea.sentiment === "Bullish" ? "text-bull-light" : idea.sentiment === "Bearish" ? "text-bear-light" : "text-watch-light"}`}>
                     {idea.sentiment === "Bullish" ? <ArrowUpRight className="h-4 w-4" /> : idea.sentiment === "Bearish" ? <ArrowDownRight className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-xs font-bold text-foreground">{idea.strategy}</span>
                       <span className={`text-mini font-bold px-1.5 py-0.5 rounded ${
-                        idea.sentiment === "Bullish" ? "bg-green-500/15 text-green-400" :
-                        idea.sentiment === "Bearish" ? "bg-red-500/15 text-red-400" :
-                        "bg-yellow-500/15 text-yellow-400"
+                        idea.sentiment === "Bullish" ? "bg-bull/15 text-bull-light" :
+                        idea.sentiment === "Bearish" ? "bg-bear/15 text-bear-light" :
+                        "bg-watch/15 text-watch-light"
                       }`}>{idea.sentiment}</span>
                       <span className="text-micro font-mono text-primary">{idea.level}</span>
                     </div>
@@ -367,7 +367,7 @@ export default function MMExposure() {
           {data.unusualActivity.length > 0 && (
             <div className="bg-card border border-card-border rounded-lg p-4" data-testid="unusual-activity">
               <div className="flex items-center gap-2 mb-3">
-                <Volume2 className="h-4 w-4 text-yellow-400" />
+                <Volume2 className="h-4 w-4 text-watch-light" />
                 <h3 className="text-sm font-bold text-foreground">Unusual Options Activity</h3>
                 <span className="text-micro text-muted-foreground">Volume/OI ratio &gt; 2.0 = fresh positioning</span>
               </div>
@@ -389,14 +389,14 @@ export default function MMExposure() {
                     {data.unusualActivity.map((u, i) => (
                       <tr key={i} className="border-b border-card-border/30 hover:bg-muted/30">
                         <td className="py-2 px-2">
-                          <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${u.type === "CALL" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+                          <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${u.type === "CALL" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
                             {u.type}
                           </span>
                         </td>
                         <td className="py-2 px-2 text-right font-mono font-bold text-foreground">${u.strike}</td>
-                        <td className="py-2 px-2 text-right font-mono text-yellow-400 font-bold">{u.volume.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right font-mono text-watch-light font-bold">{u.volume.toLocaleString()}</td>
                         <td className="py-2 px-2 text-right font-mono text-foreground">{u.openInterest.toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right font-mono font-bold text-yellow-400">{u.ratio}x</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold text-watch-light">{u.ratio}x</td>
                         <td className="py-2 px-2 text-right font-mono text-muted-foreground hidden sm:table-cell">{u.iv}%</td>
                         <td className="py-2 px-2 text-right font-mono text-muted-foreground hidden sm:table-cell">${u.bid}/{u.ask}</td>
                         <td className="py-2 px-2 font-mono text-muted-foreground hidden md:table-cell">{u.expiry}</td>
@@ -410,10 +410,10 @@ export default function MMExposure() {
 
           {/* Stats Footer */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="Total Call OI" value={data.totalCallOI.toLocaleString()} color="text-green-400" />
-            <StatCard label="Total Put OI" value={data.totalPutOI.toLocaleString()} color="text-red-400" />
-            <StatCard label="Call Volume" value={data.totalCallVol.toLocaleString()} color="text-green-400" />
-            <StatCard label="Put Volume" value={data.totalPutVol.toLocaleString()} color="text-red-400" />
+            <StatCard label="Total Call OI" value={data.totalCallOI.toLocaleString()} color="text-bull-light" />
+            <StatCard label="Total Put OI" value={data.totalPutOI.toLocaleString()} color="text-bear-light" />
+            <StatCard label="Call Volume" value={data.totalCallVol.toLocaleString()} color="text-bull-light" />
+            <StatCard label="Put Volume" value={data.totalPutVol.toLocaleString()} color="text-bear-light" />
           </div>
         </>
       )}

@@ -100,16 +100,16 @@ export default function Dividends() {
   };
 
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
 
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
 
   const scoreBgColor = (s: number) =>
-    s >= 60 ? "border-green-500/40" : s >= 35 ? "border-yellow-500/40" : "border-red-500/40";
+    s >= 60 ? "border-bull/40" : s >= 35 ? "border-watch/40" : "border-bear/40";
 
   const payoutColor = (p: number) =>
-    p >= 20 && p <= 60 ? "text-green-400" : p > 60 && p <= 80 ? "text-yellow-400" : "text-red-400";
+    p >= 20 && p <= 60 ? "text-bull-light" : p > 60 && p <= 80 ? "text-watch-light" : "text-bear-light";
 
   // Calculate days until ex-div
   const daysUntilExDiv = useMemo(() => {
@@ -144,10 +144,10 @@ export default function Dividends() {
         <p><strong className="text-foreground">Distribution Frequency:</strong> How often dividends are paid — Monthly, Quarterly, Semi-Annual, or Annual. Most US stocks pay quarterly.</p>
         <p><strong className="text-foreground">Dividend Quality Score (0-100):</strong> A composite ranking based on yield level, payout sustainability, yield growth vs 5-year average, payment consistency, and frequency.</p>
         <Example type="good">
-          <strong className="text-green-400">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
+          <strong className="text-bull-light">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
         </Example>
         <Example type="good">
-          <strong className="text-green-400">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
+          <strong className="text-bull-light">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
         </Example>
         <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth — top dividend pick" />
         <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield or payout — may lack growth or consistency" />
@@ -230,7 +230,7 @@ export default function Dividends() {
                 <MiniCard
                   label="Ex-Dividend Date"
                   value={tickerDividend.exDividendDate || "N/A"}
-                  color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-yellow-400" : "text-foreground"}
+                  color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-watch-light" : "text-foreground"}
                   icon={<AlertTriangle className="h-3 w-3" />}
                   subtitle={daysUntilExDiv !== null ? (daysUntilExDiv > 0 ? `${daysUntilExDiv} day${daysUntilExDiv !== 1 ? "s" : ""} away` : daysUntilExDiv === 0 ? "Today!" : "Passed") : "Must own before this date"}
                   data-testid="dividend-ex-div-date"
@@ -238,7 +238,7 @@ export default function Dividends() {
                 <MiniCard
                   label="5Y Avg Yield"
                   value={tickerDividend.fiveYearAvgYield != null ? `${tickerDividend.fiveYearAvgYield.toFixed(2)}%` : "N/A"}
-                  color={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "text-green-400" : "text-muted-foreground"}
+                  color={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "text-bull-light" : "text-muted-foreground"}
                   icon={<TrendingUp className="h-3 w-3" />}
                   subtitle={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "Above avg" : ""}
                 />
@@ -252,16 +252,16 @@ export default function Dividends() {
               </div>
 
               {tickerDividend.dividendRate === 0 && (
-                <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
-                  <span className="text-xs text-red-400">{tickerDividend.ticker} does not currently pay a dividend.</span>
+                <div className="flex items-center gap-2 p-2 bg-bear/10 border border-bear/30 rounded-lg">
+                  <AlertTriangle className="h-3.5 w-3.5 text-bear-light" />
+                  <span className="text-xs text-bear-light">{tickerDividend.ticker} does not currently pay a dividend.</span>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <AlertTriangle className="h-3.5 w-3.5 text-yellow-400" />
-              <span className="text-xs text-yellow-400">No dividend data available for {activeTicker}.</span>
+            <div className="flex items-center gap-2 p-2 bg-watch/10 border border-watch/30 rounded-lg">
+              <AlertTriangle className="h-3.5 w-3.5 text-watch-light" />
+              <span className="text-xs text-watch-light">No dividend data available for {activeTicker}.</span>
             </div>
           )}
         </div>
@@ -518,9 +518,9 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
   };
 
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
 
   const quarterlyStocks = data?.weeklyPlan.filter(s => s.months !== "Monthly") || [];
   const monthlyStocks = data?.weeklyPlan.filter(s => s.months === "Monthly") || [];
@@ -597,7 +597,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
             </div>
             <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
               <span className="text-mini font-semibold text-muted-foreground uppercase block">Coverage</span>
-              <span className="text-sm font-bold text-green-400">52 weeks</span>
+              <span className="text-sm font-bold text-bull-light">52 weeks</span>
               <span className="text-mini text-muted-foreground block">Every week paid</span>
             </div>
           </div>

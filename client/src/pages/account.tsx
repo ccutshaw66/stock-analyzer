@@ -116,7 +116,7 @@ export default function AccountPage() {
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 text-xs text-destructive">{profileError}</div>
           )}
           {profileMsg && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-xs text-green-400 flex items-center gap-1.5">
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-2.5 text-xs text-bull-light flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5" /> {profileMsg}
             </div>
           )}
@@ -190,7 +190,7 @@ export default function AccountPage() {
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 text-xs text-destructive">{passwordError}</div>
           )}
           {passwordMsg && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-xs text-green-400 flex items-center gap-1.5">
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-2.5 text-xs text-bull-light flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5" /> {passwordMsg}
             </div>
           )}

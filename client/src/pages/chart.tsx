@@ -413,7 +413,7 @@ function StrategyChart({ data, highlightedTradeNum }: {
 // ─── Summary stats grid ────────────────────────────────────────────────────
 
 function SummaryStats({ summary }: { summary: ChartSummary }) {
-  const totalColor = summary.totalPnLIncludingUnrealized >= 0 ? "text-green-400" : "text-red-400";
+  const totalColor = summary.totalPnLIncludingUnrealized >= 0 ? "text-bull-light" : "text-bear-light";
   const cells = [
     { label: "Total P/L", value: fmtMoney(summary.totalPnLIncludingUnrealized), color: totalColor, hint: `realized ${fmtMoney(summary.totalPnLDollar)} + unrealized ${fmtMoney(summary.unrealizedPnLDollar)}` },
     { label: "B&H Capture", value: fmtPct(summary.capturedBnHPct, 1), color: "text-foreground", hint: `B&H: ${fmtMoney(summary.buyAndHoldDollar)} (${fmtPct(summary.buyAndHoldReturnPct, 1)})` },
@@ -572,7 +572,7 @@ function TradeList({
                 </td>
                 <td className="px-2 py-1.5 text-muted-foreground">{t.source}</td>
                 <td className="px-2 py-1.5">
-                  <span className={t.side === "LONG" ? "text-green-400" : "text-red-400"}>{t.side}</span>
+                  <span className={t.side === "LONG" ? "text-bull-light" : "text-bear-light"}>{t.side}</span>
                 </td>
                 <td className="px-2 py-1.5 font-mono text-2xs">
                   {fmtDate(t.entryDate)} <span className="text-muted-foreground">${t.entryPrice.toFixed(2)}</span>
@@ -583,10 +583,10 @@ function TradeList({
                     : <>{fmtDate(t.exitDate)} <span className="text-muted-foreground">${t.exitPrice?.toFixed(2)}</span></>}
                 </td>
                 <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{t.holdBars}</td>
-                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${won ? "text-green-400" : "text-red-400"}`}>
+                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${won ? "text-bull-light" : "text-bear-light"}`}>
                   {fmtPct(t.returnPct != null ? t.returnPct * 100 : null, 1)}
                 </td>
-                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${won ? "text-green-400" : "text-red-400"}`}>
+                <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${won ? "text-bull-light" : "text-bear-light"}`}>
                   {fmtMoney(t.pnlDollar)}
                 </td>
                 <td className="px-2 py-1.5 text-micro text-muted-foreground">
@@ -702,7 +702,7 @@ export default function ChartPage() {
       {activeTicker && error && !isLoading && (
         <Card>
           <CardContent className="p-6 text-center">
-            <p className="text-red-400">Failed to load chart data: {(error as Error).message}</p>
+            <p className="text-bear-light">Failed to load chart data: {(error as Error).message}</p>
           </CardContent>
         </Card>
       )}

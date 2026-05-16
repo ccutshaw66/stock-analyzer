@@ -17,8 +17,8 @@ interface AlertRow {
 
 const SEV_COLOR: Record<string, string> = {
   info: "bg-blue-500/10 text-blue-400",
-  warn: "bg-yellow-500/10 text-yellow-400",
-  critical: "bg-red-500/10 text-red-400",
+  warn: "bg-watch/10 text-watch-light",
+  critical: "bg-bear/10 text-bear-light",
 };
 
 function timeAgo(iso: string): string {
@@ -67,7 +67,7 @@ export function AlertsBell() {
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-micro font-bold rounded-full flex items-center justify-center">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-bear text-white text-micro font-bold rounded-full flex items-center justify-center">
             {unread > 99 ? "99+" : unread}
           </span>
         )}

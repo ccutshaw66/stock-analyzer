@@ -88,23 +88,23 @@ const VERDICT_COPY: Record<ConvictionVerdict, { label: string; tone: "bull" | "b
 };
 
 function verdictToneClasses(tone: "bull" | "bear" | "mixed") {
-  if (tone === "bull") return "bg-green-500/15 text-green-400 border-green-500/30";
-  if (tone === "bear") return "bg-red-500/15 text-red-400 border-red-500/30";
-  return "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
+  if (tone === "bull") return "bg-bull/15 text-bull-light border-bull/30";
+  if (tone === "bear") return "bg-bear/15 text-bear-light border-bear/30";
+  return "bg-watch/15 text-watch-light border-watch/30";
 }
 
 function dirIcon(direction: AxisComponent["direction"]) {
-  if (direction === "bullish") return <TrendingUp className="h-3.5 w-3.5 text-green-400" />;
-  if (direction === "bearish") return <TrendingDown className="h-3.5 w-3.5 text-red-400" />;
+  if (direction === "bullish") return <TrendingUp className="h-3.5 w-3.5 text-bull-light" />;
+  if (direction === "bearish") return <TrendingDown className="h-3.5 w-3.5 text-bear-light" />;
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
 function scoreColor(score: number): string {
-  if (score >= 50) return "text-green-400";
-  if (score >= 15) return "text-green-400/80";
-  if (score <= -50) return "text-red-400";
-  if (score <= -15) return "text-red-400/80";
-  return "text-yellow-400/80";
+  if (score >= 50) return "text-bull-light";
+  if (score >= 15) return "text-bull-light/80";
+  if (score <= -50) return "text-bear-light";
+  if (score <= -15) return "text-bear-light/80";
+  return "text-watch-light/80";
 }
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
@@ -227,7 +227,7 @@ function ConfluenceGauge({ confluence, alignment }: { confluence: number; alignm
 
 function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon: React.ReactNode }) {
   const tone = axis.score >= 15 ? "bullish" : axis.score <= -15 ? "bearish" : "neutral";
-  const dot = tone === "bullish" ? "bg-green-400" : tone === "bearish" ? "bg-red-400" : "bg-yellow-400";
+  const dot = tone === "bullish" ? "bg-bull-light" : tone === "bearish" ? "bg-bear-light" : "bg-watch-light";
   return (
     <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -316,9 +316,9 @@ function fmtPct(n: number | null, samples: number): string {
 
 function pctTone(n: number | null, samples: number): string {
   if (n === null || samples < MIN_SAMPLES_FOR_DISPLAY) return "text-muted-foreground";
-  if (n > 0.5) return "text-green-400";
-  if (n < -0.5) return "text-red-400";
-  return "text-yellow-400/80";
+  if (n > 0.5) return "text-bull-light";
+  if (n < -0.5) return "text-bear-light";
+  return "text-watch-light/80";
 }
 
 function BacktestPanel() {
@@ -486,8 +486,8 @@ export default function ConvictionPage() {
           subtitle={`${activeTicker} — one signal from four independent data streams.`}
         />
         <Disclaimer />
-        <div className="bg-card border border-red-500/30 rounded-xl p-6 text-center">
-          <p className="text-red-400 font-semibold">Could not build Conviction Compass</p>
+        <div className="bg-card border border-bear/30 rounded-xl p-6 text-center">
+          <p className="text-bear-light font-semibold">Could not build Conviction Compass</p>
           <p className="text-xs text-muted-foreground mt-2">{(error as any)?.message || "Try refreshing."}</p>
         </div>
       </div>
@@ -507,9 +507,9 @@ export default function ConvictionPage() {
           <div className="text-xs text-muted-foreground">
             Confidence:{" "}
             <span className={`font-semibold ${
-              compass.confidence === "HIGH" ? "text-green-400"
-                : compass.confidence === "MODERATE" ? "text-yellow-400"
-                : "text-red-400"
+              compass.confidence === "HIGH" ? "text-bull-light"
+                : compass.confidence === "MODERATE" ? "text-watch-light"
+                : "text-bear-light"
             }`}>{compass.confidence}</span>
           </div>
         }

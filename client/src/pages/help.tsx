@@ -42,7 +42,7 @@ export default function Help() {
         </Q>
         <Q q="How do I analyze a stock?">
           <p>Type a ticker symbol (like AAPL, MSFT, TSLA) in the search bar at the top and click Analyze. The app will pull real-time data from Yahoo Finance and score the stock across 10 categories on a 0-10 scale.</p>
-          <p>The verdict badge in the header shows: <span className="text-green-400 font-semibold">YES</span> (strong buy, 7+), <span className="text-yellow-400 font-semibold">WATCH</span> (hold/monitor, 4-7), or <span className="text-red-400 font-semibold">NO</span> (avoid, below 4).</p>
+          <p>The verdict badge in the header shows: <span className="text-bull-light font-semibold">YES</span> (strong buy, 7+), <span className="text-watch-light font-semibold">WATCH</span> (hold/monitor, 4-7), or <span className="text-bear-light font-semibold">NO</span> (avoid, below 4).</p>
         </Q>
         <Q q="Where is my data stored?">
           <p>All data (watchlist, portfolio, trades, settings) is stored in a SQLite database on the server. It persists across sessions. There's no user login — everyone using the same deployment shares the same data.</p>
@@ -56,7 +56,7 @@ export default function Help() {
           <p>Each category is weighted and combined into a 0-10 final score.</p>
         </Q>
         <Q q="What does the Snapshot section show?">
-          <p>Quick-look metrics with color coding: <span className="text-green-400 font-semibold">Green</span> = good, <span className="text-red-400 font-semibold">Red</span> = concerning, <span className="text-yellow-400 font-semibold">Yellow</span> = neutral. This gives you an instant feel for the stock's health.</p>
+          <p>Quick-look metrics with color coding: <span className="text-bull-light font-semibold">Green</span> = good, <span className="text-bear-light font-semibold">Red</span> = concerning, <span className="text-watch-light font-semibold">Yellow</span> = neutral. This gives you an instant feel for the stock's health.</p>
         </Q>
         <Q q="How do I add to Watchlist or Portfolio?">
           <p>After analyzing a stock, use the "+ Watchlist" or "+ Portfolio" buttons at the bottom of the sidebar. Watchlist = stocks you're watching. Portfolio = stocks you own. Both show live rankings by score.</p>
@@ -71,7 +71,7 @@ export default function Help() {
           <p><strong className="text-foreground">AMC (Adaptive Momentum Confluence):</strong> Custom strategy combining MACD histogram divergence, Bollinger squeeze breakouts, volume confirmation, and ADX trend strength. This was backtested over 528 trades with a 1.27 profit factor.</p>
         </Q>
         <Q q="What do the signals mean?">
-          <p><span className="text-green-400 font-semibold">BUY</span> = active buy signal. <span className="text-red-400 font-semibold">SELL</span> = active sell signal. <span className="text-yellow-400 font-semibold">NEUTRAL</span> = no clear signal. Each card shows entry/exit levels, stop loss, and take profit targets.</p>
+          <p><span className="text-bull-light font-semibold">BUY</span> = active buy signal. <span className="text-bear-light font-semibold">SELL</span> = active sell signal. <span className="text-watch-light font-semibold">NEUTRAL</span> = no clear signal. Each card shows entry/exit levels, stop loss, and take profit targets.</p>
         </Q>
       </Section>
 
@@ -105,7 +105,7 @@ export default function Help() {
           <p><strong className="text-foreground">If it expired worthless:</strong> Close price = 0. For credit spreads that expire OTM, this means you kept the full credit (profit).</p>
         </Q>
         <Q q="What are Behavior Tags?">
-          <p>Track your trading psychology: <span className="text-green-400 font-semibold">All to Plan</span> = followed your rules. <span className="text-red-400 font-semibold">Fear/Panic</span> = closed too early out of fear. <span className="text-red-400 font-semibold">Greed/FOMO</span> = chased a trade. <span className="text-yellow-400 font-semibold">Bias/Stubborn</span> = held too long. <span className="text-yellow-400 font-semibold">Feed the Pigeons</span> = took small gains instead of letting winners run.</p>
+          <p>Track your trading psychology: <span className="text-bull-light font-semibold">All to Plan</span> = followed your rules. <span className="text-bear-light font-semibold">Fear/Panic</span> = closed too early out of fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> = chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> = held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> = took small gains instead of letting winners run.</p>
           <p>The Behavior Analysis section shows your tag counts so you can identify patterns in your trading mistakes.</p>
         </Q>
         <Q q="How does Refresh P/L work?">
@@ -172,7 +172,7 @@ export default function Help() {
           <p>A quick sanity check across five heuristics: put strike below stock price, call strike above cost basis, put yield &gt; 10% annualized, capital at risk under 25% of account, and DTE in the 21–45 sweet spot. 80%+ is a clean setup; below 60% means rethink.</p>
         </Q>
         <Q q="When does The Wheel blow up?">
-          <p>The wheel's biggest risk is a <strong className="text-red-400">catastrophic gap down</strong>. If you CSP a stock at $100 and it crashes to $50 on earnings, you're assigned at $100, holding a huge unrealized loss, and any call you sell above $100 (to avoid locking in the loss) will barely collect premium.</p>
+          <p>The wheel's biggest risk is a <strong className="text-bear-light">catastrophic gap down</strong>. If you CSP a stock at $100 and it crashes to $50 on earnings, you're assigned at $100, holding a huge unrealized loss, and any call you sell above $100 (to avoid locking in the loss) will barely collect premium.</p>
           <p>Only wheel tickers you'd genuinely be willing to own for years. Avoid: pre-earnings, biotech binary events, small-caps, meme stocks, and anything with a pending regulatory decision.</p>
         </Q>
         <Q q="How do I pick strikes?">

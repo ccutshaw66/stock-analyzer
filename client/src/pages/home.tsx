@@ -57,8 +57,8 @@ export default function Home() {
             isSymbolNotFound(error.message || "") ? (
               <InvalidSymbol ticker={activeTicker} />
             ) : (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center" data-testid="error-message">
-                <p className="text-red-400 font-medium">
+              <div className="bg-bear/10 border border-bear/20 rounded-lg p-4 text-center" data-testid="error-message">
+                <p className="text-bear-light font-medium">
                   {error.message?.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to analyze ticker. Please try again."}
                 </p>
               </div>

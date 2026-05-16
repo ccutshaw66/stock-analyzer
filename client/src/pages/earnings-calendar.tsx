@@ -85,10 +85,10 @@ export default function EarningsCalendar() {
         <p><strong className="text-foreground">Earnings season</strong> occurs every quarter when public companies report their financial results. These reports often cause significant stock price moves.</p>
         <p><strong className="text-foreground">EPS (Earnings Per Share):</strong> The most watched metric. Analysts publish consensus estimates, and the stock reacts based on whether the company beats or misses.</p>
         <Example type="good">
-          <strong className="text-green-400">Beat:</strong> If EPS estimate is $1.50 and actual comes in at $1.65, that's a $0.15 beat (+10%). The stock usually gaps up, especially if guidance is raised.
+          <strong className="text-bull-light">Beat:</strong> If EPS estimate is $1.50 and actual comes in at $1.65, that's a $0.15 beat (+10%). The stock usually gaps up, especially if guidance is raised.
         </Example>
         <Example type="bad">
-          <strong className="text-red-400">Miss:</strong> If EPS estimate is $1.50 and actual is $1.35, that's a $0.15 miss (-10%). The stock often gaps down hard, and IV crush hits option holders.
+          <strong className="text-bear-light">Miss:</strong> If EPS estimate is $1.50 and actual is $1.35, that's a $0.15 miss (-10%). The stock often gaps down hard, and IV crush hits option holders.
         </Example>
         <p><strong className="text-foreground">Revenue Estimate:</strong> Even with an EPS beat, a revenue miss can tank a stock — it suggests the earnings quality is poor (cost-cutting vs. actual growth).</p>
         <ScoreRange label="Beat" range="> 0%" color="green" description="Company exceeded analyst expectations — typically bullish" />
@@ -112,9 +112,9 @@ export default function EarningsCalendar() {
         )}
 
         {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
-            <span className="text-xs text-red-400">Failed to load earnings data. Please try again.</span>
+          <div className="flex items-center gap-2 p-3 bg-bear/10 border border-bear/30 rounded-lg">
+            <AlertTriangle className="h-4 w-4 text-bear-light shrink-0" />
+            <span className="text-xs text-bear-light">Failed to load earnings data. Please try again.</span>
           </div>
         )}
 
@@ -144,9 +144,9 @@ export default function EarningsCalendar() {
                         {days != null && (
                           <span className={`text-mini font-bold px-1.5 py-0.5 rounded ${
                             days <= 7
-                              ? "bg-red-500/15 text-red-400"
+                              ? "bg-bear/15 text-bear-light"
                               : days <= 30
-                              ? "bg-yellow-500/15 text-yellow-400"
+                              ? "bg-watch/15 text-watch-light"
                               : "bg-muted text-muted-foreground"
                           }`} data-testid={`earnings-countdown-${entry.ticker}`}>
                             {days < 0
@@ -213,23 +213,23 @@ export default function EarningsCalendar() {
                                     {q.estimate != null ? `$${q.estimate.toFixed(2)}` : "—"}
                                   </td>
                                   <td className={`py-1.5 text-right font-mono tabular-nums ${
-                                    isBeat ? "text-green-400" : isMiss ? "text-red-400" : "text-muted-foreground"
+                                    isBeat ? "text-bull-light" : isMiss ? "text-bear-light" : "text-muted-foreground"
                                   }`}>
                                     {q.surprisePct != null ? `${q.surprisePct >= 0 ? "+" : ""}${q.surprisePct.toFixed(1)}%` : "—"}
                                   </td>
                                   <td className="py-1.5 text-right">
                                     {isBeat && (
-                                      <span className="inline-flex items-center gap-0.5 text-green-400 font-semibold">
+                                      <span className="inline-flex items-center gap-0.5 text-bull-light font-semibold">
                                         <TrendingUp className="h-3 w-3" /> Beat
                                       </span>
                                     )}
                                     {isMiss && (
-                                      <span className="inline-flex items-center gap-0.5 text-red-400 font-semibold">
+                                      <span className="inline-flex items-center gap-0.5 text-bear-light font-semibold">
                                         <TrendingDown className="h-3 w-3" /> Miss
                                       </span>
                                     )}
                                     {!isBeat && !isMiss && q.actual != null && (
-                                      <span className="text-yellow-400 font-semibold">In-line</span>
+                                      <span className="text-watch-light font-semibold">In-line</span>
                                     )}
                                     {q.actual == null && <span className="text-muted-foreground">—</span>}
                                   </td>

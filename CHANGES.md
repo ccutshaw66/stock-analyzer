@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Tailwind signal-palette sweep: ~608 palette classes → semantic tokens
+
+**Why:** The earlier design-tokens ship covered hex codes and arbitrary font sizes, but ~608 places across 55 files still used Tailwind's built-in palette names (`text-green-400`, `bg-red-500/15`, `border-yellow-500/30`, etc.) for BUY/SELL/WATCH signal coloring. Visually identical to the new semantic tokens but breaks the single-source guarantee — a future tweak to bull/bear/watch hue would miss every one of those 608 places.
+
+**What:**
+- Bulk sed across all `client/src/**.tsx` files swaps Tailwind palette classes to semantic tokens:
+  - `text-green-(300|400)` → `text-bull-light`, `text-green-*` → `text-bull`
+  - `text-red-(300|400)` → `text-bear-light`, `text-red-*` → `text-bear`
+  - `text-yellow-(300|400)` → `text-watch-light`, `text-yellow-*` → `text-watch`
+  - Same for `bg-*`, `border-*`, `ring-*` (with alpha suffixes like `/15`, `/30` preserved).
+- 55 files changed, 0 palette signal-color uses remaining.
+- Token color values are intentionally identical to the prior Tailwind palette (bull=#22c55e=green-500, bear=#ef4444=red-500, watch=#eab308=yellow-500; bull-light=#4ade80=green-400, etc.) — pure compartmentalization, zero visual change.
+
+**Findings surfaced during sweep (pre-existing bugs, not introduced by this work):**
+- `client/src/pages/trade-tracker.tsx` has ~7 TypeScript errors — `closeDate`, `closePrice`, `setCloseDate`, `setClosePrice` referenced in `TradeForm` component but declared only inside a separate component below. These are runtime bugs (would throw on close-trade flow) but vite/esbuild ignores them; `tsc` flags them. Pre-existing on commit `29bc303`. Needs separate fix.
+- Confluence Chart page (`/chart/confluence/:ticker`) is a stylistic outlier — branded header, sticky verdict strip, lightweight-charts candle pane, otter mascot empty state — while the rest of the site uses standard `PageHeader` + shadcn chrome. Compartmentalization principle says one design language across all pages. Either Confluence's premium chrome rolls out to the other pages, or Confluence gets standardized. Not in this ship.
+
+---
 ## 2026-05-15 — `/verify-work` now runs `npm run build` (not just `tsc`)
 
 **Why:** The design-tokens ship earlier today (commit `9234f94`) passed `tsc` but failed `npm run build` because tsc is permissive about JSX patterns that vite/esbuild rejects (e.g. bare-identifier attribute values like `stroke=TOKEN` vs `stroke={TOKEN}`). Production build broke, deploy reported `last_deploy.success: false`, site stayed on the prior SHA until commit `3c11e27` fixed it. The verify pass should have caught this locally.

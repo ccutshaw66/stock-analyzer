@@ -113,8 +113,8 @@ function RiskCalculator() {
       <HelpBlock title="How to use the Risk Calculator">
         <p>This tool helps you figure out <strong className="text-foreground">how many contracts you can trade</strong> without exceeding your risk limit.</p>
         <p><strong className="text-foreground">Open Price:</strong> Enter the per-contract price. Positive = credit received, Negative = debit paid.</p>
-        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Credit Example (PCS):</strong> You sell a $5-wide put credit spread for $1.50 credit. Enter: Open Price = 1.50, Spread Width = 5. Risk = ($5 - $1.50) × 100 = $350 per contract. Max Profit = $1.50 × 100 = $150 per contract.</p>
-        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Debit Example (CDS):</strong> You buy a $5-wide call debit spread for $2.00. Enter: Trade Type = CDS, Open Price = -2.00, Spread Width = 5. Risk = $2.00 × 100 = $200 per contract. Max Profit = ($5 - $2) × 100 = $300 per contract.</p>
+        <p className="border-l-2 border-bull/50 pl-2"><strong className="text-bull-light">Credit Example (PCS):</strong> You sell a $5-wide put credit spread for $1.50 credit. Enter: Open Price = 1.50, Spread Width = 5. Risk = ($5 - $1.50) × 100 = $350 per contract. Max Profit = $1.50 × 100 = $150 per contract.</p>
+        <p className="border-l-2 border-bear/50 pl-2"><strong className="text-bear-light">Debit Example (CDS):</strong> You buy a $5-wide call debit spread for $2.00. Enter: Trade Type = CDS, Open Price = -2.00, Spread Width = 5. Risk = $2.00 × 100 = $200 per contract. Max Profit = ($5 - $2) × 100 = $300 per contract.</p>
         <p>The <strong className="text-foreground">Max Contracts</strong> box tells you the most contracts you can trade at your risk % limit.</p>
       </HelpBlock>
 
@@ -165,9 +165,9 @@ function RiskCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <ResultCard label="Risk ($)" value={`$${allocation.toFixed(2)}`} color={riskWarning ? "text-red-400" : "text-foreground"} warning={riskWarning} />
-        <ResultCard label="Risk (%)" value={`${riskPct.toFixed(2)}%`} color={riskWarning ? "text-red-400" : riskPct > 3 ? "text-yellow-400" : "text-green-400"} warning={riskWarning} />
-        <ResultCard label="Max Profit ($)" value={maxProfit === Infinity ? "Unlimited" : `$${maxProfit.toFixed(2)}`} color="text-green-400" />
+        <ResultCard label="Risk ($)" value={`$${allocation.toFixed(2)}`} color={riskWarning ? "text-bear-light" : "text-foreground"} warning={riskWarning} />
+        <ResultCard label="Risk (%)" value={`${riskPct.toFixed(2)}%`} color={riskWarning ? "text-bear-light" : riskPct > 3 ? "text-watch-light" : "text-bull-light"} warning={riskWarning} />
+        <ResultCard label="Max Profit ($)" value={maxProfit === Infinity ? "Unlimited" : `$${maxProfit.toFixed(2)}`} color="text-bull-light" />
         <ResultCard label="Max Contracts" value={String(maxContractsForRisk)} color="text-primary" subtitle={`at ${maxRiskPct}% risk`} />
       </div>
     </div>
@@ -215,9 +215,9 @@ function VerticalExpectancy() {
       <HelpBlock title="How to use the Expectancy Calculator">
         <p>This tells you the <strong className="text-foreground">expected profit or loss over multiple trades</strong> of the same type.</p>
         <p><strong className="text-foreground">Short Vertical (Credit Spread):</strong> You sell a spread and collect a credit. You win when the option expires OTM. Enter the credit received and the probability of expiring OTM from your broker's chain.</p>
-        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Credit Example:</strong> Sell a PCS for $75 credit, Prob OTM = 65%. Over 10 trades: Theo Gain = $75 × 0.65 × 10 = $487.50. Theo Loss = $75 × 0.35 × 10 = $262.50. Net = +$225.00 (positive edge). This means over time you'd average a $225 profit for every 10 identical trades.</p>
+        <p className="border-l-2 border-bull/50 pl-2"><strong className="text-bull-light">Credit Example:</strong> Sell a PCS for $75 credit, Prob OTM = 65%. Over 10 trades: Theo Gain = $75 × 0.65 × 10 = $487.50. Theo Loss = $75 × 0.35 × 10 = $262.50. Net = +$225.00 (positive edge). This means over time you'd average a $225 profit for every 10 identical trades.</p>
         <p><strong className="text-foreground">Long Vertical (Debit Spread):</strong> You buy a spread. You win when it goes ITM. Prob OTM works AGAINST you here. Set a lower Prob OTM (35-45%) to model trades you expect to win.</p>
-        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Debit Example:</strong> Switch to Long Vertical. Max Profit = $75, Prob OTM = 40%. Theo Gain = $75 × 0.60 × 10 = $450. Theo Loss = $75 × 0.40 × 10 = $300. Net = +$150 (positive edge for your debit trade).</p>
+        <p className="border-l-2 border-bear/50 pl-2"><strong className="text-bear-light">Debit Example:</strong> Switch to Long Vertical. Max Profit = $75, Prob OTM = 40%. Theo Gain = $75 × 0.60 × 10 = $450. Theo Loss = $75 × 0.40 × 10 = $300. Net = +$150 (positive edge for your debit trade).</p>
         <p><strong className="text-foreground">Stop Loss to B/E:</strong> The dollar amount at which you'd set your stop loss so wins and losses break even over time.</p>
       </HelpBlock>
 
@@ -259,14 +259,14 @@ function VerticalExpectancy() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <ResultCard label={`Theo. Gain (${numTrades} trades)`} value={`$${calc.theoGain.toFixed(2)}`} color="text-green-400" />
-        <ResultCard label={`Theo. Loss (${numTrades} trades)`} value={`$${calc.theoLoss.toFixed(2)}`} color="text-red-400" />
+        <ResultCard label={`Theo. Gain (${numTrades} trades)`} value={`$${calc.theoGain.toFixed(2)}`} color="text-bull-light" />
+        <ResultCard label={`Theo. Loss (${numTrades} trades)`} value={`$${calc.theoLoss.toFixed(2)}`} color="text-bear-light" />
         <ResultCard label="Net Expectancy" value={`$${calc.netExpectancy.toFixed(2)}`}
-          color={calc.netExpectancy >= 0 ? "text-green-400" : "text-red-400"} />
+          color={calc.netExpectancy >= 0 ? "text-bull-light" : "text-bear-light"} />
         {mode === "short" ? (
-          <ResultCard label="Stop Loss to B/E" value={`$${shortCalc.stopLossBreakeven.toFixed(2)}`} color="text-yellow-400" />
+          <ResultCard label="Stop Loss to B/E" value={`$${shortCalc.stopLossBreakeven.toFixed(2)}`} color="text-watch-light" />
         ) : (
-          <ResultCard label="Max Debit to Pay" value={`$${longCalc.maxDebit.toFixed(2)}`} color="text-yellow-400" />
+          <ResultCard label="Max Debit to Pay" value={`$${longCalc.maxDebit.toFixed(2)}`} color="text-watch-light" />
         )}
       </div>
     </div>
@@ -312,18 +312,18 @@ function DefinedRiskReward() {
         <p><strong className="text-foreground">POP (Probability of Profit):</strong> Get this from your broker's option chain. For credit spreads it's the Prob OTM. For debit spreads it's the Prob ITM.</p>
         <p><strong className="text-foreground">Open Price:</strong> Positive = credit spread (you receive money). Negative = debit spread (you pay money).</p>
 
-        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Credit Spread Example:</strong> Sell a $5-wide PCS for $1.75 credit, POP = 70%, Comm = $2.60.<br/>
+        <p className="border-l-2 border-bull/50 pl-2"><strong className="text-bull-light">Credit Spread Example:</strong> Sell a $5-wide PCS for $1.75 credit, POP = 70%, Comm = $2.60.<br/>
         Max Profit = ($1.75 × 100) - $2.60 = $172.40.<br/>
         Max Loss = ($5 × 100) - $175 + $2.60 = $327.60.<br/>
-        Per trade: (70% × $172.40) - (30% × $327.60) = $120.68 - $98.28 = <strong className="text-green-400">+$22.40</strong>.<br/>
-        Over 100 trades: <strong className="text-green-400">+$2,240</strong> expected profit. Green = positive edge.</p>
+        Per trade: (70% × $172.40) - (30% × $327.60) = $120.68 - $98.28 = <strong className="text-bull-light">+$22.40</strong>.<br/>
+        Over 100 trades: <strong className="text-bull-light">+$2,240</strong> expected profit. Green = positive edge.</p>
 
-        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Debit Spread Example:</strong> Buy a $5-wide CDS for -$2.00, POP = 55%, Comm = $2.60.<br/>
+        <p className="border-l-2 border-bear/50 pl-2"><strong className="text-bear-light">Debit Spread Example:</strong> Buy a $5-wide CDS for -$2.00, POP = 55%, Comm = $2.60.<br/>
         Change Open Price to -2.00 and POP to 55.<br/>
         Max Profit = ($5 × 100) - $200 - $2.60 = $297.40.<br/>
         Max Loss = $200 + $2.60 = $202.60.<br/>
-        Per trade: (55% × $297.40) - (45% × $202.60) = $163.57 - $91.17 = <strong className="text-green-400">+$72.40</strong>.<br/>
-        Over 100 trades: <strong className="text-green-400">+$7,240</strong>. Even debit spreads can have positive expectancy with the right POP.</p>
+        Per trade: (55% × $297.40) - (45% × $202.60) = $163.57 - $91.17 = <strong className="text-bull-light">+$72.40</strong>.<br/>
+        Over 100 trades: <strong className="text-bull-light">+$7,240</strong>. Even debit spreads can have positive expectancy with the right POP.</p>
 
         <p><strong className="text-foreground">Target exits:</strong> Shows what dollar amount to close at for 50%, 65%, or 75% of max profit/loss. Most traders close credit spreads at 50% of max profit.</p>
         <p><strong className="text-foreground">If 100-Trade Expectancy is red:</strong> The trade has a negative edge. Try a higher POP, wider strikes, or more credit. Not every setup works — that's why you check before you trade.</p>
@@ -367,13 +367,13 @@ function DefinedRiskReward() {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <ResultCard label={isCredit ? "Credit Received" : "Debit Paid"} value={`$${(isCredit ? credit : debit).toFixed(2)}`}
-          color={isCredit ? "text-green-400" : "text-red-400"} />
-        <ResultCard label="Max Profit" value={`$${maxProfit.toFixed(2)}`} color="text-green-400" />
-        <ResultCard label="Max Loss" value={`$${maxLoss.toFixed(2)}`} color="text-red-400" />
+          color={isCredit ? "text-bull-light" : "text-bear-light"} />
+        <ResultCard label="Max Profit" value={`$${maxProfit.toFixed(2)}`} color="text-bull-light" />
+        <ResultCard label="Max Loss" value={`$${maxLoss.toFixed(2)}`} color="text-bear-light" />
         <ResultCard label="Per-Trade Expect." value={`$${expectPerTrade.toFixed(2)}`}
-          color={expectPerTrade >= 0 ? "text-green-400" : "text-red-400"} />
+          color={expectPerTrade >= 0 ? "text-bull-light" : "text-bear-light"} />
         <ResultCard label="100-Trade Expect." value={`$${expect100.toFixed(2)}`}
-          color={expect100 >= 0 ? "text-green-400" : "text-red-400"} />
+          color={expect100 >= 0 ? "text-bull-light" : "text-bear-light"} />
       </div>
 
       <div className="overflow-x-auto">
@@ -389,8 +389,8 @@ function DefinedRiskReward() {
             {targets.map(t => (
               <tr key={t.pct} className="border-b border-card-border/30">
                 <td className="py-1.5 font-semibold text-foreground">{t.pct}% of Max</td>
-                <td className="py-1.5 text-right text-green-400 tabular-nums font-mono">${t.profit.toFixed(2)}</td>
-                <td className="py-1.5 text-right text-red-400 tabular-nums font-mono">${t.loss.toFixed(2)}</td>
+                <td className="py-1.5 text-right text-bull-light tabular-nums font-mono">${t.profit.toFixed(2)}</td>
+                <td className="py-1.5 text-right text-bear-light tabular-nums font-mono">${t.loss.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
@@ -470,9 +470,9 @@ function WeightedPriceCalculator() {
         <p><strong className="text-foreground">Legs Out = proceeds to exit.</strong> Enter contracts sold and the price you received as a positive number.</p>
         <p><strong className="text-foreground">Profit = Legs Out - Legs In</strong> (proceeds minus cost).</p>
 
-        <p className="border-l-2 border-green-500/50 pl-2"><strong className="text-green-400">Debit Example (buying calls):</strong> Legs In: Buy 2 contracts at $3.00, then 3 more at $2.50. Weighted entry = (2×$3.00 + 3×$2.50) ÷ 5 = $2.70. Cost = 5 × $2.70 × 100 = $1,350. Legs Out: Sell all 5 at $4.00. Proceeds = 5 × $4.00 × 100 = $2,000. Profit = $2,000 - $1,350 = <strong className="text-green-400">$650</strong>. ROI = $650 ÷ $1,350 = 48.15%.</p>
+        <p className="border-l-2 border-bull/50 pl-2"><strong className="text-bull-light">Debit Example (buying calls):</strong> Legs In: Buy 2 contracts at $3.00, then 3 more at $2.50. Weighted entry = (2×$3.00 + 3×$2.50) ÷ 5 = $2.70. Cost = 5 × $2.70 × 100 = $1,350. Legs Out: Sell all 5 at $4.00. Proceeds = 5 × $4.00 × 100 = $2,000. Profit = $2,000 - $1,350 = <strong className="text-bull-light">$650</strong>. ROI = $650 ÷ $1,350 = 48.15%.</p>
 
-        <p className="border-l-2 border-red-500/50 pl-2"><strong className="text-red-400">Credit Example (selling puts):</strong> You sell 3 puts at $2.00 then 2 more at $1.50, and later buy them all back at $0.50. For credit trades, <strong className="text-foreground">swap the sides</strong> — enter the buy-to-close as Legs In (your cost) and the original credit as Legs Out (your proceeds).<br/>Legs In: 5 contracts at $0.50 (cost to close = 5 × $0.50 × 100 = $250).<br/>Legs Out: 3 contracts at $2.00 + 2 at $1.50 (credit received = (3×$2.00 + 2×$1.50) × 100 = $900).<br/>Profit = $900 - $250 = <strong className="text-green-400">$650</strong>. ROI = $650 ÷ $250 = 260%.</p>
+        <p className="border-l-2 border-bear/50 pl-2"><strong className="text-bear-light">Credit Example (selling puts):</strong> You sell 3 puts at $2.00 then 2 more at $1.50, and later buy them all back at $0.50. For credit trades, <strong className="text-foreground">swap the sides</strong> — enter the buy-to-close as Legs In (your cost) and the original credit as Legs Out (your proceeds).<br/>Legs In: 5 contracts at $0.50 (cost to close = 5 × $0.50 × 100 = $250).<br/>Legs Out: 3 contracts at $2.00 + 2 at $1.50 (credit received = (3×$2.00 + 2×$1.50) × 100 = $900).<br/>Profit = $900 - $250 = <strong className="text-bull-light">$650</strong>. ROI = $650 ÷ $250 = 260%.</p>
       </HelpBlock>
 
       <ImportPositionButton onImport={(trade) => {
@@ -492,8 +492,8 @@ function WeightedPriceCalculator() {
 
       <div className="grid grid-cols-3 gap-3 mt-4">
         <ResultCard label="Cost (Legs In)" value={`$${inValue.toFixed(2)}`} color="text-foreground" />
-        <ResultCard label="Profit / Loss" value={`$${profit.toFixed(2)}`} color={profit >= 0 ? "text-green-400" : "text-red-400"} />
-        <ResultCard label="ROI" value={`${roi.toFixed(2)}%`} color={roi >= 0 ? "text-green-400" : "text-red-400"} />
+        <ResultCard label="Profit / Loss" value={`$${profit.toFixed(2)}`} color={profit >= 0 ? "text-bull-light" : "text-bear-light"} />
+        <ResultCard label="ROI" value={`${roi.toFixed(2)}%`} color={roi >= 0 ? "text-bull-light" : "text-bear-light"} />
       </div>
     </div>
   );
@@ -524,7 +524,7 @@ function LegSection({ label, legs, calcType, addLeg, removeLeg, updateLeg, total
             <input type="number" step="0.01" value={leg.price || ""} onChange={e => updateLeg(leg.id, "price", parseFloat(e.target.value) || 0)}
               className="h-7 px-2 text-xs bg-background border border-card-border rounded text-foreground tabular-nums" placeholder="0.00" />
             {legs.length > 1 && (
-              <button onClick={() => removeLeg(leg.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400">
+              <button onClick={() => removeLeg(leg.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light">
                 <Minus className="h-3 w-3" />
               </button>
             )}
@@ -569,9 +569,9 @@ function ResultCard({ label, value, color, warning, subtitle }: {
   label: string; value: string; color: string; warning?: boolean; subtitle?: string;
 }) {
   return (
-    <div className={`bg-muted/30 border rounded-lg p-2.5 ${warning ? "border-red-500/50" : "border-card-border/50"}`}>
+    <div className={`bg-muted/30 border rounded-lg p-2.5 ${warning ? "border-bear/50" : "border-card-border/50"}`}>
       <div className="flex items-center gap-1 mb-0.5">
-        {warning && <AlertTriangle className="h-3 w-3 text-red-400" />}
+        {warning && <AlertTriangle className="h-3 w-3 text-bear-light" />}
         <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums ${color}`}>{value}</span>

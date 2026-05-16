@@ -69,7 +69,7 @@ function FavoriteRow({ item, onRemove, onSelect }: { item: FavoriteItem; onRemov
         <ScoreBadge score={item.score} verdict={item.verdict} />
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-1"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-bear p-1"
           data-testid={`button-remove-${item.ticker}`}
           aria-label={`Remove ${item.ticker}`}
         >
@@ -199,8 +199,8 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
               disabled={isInList("portfolio") || addMutation.isPending}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
                 isInList("portfolio")
-                  ? "bg-green-500/10 text-green-500 cursor-default"
-                  : "bg-green-600/80 hover:bg-green-600 text-white"
+                  ? "bg-bull/10 text-bull cursor-default"
+                  : "bg-bull/80 hover:bg-bull text-white"
               }`}
               data-testid="button-add-portfolio"
             >

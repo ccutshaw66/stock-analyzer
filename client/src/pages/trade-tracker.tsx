@@ -26,9 +26,9 @@ import { useTimeframe } from "@/contexts/TimeframeContext";
 //   "NO SETUP"               = nothing here
 function classifyGateVerdict(verdict: string): { bg: string; text: string; label: string } {
   const v = verdict || "";
-  if (v.startsWith("GO"))       return { bg: "bg-green-500/20",  text: "text-green-400",       label: v };
-  if (v.startsWith("SET"))      return { bg: "bg-green-500/10",  text: "text-green-300",       label: v };
-  if (v.startsWith("READY"))    return { bg: "bg-yellow-500/15", text: "text-yellow-400",      label: v };
+  if (v.startsWith("GO"))       return { bg: "bg-bull/20",  text: "text-bull-light",       label: v };
+  if (v.startsWith("SET"))      return { bg: "bg-bull/10",  text: "text-bull-light",       label: v };
+  if (v.startsWith("READY"))    return { bg: "bg-watch/15", text: "text-watch-light",      label: v };
   if (v.startsWith("PULLBACK")) return { bg: "bg-blue-500/15",   text: "text-blue-400",        label: v };
   if (v.startsWith("GATES"))    return { bg: "bg-muted",         text: "text-muted-foreground", label: "CLOSED" };
   return                          { bg: "bg-muted",         text: "text-muted-foreground", label: "NO SETUP" };
@@ -503,16 +503,16 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Price — auto credit/debit label */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>
+              <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
                 {isCredit ? "Credit Received" : "Debit Paid"} <span className="text-micro text-muted-foreground">(enter as positive)</span>
               </label>
               <div className="relative">
-                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-green-400" : "text-red-400"}`}>
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
                   {isCredit ? "+" : "−"}
                 </span>
                 <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
                   className={`w-full h-9 pl-7 pr-3 text-sm bg-background border rounded-md font-mono text-foreground ${
-                    isCredit ? "border-green-500/30" : "border-red-500/30"
+                    isCredit ? "border-bull/30" : "border-bear/30"
                   }`} required />
               </div>
             </div>
@@ -533,30 +533,30 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
+                  <label className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
                   <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
-                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
                     <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
-                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
+                  <label className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
                   <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
-                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
                     <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
-                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
               {ctvBuyPrice && ctvSellPrice && (
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Net:</span>
-                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
                     {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
                   </span>
                   <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>
@@ -584,14 +584,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Historical: Close fields */}
           {isHistorical && (
             <div className="border-t border-card-border pt-4">
-              <p className="text-xs font-semibold text-yellow-400 mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
+              <p className="text-xs font-semibold text-watch-light mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
                   <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
                 </div>
                 <div>
-                  <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+                  <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(positive)</span>
                   </label>
                   <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
@@ -619,7 +619,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
           {/* Info badges */}
           <div className="flex flex-wrap gap-2">
-            <span className={`text-2xs px-2 py-1 rounded-md font-semibold ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+            <span className={`text-2xs px-2 py-1 rounded-md font-semibold ${isCredit ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
               {isCredit ? "CREDIT" : "DEBIT"}
             </span>
             <span className="text-2xs px-2 py-1 rounded-md bg-muted text-muted-foreground">
@@ -628,7 +628,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
             {typeDef?.targetROI > 0 && (
               <span className="text-2xs px-2 py-1 rounded-md bg-primary/15 text-primary">Target ROI: {typeDef.targetROI}%</span>
             )}
-            {isHistorical && <span className="text-2xs px-2 py-1 rounded-md bg-yellow-500/15 text-yellow-400">Historical Entry</span>}
+            {isHistorical && <span className="text-2xs px-2 py-1 rounded-md bg-watch/15 text-watch-light">Historical Entry</span>}
           </div>
 
           <button type="submit" disabled={createMutation.isPending || !symbol}
@@ -711,7 +711,7 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
             <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
           </div>
           <div>
-            <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+            <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
               {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(enter positive)</span>
             </label>
             <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
@@ -720,7 +720,7 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
             <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless (full profit)" : "Enter 0 if expired worthless (full loss)"}</p>
           </div>
           <button type="submit" disabled={closeMutation.isPending}
-            className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50 flex items-center justify-center gap-2">
+            className="w-full py-2.5 rounded-lg bg-watch text-white font-semibold text-sm hover:bg-watch disabled:opacity-50 flex items-center justify-center gap-2">
             {closeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Close Trade
           </button>
@@ -905,7 +905,7 @@ export default function TradeTracker() {
 
         <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
         <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
-        <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-green-400 font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
+        <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-bull-light font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
         <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
 
         <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
@@ -914,7 +914,7 @@ export default function TradeTracker() {
         <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
 
         <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
-        <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-green-400">GO ↑</span>, <span className="text-red-400">GO ↓</span>, <span className="text-green-400">SET ↑</span>, <span className="text-red-400">SET ↓</span>, <span className="text-green-400">READY ↑</span>, <span className="text-red-400">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
+        <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-bull-light">GO ↑</span>, <span className="text-bear-light">GO ↓</span>, <span className="text-bull-light">SET ↑</span>, <span className="text-bear-light">SET ↓</span>, <span className="text-bull-light">READY ↑</span>, <span className="text-bear-light">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
 
         <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
         <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
@@ -922,12 +922,12 @@ export default function TradeTracker() {
         <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
         <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
         <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
-        <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-green-400">green 55%+</span>, <span className="text-yellow-400">yellow 45–54%</span>, <span className="text-red-400">red below 45%</span>.</p>
+        <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-bull-light">green 55%+</span>, <span className="text-watch-light">yellow 45–54%</span>, <span className="text-bear-light">red below 45%</span>.</p>
         <p><strong className="text-foreground">Allocated</strong> — What percentage of your portfolio is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
 
         <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
         <p>Track your trading psychology by tagging each closed trade:</p>
-        <p><span className="text-green-400 font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-red-400 font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-red-400 font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-yellow-400 font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-yellow-400 font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
+        <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
       </HelpBlock>
 
       {/* Summary Cards */}
@@ -941,11 +941,11 @@ export default function TradeTracker() {
           </div>
           {/* Bottom row — performance + activity */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"} />
-            <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
-            <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
+            <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-bull-light" : "text-bear-light"} />
+            <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-bull-light" : "text-bear-light"} />
+            <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-bull-light" : summary.winRate >= 0.45 ? "text-watch-light" : "text-bear-light"} />
             <SC label="Open Trades" value={String(summary.openTrades)} icon={<BarChart3 className="h-4 w-4" />} color="text-primary" />
-            <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-red-400" : "text-foreground"} />
+            <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-bear-light" : "text-foreground"} />
           </div>
         </>
       )}
@@ -968,11 +968,11 @@ export default function TradeTracker() {
                   <tr key={type} className="border-b border-card-border/50">
                     <td className="py-1.5 pr-4 font-semibold text-foreground">{TRADE_TYPES[type as TradeTypeCode]?.label || type}</td>
                     <td className="text-right px-3 tabular-nums">{d.count}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-green-400" : winPct >= 45 ? "text-yellow-400" : "text-red-400"}`}>{winPct.toFixed(1)}%</td>
-                    <td className="text-right px-3 text-green-400 tabular-nums">{formatCurrency(d.profit)}</td>
-                    <td className="text-right px-3 text-red-400 tabular-nums">{formatCurrency(d.loss)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(net)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-green-400" : "text-red-400"}`}>{roi.toFixed(1)}%</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-bull-light" : winPct >= 45 ? "text-watch-light" : "text-bear-light"}`}>{winPct.toFixed(1)}%</td>
+                    <td className="text-right px-3 text-bull-light tabular-nums">{formatCurrency(d.profit)}</td>
+                    <td className="text-right px-3 text-bear-light tabular-nums">{formatCurrency(d.loss)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-bull-light" : "text-bear-light"}`}>{formatCurrency(net)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-bull-light" : "text-bear-light"}`}>{roi.toFixed(1)}%</td>
                   </tr>
                 );
               })}</tbody>
@@ -1052,7 +1052,7 @@ export default function TradeTracker() {
                         <ScannerPip ticker={g.symbol} />
                         {!isSingleLot && <span className="ml-1.5 text-mini font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
                       </td>
-                      <td className="py-2 px-3"><span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{g.tradeType}</span></td>
+                      <td className="py-2 px-3"><span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>{g.tradeType}</span></td>
                       <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
                       <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
                       <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
@@ -1062,24 +1062,24 @@ export default function TradeTracker() {
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">{g.currentPrice ? `$${g.currentPrice.toFixed(2)}` : "—"}</td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
                         {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
                         {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
                         {g.tradeCategory === "Option" && g.totalOpenPL !== 0 && <span className="text-mini ml-0.5 opacity-50">est</span>}
                       </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-bull-light/70" : "text-bear-light/70"}`}>
                         {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
                       </td>
                       <td className="py-2 px-3 text-center">
                         {g.expiration ? (
-                          <span className={`text-micro font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-yellow-400 font-bold" : daysToExp !== null && daysToExp < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                          <span className={`text-micro font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-watch-light font-bold" : daysToExp !== null && daysToExp < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
                             {g.expiration.substring(5)}
                             {daysToExp !== null && (<span className="text-tiny block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>)}
                           </span>
                         ) : (<span className="text-muted-foreground">—</span>)}
                       </td>
                       <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center"><span className="text-micro font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span></td>
+                      <td className="py-2 px-3 text-center"><span className="text-micro font-semibold px-2 py-0.5 rounded bg-watch/15 text-watch-light">OPEN</span></td>
                       <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <button
@@ -1093,8 +1093,8 @@ export default function TradeTracker() {
                           </button>
                           {isSingleLot && (<>
                             <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setClosingTrade(g.lots[0])} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close trade"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => setClosingTrade(g.lots[0])} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close trade"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
                           </>)}
                         </div>
                       </td>
@@ -1116,7 +1116,7 @@ export default function TradeTracker() {
                           <td className="py-1.5 px-3 text-right tabular-nums font-mono">{Math.abs(t.openPrice).toFixed(2)}</td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums text-2xs ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-mini ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
+                          <td className={`py-1.5 px-3 text-right tabular-nums text-2xs ${profit >= 0 ? "text-bull-light/80" : "text-bear-light/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-mini ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3"></td>
                           <td className="py-1.5 px-3 text-right tabular-nums text-2xs">{lotDays}d</td>
@@ -1124,8 +1124,8 @@ export default function TradeTracker() {
                           <td className="py-1.5 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
-                              <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
-                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                              <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
+                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
                             </div>
                           </td>
                         </tr>
@@ -1147,7 +1147,7 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
                       <td className="py-2 px-3">
                         <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${
-                          t.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                          t.creditDebit === "CREDIT" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"
                         }`}>{t.tradeType}</span>
                       </td>
                       <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
@@ -1162,11 +1162,11 @@ export default function TradeTracker() {
                       <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
                         {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
                       </td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
+                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
                         {profit !== 0 ? formatCurrency(profit) : "—"}
                         {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
                       </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
+                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-bull-light/70" : "text-bear-light/70"}`}>
                         {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
                       </td>
                       <td className="py-2 px-3 text-center">
@@ -1176,7 +1176,7 @@ export default function TradeTracker() {
                       </td>
                       <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
                       <td className="py-2 px-3 text-center">
-                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${isWin ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${isWin ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
                           {isWin ? "WIN" : "LOSS"}
                         </span>
                       </td>
@@ -1185,7 +1185,7 @@ export default function TradeTracker() {
                           <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade">
+                          <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -1207,8 +1207,8 @@ export default function TradeTracker() {
           <div className="flex flex-wrap gap-2">
             {Object.entries(summary.behaviorCounts).map(([tag, count]) => (
               <span key={tag} className={`text-xs px-3 py-1.5 rounded-md font-medium ${
-                tag === "All to Plan" ? "bg-green-500/15 text-green-400" :
-                tag.includes("Panic") || tag.includes("FOMO") ? "bg-red-500/15 text-red-400" : "bg-yellow-500/15 text-yellow-400"
+                tag === "All to Plan" ? "bg-bull/15 text-bull-light" :
+                tag.includes("Panic") || tag.includes("FOMO") ? "bg-bear/15 text-bear-light" : "bg-watch/15 text-watch-light"
               }`}>{tag}: {count}</span>
             ))}
           </div>

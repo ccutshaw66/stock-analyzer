@@ -93,9 +93,9 @@ interface VerdictData {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function ringColorClass(score: number): string {
-  if (score >= 70) return "text-green-400";
-  if (score >= 40) return "text-yellow-400";
-  return "text-red-400";
+  if (score >= 70) return "text-bull-light";
+  if (score >= 40) return "text-watch-light";
+  return "text-bear-light";
 }
 
 function ringStrokeColor(score: number): string {
@@ -112,45 +112,45 @@ function ringGlowColor(score: number): string {
 
 function barColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-400";
-    case "red": return "bg-red-400";
-    case "yellow": return "bg-yellow-400";
+    case "green": return "bg-bull-light";
+    case "red": return "bg-bear-light";
+    case "yellow": return "bg-watch-light";
     default: return "bg-muted-foreground";
   }
 }
 
 function barTrackColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-400/15";
-    case "red": return "bg-red-400/15";
-    case "yellow": return "bg-yellow-400/15";
+    case "green": return "bg-bull-light/15";
+    case "red": return "bg-bear-light/15";
+    case "yellow": return "bg-watch-light/15";
     default: return "bg-muted/40";
   }
 }
 
 function signalBadgeColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-500/15 text-green-400 border border-green-500/20";
-    case "red": return "bg-red-500/15 text-red-400 border border-red-500/20";
-    case "yellow": return "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20";
+    case "green": return "bg-bull/15 text-bull-light border border-bull/20";
+    case "red": return "bg-bear/15 text-bear-light border border-bear/20";
+    case "yellow": return "bg-watch/15 text-watch-light border border-watch/20";
     default: return "bg-muted text-muted-foreground border border-card-border";
   }
 }
 
 function verdictBadgeStyle(verdict: string): string {
   switch (verdict) {
-    case "STRONG CONVICTION": return "bg-green-500/20 text-green-400 border-green-500/30";
-    case "INVESTMENT GRADE": return "bg-green-500/15 text-green-400 border-green-500/20";
-    case "SPECULATIVE": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/20";
-    case "HIGH RISK": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "STRONG CONVICTION": return "bg-bull/20 text-bull-light border-bull/30";
+    case "INVESTMENT GRADE": return "bg-bull/15 text-bull-light border-bull/20";
+    case "SPECULATIVE": return "bg-watch/15 text-watch-light border-watch/20";
+    case "HIGH RISK": return "bg-bear/20 text-bear-light border-bear/30";
     default: return "bg-muted text-muted-foreground border-card-border";
   }
 }
 
 function pctColor(val: number | null | undefined): string {
   if (val == null) return "text-muted-foreground";
-  if (val > 0) return "text-green-400";
-  if (val < 0) return "text-red-400";
+  if (val > 0) return "text-bull-light";
+  if (val < 0) return "text-bear-light";
   return "text-muted-foreground";
 }
 
@@ -390,9 +390,9 @@ export default function Verdict() {
     }
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-red-400" />
-          <p className="text-red-400 font-medium">{errMsg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
+        <div className="bg-bear/10 border border-bear/20 rounded-lg p-6 text-center">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-bear-light" />
+          <p className="text-bear-light font-medium">{errMsg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
         </div>
       </div>
     );
@@ -435,13 +435,13 @@ export default function Verdict() {
 
         <p className="font-semibold text-foreground mt-2">Examples:</p>
         <Example type="good">
-          <p><strong className="text-green-400">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
+          <p><strong className="text-bull-light">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
         </Example>
         <Example type="neutral">
-          <p><strong className="text-yellow-400">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
+          <p><strong className="text-watch-light">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
         </Example>
         <Example type="bad">
-          <p><strong className="text-red-400">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
+          <p><strong className="text-bear-light">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
         </Example>
 
         <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
@@ -519,7 +519,7 @@ export default function Verdict() {
                     {(factor.weight * 100).toFixed(0)}% wt
                   </span>
                   <span className={`text-sm font-bold tabular-nums w-8 text-right ${
-                    factor.score >= 70 ? "text-green-400" : factor.score >= 40 ? "text-yellow-400" : "text-red-400"
+                    factor.score >= 70 ? "text-bull-light" : factor.score >= 40 ? "text-watch-light" : "text-bear-light"
                   }`}>
                     {factor.score}
                   </span>
@@ -572,7 +572,7 @@ export default function Verdict() {
                     <tr
                       key={i}
                       className={`border-b border-card-border/40 transition-colors ${
-                        noData ? "opacity-40" : beatSpy ? "bg-green-500/[0.04]" : "hover:bg-muted/20"
+                        noData ? "opacity-40" : beatSpy ? "bg-bull/[0.04]" : "hover:bg-muted/20"
                       }`}
                       title={test.desc}
                     >
@@ -603,7 +603,7 @@ export default function Verdict() {
           </div>
 
           <div className="px-6 py-2.5 border-t border-card-border/40 text-micro text-muted-foreground flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-sm bg-green-500/[0.08] border border-green-500/20" />
+            <div className="w-2.5 h-2.5 rounded-sm bg-bull/[0.08] border border-bull/20" />
             <span>Highlighted rows indicate {data.ticker} outperformed the S&amp;P 500</span>
           </div>
         </section>
@@ -629,10 +629,10 @@ export default function Verdict() {
                   </div>
                   <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.analysis.verdict === "YES"
-                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      ? "bg-bull/15 text-bull-light border-bull/20"
                       : data.analysis.verdict === "NO"
-                      ? "bg-red-500/15 text-red-400 border-red-500/20"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      ? "bg-bear/15 text-bear-light border-bear/20"
+                      : "bg-watch/15 text-watch-light border-watch/20"
                   }`}>
                     {data.analysis.verdict}
                   </span>
@@ -641,7 +641,7 @@ export default function Verdict() {
                 {/* Score display */}
                 <div className="flex items-end gap-1.5 mb-4">
                   <span className={`text-4xl font-black tabular-nums leading-none ${
-                    data.analysis.score >= 7 ? "text-green-400" : data.analysis.score >= 5 ? "text-yellow-400" : "text-red-400"
+                    data.analysis.score >= 7 ? "text-bull-light" : data.analysis.score >= 5 ? "text-watch-light" : "text-bear-light"
                   }`}>
                     {typeof data.analysis.score === 'number' ? data.analysis.score.toFixed(2) : data.analysis.score}
                   </span>
@@ -655,7 +655,7 @@ export default function Verdict() {
                       <div key={i} className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground truncate mr-3">{item.name}</span>
                         <span className={`font-bold tabular-nums ${
-                          item.score >= 7 ? "text-green-400" : item.score >= 5 ? "text-yellow-400" : "text-red-400"
+                          item.score >= 7 ? "text-bull-light" : item.score >= 5 ? "text-watch-light" : "text-bear-light"
                         }`}>
                           {item.score}/10
                         </span>
@@ -676,10 +676,10 @@ export default function Verdict() {
                   </div>
                   <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.institutional.signal.includes("INFLOW") || data.institutional.signal === "ACCUMULATING"
-                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      ? "bg-bull/15 text-bull-light border-bull/20"
                       : data.institutional.signal.includes("OUTFLOW") || data.institutional.signal === "DISTRIBUTING"
-                      ? "bg-red-500/15 text-red-400 border-red-500/20"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      ? "bg-bear/15 text-bear-light border-bear/20"
+                      : "bg-watch/15 text-watch-light border-watch/20"
                   }`}>
                     {data.institutional.signal}
                   </span>
@@ -688,9 +688,9 @@ export default function Verdict() {
                 {/* Flow Score */}
                 <div className="flex items-end gap-1.5 mb-4">
                   <span className={`text-4xl font-black tabular-nums leading-none ${
-                    data.institutional.flowScore >= 20 ? "text-green-400"
-                    : data.institutional.flowScore <= -20 ? "text-red-400"
-                    : "text-yellow-400"
+                    data.institutional.flowScore >= 20 ? "text-bull-light"
+                    : data.institutional.flowScore <= -20 ? "text-bear-light"
+                    : "text-watch-light"
                   }`}>
                     {data.institutional.flowScore > 0 ? "+" : ""}{data.institutional.flowScore}
                   </span>
@@ -709,19 +709,19 @@ export default function Verdict() {
                   </div>
                   <div>
                     <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
-                    <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.instIncreased}</p>
+                    <p className="text-sm font-bold text-bull-light tabular-nums">{data.institutional.instIncreased}</p>
                   </div>
                   <div>
                     <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Decreasing</p>
-                    <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.instDecreased}</p>
+                    <p className="text-sm font-bold text-bear-light tabular-nums">{data.institutional.instDecreased}</p>
                   </div>
                   <div>
                     <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Buys</p>
-                    <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.insiderBuyCount}</p>
+                    <p className="text-sm font-bold text-bull-light tabular-nums">{data.institutional.insiderBuyCount}</p>
                   </div>
                   <div>
                     <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Sells</p>
-                    <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.insiderSellCount}</p>
+                    <p className="text-sm font-bold text-bear-light tabular-nums">{data.institutional.insiderSellCount}</p>
                   </div>
                 </div>
               </div>

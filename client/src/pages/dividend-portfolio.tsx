@@ -42,11 +42,11 @@ interface DividendPosition {
 
 function PositionDetail({ pos }: { pos: DividendPosition }) {
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
   const payoutColor = (p: number) =>
-    p >= 20 && p <= 60 ? "text-green-400" : p > 60 && p <= 80 ? "text-yellow-400" : "text-red-400";
+    p >= 20 && p <= 60 ? "text-bull-light" : p > 60 && p <= 80 ? "text-watch-light" : "text-bear-light";
 
   const daysUntilExDiv = useMemo(() => {
     if (!pos.exDividendDate) return null;
@@ -64,7 +64,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat label="Yield" value={`${pos.dividendYield.toFixed(2)}%`} color={yieldColor(pos.dividendYield)} icon={<Percent className="h-3 w-3" />} />
         <MiniStat label="Yield on Cost" value={`${pos.yieldOnCost.toFixed(2)}%`}
-          color={pos.yieldOnCost > pos.dividendYield ? "text-green-400" : "text-foreground"}
+          color={pos.yieldOnCost > pos.dividendYield ? "text-bull-light" : "text-foreground"}
           icon={<TrendingUp className="h-3 w-3" />} />
         <MiniStat label="Div Rate / Share" value={`$${pos.dividendRate.toFixed(2)}`} color="text-foreground" icon={<DollarSign className="h-3 w-3" />} />
         <MiniStat label="Payout Ratio" value={`${pos.payoutRatio.toFixed(1)}%`} color={payoutColor(pos.payoutRatio)} icon={<Activity className="h-3 w-3" />} />
@@ -75,7 +75,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
         <MiniStat
           label="Ex-Dividend"
           value={pos.exDividendDate || "N/A"}
-          color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-yellow-400" : "text-foreground"}
+          color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-watch-light" : "text-foreground"}
           icon={<AlertTriangle className="h-3 w-3" />}
           subtitle={daysUntilExDiv !== null ? (daysUntilExDiv > 0 ? `${daysUntilExDiv}d away` : daysUntilExDiv === 0 ? "Today!" : "Passed") : undefined}
         />
@@ -89,7 +89,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat label="5Y Avg Yield" value={pos.fiveYearAvgYield != null ? `${pos.fiveYearAvgYield.toFixed(2)}%` : "N/A"}
-          color={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "text-green-400" : "text-muted-foreground"}
+          color={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "text-bull-light" : "text-muted-foreground"}
           icon={<BarChart3 className="h-3 w-3" />}
           subtitle={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "Above avg" : undefined}
         />
@@ -98,7 +98,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
           subtitle={pos.lastDividendDate || undefined}
         />
         <MiniStat label="Quality Score" value={`${pos.score}`} color={scoreColor(pos.score)} icon={<Activity className="h-3 w-3" />} />
-        <MiniStat label="Per Payment" value={`$${(pos.annualIncome / payoutsPerYear).toFixed(2)}`} color="text-green-400" icon={<PiggyBank className="h-3 w-3" />}
+        <MiniStat label="Per Payment" value={`$${(pos.annualIncome / payoutsPerYear).toFixed(2)}`} color="text-bull-light" icon={<PiggyBank className="h-3 w-3" />}
           subtitle={`${payoutsPerYear}x / year`}
         />
       </div>
@@ -162,7 +162,7 @@ export default function DividendPortfolio() {
     return { totalCost, totalMarket, totalAnnualIncome, totalUnrealizedPL, avgYield, avgYieldOnCost, monthlyIncome, count: positions.length };
   }, [positions]);
 
-  const plColor = (v: number) => v >= 0 ? "text-green-400" : "text-red-400";
+  const plColor = (v: number) => v >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividend-portfolio-page">
@@ -191,7 +191,7 @@ export default function DividendPortfolio() {
         <p><strong className="text-foreground">Ex-Dividend Date:</strong> Must own shares BEFORE this date to receive the next payment.</p>
         <p><strong className="text-foreground">Distribution Date:</strong> When the dividend payment actually hits your account.</p>
         <Example type="good">
-          <strong className="text-green-400">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
+          <strong className="text-bull-light">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
         </Example>
         <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth" />
         <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield but may lack growth or consistency" />
@@ -213,10 +213,10 @@ export default function DividendPortfolio() {
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
-              <PiggyBank className="h-3 w-3 text-green-400 opacity-70" />
+              <PiggyBank className="h-3 w-3 text-bull-light opacity-70" />
               <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Annual Income</span>
             </div>
-            <span className="text-sm font-bold tabular-nums font-mono text-green-400">${summary.totalAnnualIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-sm font-bold tabular-nums font-mono text-bull-light">${summary.totalAnnualIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               ${summary.monthlyIncome.toFixed(2)} / mo
             </span>
@@ -342,10 +342,10 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
   onToggle: () => void; onSelectTicker: () => void;
 }) {
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
-  const plColor = pos.unrealizedPL >= 0 ? "text-green-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
+  const plColor = pos.unrealizedPL >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
     <>
@@ -376,10 +376,10 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
         <td className={`py-2.5 px-2 text-right font-mono font-bold ${yieldColor(pos.dividendYield)}`}>
           {pos.dividendYield.toFixed(2)}%
         </td>
-        <td className={`py-2.5 px-2 text-right font-mono hidden lg:table-cell ${pos.yieldOnCost > pos.dividendYield ? "text-green-400 font-bold" : "text-foreground"}`}>
+        <td className={`py-2.5 px-2 text-right font-mono hidden lg:table-cell ${pos.yieldOnCost > pos.dividendYield ? "text-bull-light font-bold" : "text-foreground"}`}>
           {pos.yieldOnCost.toFixed(2)}%
         </td>
-        <td className="py-2.5 px-2 text-right font-mono font-bold text-green-400">
+        <td className="py-2.5 px-2 text-right font-mono font-bold text-bull-light">
           ${pos.annualIncome.toFixed(2)}
         </td>
         <td className="py-2.5 px-2 text-center hidden md:table-cell">

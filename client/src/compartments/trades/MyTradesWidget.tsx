@@ -21,8 +21,8 @@ function fmtMoney(n: number): string {
 }
 
 function pnlColor(n: number): string {
-  if (n > 0) return "text-green-500";
-  if (n < 0) return "text-red-500";
+  if (n > 0) return "text-bull";
+  if (n < 0) return "text-bear";
   return "text-muted-foreground";
 }
 
@@ -52,7 +52,7 @@ export function MyTradesWidget() {
 
       <div className="flex-1 overflow-y-auto pt-2">
         {isLoading && <div className="text-xs text-muted-foreground p-2">Loading…</div>}
-        {error && <div className="text-xs text-red-500 p-2">Failed to load trades.</div>}
+        {error && <div className="text-xs text-bear p-2">Failed to load trades.</div>}
 
         {!isLoading && !error && summary.data && (
           <>
@@ -89,9 +89,9 @@ export function MyTradesWidget() {
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
                     {t.profit >= 0 ? (
-                      <TrendingUp className="h-3 w-3 text-green-500 flex-shrink-0" />
+                      <TrendingUp className="h-3 w-3 text-bull flex-shrink-0" />
                     ) : (
-                      <TrendingDown className="h-3 w-3 text-red-500 flex-shrink-0" />
+                      <TrendingDown className="h-3 w-3 text-bear flex-shrink-0" />
                     )}
                     <span className="font-mono font-bold text-xs">{t.symbol}</span>
                     <span className="text-mini text-muted-foreground truncate">{t.tradeType}</span>

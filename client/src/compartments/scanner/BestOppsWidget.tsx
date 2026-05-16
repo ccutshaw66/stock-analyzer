@@ -20,8 +20,8 @@ const DEFAULT_FILTERS: ScannerV2Filters = {
 };
 
 function DirectionIcon({ direction }: { direction: ScannerV2Row["direction"] }) {
-  if (direction === "up") return <TrendingUp className="h-3 w-3 text-green-500" />;
-  if (direction === "down") return <TrendingDown className="h-3 w-3 text-red-500" />;
+  if (direction === "up") return <TrendingUp className="h-3 w-3 text-bull" />;
+  if (direction === "down") return <TrendingDown className="h-3 w-3 text-bear" />;
   return <span className="text-xs text-muted-foreground">~</span>;
 }
 
@@ -93,7 +93,7 @@ export function BestOppsWidget() {
         )}
 
         {error && (
-          <div className="text-xs text-red-500 p-2">Scan failed: {(error as Error).message}</div>
+          <div className="text-xs text-bear p-2">Scan failed: {(error as Error).message}</div>
         )}
 
         {hasResults && data!.results.slice(0, 5).map((row) => (

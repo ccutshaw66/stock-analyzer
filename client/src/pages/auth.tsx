@@ -103,8 +103,8 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
           )}
 
           {forgotSent && mode === "forgot" ? (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 text-center">
-              <p className="text-sm text-green-400 font-semibold mb-1">Check your email</p>
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-4 text-center">
+              <p className="text-sm text-bull-light font-semibold mb-1">Check your email</p>
               <p className="text-xs text-muted-foreground">If an account exists for {email}, we sent a password reset link. It expires in 1 hour.</p>
               <button onClick={() => { setMode("login"); setForgotSent(false); setError(""); }} className="text-xs text-primary hover:underline mt-3" data-testid="button-back-to-login">Back to sign in</button>
             </div>

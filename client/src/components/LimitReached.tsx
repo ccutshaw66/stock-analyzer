@@ -23,8 +23,8 @@ const COMPARISON = [
 function TierCell({ value }: { value: string | boolean }) {
   if (typeof value === "boolean") {
     return value
-      ? <Check className="h-4 w-4 text-green-400 mx-auto" />
-      : <X className="h-4 w-4 text-red-400/50 mx-auto" />;
+      ? <Check className="h-4 w-4 text-bull-light mx-auto" />
+      : <X className="h-4 w-4 text-bear-light/50 mx-auto" />;
   }
   return <span className="text-foreground font-semibold">{value}</span>;
 }
@@ -78,7 +78,7 @@ export function LimitReached({ feature, message }: LimitReachedProps) {
                 <span className="block text-mini text-muted-foreground">$15/mo</span>
               </th>
               <th className="text-center py-2.5 px-2 font-semibold w-20">
-                <span className="text-yellow-400">Elite</span>
+                <span className="text-watch-light">Elite</span>
                 <span className="block text-mini text-muted-foreground">$39/mo</span>
               </th>
             </tr>

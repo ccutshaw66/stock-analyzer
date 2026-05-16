@@ -85,7 +85,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
       <div className="flex items-center justify-between text-micro text-muted-foreground mb-1">
         <span>MACD(12,26,9) · RSI(14) · {series.length}d</span>
         <span className="tabular-nums">
-          <span className={last.hist >= 0 ? "text-green-400" : "text-red-400"}>
+          <span className={last.hist >= 0 ? "text-bull-light" : "text-bear-light"}>
             H {last.hist.toFixed(3)}
           </span>
           {" · "}
@@ -94,9 +94,9 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
               last.rsi == null
                 ? ""
                 : last.rsi >= 70
-                ? "text-red-400"
+                ? "text-bear-light"
                 : last.rsi <= 30
-                ? "text-green-400"
+                ? "text-bull-light"
                 : "text-foreground"
             }
           >

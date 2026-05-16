@@ -92,8 +92,8 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
   // Direction indicator
   const { summary } = data!;
   const trendArrow =
-    summary.trend === "up" ? <ArrowUpRight className="h-7 w-7 text-green-400" strokeWidth={3} /> :
-    summary.trend === "down" ? <ArrowDownRight className="h-7 w-7 text-red-400" strokeWidth={3} /> :
+    summary.trend === "up" ? <ArrowUpRight className="h-7 w-7 text-bull-light" strokeWidth={3} /> :
+    summary.trend === "down" ? <ArrowDownRight className="h-7 w-7 text-bear-light" strokeWidth={3} /> :
     <Minus className="h-7 w-7 text-muted-foreground" strokeWidth={3} />;
 
   const trendLabel =
@@ -102,8 +102,8 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
     "FLAT";
 
   const trendColor =
-    summary.trend === "up" ? "text-green-400" :
-    summary.trend === "down" ? "text-red-400" :
+    summary.trend === "up" ? "text-bull-light" :
+    summary.trend === "down" ? "text-bear-light" :
     "text-muted-foreground";
 
   // Per-signal stack (12 rows)
@@ -140,8 +140,8 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
           {summary.zeroCross && (
             <div className={`px-2 py-1 rounded text-micro font-bold uppercase ${
               summary.zeroCross === "bullish"
-                ? "bg-green-500/20 text-green-300 border border-green-500/40"
-                : "bg-red-500/20 text-red-300 border border-red-500/40"
+                ? "bg-bull/20 text-bull-light border border-bull/40"
+                : "bg-bear/20 text-bear-light border border-bear/40"
             }`}>
               {summary.zeroCross === "bullish" ? "↑ Bullish cross (5d)" : "↓ Bearish cross (5d)"}
             </div>
@@ -169,7 +169,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
           <p className="text-muted-foreground">
             Each day we evaluate 12 proprietary Scanner 2.0 signals on this ticker (BB squeeze, ATR expansion,
             relative volume, 52w breakout, gap hold, fib pullback, plus 6 catalyst signals). Each fire counts
-            as <span className="text-green-400">+1 bullish</span> or <span className="text-red-400">−1 bearish</span>
+            as <span className="text-bull-light">+1 bullish</span> or <span className="text-bear-light">−1 bearish</span>
             depending on its direction.
           </p>
           <p className="text-muted-foreground">
@@ -281,16 +281,16 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
       {/* Footer legend */}
       <div className="mt-3 pt-3 border-t border-card-border/50 flex items-center gap-4 text-micro text-muted-foreground flex-wrap">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 bg-green-500 rounded-sm" />
+          <span className="inline-block w-3 h-3 bg-bull rounded-sm" />
           Bullish firing
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 bg-red-500 rounded-sm" />
+          <span className="inline-block w-3 h-3 bg-bear rounded-sm" />
           Bearish firing
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 bg-green-500 rounded-full" />
-          <span className="inline-block w-3.5 h-3.5 bg-green-500 rounded-full" />
+          <span className="inline-block w-2.5 h-2.5 bg-bull rounded-full" />
+          <span className="inline-block w-3.5 h-3.5 bg-bull rounded-full" />
           Dot size = signal strength
         </span>
       </div>

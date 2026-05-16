@@ -50,29 +50,29 @@ function SignalBadge({ signal, size = "sm" }: { signal: string; size?: "sm" | "m
   const isClosed = s.includes("CLOSED") || s.includes("NO SETUP") || s === "NONE";
 
   let color = "bg-muted text-muted-foreground";
-  if (isGo && isUp) color = "bg-green-500 text-white";
-  else if (isGo && isDown) color = "bg-red-500 text-white";
-  else if (isSet && isUp) color = "bg-green-500/70 text-white";
-  else if (isSet && isDown) color = "bg-red-500/70 text-white";
-  else if (isReady && isUp) color = "bg-green-500/30 text-green-300 border border-green-500/40";
-  else if (isReady && isDown) color = "bg-red-500/30 text-red-300 border border-red-500/40";
+  if (isGo && isUp) color = "bg-bull text-white";
+  else if (isGo && isDown) color = "bg-bear text-white";
+  else if (isSet && isUp) color = "bg-bull/70 text-white";
+  else if (isSet && isDown) color = "bg-bear/70 text-white";
+  else if (isReady && isUp) color = "bg-bull/30 text-bull-light border border-bull/40";
+  else if (isReady && isDown) color = "bg-bear/30 text-bear-light border border-bear/40";
   else if (isPullback) color = "bg-amber-500/30 text-amber-300 border border-amber-500/40";
   else if (isClosed) color = "bg-zinc-700 text-zinc-400";
   else if (["ENTER", "CONFIRMED_BUY", "LEAN_BUY"].includes(s))
-    color = s === "CONFIRMED_BUY" ? "bg-green-500 text-white" : s === "LEAN_BUY" ? "bg-green-500/20 text-green-400" : "bg-green-500/80 text-white";
+    color = s === "CONFIRMED_BUY" ? "bg-bull text-white" : s === "LEAN_BUY" ? "bg-bull/20 text-bull-light" : "bg-bull/80 text-white";
   else if (["SELL", "CONFIRMED_SELL", "LEAN_SELL"].includes(s))
-    color = s === "CONFIRMED_SELL" ? "bg-red-500 text-white" : s === "LEAN_SELL" ? "bg-red-500/20 text-red-400" : "bg-red-500/80 text-white";
-  else if (["HOLD", "NEUTRAL"].includes(s)) color = "bg-yellow-500/20 text-yellow-400";
+    color = s === "CONFIRMED_SELL" ? "bg-bear text-white" : s === "LEAN_SELL" ? "bg-bear/20 text-bear-light" : "bg-bear/80 text-white";
+  else if (["HOLD", "NEUTRAL"].includes(s)) color = "bg-watch/20 text-watch-light";
 
   return <span className={`${base} ${color} font-bold rounded-md uppercase whitespace-nowrap`}>{(signal || "—").replace(/_/g, " ")}</span>;
 }
 
 function ScoreBar({ score, max = 7 }: { score: number; max?: number }) {
   const pct = Math.max(0, Math.min(100, ((score + max) / (max * 2)) * 100));
-  const color = score >= max * 0.7 ? "bg-green-500" : score >= max * 0.4 ? "bg-green-400" : score >= max * 0.25 ? "bg-yellow-400" : score >= 0 ? "bg-yellow-500/50" : "bg-red-400";
+  const color = score >= max * 0.7 ? "bg-bull" : score >= max * 0.4 ? "bg-bull-light" : score >= max * 0.25 ? "bg-watch-light" : score >= 0 ? "bg-watch/50" : "bg-bear-light";
   return (
     <div className="flex items-center gap-2">
-      <span className={`text-sm font-bold tabular-nums w-10 text-right ${score >= max * 0.4 ? "text-green-400" : score >= 0 ? "text-yellow-400" : "text-red-400"}`}>{score}/{max}</span>
+      <span className={`text-sm font-bold tabular-nums w-10 text-right ${score >= max * 0.4 ? "text-bull-light" : score >= 0 ? "text-watch-light" : "text-bear-light"}`}>{score}/{max}</span>
       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-[80px]">
         <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
       </div>
@@ -86,22 +86,22 @@ function ConfirmationDetail({ c }: { c: any }) {
       <div className="flex items-center gap-1.5">
         <Activity className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">MACD:</span>
-        <span className={`text-xs font-semibold ${c.macd === "bullish" ? "text-green-400" : c.macd === "bearish" ? "text-red-400" : "text-muted-foreground"}`}>{c.macd}</span>
+        <span className={`text-xs font-semibold ${c.macd === "bullish" ? "text-bull-light" : c.macd === "bearish" ? "text-bear-light" : "text-muted-foreground"}`}>{c.macd}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">BB:</span>
-        <span className={`text-xs font-semibold ${c.bollingerPosition === "near_lower" ? "text-green-400" : c.bollingerPosition === "near_upper" ? "text-red-400" : "text-muted-foreground"}`}>{c.bollingerPosition?.replace(/_/g, " ")}</span>
+        <span className={`text-xs font-semibold ${c.bollingerPosition === "near_lower" ? "text-bull-light" : c.bollingerPosition === "near_upper" ? "text-bear-light" : "text-muted-foreground"}`}>{c.bollingerPosition?.replace(/_/g, " ")}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <Volume2 className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">Vol:</span>
-        <span className={`text-xs font-semibold ${c.volumeSurge ? "text-green-400" : "text-muted-foreground"}`}>{c.volumeSurge ? "Surge" : "Normal"}</span>
+        <span className={`text-xs font-semibold ${c.volumeSurge ? "text-bull-light" : "text-muted-foreground"}`}>{c.volumeSurge ? "Surge" : "Normal"}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <Zap className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">ADX:</span>
-        <span className={`text-xs font-semibold ${c.adxTrending ? "text-green-400" : "text-muted-foreground"}`}>{c.adx ?? "N/A"} {c.adxTrending ? "↑" : ""}</span>
+        <span className={`text-xs font-semibold ${c.adxTrending ? "text-bull-light" : "text-muted-foreground"}`}>{c.adx ?? "N/A"} {c.adxTrending ? "↑" : ""}</span>
       </div>
     </div>
   );
@@ -115,7 +115,7 @@ function GatePips({ gatesCleared }: { gatesCleared: number }) {
       {[1, 2, 3].map((g) => (
         <div key={g} className={`h-1.5 w-4 rounded-full ${
           g <= gatesCleared
-            ? g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+            ? g === 3 ? "bg-bull" : g === 2 ? "bg-blue-500" : "bg-amber-500"
             : "bg-muted-foreground/15"
         }`} />
       ))}
@@ -128,18 +128,18 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
   const g = result.gates;
   // Use gate signal directly
   const label = g?.signal || "NO SETUP";
-  const labelColor = label.startsWith("GO") ? "bg-green-500 text-white"
+  const labelColor = label.startsWith("GO") ? "bg-bull text-white"
     : label.startsWith("SET") ? "bg-blue-500 text-white"
     : label.startsWith("READY") ? "bg-amber-500 text-white"
     : label.startsWith("PULLBACK") ? "bg-orange-500 text-white"
-    : label.startsWith("GATES CLOSED") ? "bg-red-500 text-white"
+    : label.startsWith("GATES CLOSED") ? "bg-bear text-white"
     : "bg-zinc-500/20 text-zinc-400";
 
-  const borderClass = label.startsWith("GO") ? "border-green-500/40"
+  const borderClass = label.startsWith("GO") ? "border-bull/40"
     : label.startsWith("SET") ? "border-blue-500/40"
     : label.startsWith("READY") ? "border-amber-500/30"
     : label.startsWith("PULLBACK") ? "border-orange-500/40"
-    : label.startsWith("GATES CLOSED") ? "border-red-500/40"
+    : label.startsWith("GATES CLOSED") ? "border-bear/40"
     : "border-card-border";
 
   return (
@@ -156,9 +156,9 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
               )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
-              {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
+              {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-bull" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-bear" /> : <Minus className="h-3 w-3 text-watch" />}
               <span className="text-micro text-muted-foreground">{result.bbtc.trend} · {result.bbtc.bias}</span>
-              {result.ver.rsi !== null && <span className={`text-micro ml-1 ${result.ver.rsi < 30 ? "text-green-400" : result.ver.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
+              {result.ver.rsi !== null && <span className={`text-micro ml-1 ${result.ver.rsi < 30 ? "text-bull-light" : result.ver.rsi > 70 ? "text-bear-light" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
             </div>
           </div>
         </div>
@@ -170,10 +170,10 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
         <div className="flex items-center gap-2 mb-3">
           <GatePips gatesCleared={g.gatesCleared} />
           <span className={`text-micro font-semibold tracking-wider ${
-            label.startsWith("GO") ? "text-green-400" :
+            label.startsWith("GO") ? "text-bull-light" :
             label.startsWith("SET") ? "text-blue-400" :
             label.startsWith("READY") ? "text-amber-400" :
-            label.startsWith("GATES") ? "text-red-400" :
+            label.startsWith("GATES") ? "text-bear-light" :
             "text-muted-foreground/40"
           }`}>
             {g.summary}
@@ -207,7 +207,7 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
 
 function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: number; onClick: () => void; onAnalyze?: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const labelColor = result.amcScore >= 5 ? "bg-green-500 text-white" : result.amcScore >= 4 ? "bg-green-500/70 text-white" : result.amcScore >= 3 ? "bg-yellow-400/80 text-black" : "bg-muted text-muted-foreground";
+  const labelColor = result.amcScore >= 5 ? "bg-bull text-white" : result.amcScore >= 4 ? "bg-bull/70 text-white" : result.amcScore >= 3 ? "bg-watch-light/80 text-black" : "bg-muted text-muted-foreground";
   const labelText = result.label || (result.amcScore >= 2 ? "AMC WATCH" : "AMC LOW");
   return (
     <div className="bg-card border border-card-border rounded-lg p-4 hover:border-purple-500/30 transition-colors" data-testid={`amc-result-${result.ticker}`}>
@@ -224,10 +224,10 @@ function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: numb
               )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
-              {result.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
+              {result.trend === "UP" ? <TrendingUp className="h-3 w-3 text-bull" /> : result.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-bear" /> : <Minus className="h-3 w-3 text-watch" />}
               <span className="text-micro text-muted-foreground">{result.trend}</span>
-              {result.mode !== "flat" && <span className={`text-micro ${result.mode === "momentum" ? "text-green-400" : "text-cyan-400"}`}>· {result.mode}</span>}
-              {result.rsi !== null && <span className={`text-micro ${result.rsi < 30 ? "text-green-400" : result.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.rsi}</span>}
+              {result.mode !== "flat" && <span className={`text-micro ${result.mode === "momentum" ? "text-bull-light" : "text-cyan-400"}`}>· {result.mode}</span>}
+              {result.rsi !== null && <span className={`text-micro ${result.rsi < 30 ? "text-bull-light" : result.rsi > 70 ? "text-bear-light" : "text-muted-foreground"}`}>· RSI {result.rsi}</span>}
             </div>
           </div>
         </div>
@@ -238,8 +238,8 @@ function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: numb
       <div className="flex items-center gap-4">
         <ScoreBar score={result.amcScore} max={5} />
         <div className="flex items-center gap-1.5 ml-auto">
-          <Zap className={`h-3 w-3 ${result.vami > 0 ? "text-green-400" : result.vami < 0 ? "text-red-400" : "text-muted-foreground"}`} />
-          <span className={`text-xs font-bold tabular-nums ${result.vami > 0 ? "text-green-400" : result.vami < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+          <Zap className={`h-3 w-3 ${result.vami > 0 ? "text-bull-light" : result.vami < 0 ? "text-bear-light" : "text-muted-foreground"}`} />
+          <span className={`text-xs font-bold tabular-nums ${result.vami > 0 ? "text-bull-light" : result.vami < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
             VAMI {result.vami > 0 ? "+" : ""}{result.vami}
           </span>
         </div>
@@ -253,23 +253,23 @@ function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: numb
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 pt-3 border-t border-card-border/50">
           <div className="text-center">
             <p className="text-mini text-muted-foreground uppercase">MACD</p>
-            <p className={`text-xs font-bold ${result.macd === "bullish" ? "text-green-400" : "text-red-400"}`}>{result.macd} {result.macdAccel ? "↑" : ""}</p>
+            <p className={`text-xs font-bold ${result.macd === "bullish" ? "text-bull-light" : "text-bear-light"}`}>{result.macd} {result.macdAccel ? "↑" : ""}</p>
           </div>
           <div className="text-center">
             <p className="text-mini text-muted-foreground uppercase">RSI</p>
-            <p className={`text-xs font-bold tabular-nums ${result.rsi >= 45 && result.rsi <= 65 ? "text-green-400" : result.rsi < 30 ? "text-cyan-400" : result.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>{result.rsi ?? "N/A"}</p>
+            <p className={`text-xs font-bold tabular-nums ${result.rsi >= 45 && result.rsi <= 65 ? "text-bull-light" : result.rsi < 30 ? "text-cyan-400" : result.rsi > 70 ? "text-bear-light" : "text-muted-foreground"}`}>{result.rsi ?? "N/A"}</p>
           </div>
           <div className="text-center">
             <p className="text-mini text-muted-foreground uppercase">VAMI</p>
-            <p className={`text-xs font-bold tabular-nums ${result.vami > 0 ? "text-green-400" : "text-red-400"}`}>{result.vami}</p>
+            <p className={`text-xs font-bold tabular-nums ${result.vami > 0 ? "text-bull-light" : "text-bear-light"}`}>{result.vami}</p>
           </div>
           <div className="text-center">
             <p className="text-mini text-muted-foreground uppercase">Trend</p>
-            <p className={`text-xs font-bold ${result.trend === "UP" ? "text-green-400" : result.trend === "DOWN" ? "text-red-400" : "text-yellow-400"}`}>{result.trend}</p>
+            <p className={`text-xs font-bold ${result.trend === "UP" ? "text-bull-light" : result.trend === "DOWN" ? "text-bear-light" : "text-watch-light"}`}>{result.trend}</p>
           </div>
           <div className="text-center">
             <p className="text-mini text-muted-foreground uppercase">Close</p>
-            <p className={`text-xs font-bold ${result.greenClose ? "text-green-400" : "text-red-400"}`}>{result.greenClose ? "Green ↑" : "Red ↓"}</p>
+            <p className={`text-xs font-bold ${result.greenClose ? "text-bull-light" : "text-bear-light"}`}>{result.greenClose ? "Green ↑" : "Red ↓"}</p>
           </div>
           <div className="col-span-2 sm:col-span-5 bg-background/40 rounded p-2 mt-1">
             <IndicatorOscillator ticker={result.ticker} bars={60} />
@@ -289,8 +289,8 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
   const triggered = (result.signals ?? []).filter((s: any) => s.triggered);
 
   const dirStyle =
-    direction === "up" ? "bg-green-500/20 text-green-400 border-green-500/40"
-    : direction === "down" ? "bg-red-500/20 text-red-400 border-red-500/40"
+    direction === "up" ? "bg-bull/20 text-bull-light border-bull/40"
+    : direction === "down" ? "bg-bear/20 text-bear-light border-bear/40"
     : "bg-zinc-500/20 text-zinc-400 border-zinc-500/40";
 
   const scoreColor =
@@ -338,8 +338,8 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
         <div className="flex flex-wrap gap-1.5 mt-3">
           {triggered.map((s: any) => {
             const chipColor =
-              s.direction === "up" ? "bg-green-500/15 text-green-400 border-green-500/30"
-              : s.direction === "down" ? "bg-red-500/15 text-red-400 border-red-500/30"
+              s.direction === "up" ? "bg-bull/15 text-bull-light border-bull/30"
+              : s.direction === "down" ? "bg-bear/15 text-bear-light border-bear/30"
               : "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
             return (
               <span key={s.id} className={`text-micro font-semibold rounded px-1.5 py-0.5 border ${chipColor}`} title={s.detail || ""}>
@@ -511,8 +511,8 @@ export default function Scanner() {
 
         {/* How It Works */}
         <HelpBlock title="How the Scanner page works">
-          <p><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-green-400">bullish fires</span> minus <span className="text-red-400">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
-          <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-green-400">GO ↑</span>/<span className="text-red-400">GO ↓</span> (all gates clear), <span className="text-green-400">SET ↑</span>/<span className="text-red-400">SET ↓</span> (most gates clear), <span className="text-green-400">READY ↑</span>/<span className="text-red-400">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors differentiate up vs down.</p>
+          <p><b className="text-foreground">Signal Pulse (top):</b> Our proprietary oscillator. Each day we run all 12 Scanner 2.0 signals on the selected ticker and plot <span className="text-bull-light">bullish fires</span> minus <span className="text-bear-light">bearish fires</span> as a composite score. Above zero = momentum up, below = momentum down. Click any scanner result below to load it into the Pulse.</p>
+          <p><b className="text-foreground">3-Strategy Alignment:</b> Scans for stocks where BBTC + VER + Triple Confluence agree. Verdicts: <span className="text-bull-light">GO ↑</span>/<span className="text-bear-light">GO ↓</span> (all gates clear), <span className="text-bull-light">SET ↑</span>/<span className="text-bear-light">SET ↓</span> (most gates clear), <span className="text-bull-light">READY ↑</span>/<span className="text-bear-light">READY ↓</span> (waiting for confirmation), <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP. Colors differentiate up vs down.</p>
           <p><b className="text-foreground">AMC Strategy:</b> Scores 0-5 using MACD acceleration, RSI sweet spot, trend structure, VAMI momentum, and trend strength.</p>
           <p><b className="text-foreground">Explosion Detector:</b> Scans 2000 US stocks looking for combinations of 12 signals (6 technical + 6 catalyst) that historically precede large moves. Expand any card to see per-signal breakdown and an MACD/RSI indicator chart.</p>
           <p><b className="text-foreground">Credibility:</b> All three scanners use the same signal engine — verdicts here match Trade Analysis, Trade Tracker, and Watchlist exactly.</p>
@@ -606,7 +606,7 @@ export default function Scanner() {
                     <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
                     <div className="flex gap-2">
                       {(["both", "buy", "sell"] as const).map(sf => (
-                        <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-green-600 text-white" : sf === "sell" ? "bg-red-600 text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
+                        <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-bull text-white" : sf === "sell" ? "bg-bear text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
                       ))}
                     </div>
                   </div>
@@ -616,7 +616,7 @@ export default function Scanner() {
                     <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Direction</label>
                     <div className="flex gap-2">
                       {(["either", "up", "down"] as const).map(d => (
-                        <button key={d} onClick={() => setV2Direction(d)} data-testid={`v2-dir-${d}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${v2Direction === d ? (d === "up" ? "bg-green-600 text-white" : d === "down" ? "bg-red-600 text-white" : "bg-fuchsia-600 text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{d}</button>
+                        <button key={d} onClick={() => setV2Direction(d)} data-testid={`v2-dir-${d}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${v2Direction === d ? (d === "up" ? "bg-bull text-white" : d === "down" ? "bg-bear text-white" : "bg-fuchsia-600 text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{d}</button>
                       ))}
                     </div>
                   </div>

@@ -156,7 +156,7 @@ export default function Dashboard() {
     return (
       <div className="p-6">
         <PageHeader title="Dashboard" icon={LayoutDashboard} />
-        <div className="text-sm text-red-500 mt-4">Failed to load dashboard layout: {(error as Error).message}</div>
+        <div className="text-sm text-bear mt-4">Failed to load dashboard layout: {(error as Error).message}</div>
       </div>
     );
   }

@@ -88,20 +88,20 @@ interface ScanResult {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function flowColor(score: number): string {
-  if (score >= 40) return "text-green-400";
-  if (score >= 15) return "text-green-400/70";
-  if (score <= -40) return "text-red-400";
-  if (score <= -15) return "text-red-400/70";
-  return "text-yellow-400";
+  if (score >= 40) return "text-bull-light";
+  if (score >= 15) return "text-bull-light/70";
+  if (score <= -40) return "text-bear-light";
+  if (score <= -15) return "text-bear-light/70";
+  return "text-watch-light";
 }
 
 function signalBadge(signal: string) {
   const colors: Record<string, string> = {
-    "STRONG INFLOW": "bg-green-500 text-white",
-    "ACCUMULATING": "bg-green-500/20 text-green-400",
-    "DISTRIBUTING": "bg-red-500/20 text-red-400",
-    "STRONG OUTFLOW": "bg-red-500 text-white",
-    "NEUTRAL": "bg-yellow-500/20 text-yellow-400",
+    "STRONG INFLOW": "bg-bull text-white",
+    "ACCUMULATING": "bg-bull/20 text-bull-light",
+    "DISTRIBUTING": "bg-bear/20 text-bear-light",
+    "STRONG OUTFLOW": "bg-bear text-white",
+    "NEUTRAL": "bg-watch/20 text-watch-light",
   };
   return (
     <span className={`text-2xs font-bold px-2 py-0.5 rounded-md uppercase ${colors[signal] || colors.NEUTRAL}`}>
@@ -117,11 +117,11 @@ function FlowBar({ score }: { score: number }) {
       <span className={`text-sm font-bold tabular-nums w-10 text-right ${flowColor(score)}`}>{score}</span>
       <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden relative max-w-[120px]">
         <div className="absolute inset-0 flex">
-          <div className="w-1/2 bg-red-500/20" />
-          <div className="w-1/2 bg-green-500/20" />
+          <div className="w-1/2 bg-bear/20" />
+          <div className="w-1/2 bg-bull/20" />
         </div>
         <div
-          className={`absolute top-0 h-full w-1.5 rounded-full ${score >= 0 ? "bg-green-500" : "bg-red-500"}`}
+          className={`absolute top-0 h-full w-1.5 rounded-full ${score >= 0 ? "bg-bull" : "bg-bear"}`}
           style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
         />
       </div>
@@ -194,9 +194,9 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
             value={data.institutionCount > 0 ? `${data.institutionPct.toFixed(1)}%` : "Warming"}
             sub={data.institutionCount > 0 ? `${data.institutionCount.toLocaleString()} holders (13F)` : "Data warming — check back later"}
           />
-          <MiniCard label="Insider Buys (6mo)" value={String(data.insiderBuyCount)} sub={`${formatCompact(data.insiderBuyShares)} shares`} color="text-green-400" />
-          <MiniCard label="Insider Sells (6mo)" value={String(data.insiderSellCount)} sub={`${formatCompact(data.insiderSellShares)} shares`} color="text-red-400" />
-          <MiniCard label="Net Insider Shares" value={formatCompact(data.netInsiderShares)} color={data.netInsiderShares >= 0 ? "text-green-400" : "text-red-400"} />
+          <MiniCard label="Insider Buys (6mo)" value={String(data.insiderBuyCount)} sub={`${formatCompact(data.insiderBuyShares)} shares`} color="text-bull-light" />
+          <MiniCard label="Insider Sells (6mo)" value={String(data.insiderSellCount)} sub={`${formatCompact(data.insiderSellShares)} shares`} color="text-bear-light" />
+          <MiniCard label="Net Insider Shares" value={formatCompact(data.netInsiderShares)} color={data.netInsiderShares >= 0 ? "text-bull-light" : "text-bear-light"} />
         </div>
 
         {/* Tabs */}
@@ -236,7 +236,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                     <td className="py-1.5 text-right tabular-nums">{formatCompact(inst.shares)}</td>
                     <td className="py-1.5 text-right tabular-nums">${formatCompact(inst.value)}</td>
                     <td className="py-1.5 text-right tabular-nums">{(inst.pctHeld * 100).toFixed(2)}%</td>
-                    <td className={`py-1.5 text-right font-semibold tabular-nums ${inst.changeQoQ > 0 ? "text-green-400" : inst.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                    <td className={`py-1.5 text-right font-semibold tabular-nums ${inst.changeQoQ > 0 ? "text-bull-light" : inst.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
                       {inst.changeQoQ > 0 ? "+" : ""}{inst.changeQoQ.toFixed(1)}%
                     </td>
                   </tr>
@@ -264,7 +264,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                       <td className="py-1.5 text-right tabular-nums">{formatCompact(fund.shares)}</td>
                       <td className="py-1.5 text-right tabular-nums">${formatCompact(fund.value)}</td>
                       <td className="py-1.5 text-right tabular-nums">{(fund.pctHeld * 100).toFixed(2)}%</td>
-                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-green-400" : fund.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-bull-light" : fund.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
                         {fund.changeQoQ > 0 ? "+" : ""}{fund.changeQoQ.toFixed(1)}%
                       </td>
                     </tr>
@@ -298,7 +298,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                       <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
                       <td className="py-1.5 text-right tabular-nums">{ins.shares > 0 ? formatCompact(ins.shares) : "—"}</td>
                       <td className="py-1.5 text-right tabular-nums text-muted-foreground">{ins.sharesIndirect > 0 ? formatCompact(ins.sharesIndirect) : "—"}</td>
-                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-red-400" : ins.latestTransaction === "Purchase" ? "text-green-400" : "text-muted-foreground"}`}>
+                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-bear-light" : ins.latestTransaction === "Purchase" ? "text-bull-light" : "text-muted-foreground"}`}>
                         {ins.latestTransaction || "—"}
                       </td>
                       <td className="py-1.5 text-right text-muted-foreground tabular-nums">{ins.latestDate || "—"}</td>
@@ -383,15 +383,15 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
           <tbody>
             {filtered.map((tx, i) => {
               const dirColor =
-                tx.direction === "buy" ? "text-green-400"
-                : tx.direction === "sell" ? "text-red-400"
+                tx.direction === "buy" ? "text-bull-light"
+                : tx.direction === "sell" ? "text-bear-light"
                 : "text-muted-foreground";
               const notable = isNotableRole(tx.relation);
               const bigTicket = tx.value >= 10_000_000 && tx.meaningful;
               return (
                 <tr
                   key={i}
-                  className={`border-b border-card-border/40 ${bigTicket ? "bg-yellow-500/5" : ""}`}
+                  className={`border-b border-card-border/40 ${bigTicket ? "bg-watch/5" : ""}`}
                   data-testid={`insider-txn-row-${i}`}
                 >
                   <td className="py-2 pr-2 text-muted-foreground tabular-nums">
@@ -486,15 +486,15 @@ function ResultCard({ data, rank, onClick }: { data: InstitutionalData; rank: nu
           <span className="text-xs font-semibold text-foreground">{data.insiderPct.toFixed(1)}%</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <ArrowUpRight className="h-3.5 w-3.5 text-green-400" />
-          <span className="text-xs font-semibold text-green-400">{data.instIncreased + data.instNew} in</span>
-          <ArrowDownRight className="h-3.5 w-3.5 text-red-400 ml-1" />
-          <span className="text-xs font-semibold text-red-400">{data.instDecreased + data.instSoldOut} out</span>
+          <ArrowUpRight className="h-3.5 w-3.5 text-bull-light" />
+          <span className="text-xs font-semibold text-bull-light">{data.instIncreased + data.instNew} in</span>
+          <ArrowDownRight className="h-3.5 w-3.5 text-bear-light ml-1" />
+          <span className="text-xs font-semibold text-bear-light">{data.instDecreased + data.instSoldOut} out</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Activity className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">Insider Net:</span>
-          <span className={`text-xs font-semibold ${data.netInsiderShares >= 0 ? "text-green-400" : "text-red-400"}`}>
+          <span className={`text-xs font-semibold ${data.netInsiderShares >= 0 ? "text-bull-light" : "text-bear-light"}`}>
             {data.netInsiderShares >= 0 ? "+" : ""}{formatCompact(data.netInsiderShares)}
           </span>
         </div>
@@ -581,7 +581,7 @@ export default function Institutional() {
 
       {/* How It Works */}
       <HelpBlock title="How Institutional Money Flow Scoring Works">
-        <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-red-400">-100</strong> (all selling) to <strong className="text-green-400">+100</strong> (all buying).</p>
+        <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-bear-light">-100</strong> (all selling) to <strong className="text-bull-light">+100</strong> (all buying).</p>
 
         <p className="font-semibold text-foreground mt-2">How it's calculated:</p>
         <p>1. We look at each institution's <strong className="text-foreground">quarter-over-quarter position change</strong> — how much they increased or decreased their holdings.</p>
@@ -599,13 +599,13 @@ export default function Institutional() {
 
         <p className="font-semibold text-foreground mt-2">Real Examples:</p>
         <Example type="good">
-          <p><strong className="text-green-400">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
+          <p><strong className="text-bull-light">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
         </Example>
         <Example type="neutral">
-          <p><strong className="text-yellow-400">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
+          <p><strong className="text-watch-light">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
         </Example>
         <Example type="bad">
-          <p><strong className="text-red-400">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
+          <p><strong className="text-bear-light">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
         </Example>
 
         <p className="font-semibold text-foreground mt-2">Key Metrics Explained:</p>
@@ -636,10 +636,10 @@ export default function Institutional() {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <MiniCard label="Institutional" value={`${singleData.institutionPct.toFixed(1)}%`} sub={`${singleData.institutionCount.toLocaleString()} holders`} />
             <MiniCard label="Insider" value={`${singleData.insiderPct.toFixed(1)}%`} />
-            <MiniCard label="Increasing" value={`${singleData.instIncreased + singleData.instNew}`} sub={`${singleData.instNew} new`} color="text-green-400" />
-            <MiniCard label="Decreasing" value={`${singleData.instDecreased + singleData.instSoldOut}`} sub={`${singleData.instSoldOut} exited`} color="text-red-400" />
-            <MiniCard label="Insider Buys" value={String(singleData.insiderBuyCount)} sub={`${formatCompact(singleData.insiderBuyShares)} sh`} color="text-green-400" />
-            <MiniCard label="Insider Sells" value={String(singleData.insiderSellCount)} sub={`${formatCompact(singleData.insiderSellShares)} sh`} color="text-red-400" />
+            <MiniCard label="Increasing" value={`${singleData.instIncreased + singleData.instNew}`} sub={`${singleData.instNew} new`} color="text-bull-light" />
+            <MiniCard label="Decreasing" value={`${singleData.instDecreased + singleData.instSoldOut}`} sub={`${singleData.instSoldOut} exited`} color="text-bear-light" />
+            <MiniCard label="Insider Buys" value={String(singleData.insiderBuyCount)} sub={`${formatCompact(singleData.insiderBuyShares)} sh`} color="text-bull-light" />
+            <MiniCard label="Insider Sells" value={String(singleData.insiderSellCount)} sub={`${formatCompact(singleData.insiderSellShares)} sh`} color="text-bear-light" />
           </div>
         </div>
       )}

@@ -53,7 +53,7 @@ export default function ResetPassword() {
           </div>
         ) : success ? (
           <div className="text-center">
-            <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
+            <CheckCircle2 className="h-12 w-12 text-bull-light mx-auto mb-4" />
             <h2 className="text-lg font-bold text-foreground mb-2">Password Reset</h2>
             <p className="text-sm text-muted-foreground mb-4">Your password has been changed. You can now sign in with your new password.</p>
             <a href="/" className="text-sm text-primary font-semibold hover:underline">Sign In</a>

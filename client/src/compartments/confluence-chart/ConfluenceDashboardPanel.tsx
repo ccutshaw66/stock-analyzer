@@ -87,9 +87,9 @@ function gateDirection(verdict: string | null | undefined): Direction {
 function dirBadgeStyle(dir: Direction): { bg: string; text: string; icon: typeof Check; label: string } {
   switch (dir) {
     case "bull":
-      return { bg: "bg-green-500/15", text: "text-green-400", icon: Check, label: "BULL" };
+      return { bg: "bg-bull/15", text: "text-bull-light", icon: Check, label: "BULL" };
     case "bear":
-      return { bg: "bg-red-500/15", text: "text-red-400", icon: X, label: "BEAR" };
+      return { bg: "bg-bear/15", text: "text-bear-light", icon: X, label: "BEAR" };
     case "neutral":
       return { bg: "bg-muted/40", text: "text-muted-foreground", icon: Minus, label: "—" };
   }
@@ -196,9 +196,9 @@ export function ConfluenceDashboardPanel({ bars, indicators, quick }: Confluence
             <span
               className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
                 summary.bias === "LONG"
-                  ? "bg-green-500/15 text-green-400"
+                  ? "bg-bull/15 text-bull-light"
                   : summary.bias === "SHORT"
-                  ? "bg-red-500/15 text-red-400"
+                  ? "bg-bear/15 text-bear-light"
                   : "bg-muted/40 text-muted-foreground"
               }`}
               data-testid="confluence-bias"

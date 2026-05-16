@@ -317,7 +317,7 @@ function StickyHeader({
                 <div className="border-t border-card-border pt-1">
                   <div
                     onClick={() => { logout(); setUserMenuOpen(false); }}
-                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-bear/10 hover:text-bear-light cursor-pointer"
                     data-testid="button-logout"
                   >
                     <LogOut className="h-4 w-4" /> Sign Out
@@ -351,16 +351,16 @@ function ScoreBadge({
 
   if (isGateData && verdict) {
     const gatesCleared = Math.round(score ?? 0);
-    const signalColor = verdict.startsWith("GO") ? "bg-green-500" :
+    const signalColor = verdict.startsWith("GO") ? "bg-bull" :
       verdict.startsWith("SET") ? "bg-blue-500" :
       verdict.startsWith("READY") ? "bg-amber-500" :
       verdict.startsWith("PULLBACK") ? "bg-orange-500" :
-      verdict.startsWith("GATES") ? "bg-red-500" :
+      verdict.startsWith("GATES") ? "bg-bear" :
       "bg-zinc-500";
     // For PULLBACK/GATES CLOSED, tint ALL the active pips to match the signal
     // color so the watchlist row reads as a single state (not mixed gate colors).
     const isExitState = verdict.startsWith("PULLBACK") || verdict.startsWith("GATES");
-    const exitPipColor = verdict.startsWith("PULLBACK") ? "bg-orange-500" : "bg-red-500";
+    const exitPipColor = verdict.startsWith("PULLBACK") ? "bg-orange-500" : "bg-bear";
     return (
       <div className="flex items-center gap-1">
         <div className="flex gap-0.5">
@@ -369,7 +369,7 @@ function ScoreBadge({
               g <= gatesCleared
                 ? isExitState
                   ? exitPipColor
-                  : g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+                  : g === 3 ? "bg-bull" : g === 2 ? "bg-blue-500" : "bg-amber-500"
                 : "bg-muted-foreground/20"
             }`} />
           ))}
@@ -793,30 +793,30 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
+                  <label className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
                   <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
-                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
                     <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
-                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
+                  <label className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
                   <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
-                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
                     <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
-                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
               {ctvBuyPrice && ctvSellPrice && (
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Net:</span>
-                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
                     {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
                   </span>
                   {ctvBuyStrikes && ctvSellStrikes && <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>}
@@ -826,9 +826,9 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
+                <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
                   <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50" required
-                    className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-green-500/30" : "border-red-500/30"}`} /></div>
+                    className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-bull/30" : "border-bear/30"}`} /></div>
                 {category === "Option" && numLegs >= 1 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Strike(s)</label>
                   <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)} placeholder={numLegs >= 2 ? "55/60" : "55"}
                     className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>}
@@ -906,19 +906,19 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
                   <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-foreground">{selected.symbol}</span>
-                      <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{selected.tradeType}</span>
+                      <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>{selected.tradeType}</span>
                     </div>
                     <p className="text-2xs text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
                   </div>
                   <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
                     <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required /></div>
-                  <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+                  <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"}</label>
                     <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50" required
                       className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
                     <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
                   <button type="submit" disabled={closeMut.isPending}
-                    className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50">
+                    className="w-full py-2.5 rounded-lg bg-watch text-white font-semibold text-sm hover:bg-watch disabled:opacity-50">
                     {closeMut.isPending ? "Closing..." : "Close Trade"}
                   </button>
                 </>
@@ -946,7 +946,7 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
-          <span className={`text-mini font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
+          <span className={`text-mini font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-bull/15 text-bull-light' : 'bg-bear/15 text-bear-light'}`}>{t.tradeType}</span>
         </div>
         <p className="text-micro text-muted-foreground">
           {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
@@ -956,7 +956,7 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
         {t.currentPrice ? (
           t.tradeCategory === 'Stock' ? (
             <>
-              <div className={`text-2xs font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+              <div className={`text-2xs font-bold tabular-nums ${isUp ? 'text-bull-light' : 'text-bear-light'}`}>
                 {isUp ? '+' : ''}{pl.toFixed(0)}
               </div>
               <div className="text-mini text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
@@ -1121,7 +1121,7 @@ function SidebarContent({
                                 listType: "watchlist",
                               });
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-0.5"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-bear p-0.5"
                             data-testid={`button-remove-watchlist-${item.ticker}`}
                             aria-label={`Remove ${item.ticker} from watchlist`}
                           >

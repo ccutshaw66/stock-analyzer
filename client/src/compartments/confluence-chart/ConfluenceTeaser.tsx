@@ -12,12 +12,12 @@ import type { WidgetViewProps } from "../types";
 
 function verdictColors(verdict: string | null | undefined): { bg: string; text: string; label: string } {
   const v = (verdict ?? "").toUpperCase();
-  if (v.startsWith("GO ↑")) return { bg: "bg-green-500", text: "text-white", label: verdict! };
-  if (v.startsWith("GO")) return { bg: "bg-red-500", text: "text-white", label: verdict! };
-  if (v.startsWith("SET ↑")) return { bg: "bg-green-500/70", text: "text-white", label: verdict! };
-  if (v.startsWith("SET")) return { bg: "bg-red-500/70", text: "text-white", label: verdict! };
-  if (v.startsWith("READY ↑")) return { bg: "bg-green-500/30", text: "text-green-300", label: verdict! };
-  if (v.startsWith("READY")) return { bg: "bg-red-500/30", text: "text-red-300", label: verdict! };
+  if (v.startsWith("GO ↑")) return { bg: "bg-bull", text: "text-white", label: verdict! };
+  if (v.startsWith("GO")) return { bg: "bg-bear", text: "text-white", label: verdict! };
+  if (v.startsWith("SET ↑")) return { bg: "bg-bull/70", text: "text-white", label: verdict! };
+  if (v.startsWith("SET")) return { bg: "bg-bear/70", text: "text-white", label: verdict! };
+  if (v.startsWith("READY ↑")) return { bg: "bg-bull/30", text: "text-bull-light", label: verdict! };
+  if (v.startsWith("READY")) return { bg: "bg-bear/30", text: "text-bear-light", label: verdict! };
   if (v.startsWith("PULLBACK")) return { bg: "bg-amber-500/30", text: "text-amber-300", label: verdict! };
   if (v.startsWith("GATES")) return { bg: "bg-muted", text: "text-muted-foreground", label: "CLOSED" };
   return { bg: "bg-muted", text: "text-muted-foreground", label: verdict || "NO SETUP" };
@@ -70,7 +70,7 @@ export function ConfluenceTeaser(_props: WidgetViewProps) {
             {dayChangePct != null && (
               <div
                 className={`text-xs font-semibold tabular-nums ${
-                  dayChangePct >= 0 ? "text-green-500" : "text-red-500"
+                  dayChangePct >= 0 ? "text-bull" : "text-bear"
                 }`}
               >
                 {dayChangePct >= 0 ? "▲" : "▼"} {Math.abs(dayChangePct).toFixed(2)}%

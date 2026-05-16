@@ -29,8 +29,8 @@ export function ChartHeader({
     dayChangePct == null
       ? "text-muted-foreground"
       : dayChangePct >= 0
-      ? "text-green-500"
-      : "text-red-500";
+      ? "text-bull"
+      : "text-bear";
 
   return (
     <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-sm border-b border-border" data-testid="confluence-chart-header">

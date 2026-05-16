@@ -58,7 +58,7 @@ export function BacktestPanel() {
   const data = mutation.data;
 
   const pctColor = (v: number) =>
-    v > 0 ? "text-green-400" : v < 0 ? "text-red-400" : "text-muted-foreground";
+    v > 0 ? "text-bull-light" : v < 0 ? "text-bear-light" : "text-muted-foreground";
 
   const winRate = (hits: number, samples: number) =>
     samples === 0 ? null : Math.round((hits / samples) * 100);
@@ -124,7 +124,7 @@ export function BacktestPanel() {
         </button>
 
         {mutation.isError && (
-          <p className="mt-2 text-xs text-red-400">
+          <p className="mt-2 text-xs text-bear-light">
             {mutation.error?.message || "Backtest failed"}
           </p>
         )}
@@ -170,7 +170,7 @@ export function BacktestPanel() {
                           <span className="text-muted-foreground">—</span>
                         ) : (
                           <>
-                            <span className={wr >= 55 ? "text-green-400" : wr <= 45 ? "text-red-400" : "text-foreground"}>
+                            <span className={wr >= 55 ? "text-bull-light" : wr <= 45 ? "text-bear-light" : "text-foreground"}>
                               {wr}%
                             </span>
                             <span className="text-muted-foreground"> / </span>

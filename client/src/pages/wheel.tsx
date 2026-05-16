@@ -208,11 +208,11 @@ export default function WheelCalculator() {
           <li><strong className="text-foreground">Called away:</strong> If stock rises above the call strike, shares are sold. Pocket the gain + call premium, then restart with a new CSP.</li>
         </ol>
         <Example type="good">
-          <strong className="text-green-400">Ideal setup:</strong> Stock at $100, sell 30 DTE $95 put for $1.50. Capital: $9,500.
+          <strong className="text-bull-light">Ideal setup:</strong> Stock at $100, sell 30 DTE $95 put for $1.50. Capital: $9,500.
           Return if unassigned: 1.58% in 30 days ≈ 19.2% annualized. If assigned, cost basis = $93.50 and you start selling calls.
         </Example>
         <Example type="bad">
-          <strong className="text-red-400">Wheel trap:</strong> Stock crashes from $100 to $60. You're assigned at $95, stuck with
+          <strong className="text-bear-light">Wheel trap:</strong> Stock crashes from $100 to $60. You're assigned at $95, stuck with
           $35/share unrealized loss, and any call you sell above $95 barely covers the bleeding. Only wheel stocks you're
           <em> genuinely willing to own through a drawdown</em>.
         </Example>
@@ -248,8 +248,8 @@ export default function WheelCalculator() {
           </div>
           <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-3.5 w-3.5 text-green-400" />
-              <span className="text-2xs font-semibold text-green-400 uppercase tracking-wider">Covered Call (after assignment)</span>
+              <TrendingUp className="h-3.5 w-3.5 text-bull-light" />
+              <span className="text-2xs font-semibold text-bull-light uppercase tracking-wider">Covered Call (after assignment)</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <NumField label="Call Strike ($)" value={callStrike} onChange={setCallStrike} step={0.5} testId="wheel-call-strike" />
@@ -336,7 +336,7 @@ export default function WheelCalculator() {
 
         <HelpBlock title="How to read the payoff chart">
           <p>The <span className="text-blue-400 font-semibold">blue line</span> shows P/L if you only sold the cash-secured put.</p>
-          <p>The <span className="text-green-400 font-semibold">green line</span> shows the full wheel: you got assigned and then sold a covered call.</p>
+          <p>The <span className="text-bull-light font-semibold">green line</span> shows the full wheel: you got assigned and then sold a covered call.</p>
           <p>Look for the flat top on the green line — that's the cap on your upside once called away. The kink on the downside is your cost basis.</p>
         </HelpBlock>
 
@@ -377,7 +377,7 @@ export default function WheelCalculator() {
         <div className="flex items-center gap-2 mb-3">
           <ShieldCheck className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">
-            Setup Quality: <span className={health.score >= 80 ? "text-green-400" : health.score >= 60 ? "text-yellow-400" : "text-red-400"}>
+            Setup Quality: <span className={health.score >= 80 ? "text-bull-light" : health.score >= 60 ? "text-watch-light" : "text-bear-light"}>
               {health.score}%
             </span>
           </h3>
@@ -394,9 +394,9 @@ export default function WheelCalculator() {
           {health.flags.map((f, i) => (
             <li key={i} className="flex items-start gap-2 p-2 rounded-md bg-muted/20 border border-card-border/30">
               {f.ok ? (
-                <ShieldCheck className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+                <ShieldCheck className="h-4 w-4 text-bull-light shrink-0 mt-0.5" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+                <AlertTriangle className="h-4 w-4 text-watch-light shrink-0 mt-0.5" />
               )}
               <div className="flex-1">
                 <div className="text-xs font-semibold text-foreground">{f.label}</div>
@@ -449,7 +449,7 @@ function ResultCard({
 }) {
   const color =
     accent === "blue" ? "text-blue-400"
-    : accent === "green" ? "text-green-400"
+    : accent === "green" ? "text-bull-light"
     : "text-primary";
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
@@ -476,7 +476,7 @@ function InfoCard({
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
       <div className="text-micro font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-lg font-bold tabular-nums font-mono ${danger ? "text-red-400" : "text-foreground"}`}>{value}</div>
+      <div className={`text-lg font-bold tabular-nums font-mono ${danger ? "text-bear-light" : "text-foreground"}`}>{value}</div>
       {sub && <div className="text-micro text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );

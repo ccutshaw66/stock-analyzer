@@ -86,7 +86,7 @@ export default function ConfluenceChartPage() {
             <button
               onClick={() => setShowEma21((v) => !v)}
               className={`px-1.5 py-0.5 rounded transition-colors ${
-                showEma21 ? "bg-yellow-500/20 text-yellow-400" : "bg-muted/40 text-muted-foreground"
+                showEma21 ? "bg-watch/20 text-watch-light" : "bg-muted/40 text-muted-foreground"
               }`}
               data-testid="toggle-ema21"
             >
@@ -122,7 +122,7 @@ export default function ConfluenceChartPage() {
           ) : error ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center">
-                <p className="text-sm text-red-500">Couldn't load {activeTicker}</p>
+                <p className="text-sm text-bear">Couldn't load {activeTicker}</p>
                 <p className="text-xs text-muted-foreground mt-1">Try another ticker or refresh.</p>
               </div>
             </div>

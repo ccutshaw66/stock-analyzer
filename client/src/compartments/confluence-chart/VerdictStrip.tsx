@@ -24,17 +24,17 @@ function verdictStyle(verdict: string | null | undefined): {
   // so the strip doesn't tell users to avoid clearly-uptrending stocks just
   // because the gate engine has nothing to say.
   if (v.startsWith("GO ↑"))
-    return { bg: "bg-green-500", text: "text-white", label: verdict!, plainEnglish: "STRONG BUY" };
+    return { bg: "bg-bull", text: "text-white", label: verdict!, plainEnglish: "STRONG BUY" };
   if (v.startsWith("GO"))
-    return { bg: "bg-red-500", text: "text-white", label: verdict!, plainEnglish: "STRONG SELL" };
+    return { bg: "bg-bear", text: "text-white", label: verdict!, plainEnglish: "STRONG SELL" };
   if (v.startsWith("SET ↑"))
-    return { bg: "bg-green-500/70", text: "text-white", label: verdict!, plainEnglish: "GOOD BUY" };
+    return { bg: "bg-bull/70", text: "text-white", label: verdict!, plainEnglish: "GOOD BUY" };
   if (v.startsWith("SET"))
-    return { bg: "bg-red-500/70", text: "text-white", label: verdict!, plainEnglish: "GOOD SELL" };
+    return { bg: "bg-bear/70", text: "text-white", label: verdict!, plainEnglish: "GOOD SELL" };
   if (v.startsWith("READY ↑"))
-    return { bg: "bg-green-500/30", text: "text-green-300", label: verdict!, plainEnglish: "MODERATE BUY" };
+    return { bg: "bg-bull/30", text: "text-bull-light", label: verdict!, plainEnglish: "MODERATE BUY" };
   if (v.startsWith("READY"))
-    return { bg: "bg-red-500/30", text: "text-red-300", label: verdict!, plainEnglish: "MODERATE SELL" };
+    return { bg: "bg-bear/30", text: "text-bear-light", label: verdict!, plainEnglish: "MODERATE SELL" };
   if (v.startsWith("PULLBACK"))
     return { bg: "bg-amber-500/30", text: "text-amber-300", label: verdict!, plainEnglish: "WAIT FOR PULLBACK" };
   if (v.startsWith("GATES"))

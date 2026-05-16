@@ -16,7 +16,7 @@ export function RedFlags({ data }: RedFlagsProps) {
           Red Flags Checklist
         </h3>
         {flaggedCount > 0 && (
-          <span className="text-xs font-semibold text-red-500 bg-red-500/10 px-2 py-1 rounded">
+          <span className="text-xs font-semibold text-bear bg-bear/10 px-2 py-1 rounded">
             {flaggedCount} flagged
           </span>
         )}
@@ -27,17 +27,17 @@ export function RedFlags({ data }: RedFlagsProps) {
           <div
             key={i}
             className={`flex items-center justify-between py-3 border-b border-card-border/50 last:border-0 ${
-              flag.flagged ? "bg-red-500/5 -mx-6 px-6" : ""
+              flag.flagged ? "bg-bear/5 -mx-6 px-6" : ""
             }`}
             data-testid={`red-flag-${i}`}
           >
             <div className="flex items-center gap-3">
               {flag.flagged ? (
-                <XOctagon className="h-4 w-4 text-red-500 shrink-0" />
+                <XOctagon className="h-4 w-4 text-bear shrink-0" />
               ) : (
-                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                <CheckCircle2 className="h-4 w-4 text-bull shrink-0" />
               )}
-              <span className={`text-sm ${flag.flagged ? "text-red-400 font-medium" : "text-foreground"}`}>
+              <span className={`text-sm ${flag.flagged ? "text-bear-light font-medium" : "text-foreground"}`}>
                 {flag.label}
               </span>
             </div>

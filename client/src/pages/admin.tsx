@@ -146,7 +146,7 @@ function UsageBar({ used, limit, label }: { used: number; limit: number; label: 
       <span className="text-muted-foreground w-12 shrink-0">{label}</span>
       <div className="flex-1 h-1.5 bg-muted/30 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${pct > 80 ? "bg-red-400" : pct > 50 ? "bg-amber-400" : "bg-primary"}`}
+          className={`h-full rounded-full transition-all ${pct > 80 ? "bg-bear-light" : pct > 50 ? "bg-amber-400" : "bg-primary"}`}
           style={{ width: isUnlimited ? "0%" : `${pct}%` }}
         />
       </div>
@@ -254,7 +254,7 @@ export default function AdminPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard icon={Users} label="Total Users" value={stats?.users.total ?? users.length} sub={`${paidUsers} paid`} />
-        <KpiCard icon={Activity} label="Active Today" value={stats?.users.activeToday ?? 0} sub={`${stats?.users.activeThisWeek ?? 0} this week`} color="text-green-400" />
+        <KpiCard icon={Activity} label="Active Today" value={stats?.users.activeToday ?? 0} sub={`${stats?.users.activeThisWeek ?? 0} this week`} color="text-bull-light" />
         <KpiCard icon={Crown} label="Elite" value={stats?.users.elite ?? 0} color="text-amber-400" />
         <KpiCard icon={Zap} label="Pro" value={stats?.users.pro ?? 0} color="text-blue-400" />
         <KpiCard icon={Server} label="Uptime" value={stats?.system.uptime ?? "—"} sub={`Memory: ${stats?.system.memoryMB ?? 0}MB`} color="text-emerald-400" />
@@ -263,7 +263,7 @@ export default function AdminPage() {
           label="Cache"
           value={stats?.cache.size ?? 0}
           sub={`Queue: ${stats?.queue.active ?? 0} active, ${stats?.queue.queued ?? 0} waiting`}
-          color={stats?.queue.circuitBroken ? "text-red-400" : "text-cyan-400"}
+          color={stats?.queue.circuitBroken ? "text-bear-light" : "text-cyan-400"}
         />
       </div>
 
@@ -274,7 +274,7 @@ export default function AdminPage() {
             <h2 className="text-sm font-bold text-foreground">System Health</h2>
             <div className="flex items-center gap-3">
               {stats.queue.circuitBroken ? (
-                <span className="flex items-center gap-1 text-micro text-red-400 font-semibold">
+                <span className="flex items-center gap-1 text-micro text-bear-light font-semibold">
                   <XCircle className="h-3 w-3" /> Circuit Breaker OPEN
                 </span>
               ) : stats.queue.consecutive429s > 0 ? (
@@ -282,7 +282,7 @@ export default function AdminPage() {
                   <Activity className="h-3 w-3" /> {stats.queue.consecutive429s} consecutive 429s
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-micro text-green-400 font-semibold">
+                <span className="flex items-center gap-1 text-micro text-bull-light font-semibold">
                   <CheckCircle2 className="h-3 w-3" /> All Systems Normal
                 </span>
               )}
@@ -390,7 +390,7 @@ export default function AdminPage() {
 
                     {/* Last Active */}
                     <td className="px-4 py-3">
-                      <span className={`text-xs ${u.lastLoginAt && (Date.now() - new Date(u.lastLoginAt).getTime()) < 24 * 60 * 60 * 1000 ? "text-green-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs ${u.lastLoginAt && (Date.now() - new Date(u.lastLoginAt).getTime()) < 24 * 60 * 60 * 1000 ? "text-bull-light" : "text-muted-foreground"}`}>
                         {relativeTime(u.lastLoginAt)}
                       </span>
                     </td>
@@ -409,7 +409,7 @@ export default function AdminPage() {
                           </span>
                         )}
                         {u.stripeCustomerId && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-mini font-bold bg-green-500/10 text-green-400 ring-1 ring-green-500/20">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-mini font-bold bg-bull/10 text-bull-light ring-1 ring-bull/20">
                             <CreditCard className="h-2.5 w-2.5" /> STRIPE
                           </span>
                         )}
@@ -430,7 +430,7 @@ export default function AdminPage() {
                           <button
                             onClick={() => deleteMutation.mutate(u.id)}
                             disabled={deleteMutation.isPending}
-                            className="text-micro text-red-400 hover:text-red-300 font-bold"
+                            className="text-micro text-bear-light hover:text-bear-light font-bold"
                             data-testid={`confirm-delete-${u.id}`}
                           >
                             {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirm"}
@@ -442,7 +442,7 @@ export default function AdminPage() {
                       ) : (
                         <button
                           onClick={() => setDeleteConfirm(u.id)}
-                          className="text-muted-foreground/50 hover:text-red-400 transition-colors"
+                          className="text-muted-foreground/50 hover:text-bear-light transition-colors"
                           data-testid={`delete-user-${u.id}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

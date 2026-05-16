@@ -108,13 +108,13 @@ export default function SectorHeatmap() {
         <p><strong className="text-foreground">Sector rotation</strong> is the movement of money between different market sectors as economic conditions change.</p>
         <p>Smart money tends to rotate into sectors that benefit from the current economic cycle:</p>
         <Example type="good">
-          <strong className="text-green-400">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
+          <strong className="text-bull-light">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
         </Example>
         <Example type="neutral">
-          <strong className="text-yellow-400">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
+          <strong className="text-watch-light">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
         </Example>
         <Example type="bad">
-          <strong className="text-red-400">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
+          <strong className="text-bear-light">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
         </Example>
         <ScoreRange label="Strong" range="> +3%" color="green" description="Sector is outperforming — money is flowing in" />
         <ScoreRange label="Neutral" range="±1%" color="yellow" description="Flat performance — sector is in line with the market" />
@@ -158,7 +158,7 @@ export default function SectorHeatmap() {
 
         {error && (
           <div className="flex items-center justify-center py-12">
-            <span className="text-xs text-red-400">Failed to load sector data. Please try again.</span>
+            <span className="text-xs text-bear-light">Failed to load sector data. Please try again.</span>
           </div>
         )}
 
@@ -178,8 +178,8 @@ export default function SectorHeatmap() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-foreground">{sector.name}</span>
                     {isPositive
-                      ? <TrendingUp className="h-3 w-3 text-green-400" />
-                      : <TrendingDown className="h-3 w-3 text-red-400" />
+                      ? <TrendingUp className="h-3 w-3 text-bull-light" />
+                      : <TrendingDown className="h-3 w-3 text-bear-light" />
                     }
                   </div>
                   <div className="flex items-baseline justify-between">
@@ -189,7 +189,7 @@ export default function SectorHeatmap() {
                     </span>
                   </div>
                   <div className="mt-2">
-                    <span className={`text-lg font-bold font-mono tabular-nums ${isPositive ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`text-lg font-bold font-mono tabular-nums ${isPositive ? "text-bull-light" : "text-bear-light"}`}>
                       {isPositive ? "+" : ""}{ret.toFixed(2)}%
                     </span>
                   </div>
@@ -203,7 +203,7 @@ export default function SectorHeatmap() {
                           key === timeframe ? "bg-foreground/10" : ""
                         }`}>
                           <div className="text-tiny text-muted-foreground">{label}</div>
-                          <div className={`text-mini font-mono tabular-nums font-semibold ${v >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          <div className={`text-mini font-mono tabular-nums font-semibold ${v >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                             {v >= 0 ? "+" : ""}{v.toFixed(1)}%
                           </div>
                         </div>
@@ -273,7 +273,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
             </div>
           )}
           {error && (
-            <div className="text-center py-8 text-xs text-red-400">Failed to load sector leaders.</div>
+            <div className="text-center py-8 text-xs text-bear-light">Failed to load sector leaders.</div>
           )}
           {data && data.leaders.length === 0 && (
             <div className="text-center py-8 text-xs text-muted-foreground">No leaders found for this sector right now.</div>
@@ -306,13 +306,13 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
                       <div className="text-micro text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums">${l.price.toFixed(2)}</td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                       {l.changePct >= 0 ? "+" : ""}{l.changePct.toFixed(2)}%
                     </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                       {l.return1m >= 0 ? "+" : ""}{l.return1m.toFixed(1)}%
                     </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-yellow-400 font-semibold" : "text-muted-foreground"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-watch-light font-semibold" : "text-muted-foreground"}`}>
                       {l.volSurge.toFixed(2)}x
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
