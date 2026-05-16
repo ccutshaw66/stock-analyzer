@@ -9,6 +9,44 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — TV chart rollout: Trade Analysis + Strategy Chart migrated to CandlePane
+
+**Why:** Continuation of the TV-style chart rollout. The shared `CandlePane` primitive landed in the prior commit; this ship migrates the two highest-impact pages that still ran on Recharts — Trade Analysis (per-ticker signal walk-through) and Strategy Chart (`/chart` backtest visualizer). Both now use the same primitive Confluence Chart does, with declarative overlay configs and signal markers.
+
+**What:**
+
+### Trade Analysis price chart migrated
+- The price chart (Recharts ComposedChart with Area + four EMA Lines + custom SignalDot scatter) replaced with `<CandlePane>`.
+- Overlays sourced from `tradeAnalysisEMAOverlays()` — the bolder green/orange/cyan/purple stack ready since the primitive landed.
+- New `buildTradeAnalysisMarkers(rows, sideFilter)` helper translates BBTC/VER signals into `ChartMarker[]` — preserves the existing semantics (long entry / watch / reduce-win / stop-loss / clean exit / info-only short entry / info-only short watch) plus the side filter (both/long/short).
+- The 150-line Recharts block deleted; the legend below the chart preserved.
+- RSI sub-chart on the same page still uses Recharts — that's a dedicated indicator pane that needs its own primitive (TVChart sub-pane). Follow-up.
+
+### Strategy Chart migrated
+- `/chart` page's StrategyChart component replaced its ComposedChart (close line + per-category Scatter dots + ReferenceArea regime bands) with `<CandlePane>`.
+- New `buildStrategyChartMarkers(signals, highlightedTradeNum)` translates each signal's DotCategory (core_entry / tactical_entry / long_entry / exit_win / exit_loss / exit_clean / watch / info) into marker shape (arrowUp / arrowDown / circle) + position (aboveBar / belowBar) + color (from CATEGORY_COLOR).
+- Highlighted trade-number prefixes the marker text with ★ for visibility.
+- **Regime bands deferred.** Lightweight Charts has no native shaded-region API. Adding it requires either: (1) a custom DOM overlay synced to the time axis, or (2) a semi-transparent series with fill. Surfaced as a follow-up — current Strategy Chart loses the bullish/bearish background tint but gains TV-style candles + crosshair + markers. Net upgrade.
+
+### Charts NOT migrated (intentional)
+These visualizations are not OHLC/price-based and don't fit TV-style. They stay on Recharts:
+- **Conviction Compass** — radar (4-axis polar) chart, not a TV pattern.
+- **Payoff Diagram** — option P/L curves (not price candles).
+- **Wheel Strategy** — P/L curves.
+- **Kelly Calculator** — equity curves.
+- **MM Exposure** — gamma exposure / open interest bars (price overlay possible as future enhancement).
+- **Trade Analytics** — bar/pie charts of historical performance.
+- **Track Record** — return-by-bracket bars.
+
+### Follow-ups documented
+- **RSI sub-pane primitive** — current RSI charts on Trade Analysis and Confluence Chart use a small Recharts line. Worth wrapping into a dedicated `<RsiPane>` that uses Lightweight Charts (different y-axis but same time axis as the candle pane).
+- **MACD sub-pane primitive** — same pattern.
+- **Regime band overlay** — strategy charts with BULLISH/BEARISH/NEUTRAL regime windows need either a DOM-overlay component or a Lightweight Charts background-series workaround.
+- **SignalDot helper cleanup** — Trade Analysis still has the legacy `SignalDot` Recharts dot renderer in the file (unused after migration). Will prune in a follow-up sweep along with the unused Recharts imports.
+
+**Files touched:** `client/src/pages/trade-analysis.tsx` (chart replaced + marker builder added), `client/src/pages/chart.tsx` (chart replaced + marker builder added), `CHANGES.md`.
+
+---
 ## 2026-05-15 — TV-style chart primitive — first step of chart rollout
 
 **Why:** Foundation for the TradingView-style chart rollout across every page. Chris said "go with the charts." The Confluence Chart already had a working candle pane (CandlePane.tsx) built on Lightweight Charts, but it was buried inside the `confluence-chart` compartment with hardcoded EMA21/50/200 props and a compartment-specific bar type. For the rollout, every TV chart on the site needs to use the same primitive — different overlays, different signals, different markers, but ONE rendering implementation.

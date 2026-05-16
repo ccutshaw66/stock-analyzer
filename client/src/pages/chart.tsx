@@ -37,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
+import { CandlePane, type ChartMarker } from "@/components/chart";
 import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -193,6 +194,36 @@ const CATEGORY_COLOR: Record<DotCategory, string> = {
   info: SIGNAL_SHORT_ADD,
 };
 
+/**
+ * Build TV-chart markers from Strategy Chart signals.
+ *
+ * Maps each signal to a Lightweight Charts marker shape/color based on its
+ * DotCategory (entry / exit / watch / info). Regime bands aren't supported
+ * by Lightweight Charts natively — see CHANGES for follow-up on adding a
+ * background-band overlay primitive.
+ */
+function buildStrategyChartMarkers(
+  signals: ChartSignalDot[],
+  highlightedTradeNum: number | null,
+): ChartMarker[] {
+  return signals.map((s) => {
+    const cat = categorizeDot(s);
+    const isEntry = cat === "core_entry" || cat === "tactical_entry" || cat === "long_entry";
+    const isLoss = cat === "exit_loss";
+    const shape: "arrowUp" | "arrowDown" | "circle" =
+      isEntry ? "arrowUp" : isLoss ? "arrowDown" : "circle";
+    const position: "aboveBar" | "belowBar" = isEntry || cat === "watch" ? "belowBar" : "aboveBar";
+    const highlighted = highlightedTradeNum != null && s.tradeNumber === highlightedTradeNum;
+    return {
+      date: s.date,
+      position,
+      shape,
+      color: CATEGORY_COLOR[cat],
+      text: highlighted ? `★ ${s.label}` : s.label,
+    };
+  });
+}
+
 function categorizeDot(s: ChartSignalDot): DotCategory {
   if (s.type === "ENTRY" && s.layer === "CORE") return "core_entry";
   if (s.type === "ENTRY" && s.layer === "TACTICAL") return "tactical_entry";
@@ -347,65 +378,21 @@ function StrategyChart({ data, highlightedTradeNum }: {
     return Array.from(seen);
   }, [data.signals]);
 
+  // TV-style candle pane via the shared primitive. Entry/exit/watch dots
+  // become marker arrows on the candle pane; regime bands are not yet
+  // supported by the primitive (Lightweight Charts has no native shaded-
+  // region API). Surfaced as a follow-up in CHANGES.
+  const markers = useMemo(
+    () => buildStrategyChartMarkers(data.signals, highlightedTradeNum),
+    [data.signals, highlightedTradeNum],
+  );
   return (
     <div className="w-full" style={{ height: 420 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 30 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_DARK} />
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 10, fill: SIGNAL_TREND_EXIT }}
-            interval="preserveStartEnd"
-            minTickGap={50}
-            type="category"
-            allowDuplicatedCategory={false}
-          />
-          <YAxis
-            tick={{ fontSize: 10, fill: SIGNAL_TREND_EXIT }}
-            domain={["auto", "auto"]}
-            tickFormatter={v => `$${typeof v === "number" ? v.toFixed(0) : v}`}
-          />
-          <Tooltip content={<ChartTooltip />} />
-
-          {/* Regime bands behind the price line */}
-          {regimeAreas.map(area => (
-            <ReferenceArea
-              key={area.key}
-              x1={area.x1}
-              x2={area.x2}
-              fill={area.regime === "BULLISH" ? SIGNAL_BULL_EMERALD : SIGNAL_BEAR}
-              fillOpacity={0.06}
-              ifOverflow="extendDomain"
-            />
-          ))}
-
-          <Line
-            type="monotone"
-            dataKey="close"
-            stroke={CHART_RSI}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-
-          {/* One Scatter per dot category, all sharing chartData. dataKey
-              picks out the per-category y field (e.g. "y_core_entry");
-              rows where that field is null/undefined render no dot. Shared
-              chartData = shared categorical axis = correctly ordered dates. */}
-          {activeCategories.map(cat => {
-            const hollow = cat === "info";
-            return (
-              <Scatter
-                key={cat}
-                name={cat}
-                dataKey={`y_${cat}`}
-                shape={makeDotShape(cat, hollow, highlightedTradeNum)}
-                isAnimationActive={false}
-              />
-            );
-          })}
-        </ComposedChart>
-      </ResponsiveContainer>
+      <CandlePane
+        bars={data.bars}
+        markers={markers}
+        testId="strategy-chart-candle-pane"
+      />
     </div>
   );
 }

@@ -34,6 +34,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
+import { CandlePane, tradeAnalysisEMAOverlays, type ChartMarker } from "@/components/chart";
 import mascotUrl from "@/assets/mascot.jpg";
 import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
@@ -170,6 +171,74 @@ function LoadingState() {
   );
 }
 
+/**
+ * Build TV-chart signal markers from the API's chartData.
+ *
+ * Each row may carry a bbtcSignal and/or verSignal. We emit one marker
+ * per signal per bar, colored / shaped per the strategy's outcome class
+ * (entry / watch / reduce-win / stop-loss / clean-exit / info-only short).
+ *
+ * The legacy SignalDot below renders the same classification for the
+ * Recharts version; both consume the same payload shape.
+ */
+function buildTradeAnalysisMarkers(
+  rows: any[] | undefined,
+  sideFilter: "both" | "long" | "short",
+): ChartMarker[] {
+  if (!rows) return [];
+  const markers: ChartMarker[] = [];
+  for (const r of rows) {
+    const b: string | null = r.bbtcSignal ?? null;
+    const v: string | null = r.verSignal ?? null;
+    const bSide: "LONG" | "SHORT" | null = r.bbtcSide ?? null;
+    const vSide: "LONG" | "SHORT" | null = r.verSide ?? null;
+    if (!b && !v) continue;
+
+    // Side filter — same logic as SignalDot below.
+    if (sideFilter === "long") {
+      if (b && bSide === "SHORT") continue;
+      if (v && vSide === "SHORT") continue;
+    } else if (sideFilter === "short") {
+      if (b && bSide === "LONG") continue;
+      if (v && vSide === "LONG") continue;
+    }
+
+    const isLongEntry = (b === "BUY" && bSide === "LONG") || b === "ADD_LONG" || v === "BUY";
+    const isLongWatch = v === "WATCH_BUY";
+    const isShortEntry = (b === "SELL" && bSide === "SHORT") || v === "SELL";
+    const isShortWatch = v === "WATCH_SELL";
+    const isReduceWin = b === "REDUCE";
+    const isStopLoss = b === "STOP_HIT" || v === "STOP_HIT";
+    const isCleanExit =
+      (b === "SELL" && bSide === "LONG") ||
+      (b === "BUY" && bSide === "SHORT");
+
+    let m: { position: "aboveBar" | "belowBar" | "inBar"; shape: "arrowUp" | "arrowDown" | "circle" | "square"; color: string; text?: string } | null = null;
+    if (isLongEntry) m = { position: "belowBar", shape: "arrowUp", color: SIGNAL_BULL, text: "BUY" };
+    else if (isLongWatch) m = { position: "belowBar", shape: "circle", color: SIGNAL_WATCH, text: "WATCH" };
+    else if (isReduceWin) m = { position: "aboveBar", shape: "circle", color: SIGNAL_REDUCE, text: "REDUCE" };
+    else if (isStopLoss) m = { position: "aboveBar", shape: "arrowDown", color: SIGNAL_BEAR, text: "STOP" };
+    else if (isCleanExit) m = { position: "aboveBar", shape: "circle", color: SIGNAL_TREND_EXIT, text: "EXIT" };
+    else if (isShortEntry) m = { position: "aboveBar", shape: "circle", color: SIGNAL_SHORT_ADD, text: "SHORT" };
+    else if (isShortWatch) m = { position: "aboveBar", shape: "circle", color: SIGNAL_WATCH_SHORT, text: "WATCH" };
+
+    if (m) {
+      markers.push({
+        date: r.date,
+        position: m.position,
+        shape: m.shape,
+        color: m.color,
+        text: m.text,
+      });
+    }
+  }
+  return markers;
+}
+
+// Legacy SignalDot — replaced by buildTradeAnalysisMarkers above for the
+// TV-chart migration. Kept here only because removing it touches more
+// surrounding code than the migration's scope. Mark for cleanup once
+// every chart on the page is on CandlePane.
 // Custom dot for signal markers on price chart.
 //
 // Side filter: payload.sideFilter === "long" hides sell-side dots,
@@ -916,145 +985,19 @@ export default function TradeAnalysis() {
             </CardHeader>
             <CardContent>
               <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartDataWithFilter} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-                    <defs>
-                      <linearGradient id="closeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                      tickFormatter={(v) => {
-                        const d = new Date(v);
-                        return `${d.getMonth() + 1}/${d.getDate()}`;
-                      }}
-                      interval="preserveStartEnd"
-                      minTickGap={50}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                      domain={["auto", "auto"]}
-                      tickFormatter={(v) => `$${v}`}
-                      width={60}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                      content={({ active, payload, label }: any) => {
-                        if (!active || !payload || !payload.length) return null;
-                        const row = payload[0]?.payload || {};
-                        const b: string | null = row.bbtcSignal || null;
-                        const v: string | null = row.verSignal || null;
-                        const bSide: "LONG" | "SHORT" | null = row.bbtcSide || null;
-                        const vSide: "LONG" | "SHORT" | null = row.verSide || null;
-                        // Compose human-readable signal label. Both can fire on the
-                        // same bar; show both when that happens. STOP_HIT, REDUCE,
-                        // and the cross-exit BUY/SELL get a "(long)"/"(short)" tag
-                        // since the same signal name can mean either side.
-                        const parts: { label: string; color: string }[] = [];
-                        // Info-only signals — short side is now non-tradeable
-                        // across both BBTC and VER (2026-05-08 demote).
-                        const isShortInfo = (sig: string, side: "LONG" | "SHORT" | null) =>
-                          (sig === "SELL" && side === "SHORT") || sig === "WATCH_SELL";
-                        // Color must match the SignalDot palette so a hovered
-                        // tooltip line matches the dot color on the chart.
-                        const colorFor = (sig: string, side: "LONG" | "SHORT" | null) => {
-                          if (sig === "WATCH_BUY") return SIGNAL_WATCH;          // yellow
-                          if (sig === "WATCH_SELL") return SIGNAL_WATCH_SHORT;         // hollow orange
-                          if (sig === "ADD_LONG") return SIGNAL_BULL;           // green
-                          if (sig === "REDUCE") return SIGNAL_REDUCE;             // teal — WIN
-                          if (sig === "STOP_HIT") return SIGNAL_BEAR;           // red — LOSS
-                          if (sig === "BUY") {
-                            // Long entry → green; short cover → slate (clean exit)
-                            return side === "SHORT" ? SIGNAL_TREND_EXIT : SIGNAL_BULL;
-                          }
-                          if (sig === "SELL") {
-                            // Short entry (info-only) → magenta; long exit → slate
-                            return side === "LONG" ? SIGNAL_TREND_EXIT : SIGNAL_SHORT_ADD;
-                          }
-                          return SIGNAL_BEAR; // fallback
-                        };
-                        const sideTag = (sig: string, side: "LONG" | "SHORT" | null) => {
-                          const ambiguous = sig === "STOP_HIT" || sig === "REDUCE" || sig === "BUY" || sig === "SELL";
-                          if (!ambiguous || !side) return "";
-                          return ` (${side.toLowerCase()})`;
-                        };
-                        if (b) {
-                          const suffix = isShortInfo(b, bSide) ? " (info-only)" : sideTag(b, bSide);
-                          parts.push({ label: `BBTC ${b}${suffix}`, color: colorFor(b, bSide) });
-                        }
-                        if (v) {
-                          const suffix = isShortInfo(v, vSide) ? " (info-only)" : sideTag(v, vSide);
-                          parts.push({ label: `VER ${v}${suffix}`, color: colorFor(v, vSide) });
-                        }
-                        return (
-                          <div
-                            style={{
-                              background: "hsl(var(--card))",
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: 8,
-                              fontSize: 12,
-                              padding: "8px 10px",
-                              minWidth: 140,
-                            }}
-                          >
-                            <div style={{ marginBottom: 6, fontWeight: 600 }}>{label}</div>
-                            {payload.map((p: any) => (
-                              <div key={p.dataKey} style={{ color: p.color, lineHeight: "16px" }}>
-                                {p.name}: {p.value === null || p.value === undefined ? "N/A" : `$${Number(p.value).toFixed(2)}`}
-                              </div>
-                            ))}
-                            {parts.length > 0 && (
-                              <div
-                                style={{
-                                  marginTop: 6,
-                                  paddingTop: 6,
-                                  borderTop: "1px solid hsl(var(--border))",
-                                }}
-                              >
-                                {parts.map((s) => (
-                                  <div key={s.label} style={{ color: s.color, fontWeight: 600, lineHeight: "16px" }}>
-                                    Signal: {s.label}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="close"
-                      stroke="hsl(var(--primary))"
-                      fill="url(#closeGradient)"
-                      strokeWidth={1.5}
-                      dot={<SignalDot />}
-                      name="Close"
-                    />
-                    <Line type="monotone" dataKey="ema9" stroke={SIGNAL_BULL} strokeWidth={1} dot={false} name="EMA 9" connectNulls />
-                    <Line type="monotone" dataKey="ema21" stroke={SIGNAL_WATCH_SHORT} strokeWidth={1} dot={false} name="EMA 21" connectNulls />
-                    <Line type="monotone" dataKey="ema50" stroke={CHART_EMA_50} strokeWidth={1} dot={false} name="EMA 50" connectNulls />
-                    <Line
-                      type="monotone"
-                      dataKey="sma200"
-                      stroke={CHART_EMA_200}
-                      strokeWidth={1.5}
-                      strokeDasharray="6 3"
-                      dot={false}
-                      name="SMA 200"
-                      connectNulls
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                {/* TV-style candle pane via the shared primitive. Overlays + signal markers
+                    come from declarative config — no per-page Recharts plumbing. */}
+                <CandlePane
+                  bars={chartDataWithFilter ?? []}
+                  overlays={tradeAnalysisEMAOverlays({
+                    showEma9: true,
+                    showEma21: true,
+                    showEma50: true,
+                    showEma200: true,
+                  })}
+                  markers={buildTradeAnalysisMarkers(chartDataWithFilter, chartSideFilter)}
+                  testId="trade-analysis-candle-pane"
+                />
               </div>
               <div className="flex flex-wrap gap-4 mt-3 justify-center text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
