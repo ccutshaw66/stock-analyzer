@@ -174,8 +174,14 @@ export function CandlePane({
     };
   }, [showVolume]);
 
-  // Manage overlay line series — create new ones when an overlay appears,
-  // remove ones that vanish from the config.
+  // Sync overlay line series — create new ones, remove vanished ones,
+  // and keep every option (visible, color, width, labels) in sync with
+  // the current overlays prop.
+  //
+  // Dep is `JSON.stringify(overlays)` — fires whenever ANY field of any
+  // overlay changes (including the visible toggle), and stays stable
+  // across parent renders where overlays content is unchanged. Prior
+  // hand-rolled dep string missed the visible toggle in subtle cases.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -190,27 +196,36 @@ export function CandlePane({
       }
     }
 
-    // Create or update each overlay's series.
+    // Create new series with FULL options (including visibility) so they
+    // appear in the right state on first mount.
     for (const overlay of overlays) {
-      const s = existing[overlay.dataKey] ?? chart.addSeries(LineSeries, {
+      const visible = overlay.visible ?? true;
+      const lineWidth = (overlay.width ?? 1) as 1 | 2 | 3 | 4;
+      const priceLineVisible = overlay.showPriceLine ?? false;
+      const lastValueVisible = overlay.showLastValueLabel ?? false;
+      if (!existing[overlay.dataKey]) {
+        existing[overlay.dataKey] = chart.addSeries(LineSeries, {
+          color: overlay.color,
+          lineWidth,
+          priceLineVisible,
+          lastValueVisible,
+          visible,
+          title: overlay.label,
+        });
+      }
+      // Always re-apply options — covers visibility toggles and color/
+      // label tweaks on existing series.
+      existing[overlay.dataKey].applyOptions({
         color: overlay.color,
-        lineWidth: (overlay.width ?? 1) as 1 | 2 | 3 | 4,
-        priceLineVisible: overlay.showPriceLine ?? false,
-        lastValueVisible: overlay.showLastValueLabel ?? false,
-        title: overlay.label,
-      });
-      existing[overlay.dataKey] = s;
-      s.applyOptions({
-        color: overlay.color,
-        lineWidth: (overlay.width ?? 1) as 1 | 2 | 3 | 4,
-        priceLineVisible: overlay.showPriceLine ?? false,
-        lastValueVisible: overlay.showLastValueLabel ?? false,
-        visible: overlay.visible ?? true,
+        lineWidth,
+        priceLineVisible,
+        lastValueVisible,
+        visible,
         title: overlay.label,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [overlays.map((o) => `${o.dataKey}:${o.color}:${o.visible}:${o.width}`).join("|")]);
+  }, [JSON.stringify(overlays)]);
 
   // Push bar data whenever it (or overlays) changes.
   useEffect(() => {
@@ -252,7 +267,12 @@ export function CandlePane({
     candleSeriesRef.current.setData(candleData);
     if (showVolume) volumeSeriesRef.current?.setData(volumeData);
     for (const overlay of overlays) {
-      overlaySeriesRef.current[overlay.dataKey]?.setData(overlayData[overlay.dataKey]);
+      const s = overlaySeriesRef.current[overlay.dataKey];
+      if (!s) continue;
+      s.setData(overlayData[overlay.dataKey]);
+      // Re-assert visibility AFTER setData — defensive belt-and-suspenders
+      // since some chart libraries reset series options on setData calls.
+      s.applyOptions({ visible: overlay.visible ?? true });
     }
 
     // Markers — v5 attaches via the plugin instance created at chart init.

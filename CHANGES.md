@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — EMA toggles not toggling — robustness fixes in CandlePane
+
+**Why:** Chris reported live: "EMAs are not toggling on any chart." The toggle buttons changed state visually (active/inactive) but the EMA lines on the chart didn't disappear. Two issues teamed up to cause it.
+
+**What:**
+
+### Fix 1 — `JSON.stringify(overlays)` as the manage-overlays dep
+- The original useEffect dep was a hand-rolled string `overlays.map(o => `${o.dataKey}:${o.color}:${o.visible}:${o.width}`).join("|")`. That should have caught visibility changes (boolean `true` vs `false` produce different strings), but apparently the effect wasn't re-firing reliably in some paths. Replaced with `JSON.stringify(overlays)` — guaranteed to change whenever any overlay field changes, including the boolean visibility flag. Stable across parent re-renders where overlay content is unchanged.
+- Also moved the `visible` option into the `chart.addSeries(LineSeries, {...})` creation call instead of relying on a follow-up `applyOptions()`. First-mount visibility now correct without a second-pass write.
+
+### Fix 2 — re-assert visibility after `setData` (defensive)
+- The data-push useEffect calls `setData(...)` on each overlay series. Lightweight Charts shouldn't reset series options on setData, but some chart libraries do. Belt-and-suspenders: immediately after `setData`, call `applyOptions({ visible })` again so visibility is always in sync regardless of internal library behavior. Costs one cheap function call per overlay per data push.
+
+**Files touched:** `client/src/components/chart/CandlePane.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Unified EMA palette + shared EMA toggle strip + 4-EMA on every chart
 
 **Why:** Chris flagged three connected gaps after using the new TV charts: (1) Confluence had only 3 EMA toggles (no EMA 9); (2) Trade Analysis and Strategy Chart had no EMA toggles at all; (3) the two charts used different EMA colors despite the compartmentalization rule — Confluence had a muted yellow/violet/near-white stack, Trade Analysis had a bolder green/orange/cyan/purple stack. Chris: *"if we compartmentalized the charts why are the EMA colors different. I like the trade analysis colors."* One palette, every chart, full toggle controls on all three.
