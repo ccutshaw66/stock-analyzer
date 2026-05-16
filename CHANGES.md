@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Payoff Diagram icon: LineChart → Spline (more distinct from Strategy Chart)
+
+**Why:** After de-duping Strategy Chart to `FlaskConical`, Payoff Diagram still used the generic `LineChart` icon. Chris said the two pages still looked the same. `LineChart` is too generic for a page that specifically shows option P/L curves; `Spline` (smooth curve) reads as "payoff curve" and is visually completely distinct from a flask.
+
+**What:**
+- `payoff-diagram.tsx` PageHeader icon: `LineChart as LineChartIcon` → `Spline`.
+- `AppLayout.tsx` sidebar: `LineChart` → `Spline`. Removed orphaned `LineChart` import.
+
+**Files touched:** `client/src/pages/payoff-diagram.tsx`, `client/src/components/AppLayout.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Sidebar menu icons synced with new page icons
 
 **Why:** Prior commit changed page-header icons but left the sidebar nav still pointing at the old icons. Trade Analysis, Confluence Chart, and Strategy Chart all showed `Activity` or `LineChart` in the sidebar even after their PageHeaders were swapped. The PageHeader's own docstring says "The icon should match the same page's sidebar icon" — they were out of sync.

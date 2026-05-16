@@ -28,7 +28,6 @@ import {
   Award,
   Plus,
   CheckCircle2,
-  LineChart,
   Sigma,
   Grid3X3,
   Calendar,
@@ -47,6 +46,7 @@ import {
   Layers,
   Microscope,
   FlaskConical,
+  Spline,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
@@ -562,7 +562,7 @@ function Sidebar({
       label: "Calculators",
       items: [
         { path: "/calculator", label: "Options Calculator", icon: Calculator },
-        { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
+        { path: "/payoff", label: "Payoff Diagram", icon: Spline },
         { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
         { path: "/kelly", label: "Kelly Criterion", icon: Percent },
         { path: "/wheel", label: "Wheel Strategy", icon: RefreshCw },

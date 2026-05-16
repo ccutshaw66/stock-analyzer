@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { SIGNAL_BULL, SIGNAL_BEAR, BRAND_ACCENT } from "@/lib/design-tokens";
 import {
   BarChart3, TrendingUp, DollarSign, Target,
-  AlertTriangle, Download, LineChart as LineChartIcon,
+  AlertTriangle, Download, Spline,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
@@ -283,7 +283,7 @@ export default function PayoffDiagram() {
     <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="payoff-diagram-page">
       {/* Title */}
       <PageHeader
-        icon={LineChartIcon}
+        icon={Spline}
         title="Payoff Diagram"
         subtitle="Visualize the profit/loss at expiration for any options strategy."
       />
