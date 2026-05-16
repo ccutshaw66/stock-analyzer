@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — `/interview` skill: front-load scope before any new feature
+
+**Why:** Every non-trivial new feature historically started with assumptions that got unwound rounds later. Confluence Chart Round 9 was the high-profile example — built once as a 3-line widget Chris called "useless", rebuilt as a full page. An interview at the start would have caught the scope mismatch before any code was written.
+
+**What:**
+
+- New `/interview` skill at `.claude/skills/interview/SKILL.md`.
+- Runs at the start of any new page / widget / strategy / endpoint / non-trivial refactor (skips trivial one-line fixes Chris has fully specified).
+- Asks 3–4 plain-English questions in one `AskUserQuestion` batch (never multi-turn, never jargon): core problem, audience, success criteria, non-goals, foundation hook, reversibility.
+- Every question includes an "I have a question first" option per `feedback_questions_in_choices`.
+- After Chris answers, summarizes back in 5 lines (Building / For / Done when / Not doing / Foundation), waits for confirmation, then saves a `brief_<slug>.md` to project memory so `verify-work` and `ship` can later validate against it.
+- Anti-patterns documented inline: no jargon quizzes, no multi-turn interviews, no skipping for "obvious" cases, no unobservable Success criteria, never skip the "I have a question first" escape.
+
+**Files touched:** `.claude/skills/interview/SKILL.md`, `CHANGES.md`.
+
+**Not in this ship:** `docs/FMP_REFERENCE.md` modifications and `docs/FMP_API_DOCS_RAW.md` — pre-existing in-progress work, separate from the skill change.
+
+---
 ## 2026-05-15 — Ship skill: atomic main+tag push to eliminate deploy race
 
 **Why:** First ship of the new skill suite (commit `5312791`) revealed a 60–90 second window where production reported the OLD git SHA on `/api/health` while marking `last_deploy.success: true`. Root cause: the ship flow pushed the `safe/<timestamp>` tag and `main` as two separate `git push` commands. GitHub fired two webhooks; the first deploy (triggered by the tag push) reset production to `origin/main` BEFORE main had been pushed, so it landed on the prior SHA. The second deploy a moment later caught up, but production briefly ran the wrong code.
