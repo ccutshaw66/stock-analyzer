@@ -55,23 +55,28 @@ export function formatVolume(value: number | null | undefined): string {
   return compactFormatter.format(value);
 }
 
+// Color helpers below — semantic signal tokens only. Per the universal-
+// structure rule, this formatter file is canonical and MUST NOT introduce
+// Tailwind palette classes (text-green-*, bg-red-*, etc.) — semantic
+// tokens only (text-bull / text-bear / text-watch).
+
 export function getChangeColor(value: number | null | undefined): string {
   if (value === null || value === undefined) return "text-muted-foreground";
-  if (value > 0) return "text-green-500";
-  if (value < 0) return "text-red-500";
+  if (value > 0) return "text-bull";
+  if (value < 0) return "text-bear";
   return "text-muted-foreground";
 }
 
 export function getScoreColor(score: number): string {
-  if (score >= 7) return "text-green-500";
-  if (score >= 5) return "text-yellow-500";
-  return "text-red-500";
+  if (score >= 7) return "text-bull";
+  if (score >= 5) return "text-watch";
+  return "text-bear";
 }
 
 export function getScoreBgColor(score: number): string {
-  if (score >= 7) return "bg-green-500";
-  if (score >= 5) return "bg-yellow-500";
-  return "bg-red-500";
+  if (score >= 7) return "bg-bull";
+  if (score >= 5) return "bg-watch";
+  return "bg-bear";
 }
 
 export function getVerdictColor(verdict: string): { bg: string; text: string; border: string } {
@@ -79,13 +84,13 @@ export function getVerdictColor(verdict: string): { bg: string; text: string; bo
     case "STRONG CONVICTION":
     case "INVESTMENT GRADE":
     case "YES":
-      return { bg: "bg-green-500", text: "text-green-500", border: "border-green-500/30" };
+      return { bg: "bg-bull", text: "text-bull", border: "border-bull/30" };
     case "SPECULATIVE":
     case "WATCH":
-      return { bg: "bg-yellow-500", text: "text-yellow-500", border: "border-yellow-500/30" };
+      return { bg: "bg-watch", text: "text-watch", border: "border-watch/30" };
     case "HIGH RISK":
     case "NO":
-      return { bg: "bg-red-500", text: "text-red-500", border: "border-red-500/30" };
+      return { bg: "bg-bear", text: "text-bear", border: "border-bear/30" };
     default:
       return { bg: "bg-muted", text: "text-muted-foreground", border: "border-muted" };
   }
@@ -93,18 +98,18 @@ export function getVerdictColor(verdict: string): { bg: string; text: string; bo
 
 export function getIndicatorColor(color: string): string {
   switch (color) {
-    case "green": return "text-green-500";
-    case "red": return "text-red-500";
-    case "yellow": return "text-yellow-500";
+    case "green": return "text-bull";
+    case "red": return "text-bear";
+    case "yellow": return "text-watch";
     default: return "text-muted-foreground";
   }
 }
 
 export function getBadgeBgColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-500/15 text-green-500 border-green-500/20";
-    case "red": return "bg-red-500/15 text-red-500 border-red-500/20";
-    case "yellow": return "bg-yellow-500/15 text-yellow-500 border-yellow-500/20";
+    case "green": return "bg-bull/15 text-bull border-bull/20";
+    case "red": return "bg-bear/15 text-bear border-bear/20";
+    case "yellow": return "bg-watch/15 text-watch border-watch/20";
     default: return "bg-muted text-muted-foreground";
   }
 }

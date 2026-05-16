@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Moveable-widgets requirement + motion tokens + format.ts palette fix + branded primitives
+
+**Why:** Continuation of the universal-structure rollout, focused on what the TV-chart rollout will need next: consistent motion timing, single-source loading/empty/error states, and the moveable-widgets architectural requirement Chris flagged (widgets work anywhere, not just on /dashboard). Also caught a real bug — the canonical `lib/format.ts` formatter still used Tailwind palette classes (`text-green-500`, `bg-red-500`), defeating the design-tokens migration for every component that consumes `getChangeColor` / `getVerdictColor` / `getBadgeBgColor`.
+
+**What:**
+
+### Moveable-widgets architectural requirement saved to memory
+- New `architecture_moveable_widgets.md` memory file. Captures the rule: every WidgetView must be drop-in placeable on any surface (Profile / Scanner / Sector pages, future drag-and-drop across surfaces), not only `/dashboard`.
+- Six concrete sub-rules: no dashboard-specific imports, self-contained sizing, self-contained data fetching, no global event coupling, optional `instanceId` for multi-instance support, all branded loading/empty/error states.
+- Outstanding work captured (WidgetFrame primitive, placement registry, cross-surface drag-and-drop) — separate ships.
+
+### Motion / duration tokens
+- New `client/src/lib/motion.ts` with six named duration tiers (INSTANT 0, FAST 120, BASE 200, SLOW 300, PAGE 500, DRAMATIC 1000) in ms, three standard easings (EASE_OUT punchy, EASE_IN_OUT default, EASE_LINEAR for spinners), and four chart-specific constants (CHART_CROSSHAIR_DURATION = INSTANT — any visible lag on a chart feels wrong).
+- Tiebreaker documented: default to BASE; FAST for micro-feedback; SLOW only when motion crosses ~30% of viewport; DRAMATIC must be intentional.
+- Inventory: 6× `duration-200`, 3× `transition-all duration-200`, 2× `duration-300`, single uses of 500/1000. Migration is incremental — new code uses the named tokens.
+
+### `lib/format.ts` migrated to semantic tokens
+- `getChangeColor`, `getScoreColor`, `getScoreBgColor`, `getVerdictColor`, `getIndicatorColor`, `getBadgeBgColor` all swapped from Tailwind palette (`text-green-500` etc.) to semantic tokens (`text-bull` / `text-bear` / `text-watch` and alpha variants). High-impact single-file fix — every component consuming these helpers now flows through the design-token system.
+- Added a comment block at the top of the color helpers calling out the canonical-file rule.
+
+### Branded loading / empty / error primitives
+- New `client/src/components/BrandedLoader.tsx` — three size tiers (sm/md/lg) with optional message and fill mode. Replaces the per-page inline `<Loader2 ... />` block pattern.
+- New `client/src/components/BrandedEmptyState.tsx` — icon OR image (e.g. otter mascot), title, optional description, optional CTA. Replaces bare `<p>No data</p>` patterns.
+- New `client/src/components/BrandedError.tsx` — for in-page error states (not global ErrorBoundary). Title + friendly description + optional retry CTA. AlertTriangle in bear-tone.
+- All three are self-contained, work in any container, and respect the universal-structure rule. Pages migrate progressively.
+
+**Files touched:** new memory `architecture_moveable_widgets.md`, new `client/src/lib/motion.ts`, new `client/src/components/{BrandedLoader,BrandedEmptyState,BrandedError}.tsx`, `client/src/lib/format.ts` (palette → semantic), `MEMORY.md`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Indicator constants finished + API endpoints module + z-index tokens + AppLayout cleanup
 
 **Why:** Continuation of the universal-structure rollout. Diag files and conviction pipeline still passed hardcoded `14` / `20` / `9` / `21` / `50` to indicator helpers — those needed to come from the constants module so the TV-chart rollout reads the same periods everywhere. API endpoint strings were also scattered as raw literals across 50+ files (50 distinct paths). And z-index values + AppLayout's icon import block were cleanup debts.
