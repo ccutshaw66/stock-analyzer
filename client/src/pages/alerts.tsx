@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { API_ALERT_RULES, API_ALERTS_EVALUATE_NOW } from "@shared/api/endpoints";
 import { Bell, Plus, Trash2, Zap, TrendingUp, Calendar, Radio } from "lucide-react";
 import { HelpBlock } from "@/components/HelpBlock";
 import { PageHeader } from "@/components/PageHeader";
@@ -28,23 +29,23 @@ export default function AlertsPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: rules, isLoading } = useQuery<AlertRule[]>({
-    queryKey: ["/api/alert-rules"],
-    queryFn: async () => (await apiRequest("GET", "/api/alert-rules")).json(),
+    queryKey: [API_ALERT_RULES],
+    queryFn: async () => (await apiRequest("GET", API_ALERT_RULES)).json(),
   });
 
   const toggle = useMutation({
     mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) =>
       (await apiRequest("PATCH", `/api/alert-rules/${id}`, { enabled })).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] }),
   });
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/alert-rules/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] }),
   });
 
   const evaluateNow = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/alerts/evaluate-now")).json(),
+    mutationFn: async () => (await apiRequest("POST", API_ALERTS_EVALUATE_NOW)).json(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alerts"] }),
   });
 
@@ -166,9 +167,9 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
   const [daysBefore, setDaysBefore] = useState("7");
 
   const create = useMutation({
-    mutationFn: async (body: any) => (await apiRequest("POST", "/api/alert-rules", body)).json(),
+    mutationFn: async (body: any) => (await apiRequest("POST", API_ALERT_RULES, body)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] });
+      queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] });
       onClose();
     },
   });

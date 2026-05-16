@@ -9,6 +9,47 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Rogue cleanup: API endpoints migrated to constants, Yahoo/Polygon kill plan saved, chart TODO captured
+
+**Why:** Chris went to sleep with the chart EMA toggles + timeframe still flaky and told me to "go back to the rogue stuff and fix all that." This commit (a) captures the chart bugs as a durable TODO so they're not lost, (b) sweeps a chunk of raw `/api/*` strings into the constants module (rogue #3), and (c) saves a planning memory for the Yahoo+Polygon kill — NOT executing the kill itself, since unsupervised provider migration is too risky.
+
+**What:**
+
+### Chart issues saved as TODO memory
+- New `memory/todo_chart_toggles_and_timeframe.md` — captures symptoms (toggles flaky, timeframe picker not driving charts) and a debugging plan for when Chris picks it back up. Indexed in MEMORY.md so it doesn't get lost.
+
+### API endpoints sweep — 16 files migrated to `@shared/api/endpoints` constants
+Files now reading their `/api/*` paths from the canonical constants module:
+- `client/src/contexts/AuthContext.tsx` — `API_AUTH_ME`, `API_AUTH_LOGIN`, `API_AUTH_REGISTER`, `API_AUTH_LOGOUT`
+- `client/src/components/AppLayout.tsx` — `API_TRADES`, `API_TRADES_SUMMARY`, `API_ACCOUNT_SETTINGS`, `API_FAVORITES`, `API_FAVORITES_WATCHLIST`, `API_FAVORITES_PORTFOLIO`
+- `client/src/components/OnboardingTour.tsx` — `API_AUTH_COMPLETE_TOUR`
+- `client/src/components/AlertsBell.tsx` — `API_ALERTS`
+- `client/src/components/BacktestPanel.tsx` — `API_TRACK_RECORD_BACKTEST`
+- `client/src/lib/dashboard/useDashboardLayout.ts` — `API_DASHBOARD_LAYOUT`
+- `client/src/pages/account.tsx` — `API_AUTH_PROFILE`, `API_AUTH_CHANGE_PASSWORD`
+- `client/src/pages/auth.tsx` — `API_AUTH_FORGOT_PASSWORD`
+- `client/src/pages/alerts.tsx` — `API_ALERT_RULES`, `API_ALERTS_EVALUATE_NOW`
+- `client/src/pages/market-pulse.tsx` — `API_MARKET_PULSE`
+- `client/src/pages/dividend-portfolio.tsx` — `API_DIVIDEND_PORTFOLIO`
+- `client/src/pages/kelly-calculator.tsx` — `API_TRADES_ANALYTICS`
+- `client/src/pages/conviction.tsx` — `API_DIAG_CONVICTION_BACKTEST`
+- `client/src/pages/options-calculator.tsx` — `API_TRADES`
+- `client/src/pages/payoff-diagram.tsx` — `API_TRADES`
+- `client/src/pages/greeks-calculator.tsx` — `API_TRADES`
+
+**Not migrated in this ship** — endpoints with embedded path params (e.g. `/api/alerts/${id}/read`, `/api/alert-rules/${id}`). The catalog has path-builder helpers for the common ones (analyzePath, tradePath, etc.); call-site migration is mechanical and can happen in a follow-up sweep.
+
+### Yahoo/Polygon kill — execution plan saved (NOT RUN)
+- New `memory/plan_yahoo_polygon_kill.md` documenting the 593-reference migration in tiered risk buckets:
+  - Tier 1 — adapter shells to delete (5 files).
+  - Tier 2 — data-flow consumers to rewire to FMP (~20 files). Including the tricky ones: MM Exposure + unusual-options depend on Polygon options-chain data that FMP may not provide.
+  - Tier 3 — text/docs only (5 files, low risk).
+  - Tier 4 — comment-only references (5 files).
+- Plan deliberately NOT executed unsupervised. Open questions for Chris listed in the memo (FMP options-chain coverage? Acceptable to feature-kill MM Exposure if no FMP equivalent? Timeline?).
+
+**Files touched:** new `memory/todo_chart_toggles_and_timeframe.md`, new `memory/plan_yahoo_polygon_kill.md`, `memory/MEMORY.md`, 16 client files (API endpoint migrations), `CHANGES.md`.
+
+---
 ## 2026-05-15 — EMA toggles still broken — switched to add/remove series (skip `visible: false`)
 
 **Why:** After the prior fixes shipped, Chris reported: "still cant turn them off and 200 is gone period." Both bugs were the same root cause — `applyOptions({ visible: false })` on a Lightweight Charts v5 LineSeries wasn't actually hiding the line. SMA 200 looked "gone period" because its default state was `visible: false`, and toggling it on didn't work either (same broken path).

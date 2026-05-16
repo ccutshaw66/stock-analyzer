@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { API_ALERTS } from "@shared/api/endpoints";
 import { Link } from "wouter";
 
 interface AlertRow {
@@ -36,7 +37,7 @@ export function AlertsBell() {
   const [open, setOpen] = useState(false);
   const { data } = useQuery<{ alerts: AlertRow[]; unread: number }>({
     queryKey: ["/api/alerts"],
-    queryFn: async () => (await apiRequest("GET", "/api/alerts?limit=30")).json(),
+    queryFn: async () => (await apiRequest("GET", `${API_ALERTS}?limit=30`)).json(),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

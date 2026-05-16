@@ -31,6 +31,14 @@ import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  API_TRADES,
+  API_TRADES_SUMMARY,
+  API_ACCOUNT_SETTINGS,
+  API_FAVORITES,
+  API_FAVORITES_WATCHLIST,
+  API_FAVORITES_PORTFOLIO,
+} from "@shared/api/endpoints";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
@@ -395,9 +403,9 @@ function Sidebar({
     commIn: number | null;
   }
   const { data: allTrades = [] } = useQuery<TradeItem[]>({
-    queryKey: ["/api/trades"],
+    queryKey: [API_TRADES],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/trades");
+      const res = await apiRequest("GET", API_TRADES);
       return res.json();
     },
   });
@@ -405,22 +413,22 @@ function Sidebar({
 
   // Account settings for trade modals
   const { data: accountSettings } = useQuery<any>({
-    queryKey: ["/api/account/settings"],
-    queryFn: async () => { const res = await apiRequest("GET", "/api/account/settings"); return res.json(); },
+    queryKey: [API_ACCOUNT_SETTINGS],
+    queryFn: async () => { const res = await apiRequest("GET", API_ACCOUNT_SETTINGS); return res.json(); },
   });
 
   const { data: watchlistItems = [] } = useQuery<FavoriteItem[]>({
-    queryKey: ["/api/favorites", "watchlist"],
+    queryKey: [API_FAVORITES, "watchlist"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/favorites/watchlist");
+      const res = await apiRequest("GET", API_FAVORITES_WATCHLIST);
       return res.json();
     },
   });
 
   const { data: portfolioItems = [] } = useQuery<FavoriteItem[]>({
-    queryKey: ["/api/favorites", "portfolio"],
+    queryKey: [API_FAVORITES, "portfolio"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/favorites/portfolio");
+      const res = await apiRequest("GET", API_FAVORITES_PORTFOLIO);
       return res.json();
     },
   });
@@ -436,7 +444,7 @@ function Sidebar({
       await apiRequest("DELETE", `/api/favorites/${listType}/${ticker}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -451,7 +459,7 @@ function Sidebar({
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -464,11 +472,11 @@ function Sidebar({
       verdict: string;
       sector: string;
     }) => {
-      const res = await apiRequest("POST", "/api/favorites", data);
+      const res = await apiRequest("POST", API_FAVORITES, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -650,8 +658,8 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
   const filteredTypes = category === "Stock" ? STOCK_TYPES : OPTION_TYPES;
 
   const createMut = useMutation({
-    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/trades", data); return res.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", API_TRADES, data); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [API_TRADES] }); queryClient.invalidateQueries({ queryKey: [API_TRADES_SUMMARY] }); onClose(); },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -803,7 +811,7 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
 
   const closeMut = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trades/${selectedId}/close`, data); return res.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [API_TRADES] }); queryClient.invalidateQueries({ queryKey: [API_TRADES_SUMMARY] }); onClose(); },
   });
 
   const handleClose = (e: React.FormEvent) => {

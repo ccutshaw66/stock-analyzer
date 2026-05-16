@@ -25,6 +25,7 @@ import {
   OVERLAY_SLATE_20,
 } from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
+import { API_DIAG_CONVICTION_BACKTEST } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
 import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock } from "@/components/HelpBlock";
@@ -323,9 +324,9 @@ function pctTone(n: number | null, samples: number): string {
 
 function BacktestPanel() {
   const { data, isLoading } = useQuery<BacktestData>({
-    queryKey: ["/api/diag/conviction/backtest"],
+    queryKey: [API_DIAG_CONVICTION_BACKTEST],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/diag/conviction/backtest");
+      const res = await apiRequest("GET", API_DIAG_CONVICTION_BACKTEST);
       return res.json();
     },
     staleTime: 15 * 60 * 1000,

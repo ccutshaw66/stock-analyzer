@@ -8,6 +8,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { PageHeader } from "@/components/PageHeader";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { API_DIVIDEND_PORTFOLIO } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -129,9 +130,9 @@ export default function DividendPortfolio() {
   const [sortBy, setSortBy] = useState<string>("annualIncome");
 
   const { data: positions = [], isLoading, isRefetching } = useQuery<DividendPosition[]>({
-    queryKey: ["/api/dividend-portfolio"],
+    queryKey: [API_DIVIDEND_PORTFOLIO],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/dividend-portfolio");
+      const res = await apiRequest("GET", API_DIVIDEND_PORTFOLIO);
       return res.json();
     },
   });
@@ -173,7 +174,7 @@ export default function DividendPortfolio() {
         subtitle="Auto-detected from your open stock positions that pay dividends."
         right={
           <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/dividend-portfolio"] })}
+            onClick={() => queryClient.invalidateQueries({ queryKey: [API_DIVIDEND_PORTFOLIO] })}
             disabled={isRefetching}
             className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
             data-testid="button-refresh-dividends"

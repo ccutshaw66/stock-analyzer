@@ -6,6 +6,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_TRADES } from "@shared/api/endpoints";
 import { Disclaimer } from "@/components/Disclaimer";
 import { PageHeader } from "@/components/PageHeader";
 
@@ -143,8 +144,8 @@ function vegaColor(vega: number): string {
 function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) {
   const [open, setOpen] = useState(false);
   const { data: trades } = useQuery<any[]>({
-    queryKey: ["/api/trades"],
-    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    queryKey: [API_TRADES],
+    queryFn: async () => { const r = await apiRequest("GET", API_TRADES); return r.json(); },
     enabled: open,
   });
   const openOptions = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Option");

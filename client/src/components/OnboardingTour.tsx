@@ -5,6 +5,7 @@ import {
   ClipboardList, PieChart, Calculator,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { API_AUTH_COMPLETE_TOUR } from "@shared/api/endpoints";
 
 interface TourStep {
   title: string;
@@ -93,7 +94,7 @@ export default function OnboardingTour({ onComplete }: { onComplete: () => void 
 
   const handleComplete = async () => {
     try {
-      await apiRequest("POST", "/api/auth/complete-tour");
+      await apiRequest("POST", API_AUTH_COMPLETE_TOUR);
     } catch { /* non-critical */ }
     onComplete();
   };

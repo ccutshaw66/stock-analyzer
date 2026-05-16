@@ -6,9 +6,10 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_DASHBOARD_LAYOUT } from "@shared/api/endpoints";
 import type { DashboardLayout } from "@shared/dashboard/types";
 
-const QUERY_KEY = ["/api/dashboard/layout"] as const;
+const QUERY_KEY = [API_DASHBOARD_LAYOUT] as const;
 
 export function useDashboardLayout() {
   const qc = useQueryClient();
@@ -19,7 +20,7 @@ export function useDashboardLayout() {
 
   const mutation = useMutation<DashboardLayout, Error, DashboardLayout>({
     mutationFn: async (next) => {
-      const res = await apiRequest("PATCH", "/api/dashboard/layout", next);
+      const res = await apiRequest("PATCH", API_DASHBOARD_LAYOUT, next);
       return res.json();
     },
     onSuccess: (saved) => {

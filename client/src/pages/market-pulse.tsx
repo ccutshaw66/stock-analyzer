@@ -16,6 +16,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_MARKET_PULSE } from "@shared/api/endpoints";
 import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock } from "@/components/HelpBlock";
 import { PageHeader } from "@/components/PageHeader";
@@ -117,9 +118,9 @@ function timeAgo(ms: number): string {
 
 export default function MarketPulsePage() {
   const { data, isLoading, error } = useQuery<MarketPulse>({
-    queryKey: ["/api/market-pulse"],
+    queryKey: [API_MARKET_PULSE],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/market-pulse");
+      const res = await apiRequest("GET", API_MARKET_PULSE);
       return res.json();
     },
     refetchInterval: 60_000,

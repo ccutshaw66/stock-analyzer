@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/queryClient";
+import { API_AUTH_PROFILE, API_AUTH_CHANGE_PASSWORD } from "@shared/api/endpoints";
 import { UserCircle, Mail, Lock, Save, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 
 export default function AccountPage() {
@@ -29,7 +30,7 @@ export default function AccountPage() {
     setProfileMsg("");
     setProfileLoading(true);
     try {
-      const res = await apiRequest("PATCH", "/api/auth/profile", { email, displayName });
+      const res = await apiRequest("PATCH", API_AUTH_PROFILE, { email, displayName });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to update profile");
@@ -55,7 +56,7 @@ export default function AccountPage() {
 
     setPasswordLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+      const res = await apiRequest("POST", API_AUTH_CHANGE_PASSWORD, { currentPassword, newPassword });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to change password");

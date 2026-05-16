@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
+import { API_AUTH_LOGIN, API_AUTH_LOGOUT, API_AUTH_ME, API_AUTH_REGISTER } from "@shared/api/endpoints";
 
 interface AuthUser {
   id: number;
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiRequest("GET", "/api/auth/me");
+        const res = await apiRequest("GET", API_AUTH_ME);
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await apiRequest("POST", "/api/auth/login", { email, password });
+    const res = await apiRequest("POST", API_AUTH_LOGIN, { email, password });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || "Login failed");
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, displayName?: string) => {
-    const res = await apiRequest("POST", "/api/auth/register", { email, password, displayName });
+    const res = await apiRequest("POST", API_AUTH_REGISTER, { email, password, displayName });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || "Registration failed");
@@ -63,13 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await apiRequest("POST", "/api/auth/logout");
+    await apiRequest("POST", API_AUTH_LOGOUT);
     setUser(null);
   }, []);
 
   const refreshUser = useCallback(async () => {
     try {
-      const res = await apiRequest("GET", "/api/auth/me");
+      const res = await apiRequest("GET", API_AUTH_ME);
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);

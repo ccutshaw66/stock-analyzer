@@ -7,6 +7,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_TRADES_ANALYTICS } from "@shared/api/endpoints";
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -31,9 +32,9 @@ export default function KellyCalculator() {
     avgLoss: number;
     totalTrades: number;
   }>({
-    queryKey: ["/api/trades/analytics"],
+    queryKey: [API_TRADES_ANALYTICS],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/trades/analytics");
+      const res = await apiRequest("GET", API_TRADES_ANALYTICS);
       return res.json();
     },
     enabled: false,

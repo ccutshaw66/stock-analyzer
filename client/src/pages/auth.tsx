@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_AUTH_FORGOT_PASSWORD } from "@shared/api/endpoints";
 import { Loader2, Mail, Lock, User, TrendingUp, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import iconUrl from "@/assets/icon.png";
 import logoTextUrl from "@/assets/logo-text.png";
@@ -21,7 +22,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
     setLoading(true);
     try {
       if (mode === "forgot") {
-        const res = await (await import("@/lib/queryClient")).apiRequest("POST", "/api/auth/forgot-password", { email });
+        const res = await (await import("@/lib/queryClient")).apiRequest("POST", API_AUTH_FORGOT_PASSWORD, { email });
         if (res.ok) setForgotSent(true);
         else { const err = await res.json(); throw new Error(err.error); }
       } else if (mode === "login") {

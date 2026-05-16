@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_TRACK_RECORD_BACKTEST } from "@shared/api/endpoints";
 import { Loader2, Play, Info } from "lucide-react";
 
 interface SignalStats {
@@ -46,7 +47,7 @@ export function BacktestPanel() {
         .split(/[,\s]+/)
         .map(t => t.trim().toUpperCase())
         .filter(Boolean);
-      const res = await apiRequest("POST", "/api/track-record/backtest", {
+      const res = await apiRequest("POST", API_TRACK_RECORD_BACKTEST, {
         tickers,
         years,
         minStrength,
