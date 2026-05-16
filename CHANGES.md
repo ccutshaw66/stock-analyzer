@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — EMA toggle resets the chart view — split fitContent off
+
+**Why:** After the prior toggle-fix shipped, Chris reported: "Everytime you turn a EMA off or on it resets the chart." Toggling an EMA was re-fitting the chart's visible range to the full data, blowing away any pan / zoom the user had set. Root cause: the data-push useEffect had `bars, overlays, markers, showVolume` as deps AND called `chartRef.current?.timeScale().fitContent()` at the end. Toggling an overlay = new overlays reference = effect re-runs = `fitContent()` fires = view resets.
+
+**What:**
+
+### Split the single data-push effect into three focused effects
+- **Effect A — candles + volume.** Deps: `[bars, showVolume]`. Calls `fitContent()` at the end. Only fires on REAL data loads (new ticker, new timeframe, etc.) — never on overlay/marker toggles.
+- **Effect B — overlay data.** Deps: `[bars, JSON.stringify(overlays)]`. Pushes each overlay series' `setData()` and re-asserts visibility. Does NOT call `fitContent()`.
+- **Effect C — markers.** Deps: `[markers]`. Calls `setMarkers()` on the markers plugin. Does NOT call `fitContent()`.
+
+Toggling an EMA now triggers only Effect B — the visible range stays exactly where the user had it.
+
+**Files touched:** `client/src/components/chart/CandlePane.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — EMA toggles not toggling — robustness fixes in CandlePane
 
 **Why:** Chris reported live: "EMAs are not toggling on any chart." The toggle buttons changed state visually (active/inactive) but the EMA lines on the chart didn't disappear. Two issues teamed up to cause it.

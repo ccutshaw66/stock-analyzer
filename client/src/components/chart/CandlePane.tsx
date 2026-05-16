@@ -227,7 +227,9 @@ export function CandlePane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(overlays)]);
 
-  // Push bar data whenever it (or overlays) changes.
+  // Push candle + volume bar data whenever the bars array changes.
+  // fitContent() lives HERE so it only runs on real data loads, not on
+  // every overlay or marker toggle (which would reset the user's pan/zoom).
   useEffect(() => {
     if (!candleSeriesRef.current) return;
     if (bars.length === 0) return;
@@ -235,9 +237,6 @@ export function CandlePane({
     const seen = new Set<number>();
     const candleData: Array<{ time: Time; open: number; high: number; low: number; close: number }> = [];
     const volumeData: Array<{ time: Time; value: number; color: string }> = [];
-    const overlayData: Record<string, Array<{ time: Time; value: number }>> = {};
-
-    for (const overlay of overlays) overlayData[overlay.dataKey] = [];
 
     for (const b of bars) {
       const t = dateToTime(b.date);
@@ -251,6 +250,31 @@ export function CandlePane({
           color: b.close >= b.open ? OVERLAY_BULL_40 : OVERLAY_BEAR_40,
         });
       }
+    }
+
+    const byTime = (a: { time: Time }, b: { time: Time }) => (a.time as number) - (b.time as number);
+    candleData.sort(byTime);
+    volumeData.sort(byTime);
+
+    candleSeriesRef.current.setData(candleData);
+    if (showVolume) volumeSeriesRef.current?.setData(volumeData);
+
+    chartRef.current?.timeScale().fitContent();
+  }, [bars, showVolume]);
+
+  // Push overlay data whenever bars OR the overlay set changes. Does NOT
+  // call fitContent — toggling an EMA must not reset the user's view.
+  useEffect(() => {
+    if (bars.length === 0) return;
+
+    const seen = new Set<number>();
+    const overlayData: Record<string, Array<{ time: Time; value: number }>> = {};
+    for (const overlay of overlays) overlayData[overlay.dataKey] = [];
+
+    for (const b of bars) {
+      const t = dateToTime(b.date);
+      if (seen.has(t as unknown as number)) continue;
+      seen.add(t as unknown as number);
       for (const overlay of overlays) {
         const v = b[overlay.dataKey];
         if (typeof v === "number" && !isNaN(v)) {
@@ -260,38 +284,32 @@ export function CandlePane({
     }
 
     const byTime = (a: { time: Time }, b: { time: Time }) => (a.time as number) - (b.time as number);
-    candleData.sort(byTime);
-    volumeData.sort(byTime);
     for (const key of Object.keys(overlayData)) overlayData[key].sort(byTime);
 
-    candleSeriesRef.current.setData(candleData);
-    if (showVolume) volumeSeriesRef.current?.setData(volumeData);
     for (const overlay of overlays) {
       const s = overlaySeriesRef.current[overlay.dataKey];
       if (!s) continue;
       s.setData(overlayData[overlay.dataKey]);
-      // Re-assert visibility AFTER setData — defensive belt-and-suspenders
-      // since some chart libraries reset series options on setData calls.
+      // Re-assert visibility after setData (some chart libs reset options).
       s.applyOptions({ visible: overlay.visible ?? true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bars, JSON.stringify(overlays)]);
 
-    // Markers — v5 attaches via the plugin instance created at chart init.
-    // Sort by time (Lightweight Charts requires markers in ascending order).
-    if (markersPluginRef.current) {
-      const seriesMarkers: SeriesMarker<Time>[] = markers
-        .map((m) => ({
-          time: dateToTime(m.date),
-          position: m.position,
-          shape: m.shape,
-          color: m.color,
-          text: m.text,
-        }))
-        .sort((a, b) => (a.time as number) - (b.time as number));
-      markersPluginRef.current.setMarkers(seriesMarkers);
-    }
-
-    chartRef.current?.timeScale().fitContent();
-  }, [bars, overlays, markers, showVolume]);
+  // Push markers whenever they change. Does NOT call fitContent.
+  useEffect(() => {
+    if (!markersPluginRef.current) return;
+    const seriesMarkers: SeriesMarker<Time>[] = markers
+      .map((m) => ({
+        time: dateToTime(m.date),
+        position: m.position,
+        shape: m.shape,
+        color: m.color,
+        text: m.text,
+      }))
+      .sort((a, b) => (a.time as number) - (b.time as number));
+    markersPluginRef.current.setMarkers(seriesMarkers);
+  }, [markers]);
 
   return (
     <div className="relative w-full h-full" data-testid={testId}>
