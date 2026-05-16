@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — EMA toggles still broken — switched to add/remove series (skip `visible: false`)
+
+**Why:** After the prior fixes shipped, Chris reported: "still cant turn them off and 200 is gone period." Both bugs were the same root cause — `applyOptions({ visible: false })` on a Lightweight Charts v5 LineSeries wasn't actually hiding the line. SMA 200 looked "gone period" because its default state was `visible: false`, and toggling it on didn't work either (same broken path).
+
+**What:**
+
+### Switched from `visible: false` to add/remove series
+- Instead of relying on `applyOptions({ visible })` to show/hide a line — which had v5 quirks — the manage-overlays effect now **adds** the series to the chart when toggled on and **removes** it from the chart when toggled off. Decisive, no library-internal caching to fight.
+- Three concerns (create / remove / push-data) consolidated into a single effect because splitting them was causing race conditions where the data push tried to run before the series existed.
+- Default invisible overlays (e.g. SMA 200 default-off) now correctly show up the moment the toggle is flipped on — series gets added with data in one operation.
+
+### Trade-off
+- Toggling an EMA off → on creates a new series each time (vs. just flipping a flag). Lightweight Charts handles series creation cheaply, so the user-facing cost is invisible. The benefit is no fighting with `visible` option quirks.
+
+**Files touched:** `client/src/components/chart/CandlePane.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — EMA toggle resets the chart view — split fitContent off
 
 **Why:** After the prior toggle-fix shipped, Chris reported: "Everytime you turn a EMA off or on it resets the chart." Toggling an EMA was re-fitting the chart's visible range to the full data, blowing away any pan / zoom the user had set. Root cause: the data-push useEffect had `bars, overlays, markers, showVolume` as deps AND called `chartRef.current?.timeScale().fitContent()` at the end. Toggling an overlay = new overlays reference = effect re-runs = `fitContent()` fires = view resets.

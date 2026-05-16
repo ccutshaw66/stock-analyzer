@@ -174,59 +174,6 @@ export function CandlePane({
     };
   }, [showVolume]);
 
-  // Sync overlay line series — create new ones, remove vanished ones,
-  // and keep every option (visible, color, width, labels) in sync with
-  // the current overlays prop.
-  //
-  // Dep is `JSON.stringify(overlays)` — fires whenever ANY field of any
-  // overlay changes (including the visible toggle), and stays stable
-  // across parent renders where overlays content is unchanged. Prior
-  // hand-rolled dep string missed the visible toggle in subtle cases.
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    const existing = overlaySeriesRef.current;
-    const desiredKeys = new Set(overlays.map((o) => o.dataKey));
-
-    // Remove series whose dataKey is no longer in the overlay list.
-    for (const key of Object.keys(existing)) {
-      if (!desiredKeys.has(key)) {
-        chart.removeSeries(existing[key]);
-        delete existing[key];
-      }
-    }
-
-    // Create new series with FULL options (including visibility) so they
-    // appear in the right state on first mount.
-    for (const overlay of overlays) {
-      const visible = overlay.visible ?? true;
-      const lineWidth = (overlay.width ?? 1) as 1 | 2 | 3 | 4;
-      const priceLineVisible = overlay.showPriceLine ?? false;
-      const lastValueVisible = overlay.showLastValueLabel ?? false;
-      if (!existing[overlay.dataKey]) {
-        existing[overlay.dataKey] = chart.addSeries(LineSeries, {
-          color: overlay.color,
-          lineWidth,
-          priceLineVisible,
-          lastValueVisible,
-          visible,
-          title: overlay.label,
-        });
-      }
-      // Always re-apply options — covers visibility toggles and color/
-      // label tweaks on existing series.
-      existing[overlay.dataKey].applyOptions({
-        color: overlay.color,
-        lineWidth,
-        priceLineVisible,
-        lastValueVisible,
-        visible,
-        title: overlay.label,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(overlays)]);
-
   // Push candle + volume bar data whenever the bars array changes.
   // fitContent() lives HERE so it only runs on real data loads, not on
   // every overlay or marker toggle (which would reset the user's pan/zoom).
@@ -262,39 +209,73 @@ export function CandlePane({
     chartRef.current?.timeScale().fitContent();
   }, [bars, showVolume]);
 
-  // Push overlay data whenever bars OR the overlay set changes. Does NOT
-  // call fitContent — toggling an EMA must not reset the user's view.
+  // Sync overlay line series — add/remove series based on the visible flag
+  // and push their data. Toggling visibility = add/remove the series on the
+  // chart (rather than relying on `visible: false`, which had v5 quirks).
+  //
+  // Three concerns in one effect because they share the same dep set and
+  // splitting them was causing race conditions (data pushed before series
+  // existed, or option flips not seeing the new series).
+  //
+  // Dep `JSON.stringify(overlays)` — fires whenever ANY field of any
+  // overlay changes; stays stable when the overlay set is unchanged.
   useEffect(() => {
-    if (bars.length === 0) return;
+    const chart = chartRef.current;
+    if (!chart) return;
+    const existing = overlaySeriesRef.current;
 
-    const seen = new Set<number>();
-    const overlayData: Record<string, Array<{ time: Time; value: number }>> = {};
-    for (const overlay of overlays) overlayData[overlay.dataKey] = [];
+    // Set of overlays that should be ON the chart right now (visible=true
+    // AND in the overlay list).
+    const visibleKeys = new Set(
+      overlays.filter((o) => o.visible ?? true).map((o) => o.dataKey),
+    );
 
-    for (const b of bars) {
-      const t = dateToTime(b.date);
-      if (seen.has(t as unknown as number)) continue;
-      seen.add(t as unknown as number);
-      for (const overlay of overlays) {
-        const v = b[overlay.dataKey];
-        if (typeof v === "number" && !isNaN(v)) {
-          overlayData[overlay.dataKey].push({ time: t, value: v });
-        }
+    // Remove any series that's no longer needed — either toggled off OR
+    // dropped from the overlay list entirely.
+    for (const key of Object.keys(existing)) {
+      if (!visibleKeys.has(key)) {
+        chart.removeSeries(existing[key]);
+        delete existing[key];
       }
     }
 
-    const byTime = (a: { time: Time }, b: { time: Time }) => (a.time as number) - (b.time as number);
-    for (const key of Object.keys(overlayData)) overlayData[key].sort(byTime);
-
+    // Create + populate each visible overlay series.
     for (const overlay of overlays) {
-      const s = overlaySeriesRef.current[overlay.dataKey];
-      if (!s) continue;
-      s.setData(overlayData[overlay.dataKey]);
-      // Re-assert visibility after setData (some chart libs reset options).
-      s.applyOptions({ visible: overlay.visible ?? true });
+      if (!(overlay.visible ?? true)) continue;
+
+      const lineWidth = (overlay.width ?? 1) as 1 | 2 | 3 | 4;
+      const opts = {
+        color: overlay.color,
+        lineWidth,
+        priceLineVisible: overlay.showPriceLine ?? false,
+        lastValueVisible: overlay.showLastValueLabel ?? false,
+        title: overlay.label,
+      };
+
+      if (!existing[overlay.dataKey]) {
+        existing[overlay.dataKey] = chart.addSeries(LineSeries, opts);
+      } else {
+        existing[overlay.dataKey].applyOptions(opts);
+      }
+
+      // Push data for this overlay. Filters NaN/null cleanly.
+      if (bars.length === 0) continue;
+      const seen = new Set<number>();
+      const data: Array<{ time: Time; value: number }> = [];
+      for (const b of bars) {
+        const t = dateToTime(b.date);
+        if (seen.has(t as unknown as number)) continue;
+        seen.add(t as unknown as number);
+        const v = b[overlay.dataKey];
+        if (typeof v === "number" && !isNaN(v)) {
+          data.push({ time: t, value: v });
+        }
+      }
+      data.sort((a, b) => (a.time as number) - (b.time as number));
+      existing[overlay.dataKey].setData(data);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, JSON.stringify(overlays)]);
+  }, [JSON.stringify(overlays), bars]);
 
   // Push markers whenever they change. Does NOT call fitContent.
   useEffect(() => {
