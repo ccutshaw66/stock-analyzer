@@ -718,8 +718,8 @@ export default function TradeAnalytics() {
                         );
                       }}
                     />
-                    <Scatter data={scatterData.filter(d => d.profitable === 1)} fill=SIGNAL_BULL fillOpacity={0.7} />
-                    <Scatter data={scatterData.filter(d => d.profitable === 0)} fill=SIGNAL_BEAR fillOpacity={0.7} />
+                    <Scatter data={scatterData.filter(d => d.profitable === 1)} fill={SIGNAL_BULL} fillOpacity={0.7} />
+                    <Scatter data={scatterData.filter(d => d.profitable === 0)} fill={SIGNAL_BEAR} fillOpacity={0.7} />
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
@@ -797,8 +797,8 @@ export default function TradeAnalytics() {
                               formatter={(value: number) => [`$${value.toFixed(2)}`, "Unrealized P/L"]}
                             />
                             <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" opacity={0.5} />
-                            <ReferenceLine y={maxPL} stroke=SIGNAL_BULL strokeDasharray="4 4" opacity={0.6} label={{ value: `MFE: $${maxPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BULL } }} />
-                            <ReferenceLine y={minPL} stroke=SIGNAL_BEAR strokeDasharray="4 4" opacity={0.6} label={{ value: `MAE: $${minPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BEAR } }} />
+                            <ReferenceLine y={maxPL} stroke={SIGNAL_BULL} strokeDasharray="4 4" opacity={0.6} label={{ value: `MFE: $${maxPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BULL } }} />
+                            <ReferenceLine y={minPL} stroke={SIGNAL_BEAR} strokeDasharray="4 4" opacity={0.6} label={{ value: `MAE: $${minPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BEAR } }} />
                             <Line
                               type="monotone"
                               dataKey="pl"

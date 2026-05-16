@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Design tokens fix: wrap bare token identifiers in JSX braces
+
+**Why:** Initial design-tokens ship (commit `9234f94`) broke the deploy. The replace_all from `attribute="#hexvalue"` to `attribute=TOKEN_NAME` stripped the string quotes but did not add JSX expression braces, producing 40 invalid JSX attributes like `<Line stroke=SIGNAL_BULL>` where it should be `<Line stroke={SIGNAL_BULL}>`. `npm run check` (tsc) passed because TypeScript is permissive about JSX attribute syntax; `npm run build` (Vite/esbuild) caught the parse error. Production build failed, last_deploy.success was false, site stayed on the prior SHA.
+
+**What:**
+
+- Bulk sed across `client/src/**.tsx` rewrites `(stroke|fill|color)=TOKEN_NAME` → `(stroke|fill|color)={TOKEN_NAME}`.
+- 8 files fixed: `chart.tsx`, `conviction.tsx`, `kelly-calculator.tsx`, `mm-exposure.tsx`, `payoff-diagram.tsx`, `trade-analysis.tsx`, `trade-analytics.tsx`, `wheel.tsx`.
+- `npm run build` now passes cleanly — vite/esbuild reports `✓ built in 9.48s`.
+
+**Verify-work follow-up:** the existing verify-work runs `npm run check` (tsc) but not `npm run build`. Adding `npm run build` to the verify pass would have caught this before ship. Add as a separate task.
+
+---
 ## 2026-05-15 — Design system compartmentalized (colors, fonts, tile sizes)
 
 **Why:** Chris asked whether the design elements were compartmentalized like the code. Audit found they were NOT — 188 hardcoded hex codes across 19 files (recurring brand greens, reds, indigo, navy bgs duplicated everywhere), 424 arbitrary `text-[Npx]` font sizes across 48 files, and raw `{ w, h }` literals scattered across 5 compartment manifests + the server default layout. Brand-color or palette changes would have required hunting through dozens of files. Confluence Chart's chart pane in particular had 9 hex codes baked into a single file. After Chris's "Confluence Chart Round 9" episode this was untenable.

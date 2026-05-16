@@ -445,7 +445,7 @@ export default function PayoffDiagram() {
               {currentStockPrice != null && (
                 <ReferenceLine
                   x={Math.round(currentStockPrice * 100) / 100}
-                  stroke=BRAND_ACCENT
+                  stroke={BRAND_ACCENT}
                   strokeWidth={2}
                   strokeDasharray="6 3"
                   label={{
@@ -460,8 +460,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="gain"
-                stroke=SIGNAL_BULL
-                fill=SIGNAL_BULL
+                stroke={SIGNAL_BULL}
+                fill={SIGNAL_BULL}
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}
@@ -471,8 +471,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="loss"
-                stroke=SIGNAL_BEAR
-                fill=SIGNAL_BEAR
+                stroke={SIGNAL_BEAR}
+                fill={SIGNAL_BEAR}
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}

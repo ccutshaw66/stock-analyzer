@@ -256,9 +256,9 @@ export default function KellyCalculator() {
                 wrapperStyle={{ fontSize: 10 }}
                 formatter={(value: string) => value === "full" ? "Full Kelly" : value === "half" ? "Half Kelly" : "Quarter Kelly"}
               />
-              <Line type="monotone" dataKey="full" stroke=SIGNAL_BEAR strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="half" stroke=SIGNAL_BULL strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="quarter" stroke=CHART_RSI strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="full" stroke={SIGNAL_BEAR} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="half" stroke={SIGNAL_BULL} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="quarter" stroke={CHART_RSI} strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -362,11 +362,11 @@ export default function WheelCalculator() {
                 labelFormatter={(label: number) => `Stock @ $${label}`}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-              <ReferenceLine x={putStrike} stroke=CHART_RSI strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: CHART_RSI, position: "top" }} />
-              <ReferenceLine x={callStrike} stroke=SIGNAL_BULL strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: SIGNAL_BULL, position: "top" }} />
-              <ReferenceLine x={metrics.breakEven} stroke=ACCENT_AMBER_DEEP strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: ACCENT_AMBER_DEEP, position: "top" }} />
-              <Line type="monotone" dataKey="putPL" stroke=CHART_RSI strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="wheelPL" stroke=SIGNAL_BULL strokeWidth={2} dot={false} isAnimationActive={false} />
+              <ReferenceLine x={putStrike} stroke={CHART_RSI} strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: CHART_RSI, position: "top" }} />
+              <ReferenceLine x={callStrike} stroke={SIGNAL_BULL} strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: SIGNAL_BULL, position: "top" }} />
+              <ReferenceLine x={metrics.breakEven} stroke={ACCENT_AMBER_DEEP} strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: ACCENT_AMBER_DEEP, position: "top" }} />
+              <Line type="monotone" dataKey="putPL" stroke={CHART_RSI} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="wheelPL" stroke={SIGNAL_BULL} strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -299,13 +299,13 @@ export default function MMExposure() {
                       return [`$${Math.abs(value).toLocaleString()}`, label];
                     }}
                   />
-                  <ReferenceLine x={data.spot} stroke=BRAND_ACCENT strokeDasharray="3 3" label={{ value: `Spot $${data.spot.toFixed(0)}`, fill: BRAND_ACCENT, fontSize: 10, position: "top" }} />
-                  {data.callWall && <ReferenceLine x={data.callWall.strike} stroke=SIGNAL_BEAR strokeDasharray="3 3" label={{ value: "Call Wall", fill: SIGNAL_BEAR, fontSize: 9, position: "top" }} />}
-                  {data.putWall && <ReferenceLine x={data.putWall.strike} stroke=SIGNAL_BULL strokeDasharray="3 3" label={{ value: "Put Wall", fill: SIGNAL_BULL, fontSize: 9, position: "top" }} />}
-                  {data.gammaFlip && <ReferenceLine x={data.gammaFlip} stroke=SIGNAL_WATCH strokeDasharray="5 3" label={{ value: "Flip", fill: SIGNAL_WATCH, fontSize: 9, position: "insideTopRight" }} />}
-                  <Bar dataKey="callGEX" fill=SIGNAL_BULL opacity={0.6} />
-                  <Bar dataKey="putGEX" fill=SIGNAL_BEAR opacity={0.6} />
-                  <Area type="monotone" dataKey="netGEX" stroke=BRAND_ACCENT fill="none" strokeWidth={2} dot={false} />
+                  <ReferenceLine x={data.spot} stroke={BRAND_ACCENT} strokeDasharray="3 3" label={{ value: `Spot $${data.spot.toFixed(0)}`, fill: BRAND_ACCENT, fontSize: 10, position: "top" }} />
+                  {data.callWall && <ReferenceLine x={data.callWall.strike} stroke={SIGNAL_BEAR} strokeDasharray="3 3" label={{ value: "Call Wall", fill: SIGNAL_BEAR, fontSize: 9, position: "top" }} />}
+                  {data.putWall && <ReferenceLine x={data.putWall.strike} stroke={SIGNAL_BULL} strokeDasharray="3 3" label={{ value: "Put Wall", fill: SIGNAL_BULL, fontSize: 9, position: "top" }} />}
+                  {data.gammaFlip && <ReferenceLine x={data.gammaFlip} stroke={SIGNAL_WATCH} strokeDasharray="5 3" label={{ value: "Flip", fill: SIGNAL_WATCH, fontSize: 9, position: "insideTopRight" }} />}
+                  <Bar dataKey="callGEX" fill={SIGNAL_BULL} opacity={0.6} />
+                  <Bar dataKey="putGEX" fill={SIGNAL_BEAR} opacity={0.6} />
+                  <Area type="monotone" dataKey="netGEX" stroke={BRAND_ACCENT} fill="none" strokeWidth={2} dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -325,10 +325,10 @@ export default function MMExposure() {
                     labelFormatter={(v: number) => `Strike: $${v}`}
                     formatter={(value: number, name: string) => [value.toLocaleString(), name === "callOI" ? "Call OI" : "Put OI"]}
                   />
-                  <ReferenceLine x={data.spot} stroke=BRAND_ACCENT strokeDasharray="3 3" />
-                  <ReferenceLine x={data.maxPain} stroke=CHART_EMA_200 strokeDasharray="3 3" label={{ value: "Max Pain", fill: CHART_EMA_200, fontSize: 9, position: "top" }} />
-                  <Bar dataKey="callOI" fill=SIGNAL_BULL opacity={0.5} />
-                  <Bar dataKey="putOI" fill=SIGNAL_BEAR opacity={0.5} />
+                  <ReferenceLine x={data.spot} stroke={BRAND_ACCENT} strokeDasharray="3 3" />
+                  <ReferenceLine x={data.maxPain} stroke={CHART_EMA_200} strokeDasharray="3 3" label={{ value: "Max Pain", fill: CHART_EMA_200, fontSize: 9, position: "top" }} />
+                  <Bar dataKey="callOI" fill={SIGNAL_BULL} opacity={0.5} />
+                  <Bar dataKey="putOI" fill={SIGNAL_BEAR} opacity={0.5} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

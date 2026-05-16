@@ -235,7 +235,7 @@ function SignalDot(props: any) {
         cy={cy}
         r={3.5}
         fill="none"
-        stroke=SIGNAL_WATCH_SHORT
+        stroke={SIGNAL_WATCH_SHORT}
         strokeWidth={1.5}
         strokeDasharray="2 2"
       />
@@ -252,7 +252,7 @@ function SignalDot(props: any) {
         cy={cy}
         r={4}
         fill="none"
-        stroke=SIGNAL_SHORT_ADD
+        stroke={SIGNAL_SHORT_ADD}
         strokeWidth={1.5}
         strokeDasharray="2 2"
       />
@@ -1039,8 +1039,8 @@ export default function TradeAnalysis() {
                       dot={<SignalDot />}
                       name="Close"
                     />
-                    <Line type="monotone" dataKey="ema9" stroke=SIGNAL_BULL strokeWidth={1} dot={false} name="EMA 9" connectNulls />
-                    <Line type="monotone" dataKey="ema21" stroke=SIGNAL_WATCH_SHORT strokeWidth={1} dot={false} name="EMA 21" connectNulls />
+                    <Line type="monotone" dataKey="ema9" stroke={SIGNAL_BULL} strokeWidth={1} dot={false} name="EMA 9" connectNulls />
+                    <Line type="monotone" dataKey="ema21" stroke={SIGNAL_WATCH_SHORT} strokeWidth={1} dot={false} name="EMA 21" connectNulls />
                     <Line type="monotone" dataKey="ema50" stroke={CHART_EMA_50} strokeWidth={1} dot={false} name="EMA 50" connectNulls />
                     <Line
                       type="monotone"
@@ -1137,8 +1137,8 @@ export default function TradeAnalysis() {
                         return [Number(value).toFixed(2), "RSI"];
                       }}
                     />
-                    <ReferenceLine y={70} stroke=SIGNAL_BEAR strokeDasharray="4 4" strokeOpacity={0.6} />
-                    <ReferenceLine y={30} stroke=SIGNAL_BULL strokeDasharray="4 4" strokeOpacity={0.6} />
+                    <ReferenceLine y={70} stroke={SIGNAL_BEAR} strokeDasharray="4 4" strokeOpacity={0.6} />
+                    <ReferenceLine y={30} stroke={SIGNAL_BULL} strokeDasharray="4 4" strokeOpacity={0.6} />
                     <Line
                       type="monotone"
                       dataKey="rsi"

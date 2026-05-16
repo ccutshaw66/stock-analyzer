@@ -163,21 +163,21 @@ function CompassRadar({ compass }: { compass: ConvictionCompass }) {
     <div className="w-full h-[360px] bg-card border border-card-border rounded-xl p-4">
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
-          <PolarGrid stroke=OVERLAY_SLATE_20 />
+          <PolarGrid stroke={OVERLAY_SLATE_20} />
           <PolarAngleAxis dataKey="axis" tick={{ fill: COLOR_GRAY_NEUTRAL_LIGHT, fontSize: 12, fontWeight: 600 }} />
           <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: COLOR_GRAY_NEUTRAL, fontSize: 10 }} />
           <Radar
             name="Bullish"
             dataKey="bullish"
-            stroke=SIGNAL_BULL_RADAR
-            fill=SIGNAL_BULL_RADAR
+            stroke={SIGNAL_BULL_RADAR}
+            fill={SIGNAL_BULL_RADAR}
             fillOpacity={0.35}
           />
           <Radar
             name="Bearish"
             dataKey="bearish"
-            stroke=SIGNAL_BEAR_LIGHT
-            fill=SIGNAL_BEAR_LIGHT
+            stroke={SIGNAL_BEAR_LIGHT}
+            fill={SIGNAL_BEAR_LIGHT}
             fillOpacity={0.25}
           />
         </RadarChart>

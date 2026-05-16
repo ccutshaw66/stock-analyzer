@@ -382,7 +382,7 @@ function StrategyChart({ data, highlightedTradeNum }: {
           <Line
             type="monotone"
             dataKey="close"
-            stroke=CHART_RSI
+            stroke={CHART_RSI}
             strokeWidth={1.5}
             dot={false}
             isAnimationActive={false}
