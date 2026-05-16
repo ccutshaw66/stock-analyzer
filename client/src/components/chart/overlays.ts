@@ -28,21 +28,21 @@ import type { LineOverlay } from "./types";
  * the toggle buttons; defaults are EMA 9/21/50 on, EMA 200 off.
  */
 export function emaOverlays({
-  showEma9 = true,
-  showEma21 = true,
-  showEma50 = true,
-  showEma200 = false,
+  ema9 = true,
+  ema21 = true,
+  ema50 = true,
+  ema200 = false,
 }: {
-  showEma9?: boolean;
-  showEma21?: boolean;
-  showEma50?: boolean;
-  showEma200?: boolean;
+  ema9?: boolean;
+  ema21?: boolean;
+  ema50?: boolean;
+  ema200?: boolean;
 } = {}): LineOverlay[] {
   return [
-    { dataKey: "ema9", label: "EMA 9", color: CHART_EMA_9, visible: showEma9 },
-    { dataKey: "ema21", label: "EMA 21", color: CHART_EMA_21, visible: showEma21 },
-    { dataKey: "ema50", label: "EMA 50", color: CHART_EMA_50, visible: showEma50 },
-    { dataKey: "sma200", label: "SMA 200", color: CHART_EMA_200, visible: showEma200 },
+    { dataKey: "ema9", label: "EMA 9", color: CHART_EMA_9, visible: ema9 },
+    { dataKey: "ema21", label: "EMA 21", color: CHART_EMA_21, visible: ema21 },
+    { dataKey: "ema50", label: "EMA 50", color: CHART_EMA_50, visible: ema50 },
+    { dataKey: "sma200", label: "SMA 200", color: CHART_EMA_200, visible: ema200 },
   ];
 }
 

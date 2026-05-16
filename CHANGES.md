@@ -9,6 +9,16 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-16 — Fix EMA toggles: align `emaOverlays()` props with `EmaToggleState` shape
+
+**Why:** EMA toggle buttons on every TV-style chart (Strategy Chart, Trade Analysis, Confluence Chart) appeared interactive but never actually toggled the lines on the chart. After multiple prior attempts (commits 035bde4, 9af9c23, 5f3b01f), the real root cause was a silent key-name mismatch between the toggle state and the overlay builder — every key missed the destructure and every overlay fell back to its default.
+
+**What:**
+- `client/src/components/chart/overlays.ts` — `emaOverlays()` now destructures `{ ema9, ema21, ema50, ema200 }` (the shape `EmaToggleState` already emits) instead of `{ showEma9, showEma21, showEma50, showEma200 }`. All three consumer pages (`pages/chart.tsx`, `pages/trade-analysis.tsx`, `pages/confluence-chart.tsx`) call `emaOverlays(emaState)` and now wire through correctly. No call-site changes needed.
+
+**Bug mechanic:** `EmaToggleStrip` writes state with `ema9 / ema21 / ema50 / ema200`. `emaOverlays()` was reading `showEma9 / …`. Destructure found none of the expected keys → every value used its default (9/21/50 visible, 200 hidden). React state updated correctly on every click; the result was just discarded by the overlay function. Buttons looked active because the strip reads `state[t.key]` directly, but the chart never saw the change. This closes the TODO captured yesterday in `memory/todo_chart_toggles_and_timeframe.md` for the toggle half; the timeframe-picker half remains open.
+
+---
 ## 2026-05-15 — Rogue cleanup: API endpoints migrated to constants, Yahoo/Polygon kill plan saved, chart TODO captured
 
 **Why:** Chris went to sleep with the chart EMA toggles + timeframe still flaky and told me to "go back to the rogue stuff and fix all that." This commit (a) captures the chart bugs as a durable TODO so they're not lost, (b) sweeps a chunk of raw `/api/*` strings into the constants module (rogue #3), and (c) saves a planning memory for the Yahoo+Polygon kill — NOT executing the kill itself, since unsupervised provider migration is too risky.
