@@ -9,6 +9,37 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Indicator constants finished + API endpoints module + z-index tokens + AppLayout cleanup
+
+**Why:** Continuation of the universal-structure rollout. Diag files and conviction pipeline still passed hardcoded `14` / `20` / `9` / `21` / `50` to indicator helpers — those needed to come from the constants module so the TV-chart rollout reads the same periods everywhere. API endpoint strings were also scattered as raw literals across 50+ files (50 distinct paths). And z-index values + AppLayout's icon import block were cleanup debts.
+
+**What:**
+
+### Indicator constants migration finished (rogue #1 wrap-up)
+- `server/diag/chart-data.ts`: 6 occurrences of literal `14` for ATR/RSI period → `ATR_PERIOD` / `RSI_PERIOD`.
+- `server/diag/strategy-eval.ts`: full sweep — RSI/EMA/ATR/Bollinger/Volume periods all now constants.
+- `server/diag/strategy-pnl.ts`: same full sweep.
+- `server/diag/strategy-tft-pnl.ts`: same full sweep.
+- `server/conviction/pipeline.ts`: RSI period + Bollinger period/stddev now constants.
+- Strategy files (TFT/VER/AMC) use `atr14` / `rsi14` as variable names for externally-passed pre-computed series — the period itself lives in the diag layer that produces them, which is now centralized.
+
+### API endpoints module (rogue #3)
+- New `shared/api/endpoints.ts` exports every `/api/*` path used by the frontend as a named constant (50 distinct paths catalogued). Plus path-builder helpers (`analyzePath(ticker)`, `tradePath(id)`, etc.) for endpoints with route params.
+- Documented organization: auth / account / dashboard / per-ticker analysis / scanners / market / dividends / trades / track-record / alerts / admin / diag. Each section maps to a feature area.
+- Living catalog: future endpoints get added here first, every frontend caller imports the constant. Renames become one-edit operations.
+- (Not migrated in this ship — the 50 endpoints are catalogued and ready; callers migrate progressively in follow-ups.)
+
+### Z-index constants module
+- New `client/src/lib/z-index.ts` with 8 named tiers (Z_BASE 1, Z_STICKY 10, Z_DROPDOWN 20, Z_OVERLAY 40, Z_HEADER 50, Z_MODAL 60, Z_TOAST 70, Z_TOOLTIP 100). Documented tiebreaker: "pick the lowest tier that solves the problem. If you reach for Z_TOOLTIP you're probably racing another stacking context — fix the parent."
+- Existing usage inventory: 30× `z-50`, 10× `z-10`, 3× `z-40`, 3× `z-[60]`, 3× `z-20`, 2× `z-[70]`, 2× `z-[100]`. Migration is incremental — new code uses the named tokens.
+
+### AppLayout import cleanup
+- After the page-registry refactor, AppLayout no longer imports page-icons inline (the registry supplies them). The lucide import block dropped from 41 icons to 15 — kept only UI-chrome icons actually used in JSX (ChevronDown/Up, Search, X, Loader2, Eye, UserCircle, TrendingUp, Trash2, Shield, RefreshCw, Menu, LogOut, BookOpen, ClipboardList).
+- 26 orphaned icon imports removed.
+
+**Files touched:** new `shared/api/endpoints.ts`, new `client/src/lib/z-index.ts`, `server/diag/{chart-data,strategy-eval,strategy-pnl,strategy-tft-pnl}.ts`, `server/conviction/pipeline.ts`, `client/src/components/AppLayout.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Universal structure rule + page registry + indicator constants module
 
 **Why:** Chris established a new architectural rule: no new feature is built independently — every build plugs into compartments, widgets, registries, and shared token modules. The TradingView-style chart rollout is starting across every page, and the building blocks underneath (indicator periods, signal colors, page chrome, layout sizes) must come from one source or drift makes the rollout meaningless. Two concrete violations exposed this ship: (1) sidebar icons and page-header icons lived in two separate files and drifted; (2) RSI period 14, EMA 9/21/50/200, MACD 12/26/9, BB 20/2, ATR 14, Volume MA 20 were hardcoded in indicator files and strategy files. Same numbers, eight places.

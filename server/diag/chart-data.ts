@@ -20,6 +20,7 @@ import { computeBBTC, type BBTCSignal, type BBTCSignalSide } from "../signals/st
 import { computeVER, type VERSignal, type VERSignalSide } from "../signals/strategies/ver";
 import { scoreAMC, type AMCInput } from "../signals/strategies/amc";
 import { simulateTFT, type TFTTrade, type TFTCoreStopMode, type TFTRegime } from "../signals/strategies/tft";
+import { RSI_PERIOD, ATR_PERIOD } from "@shared/indicators/constants";
 
 export type ChartStrategy = "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-catastrophic";
 
@@ -302,8 +303,8 @@ function adaptBBTCVer(
   const ema9 = computeEMA(closes, 9);
   const ema21 = computeEMA(closes, 21);
   const ema50 = computeEMA(closes, 50);
-  const atr14 = computeATR(highs, lows, closes, 14);
-  const rsi14 = computeRSI(closes, 14);
+  const atr14 = computeATR(highs, lows, closes, ATR_PERIOD);
+  const rsi14 = computeRSI(closes, RSI_PERIOD);
   const bb = computeBollinger(closes, 20, 2);
   const volAvg20 = computeVolAvg(volumes, 20);
 
@@ -488,8 +489,8 @@ function adaptAMC(
   const ema9 = computeEMA(closes, 9);
   const ema21 = computeEMA(closes, 21);
   const ema50 = computeEMA(closes, 50);
-  const atr14 = computeATR(highs, lows, closes, 14);
-  const rsi14 = computeRSI(closes, 14);
+  const atr14 = computeATR(highs, lows, closes, ATR_PERIOD);
+  const rsi14 = computeRSI(closes, RSI_PERIOD);
   const histogram = computeMACDHistogram(closes);
   const vamiScaled = computeVAMIScaled(closes, volumes);
   const sma200 = computeSMA(closes, 200);
@@ -591,8 +592,8 @@ function adaptTFT(
   const ema9 = computeEMA(closes, 9);
   const ema21 = computeEMA(closes, 21);
   const ema50 = computeEMA(closes, 50);
-  const atr14 = computeATR(highs, lows, closes, 14);
-  const rsi14 = computeRSI(closes, 14);
+  const atr14 = computeATR(highs, lows, closes, ATR_PERIOD);
+  const rsi14 = computeRSI(closes, RSI_PERIOD);
   const bb = computeBollinger(closes, 20, 2);
   const volAvg20 = computeVolAvg(volumes, 20);
 

@@ -16,6 +16,10 @@ import { fmpGet } from "../data/providers/fmp.client";
 import { computeBBTC } from "../signals/strategies/bbtc";
 import { computeVER, type VERSignal } from "../signals/strategies/ver";
 import type { BBTCSignal } from "../signals/strategies/bbtc";
+import {
+  RSI_PERIOD, ATR_PERIOD, EMA_FAST, EMA_MID, EMA_SLOW,
+  BB_PERIOD, BB_STDDEV, VOLUME_MA_PERIOD,
+} from "@shared/indicators/constants";
 
 // ─── Indicator helpers (self-contained — same math as routes.ts) ────────────
 
@@ -203,13 +207,13 @@ async function evalTicker(symbol: string, days: number): Promise<TickerEval | nu
   const b = await fetchBars(symbol, days);
   if (!b) return null;
 
-  const rsi14 = computeRSI(b.close, 14);
-  const ema9 = computeEMA(b.close, 9);
-  const ema21 = computeEMA(b.close, 21);
-  const ema50 = computeEMA(b.close, 50);
-  const atr14 = computeATR(b.high, b.low, b.close, 14);
-  const bb = computeBollinger(b.close, 20, 2);
-  const volAvg20 = computeVolAvg(b.volume, 20);
+  const rsi14 = computeRSI(b.close, RSI_PERIOD);
+  const ema9 = computeEMA(b.close, EMA_FAST);
+  const ema21 = computeEMA(b.close, EMA_MID);
+  const ema50 = computeEMA(b.close, EMA_SLOW);
+  const atr14 = computeATR(b.high, b.low, b.close, ATR_PERIOD);
+  const bb = computeBollinger(b.close, BB_PERIOD, BB_STDDEV);
+  const volAvg20 = computeVolAvg(b.volume, VOLUME_MA_PERIOD);
 
   const bbtc = computeBBTC({ closes: b.close, highs: b.high, lows: b.low, ema9, ema21, ema50, atr14, rsi14 });
   const ver = computeVER({

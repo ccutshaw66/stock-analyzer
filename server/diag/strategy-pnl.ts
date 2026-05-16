@@ -24,6 +24,10 @@ import { fmpGet } from "../data/providers/fmp.client";
 import { computeBBTC, type BBTCSignal, type BBTCSignalSide } from "../signals/strategies/bbtc";
 import { computeVER, type VERSignal, type VERSignalSide } from "../signals/strategies/ver";
 import { scoreAMC, type AMCInput } from "../signals/strategies/amc";
+import {
+  RSI_PERIOD, ATR_PERIOD, EMA_FAST, EMA_MID, EMA_SLOW,
+  BB_PERIOD, BB_STDDEV, VOLUME_MA_PERIOD,
+} from "@shared/indicators/constants";
 
 export type AMCGateMode = "off" | "loose" | "strict";
 
@@ -465,13 +469,13 @@ async function evalTickerPnL(symbol: string, days: number, positionSize: number,
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
 
-  const rsi14 = computeRSI(bars.close, 14);
-  const ema9 = computeEMA(bars.close, 9);
-  const ema21 = computeEMA(bars.close, 21);
-  const ema50 = computeEMA(bars.close, 50);
-  const atr14 = computeATR(bars.high, bars.low, bars.close, 14);
-  const bb = computeBollinger(bars.close, 20, 2);
-  const volAvg20 = computeVolAvg(bars.volume, 20);
+  const rsi14 = computeRSI(bars.close, RSI_PERIOD);
+  const ema9 = computeEMA(bars.close, EMA_FAST);
+  const ema21 = computeEMA(bars.close, EMA_MID);
+  const ema50 = computeEMA(bars.close, EMA_SLOW);
+  const atr14 = computeATR(bars.high, bars.low, bars.close, ATR_PERIOD);
+  const bb = computeBollinger(bars.close, BB_PERIOD, BB_STDDEV);
+  const volAvg20 = computeVolAvg(bars.volume, VOLUME_MA_PERIOD);
 
   const bbtc = computeBBTC({
     closes: bars.close, highs: bars.high, lows: bars.low,
