@@ -18,14 +18,9 @@
  *   <EmaToggleStrip state={emaState} onChange={setEmaState} />
  *   <CandlePane bars={bars} overlays={emaOverlays(emaState)} />
  */
-import { EMA_TOGGLES } from "./overlays";
+import { EMA_TOGGLES, type EmaToggleState } from "./overlays";
 
-export interface EmaToggleState {
-  ema9: boolean;
-  ema21: boolean;
-  ema50: boolean;
-  ema200: boolean;
-}
+export type { EmaToggleState };
 
 export function EmaToggleStrip({
   state,

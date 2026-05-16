@@ -160,7 +160,19 @@ If `client/` is touched, verify the change clears the fintech quality bar:
 4. **Typography hierarchy** — no `font-size: 14px;` overrides; uses the tailwind type scale.
 5. **Performance** — no obvious N+1 fetches in `useEffect` chains, no unbounded `setInterval` without cleanup.
 
-### E. Memory rule compliance (NITS, but worth surfacing)
+### E. Interactive UI behavior (BLOCKER for any diff touching toggle / button / dropdown / form handlers)
+
+**The EMA-toggle lesson (2026-05-16):** type-check passed, build passed, the buttons rendered and visually responded to clicks. The fix shipped four times before the bug actually went away — each prior "fix" was based on the same false signal that `tsc` clean + visible button state = working feature. The real bug was a key-name mismatch upstream of the chart; React state updated correctly, the result was just silently discarded by a destructure with default values.
+
+A clean type-check and a working-looking UI are not evidence that an interactive feature works. Two things must be true to mark interactive-UI work as ready:
+
+1. **Trace the state path end-to-end in the code.** For every handler in the diff (`onClick`, `onChange`, `onSubmit`, `setX(...)`), follow the state value from the setter to the place that consumes it. If a function accepts an object and destructures specific keys with defaults, verify the *exact key names* of the producer match the consumer. Anonymous parameter shapes and `Partial<…>` parameters are the danger zone — `tsc` will not flag a key-name mismatch when defaults make every field optional.
+
+2. **Click it in a running browser.** Start the dev server if it's not running, open the page, perform the user action (click the toggle, change the dropdown, submit the form), and confirm the downstream effect actually changed. "Buttons render and animate on click" is not the same as "the feature works." If you cannot run the browser yourself, say so explicitly in the report: *"UI behavior not verified — Chris should click the toggle and confirm the line appears/disappears before ship."* Do not silently skip and report clean.
+
+Heuristic for when this section applies: the diff contains any of `onClick`, `onChange`, `onSubmit`, `useState<…>`, a new toggle component, a new form field, or a new dropdown / select / multi-select. If unsure, apply the section — the cost of an extra browser click is trivial compared to a four-attempt fix loop.
+
+### F. Memory rule compliance (NITS, but worth surfacing)
 
 - Did the work hit `dev` branch or go straight to `main`? (Per `feedback_direct_main_push`, direct main is fine if Chris approved verbally.)
 - Was a `safe/<timestamp>` tag created before destructive ops? (Only relevant if rollback would be hard.)
@@ -220,4 +232,5 @@ Site-wide audit output is a categorized report with a count per category, top of
 - **Never skip the type check or the build.** Both `npm run check` AND `npm run build` must pass. If either won't run, that itself is a blocker. `tsc` alone is not sufficient — it missed the 2026-05-15 JSX-braces bug that broke production.
 - **Never audit against a stale baseline.** `git fetch origin` at the start, ahead/behind check, refresh the diff right before each check group. A stale diff is worse than no audit — it produces false confidence.
 - **Don't fabricate cleanliness.** If you didn't check something (e.g. didn't load the page in a browser), say so explicitly: "UI behavior not verified — Chris should spot-check in the browser before ship."
+- **Type-check + build clean is NOT proof an interactive feature works.** For any diff touching click/change/submit handlers, do the section-E end-to-end state-path trace AND require a browser click before reporting ready. This rule exists because of the 2026-05-16 EMA-toggle 4-attempt fix loop — each prior attempt looked clean by tsc + visible-button-state and was wrong.
 - **Be specific.** "Looks good" is not a verification. Every clean check should be named in the "What ran clean" section so Chris can see exactly what was and wasn't checked.

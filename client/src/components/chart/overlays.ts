@@ -23,6 +23,20 @@ import {
 import type { LineOverlay } from "./types";
 
 /**
+ * Canonical shape for the four-EMA toggle row. Both `EmaToggleStrip` (the
+ * UI) and `emaOverlays()` (the chart-side line builder) consume this exact
+ * shape, so a `emaOverlays(emaState)` call is type-checked end-to-end. If
+ * you rename a key here, both surfaces fail to compile until they're back
+ * in sync — that's the whole point.
+ */
+export interface EmaToggleState {
+  ema9: boolean;
+  ema21: boolean;
+  ema50: boolean;
+  ema200: boolean;
+}
+
+/**
  * The canonical 4-EMA stack — used by Confluence Chart, Trade Analysis,
  * and Strategy Chart. Pass any combination of `showEma*` props to drive
  * the toggle buttons; defaults are EMA 9/21/50 on, EMA 200 off.
@@ -32,12 +46,7 @@ export function emaOverlays({
   ema21 = true,
   ema50 = true,
   ema200 = false,
-}: {
-  ema9?: boolean;
-  ema21?: boolean;
-  ema50?: boolean;
-  ema200?: boolean;
-} = {}): LineOverlay[] {
+}: Partial<EmaToggleState> = {}): LineOverlay[] {
   return [
     { dataKey: "ema9", label: "EMA 9", color: CHART_EMA_9, visible: ema9 },
     { dataKey: "ema21", label: "EMA 21", color: CHART_EMA_21, visible: ema21 },

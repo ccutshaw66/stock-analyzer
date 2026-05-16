@@ -9,6 +9,18 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-16 — Type the EMA-toggle contract + bake browser-verify into `verify-work`
+
+**Why:** Same-day follow-up to the EMA-toggle fix. The bug had been "fixed" four times before it actually went away (commits 035bde4, 9af9c23, 5f3b01f, 5467148) — every prior attempt was based on the false signal that `tsc` clean + visible-button-state = working feature. This commit removes the structural conditions that allowed those false signals.
+
+**What:**
+- `client/src/components/chart/overlays.ts` — exports `EmaToggleState` as the single source of truth for the four-EMA toggle row shape. `emaOverlays()` signature is now `Partial<EmaToggleState>` instead of an anonymous `{ ema9?: boolean; … }`. A future rename of any key will fail to compile at both producer (`EmaToggleStrip`) and consumer (`emaOverlays`) until they're back in sync. The original bug class — anonymous parameter shape + defaults silently swallowing a key-name mismatch — can no longer occur.
+- `client/src/components/chart/EmaToggleStrip.tsx` — imports `EmaToggleState` from `overlays.ts` instead of defining its own. Still re-exported for the existing `@/components/chart` public surface, so no call-site churn.
+- `.claude/skills/verify-work/SKILL.md` — new section E ("Interactive UI behavior") is a BLOCKER for any diff touching `onClick` / `onChange` / `onSubmit` / `useState<…>` / new toggle/form/dropdown. Requires (a) tracing the state value end-to-end in the code, with anonymous parameter shapes and `Partial<…>` parameters explicitly called out as the danger zone, and (b) clicking the feature in a running browser. Skill must explicitly state "UI behavior not verified — Chris should spot-check" if it can't run the browser, never silently report clean. New hard rule cites the 2026-05-16 four-attempt loop as precedent.
+
+**Net:** removes both the structural cause (anonymous shape) and the verification gap (false-positive type-check on interactive UI) so this bug class can't repeat.
+
+---
 ## 2026-05-16 — Fix EMA toggles: align `emaOverlays()` props with `EmaToggleState` shape
 
 **Why:** EMA toggle buttons on every TV-style chart (Strategy Chart, Trade Analysis, Confluence Chart) appeared interactive but never actually toggled the lines on the chart. After multiple prior attempts (commits 035bde4, 9af9c23, 5f3b01f), the real root cause was a silent key-name mismatch between the toggle state and the overlay builder — every key missed the destructure and every overlay fell back to its default.
