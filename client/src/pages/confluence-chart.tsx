@@ -12,14 +12,15 @@ import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
+import { PageHeader } from "@/components/PageHeader";
 import { CandlePane } from "@/compartments/confluence-chart/CandlePane";
-import { ChartHeader } from "@/compartments/confluence-chart/ChartHeader";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
 import { EmptyState } from "@/compartments/confluence-chart/EmptyState";
 import { HowToRead } from "@/compartments/confluence-chart/HowToRead";
 import { useConfluenceChart } from "@/compartments/confluence-chart/useConfluenceChart";
-import { Loader2 } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
+import { Loader2, Layers } from "lucide-react";
 
 export default function ConfluenceChartPage() {
   const [match, params] = useRoute<{ ticker?: string }>("/chart/confluence/:ticker?");
@@ -59,24 +60,54 @@ export default function ConfluenceChartPage() {
 
   if (!match) return null;
 
+  const changeColor =
+    dayChangePct == null
+      ? "text-muted-foreground"
+      : dayChangePct >= 0
+      ? "text-bull"
+      : "text-bear";
+
   // No ticker yet — show the branded empty state.
   if (!activeTicker) {
     return (
-      <div className="flex flex-col min-h-[calc(100vh-3.5rem)] bg-background">
-        <ChartHeader ticker={null} />
+      <div className="p-3 sm:p-4 md:p-6 max-w-[1400px] mx-auto" data-testid="confluence-chart-page">
+        <PageHeader
+          icon={Layers}
+          title="Confluence Chart"
+          subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
+        />
         <EmptyState />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-3.5rem)] bg-background">
-      <ChartHeader
-        ticker={activeTicker}
-        companyName={companyName}
-        spotPrice={spotPrice}
-        dayChangePct={dayChangePct}
+    <div className="p-3 sm:p-4 md:p-6 max-w-[1400px] mx-auto" data-testid="confluence-chart-page">
+      <PageHeader
+        icon={Layers}
+        title="Confluence Chart"
+        subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
       />
+
+      {/* Ticker context strip — page-specific info (not chrome). */}
+      <div className="flex items-baseline gap-3 mb-3 px-1" data-testid="confluence-ticker-strip">
+        <span className="font-mono font-bold text-lg text-foreground" data-testid="header-ticker">
+          {activeTicker}
+        </span>
+        {companyName && (
+          <span className="text-xs text-muted-foreground truncate max-w-[280px]">{companyName}</span>
+        )}
+        {spotPrice != null && (
+          <span className="text-base font-semibold tabular-nums text-foreground">
+            {formatCurrency(spotPrice)}
+          </span>
+        )}
+        {dayChangePct != null && (
+          <span className={`text-xs font-semibold tabular-nums ${changeColor}`}>
+            {dayChangePct >= 0 ? "▲" : "▼"} {Math.abs(dayChangePct).toFixed(2)}%
+          </span>
+        )}
+      </div>
 
       {/* Candle pane — the centerpiece. ~55% of remaining height. */}
       <div className="relative flex-1 flex flex-col">

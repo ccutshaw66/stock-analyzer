@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Confluence Chart standardized + unique page icons
+
+**Why:** Chris flagged the Confluence Chart page header was different from every other page on the site — branded sticky bar with the Stock Otter logo, "CONFLUENCE" wordmark, ticker chrome, and jump-out chips. Every other page uses the standard `<PageHeader icon=... title=... subtitle=... />` template (one line of chrome). Two-design-language problem. Also asked: pick a unique icon for Confluence and de-duplicate any other duplicate icons across pages, keeping Market Pulse unchanged.
+
+**What:**
+
+### Confluence Chart now uses the standard PageHeader template
+- Removed the custom `ChartHeader` component (and deleted the orphaned `compartments/confluence-chart/ChartHeader.tsx` file).
+- Removed the Stock Otter logo from the page header — every other page uses the icon-+-title format, this now matches.
+- Removed the "CONFLUENCE" wordmark badge and the jump-out chips (Profile / MM Exposure / Scanner) — sidebar nav already has these.
+- New page chrome: `<PageHeader icon={Layers} title="Confluence Chart" subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read." />`.
+- Ticker context strip (ticker symbol + company name + spot price + day change) preserved BELOW the PageHeader as page-specific content, not chrome.
+- Page wrapper switched from full-height flex layout to the standard `p-3 sm:p-4 md:p-6 max-w-[1400px] mx-auto` container used by every other page.
+
+### Site-wide icon audit + de-duplication
+Pulled the icon from every page's `<PageHeader>` and identified duplicates. Result:
+- `LineChartIcon` was on both `/chart` (Strategy Chart) and `/payoff-diagram` → Strategy Chart now uses `FlaskConical` (it's the backtester); payoff diagram keeps `LineChartIcon`.
+- `Activity` was on both `/market-pulse` and `/trade-analysis` → per Chris's directive, **Market Pulse keeps `Activity`** unchanged. Trade Analysis swapped to `Microscope` (close examination of a specific trade).
+- Confluence Chart: NEW icon `Layers` (multiple signals stacked into one verdict). Unique across the site.
+
+### Icon map after this ship (every page is unique)
+alerts: Bell · chart (Strategy): FlaskConical · confluence-chart: **Layers** · conviction: Compass · dashboard: LayoutDashboard · dividend-portfolio: Landmark · dividends: DollarSign · earnings-calendar: Calendar · greeks-calculator: Sigma · help: BookOpen · home: BarChart3 · institutional: Building2 · kelly-calculator: Percent · market-pulse: Activity (kept) · mm-exposure: Crosshair · options-calculator: Calculator · payoff-diagram: LineChartIcon · scanner: Radar · sector-heatmap: Grid3X3 · track-record: Trophy · trade-analysis: Microscope · trade-analytics: PieChartIcon · trade-tracker: ClipboardList · verdict: Award · wheel: RefreshCw.
+
+**PageHeader is now the enforced template** — every routed page uses `<PageHeader icon={...} title="..." subtitle="..." />` as its top element, no exceptions.
+
+**Files touched:** `client/src/pages/confluence-chart.tsx`, deleted `client/src/compartments/confluence-chart/ChartHeader.tsx`, `client/src/pages/chart.tsx`, `client/src/pages/trade-analysis.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Tailwind signal-palette sweep: ~608 palette classes → semantic tokens
 
 **Why:** The earlier design-tokens ship covered hex codes and arbitrary font sizes, but ~608 places across 55 files still used Tailwind's built-in palette names (`text-green-400`, `bg-red-500/15`, `border-yellow-500/30`, etc.) for BUY/SELL/WATCH signal coloring. Visually identical to the new semantic tokens but breaks the single-source guarantee — a future tweak to bull/bear/watch hue would miss every one of those 608 places.

@@ -23,6 +23,7 @@ import {
   TrendingDown,
   Minus,
   Activity,
+  Microscope,
   BarChart3,
   Target,
   ShieldAlert,
@@ -297,7 +298,7 @@ export default function TradeAnalysis() {
     <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
       {/* Title */}
       <PageHeader
-        icon={Activity}
+        icon={Microscope}
         title="Trade Analysis"
         subtitle="Per-ticker 3-gate signal + 8-factor scoring."
       />
