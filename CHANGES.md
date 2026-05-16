@@ -9,6 +9,38 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Unified EMA palette + shared EMA toggle strip + 4-EMA on every chart
+
+**Why:** Chris flagged three connected gaps after using the new TV charts: (1) Confluence had only 3 EMA toggles (no EMA 9); (2) Trade Analysis and Strategy Chart had no EMA toggles at all; (3) the two charts used different EMA colors despite the compartmentalization rule — Confluence had a muted yellow/violet/near-white stack, Trade Analysis had a bolder green/orange/cyan/purple stack. Chris: *"if we compartmentalized the charts why are the EMA colors different. I like the trade analysis colors."* One palette, every chart, full toggle controls on all three.
+
+**What:**
+
+### Unified EMA palette — one canonical set across every TV chart
+- `lib/design-tokens.ts`: deleted the `CHART_EMA_21_CANDLE`, `CHART_EMA_50_CANDLE`, `CHART_EMA_200_CANDLE` confluence-specific constants. The remaining `CHART_EMA_9` (green) / `CHART_EMA_21` (orange) / `CHART_EMA_50` (cyan) / `CHART_EMA_200` (purple) is the canonical palette per Chris's pick.
+- `components/chart/overlays.ts`: collapsed the two preset functions (`confluenceEMAOverlays`, `tradeAnalysisEMAOverlays`) into ONE — `emaOverlays({ showEma9, showEma21, showEma50, showEma200 })`. The old names are kept as deprecated aliases pointing at the unified function so any in-flight call sites keep working.
+
+### `<EmaToggleStrip>` — shared primitive used by every chart page
+- New `components/chart/EmaToggleStrip.tsx` — the canonical EMA toggle button row. Driven by `EMA_TOGGLES` config from `overlays.ts`, so adding an EMA to the chart = add to the config; every consumer picks it up.
+- Each button uses its EMA line color for visual binding (active button is tinted with the EMA color so the user's eye matches toggle → line).
+- Type-safe `EmaToggleState` shape (`{ ema9, ema21, ema50, ema200 }`) — pages own the state, hand it to both `<EmaToggleStrip>` and `emaOverlays(...)`.
+
+### Confluence Chart — gained EMA 9, swapped to shared strip
+- 3 hand-rolled toggle buttons (yellow/violet/zinc) replaced with `<EmaToggleStrip>` (green/orange/cyan/purple, 4 EMAs).
+- EMA 9 now available alongside 21/50/200. Default-on: 9/21/50. EMA 200 default-off.
+- `useConfluenceChart`'s `CandleBar` already had an `ema9` field — backend was emitting it, the chart just wasn't using it.
+
+### Trade Analysis — gained EMA toggles
+- `<EmaToggleStrip>` added to the price-chart card header (alongside the existing long/short side filter).
+- Overlays now reactive to the toggle state via `emaOverlays(emaState)`. Default-on: 9/21/50/200 (all four).
+
+### Strategy Chart — gained EMA toggles + EMA overlays
+- `<EmaToggleStrip>` added above the chart.
+- Strategy Chart's `<CandlePane>` now consumes `emaOverlays(emaState)` — previously had no overlays at all.
+- **Backend updated:** `server/diag/chart-data.ts` `ChartBar` type extended with optional `ema9` / `ema21` / `ema50` / `sma200` fields. `getChartData()` computes the series via `computeEMA` / `computeSMA` (using the new periods from `shared/indicators/constants`) and includes them in every displayBar. Default-on: 9/21/50. SMA 200 default-off.
+
+**Files touched:** `client/src/lib/design-tokens.ts`, `client/src/components/chart/overlays.ts`, `client/src/components/chart/EmaToggleStrip.tsx` (new), `client/src/components/chart/index.ts`, `client/src/pages/confluence-chart.tsx`, `client/src/pages/trade-analysis.tsx`, `client/src/pages/chart.tsx`, `server/diag/chart-data.ts`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — TV chart fixes: missing markers (v5 API) + Trade Analysis OHLC
 
 **Why:** Chris reported live: "not one dot on either chart and trade analysis has not dots and no candles." Two bugs in the just-shipped TV migration.

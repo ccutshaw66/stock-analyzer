@@ -34,7 +34,7 @@ import {
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
-import { CandlePane, tradeAnalysisEMAOverlays, type ChartMarker } from "@/components/chart";
+import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
 import mascotUrl from "@/assets/mascot.jpg";
 import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
@@ -353,6 +353,11 @@ export default function TradeAnalysis() {
   const { isAnalysisExhausted } = useSubscription();
   const { timeframe } = useTimeframe();
   const tfLabel = TIMEFRAME_LABELS[timeframe];
+
+  // EMA visibility — shared primitive, canonical 4-EMA set.
+  const [emaState, setEmaState] = useState<EmaToggleState>({
+    ema9: true, ema21: true, ema50: true, ema200: true,
+  });
 
   // Side filter for the price-chart dots: "both" / "long" / "short".
   // Both sides are ALWAYS computed by the strategies — this just hides the
@@ -961,25 +966,29 @@ export default function TradeAnalysis() {
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-sm font-semibold">Price Chart ({tfLabel}) with EMA Overlays</CardTitle>
-                {/* Side filter — toggle which signal dots to display.
-                    Both sides are ALWAYS computed by the strategy; this just
-                    controls visibility on this chart. */}
-                <div className="inline-flex rounded-md border border-card-border overflow-hidden text-micro font-semibold">
-                  {(["both", "long", "short"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => setChartSideFilter(opt)}
-                      className={`px-2.5 py-1 uppercase tracking-wider transition-colors ${
-                        chartSideFilter === opt
-                          ? opt === "long" ? "bg-bull/20 text-bull-light" :
-                            opt === "short" ? "bg-bear/20 text-bear-light" :
-                            "bg-primary/20 text-primary"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* EMA toggle strip — shared primitive. */}
+                  <EmaToggleStrip state={emaState} onChange={setEmaState} />
+                  {/* Side filter — toggle which signal dots to display.
+                      Both sides are ALWAYS computed by the strategy; this just
+                      controls visibility on this chart. */}
+                  <div className="inline-flex rounded-md border border-card-border overflow-hidden text-micro font-semibold">
+                    {(["both", "long", "short"] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => setChartSideFilter(opt)}
+                        className={`px-2.5 py-1 uppercase tracking-wider transition-colors ${
+                          chartSideFilter === opt
+                            ? opt === "long" ? "bg-bull/20 text-bull-light" :
+                              opt === "short" ? "bg-bear/20 text-bear-light" :
+                              "bg-primary/20 text-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -989,12 +998,7 @@ export default function TradeAnalysis() {
                     come from declarative config — no per-page Recharts plumbing. */}
                 <CandlePane
                   bars={chartDataWithFilter ?? []}
-                  overlays={tradeAnalysisEMAOverlays({
-                    showEma9: true,
-                    showEma21: true,
-                    showEma50: true,
-                    showEma200: true,
-                  })}
+                  overlays={emaOverlays(emaState)}
                   markers={buildTradeAnalysisMarkers(chartDataWithFilter, chartSideFilter)}
                   testId="trade-analysis-candle-pane"
                 />

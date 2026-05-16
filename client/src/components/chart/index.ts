@@ -6,5 +6,6 @@
  * Lightweight Charts directly anymore.
  */
 export { CandlePane, type CandlePaneProps } from "./CandlePane";
-export { confluenceEMAOverlays, tradeAnalysisEMAOverlays } from "./overlays";
+export { emaOverlays, EMA_TOGGLES, confluenceEMAOverlays, tradeAnalysisEMAOverlays } from "./overlays";
+export { EmaToggleStrip, type EmaToggleState } from "./EmaToggleStrip";
 export type { ChartBar, LineOverlay, ChartMarker } from "./types";

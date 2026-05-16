@@ -37,7 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
-import { CandlePane, type ChartMarker } from "@/components/chart";
+import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
 import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -312,6 +312,12 @@ function StrategyChart({ data, highlightedTradeNum }: {
   data: ChartDataResponse;
   highlightedTradeNum: number | null;
 }) {
+  // EMA visibility — shared primitive, canonical 4-EMA set. The Strategy
+  // Chart backend emits ema9/21/50/sma200 on each bar.
+  const [emaState, setEmaState] = useState<EmaToggleState>({
+    ema9: true, ema21: true, ema50: true, ema200: false,
+  });
+
   // Build a SINGLE chartData array that all series share. Each row has:
   //   - date (categorical X axis)
   //   - close (Line dataKey)
@@ -387,12 +393,18 @@ function StrategyChart({ data, highlightedTradeNum }: {
     [data.signals, highlightedTradeNum],
   );
   return (
-    <div className="w-full" style={{ height: 420 }}>
-      <CandlePane
-        bars={data.bars}
-        markers={markers}
-        testId="strategy-chart-candle-pane"
-      />
+    <div className="w-full">
+      <div className="flex justify-end mb-2">
+        <EmaToggleStrip state={emaState} onChange={setEmaState} />
+      </div>
+      <div className="relative" style={{ height: 420 }}>
+        <CandlePane
+          bars={data.bars}
+          overlays={emaOverlays(emaState)}
+          markers={markers}
+          testId="strategy-chart-candle-pane"
+        />
+      </div>
     </div>
   );
 }

@@ -54,13 +54,14 @@ export const SIGNAL_BULL_RADAR = "#34d399";     // light emerald (conviction rad
 
 // ─── Chart series & overlays ───────────────────────────────────────────────
 
-export const CHART_EMA_9 = SIGNAL_BULL;         // trade-analysis EMA9 (matches bull)
-export const CHART_EMA_21 = SIGNAL_WATCH_SHORT; // trade-analysis EMA21 (orange)
-export const CHART_EMA_21_CANDLE = "#facc15";   // CandlePane EMA21 (yellow)
-export const CHART_EMA_50 = "#06b6d4";          // trade-analysis EMA50 (cyan)
-export const CHART_EMA_50_CANDLE = "#a78bfa";   // CandlePane EMA50 (violet)
-export const CHART_EMA_200 = "#a855f7";         // trade-analysis SMA200 (purple)
-export const CHART_EMA_200_CANDLE = "#e4e4e7";  // CandlePane EMA200 (near-white)
+// Canonical EMA palette — used across ALL TV-style charts (Confluence,
+// Trade Analysis, Strategy Chart). Per Chris 2026-05-15: "if we
+// compartmentalized the charts why are the EMA colors different. I like
+// the trade analysis colors." One palette, every chart.
+export const CHART_EMA_9 = SIGNAL_BULL;         // EMA 9   — green
+export const CHART_EMA_21 = SIGNAL_WATCH_SHORT; // EMA 21  — orange
+export const CHART_EMA_50 = "#06b6d4";          // EMA 50  — cyan
+export const CHART_EMA_200 = "#a855f7";         // SMA 200 — purple
 
 export const CHART_RSI = "#3b82f6";             // RSI series (blue)
 export const CHART_CROSSHAIR = "#6366f1";       // primary indigo crosshair

@@ -13,7 +13,7 @@ import { useTimeframe } from "@/contexts/TimeframeContext";
 import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { PageHeader } from "@/components/PageHeader";
-import { CandlePane, confluenceEMAOverlays } from "@/components/chart";
+import { CandlePane, emaOverlays, EmaToggleStrip, type EmaToggleState } from "@/components/chart";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
 import { EmptyState } from "@/compartments/confluence-chart/EmptyState";
@@ -27,9 +27,9 @@ export default function ConfluenceChartPage() {
   const { activeTicker, setActiveTicker } = useTicker();
   const { timeframe } = useTimeframe();
   const [_, navigate] = useLocation();
-  const [showEma21, setShowEma21] = useState(true);
-  const [showEma50, setShowEma50] = useState(true);
-  const [showEma200, setShowEma200] = useState(false);
+  const [emaState, setEmaState] = useState<EmaToggleState>({
+    ema9: true, ema21: true, ema50: true, ema200: false,
+  });
 
   // URL ticker → activeTicker bus.
   useEffect(() => {
@@ -112,35 +112,9 @@ export default function ConfluenceChartPage() {
       {/* Candle pane — the centerpiece. ~55% of remaining height. */}
       <div className="relative flex-1 flex flex-col">
         <div className="relative" style={{ height: "55vh", minHeight: 360 }}>
-          {/* EMA toggle legend — top-left of the candle pane */}
-          <div className="absolute top-2 left-3 z-10 flex items-center gap-1 text-micro">
-            <button
-              onClick={() => setShowEma21((v) => !v)}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                showEma21 ? "bg-watch/20 text-watch-light" : "bg-muted/40 text-muted-foreground"
-              }`}
-              data-testid="toggle-ema21"
-            >
-              EMA 21
-            </button>
-            <button
-              onClick={() => setShowEma50((v) => !v)}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                showEma50 ? "bg-purple-500/20 text-purple-300" : "bg-muted/40 text-muted-foreground"
-              }`}
-              data-testid="toggle-ema50"
-            >
-              EMA 50
-            </button>
-            <button
-              onClick={() => setShowEma200((v) => !v)}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                showEma200 ? "bg-zinc-300/20 text-zinc-200" : "bg-muted/40 text-muted-foreground"
-              }`}
-              data-testid="toggle-ema200"
-            >
-              SMA 200
-            </button>
+          {/* EMA toggle strip — shared primitive, canonical 4-EMA set. */}
+          <div className="absolute top-2 left-3 z-10">
+            <EmaToggleStrip state={emaState} onChange={setEmaState} />
           </div>
 
           {isLoading && bars.length === 0 ? (
@@ -160,7 +134,7 @@ export default function ConfluenceChartPage() {
           ) : (
             <CandlePane
               bars={bars}
-              overlays={confluenceEMAOverlays({ showEma21, showEma50, showEma200 })}
+              overlays={emaOverlays(emaState)}
               testId="confluence-candle-pane"
             />
           )}

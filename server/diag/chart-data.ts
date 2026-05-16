@@ -20,7 +20,14 @@ import { computeBBTC, type BBTCSignal, type BBTCSignalSide } from "../signals/st
 import { computeVER, type VERSignal, type VERSignalSide } from "../signals/strategies/ver";
 import { scoreAMC, type AMCInput } from "../signals/strategies/amc";
 import { simulateTFT, type TFTTrade, type TFTCoreStopMode, type TFTRegime } from "../signals/strategies/tft";
-import { RSI_PERIOD, ATR_PERIOD } from "@shared/indicators/constants";
+import {
+  RSI_PERIOD,
+  ATR_PERIOD,
+  EMA_FAST,
+  EMA_MID,
+  EMA_SLOW,
+  SMA_TREND_PERIOD,
+} from "@shared/indicators/constants";
 
 export type ChartStrategy = "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-catastrophic";
 
@@ -181,6 +188,12 @@ export interface ChartBar {
   low: number;
   close: number;
   volume: number;
+  // Indicator overlays — emitted so the TV-style CandlePane can render
+  // EMA line overlays without recomputing on the client.
+  ema9?: number | null;
+  ema21?: number | null;
+  ema50?: number | null;
+  sma200?: number | null;
 }
 
 export interface ChartSignalDot {
@@ -838,8 +851,17 @@ export async function getChartData(
     }
   }
 
+  // Indicator series for the displayed bars — emitted so the TV-style
+  // CandlePane can render EMA overlays. Computed off the full closes
+  // array so the warmup window is real.
+  const ema9Series = computeEMA(bars.close, EMA_FAST);
+  const ema21Series = computeEMA(bars.close, EMA_MID);
+  const ema50Series = computeEMA(bars.close, EMA_SLOW);
+  const sma200Series = computeSMA(bars.close, SMA_TREND_PERIOD);
+
   // Bars for display (sliced).
   const displayBars: ChartBar[] = [];
+  const finite = (v: number) => (isNaN(v) ? null : Number(v.toFixed(2)));
   for (let i = startIdx; i < bars.close.length; i++) {
     displayBars.push({
       date: bars.date[i],
@@ -848,6 +870,10 @@ export async function getChartData(
       low: Number(bars.low[i].toFixed(2)),
       close: Number(bars.close[i].toFixed(2)),
       volume: bars.volume[i],
+      ema9: finite(ema9Series[i]),
+      ema21: finite(ema21Series[i]),
+      ema50: finite(ema50Series[i]),
+      sma200: finite(sma200Series[i]),
     });
   }
 
