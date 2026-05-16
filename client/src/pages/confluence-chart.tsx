@@ -13,7 +13,7 @@ import { useTimeframe } from "@/contexts/TimeframeContext";
 import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { PageHeader } from "@/components/PageHeader";
-import { CandlePane } from "@/compartments/confluence-chart/CandlePane";
+import { CandlePane, confluenceEMAOverlays } from "@/components/chart";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
 import { EmptyState } from "@/compartments/confluence-chart/EmptyState";
@@ -160,9 +160,8 @@ export default function ConfluenceChartPage() {
           ) : (
             <CandlePane
               bars={bars}
-              showEma21={showEma21}
-              showEma50={showEma50}
-              showEma200={showEma200}
+              overlays={confluenceEMAOverlays({ showEma21, showEma50, showEma200 })}
+              testId="confluence-candle-pane"
             />
           )}
         </div>

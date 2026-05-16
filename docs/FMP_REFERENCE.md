@@ -8,6 +8,117 @@ Living doc. Every FMP endpoint we hit is recorded here with the verbatim field n
 
 ---
 
+## FULL ENDPOINT CATALOG (247 endpoints, stable API)
+
+Sourced from the maintained `fmp-data` Python client docs (2026-05-06). All endpoints prefixed with `/stable/` unless noted. Use this list as the authoritative starter — pick the right endpoint here BEFORE writing code.
+
+### Endpoints we ALREADY use
+- `/stable/profile` — company profile (no `sharesOutstanding`; derive from `marketCap/price`)
+- `/stable/quote` — real-time quote
+- `/stable/ratios-ttm` — TTM financial ratios
+- `/stable/key-metrics-ttm` — TTM key metrics
+- `/stable/income-statement` — income statement (use `limit=2` for YoY diff)
+- `/stable/balance-sheet-statement` — balance sheet
+- `/stable/historical-price-eod` — EOD chart (alias `/historical-price-eod/full`)
+- `/stable/insider-trading/search` — insider transactions
+- `/stable/institutional-ownership/symbol-positions-summary` — institutional aggregate
+- `/stable/institutional-ownership/extract-analytics/holder` — top holders
+
+### Endpoints we SHOULD adopt (high-value, currently missing)
+- **`/stable/shares-float`** — current share float + total shares outstanding. Direct source for `sharesOutstanding`, cleaner than `marketCap/price` derivation. **Use this for institutional ownership %.**
+- **`/stable/historical/shares-float`** — historical float, useful for tracking dilution/buybacks
+- **`/stable/insider-trading/statistics`** — aggregate insider stats per ticker (replaces our manual rollup of `/insider-trading/search`)
+- **`/stable/acquisition-of-beneficial-ownership`** — Form 3/4/5 beneficial ownership (could give insider % directly)
+- **`/stable/financial-scores`** — Altman Z-Score, Piotroski Score, financial health rollup
+- **`/stable/grades-consensus`** — analyst grade consensus
+- **`/stable/price-target-consensus`** — price target consensus
+- **`/stable/earnings-calendar`** — for cache-invalidation triggers per the caching strategy
+- **`/stable/dividends`** — historical dividends per ticker
+- **`/stable/splits`** — historical splits
+
+### Bulk endpoints (cache-warmup goldmine — 30 endpoints)
+Designed for nightly cron warmup: hit ONE bulk endpoint, populate caches for thousands of tickers. Aligns directly with the aggressive-caching strategy.
+- `/stable/profile-bulk` — every company profile in one call
+- `/stable/key-metrics-ttm-bulk` — TTM key metrics in bulk
+- `/stable/ratios-ttm-bulk` — TTM ratios in bulk
+- `/stable/scores-bulk` — financial scores in bulk
+- `/stable/eod-bulk` — EOD prices for all symbols
+- `/stable/peers-bulk` — peer lists for every symbol
+- `/stable/etf-holder-bulk` — ETF holdings in bulk
+- `/stable/income-statement-bulk` — income statements in bulk
+- `/stable/balance-sheet-statement-bulk` — balance sheets in bulk
+- `/stable/cash-flow-statement-bulk` — cash flow statements in bulk
+- `/stable/income-statement-growth-bulk`, `/stable/balance-sheet-statement-growth-bulk`, `/stable/cash-flow-statement-growth-bulk` — growth rates in bulk
+- `/stable/dcf-bulk` — DCF valuations in bulk
+- `/stable/earnings-surprises-bulk` — earnings surprises (per year)
+- `/stable/price-target-summary-bulk` — price target summaries
+- `/stable/upgrades-downgrades-consensus-bulk` — analyst consensus changes
+- `/stable/rating-bulk` — stock ratings in bulk
+- `/stable/batch-quote`, `/stable/batch-quote-short` — multi-symbol quotes (less broad than `-bulk` but lighter)
+- `/stable/batch-aftermarket-quote`, `/stable/batch-aftermarket-trade`, `/stable/batch-exchange-quote`, `/stable/batch-etf-quotes`, `/stable/batch-mutualfund-quotes`, `/stable/batch-commodity-quotes`, `/stable/batch-crypto-quotes`, `/stable/batch-forex-quotes`, `/stable/batch-index-quotes`
+- `/stable/market-capitalization-batch` — multi-symbol market cap
+
+### Institutional section (25 endpoints — only 2 currently used)
+- `/stable/institutional-ownership/symbol-positions-summary` — IN USE
+- `/stable/institutional-ownership/extract-analytics/holder` — IN USE
+- `/stable/institutional-ownership/extract` — bulk filings extract (alternative to per-quarter)
+- `/stable/institutional-ownership/dates` — Form 13F filing dates (use to detect when current quarter aggregates are ready, fixes the in-progress-quarter bug correctly)
+- `/stable/institutional-ownership/holder-industry-breakdown` — breakdown by industry
+- `/stable/institutional-ownership/holder-performance-summary` — performance per holder
+- `/stable/institutional-ownership/industry-summary` — industry rollup
+- `/stable/institutional-ownership/latest` — latest filings (might bypass quarter selection issue)
+- `/stable/13f-asset-allocation` — 13F asset allocation
+- `/stable/acquisition-of-beneficial-ownership` — Form 3/4/5 beneficial ownership
+
+### Insider section (12 endpoints — 1 currently used)
+- `/stable/insider-trading/search` — IN USE
+- `/stable/insider-trading/latest` — latest activity
+- `/stable/insider-trading/reporting-name` — search by insider name
+- `/stable/insider-trading/statistics` — aggregate stats per ticker
+- `/stable/insider-trading-transaction-type` — list of transaction type codes
+
+### ETF / Investment (14 endpoints — none currently used)
+Useful if we want to expose "what ETFs hold this stock" or fund-flow signals.
+- `/stable/etf/asset-exposure` — which ETFs hold this stock
+- `/stable/etf/holder` — ETF holders
+- `/stable/etf/holdings` — ETF holdings
+- `/stable/etf/info` — ETF metadata
+- `/stable/etf/sector-weightings`, `/stable/etf/country-weightings`
+- `/stable/funds/disclosure-holders-latest`, `/stable/funds/disclosure-holders-search` — N-PORT-style fund disclosures (this is the "real fund holdings" data we wanted)
+- `/stable/mutual-fund-holdings`
+
+### Market Intelligence (47 endpoints — partial use)
+- `/stable/earnings-calendar` — earnings calendar (drives cache invalidation)
+- `/stable/dividends-calendar` — dividends calendar
+- `/stable/grades`, `/stable/grades-consensus`, `/stable/grades-historical`, `/stable/grades-news`
+- `/stable/price-target`, `/stable/price-target-consensus`, `/stable/price-target-summary`, `/stable/price-target-news`
+- `/stable/news/stock`, `/stable/news/stock-latest`, `/stable/news/press-releases`, `/stable/news/press-releases-latest`
+- `/stable/ratings-snapshot`, `/stable/ratings-historical`
+- `/stable/social-sentiments/change`, `/stable/social-sentiments/trending`
+- `/stable/historical/social-sentiment`
+- `/stable/senate-trades`, `/stable/senate-trades-by-name`, `/stable/senate-latest`
+- `/stable/house-trades`, `/stable/house-trades-by-name`, `/stable/house-latest`
+- `/stable/esg-data`, `/stable/esg-disclosures`, `/stable/esg-ratings`, `/stable/esg-benchmark`
+- `/stable/ipos-calendar`, `/stable/ipos-disclosure`, `/stable/ipos-prospectus`
+
+### Technical Indicators (9 endpoints, all server-side computed)
+- `/stable/technical-indicators/{adx,dema,ema,rsi,sma,standarddeviation,tema,williams,wma}` — FMP can compute these for us instead of running our own rolling-window math.
+
+### SEC (12 endpoints)
+- `/stable/sec-filings-8k`, `/stable/sec-filings-financials`
+- `/stable/sec-filings-search/{cik,symbol,form-type}`
+- `/stable/sec-company-search/{cik,name,symbol}`
+
+### Index constituents
+- `/stable/sp500-constituent`, `/stable/nasdaq-constituent`, `/stable/dowjones-constituent`
+- `/stable/historical-sp500-constituent`, `/stable/historical-nasdaq-constituent`, `/stable/historical-dowjones-constituent`
+
+---
+
+**Field schema discovery:** the FMP docs site (`site.financialmodelingprep.com`) is Cloudflare-protected and blocks automated fetches. To learn the field schema for an endpoint we haven't hit, the practical path is to call it via our `/api/diag/fmp-inst/:ticker` (or a similar diag) on prod and inspect the raw response.
+
+---
+
 ## Institutional Ownership
 
 ### `/institutional-ownership/symbol-positions-summary`

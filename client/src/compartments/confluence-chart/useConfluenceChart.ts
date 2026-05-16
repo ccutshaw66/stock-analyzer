@@ -10,20 +10,20 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import type { ChartBar } from "@/components/chart";
 
 const FIVE_MIN = 5 * 60 * 1000;
 
-export interface CandleBar {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume?: number;
-  ema9?: number | null;
-  ema21?: number | null;
-  ema50?: number | null;
-  sma200?: number | null;
+/**
+ * Per-page CandleBar shape — extends the generic `ChartBar` from
+ * `@/components/chart` and documents which indicator fields the
+ * `/api/analyze` endpoint emits for this page.
+ */
+export interface CandleBar extends ChartBar {
+  ema9?: number;
+  ema21?: number;
+  ema50?: number;
+  sma200?: number;
 }
 
 export interface QuickScan {

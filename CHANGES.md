@@ -9,6 +9,45 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — TV-style chart primitive — first step of chart rollout
+
+**Why:** Foundation for the TradingView-style chart rollout across every page. Chris said "go with the charts." The Confluence Chart already had a working candle pane (CandlePane.tsx) built on Lightweight Charts, but it was buried inside the `confluence-chart` compartment with hardcoded EMA21/50/200 props and a compartment-specific bar type. For the rollout, every TV chart on the site needs to use the same primitive — different overlays, different signals, different markers, but ONE rendering implementation.
+
+**What:**
+
+### New `client/src/components/chart/` module — the canonical chart primitive
+- **`CandlePane`** — moved from `compartments/confluence-chart/` and parameterized. Now takes a config-driven `overlays` array, optional `markers`, optional volume / watermark toggles. A single call site can render any combination of EMAs, SMAs, or custom indicator lines by passing different overlay configs.
+- **`overlays.ts`** — preset overlay sets that pages import directly:
+  - `confluenceEMAOverlays({ showEma21, showEma50, showEma200 })` — the muted yellow/violet/near-white EMA stack Confluence uses.
+  - `tradeAnalysisEMAOverlays({ showEma9, showEma21, showEma50, showEma200 })` — the bolder green/orange/cyan/purple stack the legacy Trade Analysis Recharts version used. Ready for that page's TV migration.
+- **`types.ts`** — `ChartBar`, `LineOverlay`, `ChartMarker` shared interfaces. Every page's per-page bar type (e.g. `CandleBar` in `useConfluenceChart`) now extends `ChartBar`.
+- **`index.ts`** — clean public surface so consumers `import { CandlePane, confluenceEMAOverlays } from "@/components/chart"`.
+
+### Composability built in (not "add a flag for every new feature")
+- New indicator on the chart = one line in the overlay array: `{ dataKey: "rsiOverlay", label: "RSI", color: CHART_RSI, visible: true }`.
+- Hide/show a line without rebuilding the chart — change `visible` in the prop; the component honors it via `applyOptions`.
+- Add a signal marker (BUY arrow, STOP triangle) = entry in the `markers` array. Built-in to the primitive; pages don't reach into Lightweight Charts.
+- Custom bar types extend `ChartBar` via the optional indicator-field index signature.
+
+### Confluence Chart migrated as proof-of-concept
+- `pages/confluence-chart.tsx` now imports from `@/components/chart` and calls `confluenceEMAOverlays({ showEma21, showEma50, showEma200 })` to build its overlays array.
+- The old `compartments/confluence-chart/CandlePane.tsx` deleted (orphaned after the move).
+- `useConfluenceChart.ts` updated: `CandleBar` now `extends ChartBar`. Self-documenting which fields the `/api/analyze` endpoint emits.
+- Visual output identical to the prior commit — pure refactor, zero pixel change.
+
+### `/verify-work` skill updated with TWO new blocker rules
+- **Chart rule (#9):** no page imports `createChart` from `lightweight-charts` directly. All TV-style panes go through `@/components/chart`. Custom overlay colors must use design-tokens, not raw hex. Recharts is allowed for non-candle visualizations (radar, payoff curves) that don't fit TV-style.
+- **Moveable-widgets rule (#10):** widgets can't import from `@/lib/dashboard/*` or hardcode dashboard assumptions. Per the `architecture_moveable_widgets` memory.
+
+### What this enables (next ships)
+- **Trade Analysis migration** — the existing Recharts EMA chart can swap to `<CandlePane>` with `tradeAnalysisEMAOverlays()` + signal markers from the BBTC/VER trade list. Single-file refactor.
+- **Strategy Chart migration** — `/chart` page's Recharts becomes `<CandlePane>` with the strategy's entry/exit markers as `ChartMarker[]`.
+- **MM Exposure price overlay** — add a TV-style mini candle above the gamma chart.
+- **Any future chart** — `<CandlePane bars={bars} overlays={[...]} markers={[...]} />`. Done.
+
+**Files touched:** new `client/src/components/chart/{CandlePane.tsx,overlays.ts,types.ts,index.ts}`, `client/src/pages/confluence-chart.tsx` (migrated), `client/src/compartments/confluence-chart/useConfluenceChart.ts` (CandleBar extends ChartBar), deleted `client/src/compartments/confluence-chart/CandlePane.tsx`, `.claude/skills/verify-work/SKILL.md`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Moveable-widgets requirement + motion tokens + format.ts palette fix + branded primitives
 
 **Why:** Continuation of the universal-structure rollout, focused on what the TV-chart rollout will need next: consistent motion timing, single-source loading/empty/error states, and the moveable-widgets architectural requirement Chris flagged (widgets work anywhere, not just on /dashboard). Also caught a real bug — the canonical `lib/format.ts` formatter still used Tailwind palette classes (`text-green-500`, `bg-red-500`), defeating the design-tokens migration for every component that consumes `getChangeColor` / `getVerdictColor` / `getBadgeBgColor`.

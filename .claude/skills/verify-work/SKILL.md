@@ -120,6 +120,24 @@ Grep the diff for:
 
    Same rule applies to `server/dashboard/layout.ts` and any other server code that produces a default layout — widget positions must spread `...TILE_*` for `w`/`h`, not literal numbers.
 
+9. **Chart rule — every TV-style chart pane uses the shared primitive (BLOCKER for any new chart on the site).**
+
+   No page may import `createChart` from `lightweight-charts` directly. All TV-style candle panes go through `@/components/chart` — `<CandlePane bars overlays markers />` is the canonical entry. Custom indicator overlays use the `LineOverlay` type from `@/components/chart` and pull colors from design-tokens (CHART_EMA_*, SIGNAL_BULL/BEAR/WATCH).
+
+   Grep the diff for:
+   - `from "lightweight-charts"` in any file outside `client/src/components/chart/` — block.
+   - New per-page `createChart()` calls — block.
+   - Hardcoded line colors in overlay configs — they must reference design-tokens constants, not inline hex.
+
+   Recharts is allowed for non-candle visualizations (radar, payoff curves, scatter) that don't fit TV-style. For candles + indicators + signals, use `<CandlePane>`.
+
+10. **Moveable-widgets rule — widgets must work outside `/dashboard`.**
+
+    Per `architecture_moveable_widgets` memory, every WidgetView is drop-in placeable anywhere on the site. Block:
+    - Widget imports from `@/lib/dashboard/*` (dashboard-only modules).
+    - Hardcoded `gridX` / `gridY` / "dashboard" assumptions inside a widget's render.
+    - Widget components that take dashboard-context as props (data should come from React Query hooks instead).
+
 ### C. Efficiency & code quality (SHOULD-FIX)
 
 1. **Duplicated indicator math.** If the diff adds an EMA/RSI/MACD/SMA computation, check whether `server/indicators/` already has one. Duplication is a smell.
