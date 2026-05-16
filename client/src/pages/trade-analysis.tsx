@@ -1,4 +1,17 @@
 import { useState, useMemo } from "react";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  SIGNAL_WATCH,
+  SIGNAL_WATCH_SHORT,
+  SIGNAL_REDUCE,
+  SIGNAL_TREND_EXIT,
+  SIGNAL_SHORT_ADD,
+  CHART_EMA_50,
+  CHART_EMA_200,
+  CHART_RSI,
+  COLOR_WHITE,
+} from "@/lib/design-tokens";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe, TIMEFRAME_LABELS } from "@/contexts/TimeframeContext";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -222,7 +235,7 @@ function SignalDot(props: any) {
         cy={cy}
         r={3.5}
         fill="none"
-        stroke="#f97316"
+        stroke=SIGNAL_WATCH_SHORT
         strokeWidth={1.5}
         strokeDasharray="2 2"
       />
@@ -239,7 +252,7 @@ function SignalDot(props: any) {
         cy={cy}
         r={4}
         fill="none"
-        stroke="#d946ef"
+        stroke=SIGNAL_SHORT_ADD
         strokeWidth={1.5}
         strokeDasharray="2 2"
       />
@@ -247,11 +260,11 @@ function SignalDot(props: any) {
   }
 
   const fill =
-    isLongEntry   ? "#22c55e" :  // green — entry
-    isLongWatch   ? "#eab308" :  // yellow — watch
-    isReduceWin   ? "#14b8a6" :  // teal — profit-take win
-    isCleanExit   ? "#94a3b8" :  // slate — clean trend exit
-    "#ef4444";                    // red — stop loss
+    isLongEntry   ? SIGNAL_BULL :  // green — entry
+    isLongWatch   ? SIGNAL_WATCH :  // yellow — watch
+    isReduceWin   ? SIGNAL_REDUCE :  // teal — profit-take win
+    isCleanExit   ? SIGNAL_TREND_EXIT :  // slate — clean trend exit
+    SIGNAL_BEAR;                    // red — stop loss
   const r = isLongWatch ? 4 : 5;
   return (
     <circle
@@ -259,7 +272,7 @@ function SignalDot(props: any) {
       cy={cy}
       r={r}
       fill={fill}
-      stroke="#fff"
+      stroke={COLOR_WHITE}
       strokeWidth={1.5}
     />
   );
@@ -480,14 +493,14 @@ export default function TradeAnalysis() {
                     <div className={`h-2 w-2 rounded-full ${
                       data.gates.gate1.cleared ? "bg-amber-500" : "bg-muted-foreground/30"
                     }`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 1 — Ready</span>
+                    <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground">Gate 1 — Ready</span>
                   </div>
                   <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate1.cleared ? `Reversal ${data.gates.gate1.direction === "BULLISH" ? "↑" : "↓"}` : "No Reversal"}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate1.detail}</p>
+                  <p className="text-micro text-muted-foreground leading-relaxed mb-2">{data.gates.gate1.detail}</p>
                   {data.gates.gate1.rsi !== null && (
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-3 text-micro text-muted-foreground">
                       <span>RSI: <span className="font-mono text-foreground">{data.gates.gate1.rsi}</span></span>
                       {data.gates.gate1.volumeRatio !== null && (
                         <span>Vol: <span className="font-mono text-foreground">{data.gates.gate1.volumeRatio}x</span></span>
@@ -504,12 +517,12 @@ export default function TradeAnalysis() {
                     <div className={`h-2 w-2 rounded-full ${
                       data.gates.gate2.cleared ? "bg-blue-500" : "bg-muted-foreground/30"
                     }`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 2 — Set</span>
+                    <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground">Gate 2 — Set</span>
                   </div>
                   <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate2.cleared ? "Momentum Confirmed" : `AMC Score: ${data.gates.gate2.amcScore}/5`}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate2.detail}</p>
+                  <p className="text-micro text-muted-foreground leading-relaxed mb-2">{data.gates.gate2.detail}</p>
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((dot) => (
                       <div key={dot} className={`h-1.5 w-1.5 rounded-full ${
@@ -527,13 +540,13 @@ export default function TradeAnalysis() {
                     <div className={`h-2 w-2 rounded-full ${
                       data.gates.gate3.cleared ? "bg-green-500" : "bg-muted-foreground/30"
                     }`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Gate 3 — Go</span>
+                    <span className="text-micro font-bold uppercase tracking-wider text-muted-foreground">Gate 3 — Go</span>
                   </div>
                   <div className="text-sm font-bold text-foreground mb-1">
                     {data.gates.gate3.cleared ? "All Clear" : "Waiting"}
                   </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed mb-2">{data.gates.gate3.detail}</p>
-                  <div className="flex items-center gap-2 text-[10px]">
+                  <p className="text-micro text-muted-foreground leading-relaxed mb-2">{data.gates.gate3.detail}</p>
+                  <div className="flex items-center gap-2 text-micro">
                     <span className={data.gates.gate3.emaStackAligned ? "text-green-400" : "text-muted-foreground/50"}>EMA {data.gates.gate3.emaStackAligned ? "✓" : "✗"}</span>
                     <span className={data.gates.gate3.priceAboveEma9 ? "text-green-400" : "text-muted-foreground/50"}>Price {data.gates.gate3.priceAboveEma9 ? "✓" : "✗"}</span>
                     {data.gates.gate3.mmeAligned !== null && (
@@ -574,15 +587,15 @@ export default function TradeAnalysis() {
                   <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/5 p-3">
                     <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Fib Pullback</span>
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-md ring-1 ${z.ring} ${z.text} ${z.bg}`}>{fib.zone}</span>
-                        <span className="text-[10px] text-muted-foreground capitalize">· {fib.label}</span>
+                        <span className="text-micro font-bold uppercase tracking-wider text-orange-400">Fib Pullback</span>
+                        <span className={`text-micro uppercase font-bold px-2 py-0.5 rounded-md ring-1 ${z.ring} ${z.text} ${z.bg}`}>{fib.zone}</span>
+                        <span className="text-micro text-muted-foreground capitalize">· {fib.label}</span>
                       </div>
                       <div className="text-xs font-semibold text-foreground tabular-nums">
                         Retraced <span className="text-orange-300">{(fib.retracementPct * 100).toFixed(0)}%</span>
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-3 text-[11px]">
+                    <div className="grid grid-cols-3 gap-3 text-2xs">
                       <div>
                         <div className="text-muted-foreground">Swing high</div>
                         <div className="font-mono text-foreground tabular-nums">${fib.swingHigh.toFixed(2)}</div>
@@ -597,7 +610,7 @@ export default function TradeAnalysis() {
                       </div>
                     </div>
                     {priorSetup && (
-                      <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
+                      <p className="mt-3 text-2xs text-muted-foreground leading-relaxed">
                         Pulling back from a <span className="font-semibold text-foreground">{priorSetup.direction.toLowerCase()}</span> setup that cleared {priorSetup.gatesClearedPrior} gate{priorSetup.gatesClearedPrior === 1 ? "" : "s"} ~{priorSetup.daysSincePriorSetup} bar{priorSetup.daysSincePriorSetup === 1 ? "" : "s"} ago.{" "}
                         {fib.zone === "FAILED" ? (
                           <>Trend already invalidated — price broke through ${fib.invalidationPrice.toFixed(2)}.</>
@@ -618,13 +631,13 @@ export default function TradeAnalysis() {
           {/* Strategy Cards — signals overridden by gate system for confluence */}
           <div className="hidden md:grid grid-cols-3 gap-1 mb-2">
             <div className="text-center">
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate1?.cleared ? "text-amber-400" : "text-muted-foreground/40"}`}>1 — Reversal Signal</span>
+              <span className={`text-micro font-bold uppercase tracking-widest ${data.gates?.gate1?.cleared ? "text-amber-400" : "text-muted-foreground/40"}`}>1 — Reversal Signal</span>
             </div>
             <div className="text-center">
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate2?.cleared ? "text-blue-400" : "text-muted-foreground/40"}`}>2 — Momentum Confirms</span>
+              <span className={`text-micro font-bold uppercase tracking-widest ${data.gates?.gate2?.cleared ? "text-blue-400" : "text-muted-foreground/40"}`}>2 — Momentum Confirms</span>
             </div>
             <div className="text-center">
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${data.gates?.gate3?.cleared ? "text-green-400" : "text-muted-foreground/40"}`}>3 — Trend Rides</span>
+              <span className={`text-micro font-bold uppercase tracking-widest ${data.gates?.gate3?.cleared ? "text-green-400" : "text-muted-foreground/40"}`}>3 — Trend Rides</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -636,7 +649,7 @@ export default function TradeAnalysis() {
                     <Target className="h-4 w-4 text-primary" />
                     VER Volume Exhaustion Reversal
                   </CardTitle>
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                  <span className={`text-micro font-bold uppercase px-2 py-0.5 rounded ${
                     data.gates?.gate1?.cleared ? "bg-amber-500/20 text-amber-400" : "bg-muted text-muted-foreground"
                   }`}>{data.gates?.gate1?.cleared ? "Gate 1 ✓" : "Waiting"}</span>
                 </div>
@@ -655,13 +668,13 @@ export default function TradeAnalysis() {
                 {/* Bollinger Bands + Volume Ratio */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">BB Upper</div>
+                    <div className="text-micro text-muted-foreground uppercase">BB Upper</div>
                     <div className="text-sm font-semibold tabular-nums text-red-400">
                       {data.ver.bbUpper !== null ? formatCurrency(data.ver.bbUpper) : "N/A"}
                     </div>
                   </div>
                   <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">BB Lower</div>
+                    <div className="text-micro text-muted-foreground uppercase">BB Lower</div>
                     <div className="text-sm font-semibold tabular-nums text-green-400">
                       {data.ver.bbLower !== null ? formatCurrency(data.ver.bbLower) : "N/A"}
                     </div>
@@ -670,13 +683,13 @@ export default function TradeAnalysis() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">BB Middle</div>
+                    <div className="text-micro text-muted-foreground uppercase">BB Middle</div>
                     <div className="text-sm font-semibold tabular-nums text-purple-500">
                       {data.ver.bbMiddle !== null ? formatCurrency(data.ver.bbMiddle) : "N/A"}
                     </div>
                   </div>
                   <div className="bg-muted/30 rounded-md p-2.5">
-                    <div className="text-[10px] text-muted-foreground uppercase">Vol Ratio</div>
+                    <div className="text-micro text-muted-foreground uppercase">Vol Ratio</div>
                     <div className="text-sm font-semibold tabular-nums text-foreground">
                       {data.ver.volumeRatio !== null ? `${data.ver.volumeRatio}x avg` : "N/A"}
                     </div>
@@ -718,7 +731,7 @@ export default function TradeAnalysis() {
                     <Zap className="h-4 w-4 text-purple-400" />
                     <CardTitle className="text-sm font-semibold">AMC Strategy</CardTitle>
                   </div>
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                  <span className={`text-micro font-bold uppercase px-2 py-0.5 rounded ${
                     data.gates?.gate2?.cleared ? "bg-blue-500/20 text-blue-400" : "bg-muted text-muted-foreground"
                   }`}>{data.gates?.gate2?.cleared ? "Gate 2 ✓" : "Waiting"}</span>
                 </div>
@@ -728,13 +741,13 @@ export default function TradeAnalysis() {
                 {/* Score + Mode */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/30 rounded-md p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Score</p>
+                    <p className="text-micro text-muted-foreground uppercase">Score</p>
                     <p className={`text-lg font-bold tabular-nums ${(data.amc?.score || 0) >= 4 ? "text-green-400" : (data.amc?.score || 0) >= 3 ? "text-yellow-400" : "text-muted-foreground"}`}>
                       {data.amc?.score || 0}<span className="text-xs text-muted-foreground">/5</span>
                     </p>
                   </div>
                   <div className="bg-muted/30 rounded-md p-2.5 text-center">
-                    <p className="text-[10px] text-muted-foreground uppercase">Mode</p>
+                    <p className="text-micro text-muted-foreground uppercase">Mode</p>
                     <p className={`text-sm font-bold ${data.amc?.mode === "momentum" ? "text-green-400" : data.amc?.mode === "reversion" ? "text-cyan-400" : "text-muted-foreground"}`}>
                       {data.amc?.mode === "momentum" ? "Momentum" : data.amc?.mode === "reversion" ? "Reversion" : "Flat"}
                     </p>
@@ -744,7 +757,7 @@ export default function TradeAnalysis() {
                 {/* VAMI Value */}
                 <div className="bg-muted/30 rounded-md p-2.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-muted-foreground uppercase">VAMI (Custom)</p>
+                    <p className="text-micro text-muted-foreground uppercase">VAMI (Custom)</p>
                     <span className={`text-xs ${(data.amc?.vami || 0) > 0 ? "text-green-400" : (data.amc?.vami || 0) < 0 ? "text-red-400" : "text-muted-foreground"}`}>
                       {(data.amc?.vami || 0) > 0 ? "Bullish" : (data.amc?.vami || 0) < 0 ? "Bearish" : "Neutral"}
                     </span>
@@ -764,7 +777,7 @@ export default function TradeAnalysis() {
                 {/* Recent Signals */}
                 {data.amc?.recentSignals?.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Signals</h4>
+                    <h4 className="text-micro font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recent Signals</h4>
                     <div className="space-y-1">
                       {data.amc.recentSignals.slice(-5).map((s: any, i: number) => (
                         <div key={i} className="flex items-center justify-between text-xs">
@@ -787,7 +800,7 @@ export default function TradeAnalysis() {
                     <BarChart3 className="h-4 w-4 text-primary" />
                     BBTC EMA Pyramid
                   </CardTitle>
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                  <span className={`text-micro font-bold uppercase px-2 py-0.5 rounded ${
                     data.gates?.gate3?.cleared ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"
                   }`}>{data.gates?.gate3?.cleared ? "Gate 3 ✓" : "Waiting"}</span>
                 </div>
@@ -817,19 +830,19 @@ export default function TradeAnalysis() {
                 {/* EMA Values */}
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-muted/30 rounded p-2">
-                    <div className="text-[10px] text-muted-foreground uppercase">EMA 9</div>
+                    <div className="text-micro text-muted-foreground uppercase">EMA 9</div>
                     <div className="text-sm font-semibold tabular-nums text-green-500">
                       {data.bbtc.ema9 !== null ? formatNumber(data.bbtc.ema9) : "N/A"}
                     </div>
                   </div>
                   <div className="bg-muted/30 rounded p-2">
-                    <div className="text-[10px] text-muted-foreground uppercase">EMA 21</div>
+                    <div className="text-micro text-muted-foreground uppercase">EMA 21</div>
                     <div className="text-sm font-semibold tabular-nums text-orange-500">
                       {data.bbtc.ema21 !== null ? formatNumber(data.bbtc.ema21) : "N/A"}
                     </div>
                   </div>
                   <div className="bg-muted/30 rounded p-2">
-                    <div className="text-[10px] text-muted-foreground uppercase">EMA 50</div>
+                    <div className="text-micro text-muted-foreground uppercase">EMA 50</div>
                     <div className="text-sm font-semibold tabular-nums text-cyan-500">
                       {data.bbtc.ema50 !== null ? formatNumber(data.bbtc.ema50) : "N/A"}
                     </div>
@@ -881,7 +894,7 @@ export default function TradeAnalysis() {
                 {/* Side filter — toggle which signal dots to display.
                     Both sides are ALWAYS computed by the strategy; this just
                     controls visibility on this chart. */}
-                <div className="inline-flex rounded-md border border-card-border overflow-hidden text-[10px] font-semibold">
+                <div className="inline-flex rounded-md border border-card-border overflow-hidden text-micro font-semibold">
                   {(["both", "long", "short"] as const).map((opt) => (
                     <button
                       key={opt}
@@ -953,20 +966,20 @@ export default function TradeAnalysis() {
                         // Color must match the SignalDot palette so a hovered
                         // tooltip line matches the dot color on the chart.
                         const colorFor = (sig: string, side: "LONG" | "SHORT" | null) => {
-                          if (sig === "WATCH_BUY") return "#eab308";          // yellow
-                          if (sig === "WATCH_SELL") return "#f97316";         // hollow orange
-                          if (sig === "ADD_LONG") return "#22c55e";           // green
-                          if (sig === "REDUCE") return "#14b8a6";             // teal — WIN
-                          if (sig === "STOP_HIT") return "#ef4444";           // red — LOSS
+                          if (sig === "WATCH_BUY") return SIGNAL_WATCH;          // yellow
+                          if (sig === "WATCH_SELL") return SIGNAL_WATCH_SHORT;         // hollow orange
+                          if (sig === "ADD_LONG") return SIGNAL_BULL;           // green
+                          if (sig === "REDUCE") return SIGNAL_REDUCE;             // teal — WIN
+                          if (sig === "STOP_HIT") return SIGNAL_BEAR;           // red — LOSS
                           if (sig === "BUY") {
                             // Long entry → green; short cover → slate (clean exit)
-                            return side === "SHORT" ? "#94a3b8" : "#22c55e";
+                            return side === "SHORT" ? SIGNAL_TREND_EXIT : SIGNAL_BULL;
                           }
                           if (sig === "SELL") {
                             // Short entry (info-only) → magenta; long exit → slate
-                            return side === "LONG" ? "#94a3b8" : "#d946ef";
+                            return side === "LONG" ? SIGNAL_TREND_EXIT : SIGNAL_SHORT_ADD;
                           }
-                          return "#ef4444"; // fallback
+                          return SIGNAL_BEAR; // fallback
                         };
                         const sideTag = (sig: string, side: "LONG" | "SHORT" | null) => {
                           const ambiguous = sig === "STOP_HIT" || sig === "REDUCE" || sig === "BUY" || sig === "SELL";
@@ -1026,13 +1039,13 @@ export default function TradeAnalysis() {
                       dot={<SignalDot />}
                       name="Close"
                     />
-                    <Line type="monotone" dataKey="ema9" stroke="#22c55e" strokeWidth={1} dot={false} name="EMA 9" connectNulls />
-                    <Line type="monotone" dataKey="ema21" stroke="#f97316" strokeWidth={1} dot={false} name="EMA 21" connectNulls />
-                    <Line type="monotone" dataKey="ema50" stroke="#06b6d4" strokeWidth={1} dot={false} name="EMA 50" connectNulls />
+                    <Line type="monotone" dataKey="ema9" stroke=SIGNAL_BULL strokeWidth={1} dot={false} name="EMA 9" connectNulls />
+                    <Line type="monotone" dataKey="ema21" stroke=SIGNAL_WATCH_SHORT strokeWidth={1} dot={false} name="EMA 21" connectNulls />
+                    <Line type="monotone" dataKey="ema50" stroke={CHART_EMA_50} strokeWidth={1} dot={false} name="EMA 50" connectNulls />
                     <Line
                       type="monotone"
                       dataKey="sma200"
-                      stroke="#a855f7"
+                      stroke={CHART_EMA_200}
                       strokeWidth={1.5}
                       strokeDasharray="6 3"
                       dot={false}
@@ -1053,7 +1066,7 @@ export default function TradeAnalysis() {
                   <span className="w-3 h-0.5 bg-cyan-500 rounded" /> EMA 50
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-purple-500 rounded border-dashed" style={{ borderTop: "1px dashed #a855f7", height: 0 }} /> SMA 200
+                  <span className="w-3 h-0.5 bg-purple-500 rounded border-dashed" style={{ borderTop: `1px dashed ${CHART_EMA_200}`, height: 0 }} /> SMA 200
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Long entry
@@ -1062,24 +1075,24 @@ export default function TradeAnalysis() {
                   <span className="w-2 h-2 rounded-full bg-yellow-500" /> Long watch (RSI 35-45)
                 </span>
                 <span className="flex items-center gap-1.5" title="REDUCE — profit target hit at 5×ATR. This is a winning trade.">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#14b8a6" }} /> Profit target (WIN)
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: SIGNAL_REDUCE }} /> Profit target (WIN)
                 </span>
                 <span className="flex items-center gap-1.5" title="STOP_HIT — hard or trailing stop triggered. This is a losing trade.">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#ef4444" }} /> Stopped (LOSS)
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: SIGNAL_BEAR }} /> Stopped (LOSS)
                 </span>
                 <span className="flex items-center gap-1.5" title="Trend reversed — EMA cross-down exited a long, or EMA cross-up covered a short. Clean exit, neither pure win nor loss.">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#94a3b8" }} /> Trend exit
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: SIGNAL_TREND_EXIT }} /> Trend exit
                 </span>
                 <span className="flex items-center gap-1.5" title="Short setup detected — bearish trend conditions met. Info-only: short side has no edge per 10-year backtest (42.9% win, -1.25% median return). Strategy does NOT enter short positions.">
                   <span
                     className="w-2.5 h-2.5 rounded-full"
-                    style={{ background: "transparent", border: "1.5px dashed #d946ef" }}
+                    style={{ background: "transparent", border: `1.5px dashed ${SIGNAL_SHORT_ADD}` }}
                   /> Short setup (info-only)
                 </span>
                 <span className="flex items-center gap-1.5" title="Info-only marker — RSI overbought + bearish divergence. Not a tradeable signal per the 10-year backtest.">
                   <span
                     className="w-2.5 h-2.5 rounded-full"
-                    style={{ background: "transparent", border: "1.5px dashed #f97316" }}
+                    style={{ background: "transparent", border: `1.5px dashed ${SIGNAL_WATCH_SHORT}` }}
                   /> Short watch (info-only, RSI 65-80)
                 </span>
               </div>
@@ -1124,12 +1137,12 @@ export default function TradeAnalysis() {
                         return [Number(value).toFixed(2), "RSI"];
                       }}
                     />
-                    <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.6} />
-                    <ReferenceLine y={30} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.6} />
+                    <ReferenceLine y={70} stroke=SIGNAL_BEAR strokeDasharray="4 4" strokeOpacity={0.6} />
+                    <ReferenceLine y={30} stroke=SIGNAL_BULL strokeDasharray="4 4" strokeOpacity={0.6} />
                     <Line
                       type="monotone"
                       dataKey="rsi"
-                      stroke="#3b82f6"
+                      stroke={CHART_RSI}
                       strokeWidth={1.5}
                       dot={false}
                       name="RSI"
@@ -1140,10 +1153,10 @@ export default function TradeAnalysis() {
               </div>
               <div className="flex gap-4 mt-2 justify-center text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-green-500 rounded opacity-60" style={{ borderTop: "1px dashed #22c55e", height: 0 }} /> Oversold (30)
+                  <span className="w-3 h-0.5 bg-green-500 rounded opacity-60" style={{ borderTop: `1px dashed ${SIGNAL_BULL}`, height: 0 }} /> Oversold (30)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 bg-red-500 rounded opacity-60" style={{ borderTop: "1px dashed #ef4444", height: 0 }} /> Overbought (70)
+                  <span className="w-3 h-0.5 bg-red-500 rounded opacity-60" style={{ borderTop: `1px dashed ${SIGNAL_BEAR}`, height: 0 }} /> Overbought (70)
                 </span>
               </div>
             </CardContent>

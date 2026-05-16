@@ -16,6 +16,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL_RADAR,
+  SIGNAL_BEAR_LIGHT,
+  COLOR_GRAY_NEUTRAL,
+  COLOR_GRAY_NEUTRAL_LIGHT,
+  ACCENT_AMBER,
+  OVERLAY_SLATE_20,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { Disclaimer } from "@/components/Disclaimer";
@@ -155,21 +163,21 @@ function CompassRadar({ compass }: { compass: ConvictionCompass }) {
     <div className="w-full h-[360px] bg-card border border-card-border rounded-xl p-4">
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
-          <PolarGrid stroke="rgba(148, 163, 184, 0.2)" />
-          <PolarAngleAxis dataKey="axis" tick={{ fill: "#cbd5e1", fontSize: 12, fontWeight: 600 }} />
-          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} />
+          <PolarGrid stroke=OVERLAY_SLATE_20 />
+          <PolarAngleAxis dataKey="axis" tick={{ fill: COLOR_GRAY_NEUTRAL_LIGHT, fontSize: 12, fontWeight: 600 }} />
+          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: COLOR_GRAY_NEUTRAL, fontSize: 10 }} />
           <Radar
             name="Bullish"
             dataKey="bullish"
-            stroke="#34d399"
-            fill="#34d399"
+            stroke=SIGNAL_BULL_RADAR
+            fill=SIGNAL_BULL_RADAR
             fillOpacity={0.35}
           />
           <Radar
             name="Bearish"
             dataKey="bearish"
-            stroke="#f87171"
-            fill="#f87171"
+            stroke=SIGNAL_BEAR_LIGHT
+            fill=SIGNAL_BEAR_LIGHT
             fillOpacity={0.25}
           />
         </RadarChart>
@@ -183,7 +191,7 @@ function CompassRadar({ compass }: { compass: ConvictionCompass }) {
 function ConfluenceGauge({ confluence, alignment }: { confluence: number; alignment: number }) {
   const absConf = Math.abs(confluence);
   const isBull = confluence > 0;
-  const color = isBull ? "#34d399" : confluence < 0 ? "#f87171" : "#fbbf24";
+  const color = isBull ? SIGNAL_BULL_RADAR : confluence < 0 ? SIGNAL_BEAR_LIGHT : ACCENT_AMBER;
   // Filled bar from center outward
   const pctFromCenter = absConf / 100;
 
@@ -256,7 +264,7 @@ function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon:
         ))}
       </div>
       {axis.notes.length > 0 && (
-        <div className="text-[11px] text-amber-400/80 border-t border-card-border pt-2 space-y-0.5">
+        <div className="text-2xs text-amber-400/80 border-t border-card-border pt-2 space-y-0.5">
           {axis.notes.map((n, i) => (
             <div key={i}>• {n}</div>
           ))}
@@ -354,12 +362,12 @@ function BacktestPanel() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="text-sm font-semibold text-foreground">Live Forward-Tracking</div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             Real performance of each verdict class since tracking started.
             Averaged across all tickers in the tracked universe (~100 megacaps).
           </div>
         </div>
-        <div className="text-[11px] text-muted-foreground text-right">
+        <div className="text-2xs text-muted-foreground text-right">
           {data.totalSnapshots.toLocaleString()} snapshots
           {data.earliestDate && data.latestDate && (
             <> · {data.earliestDate} → {data.latestDate}</>
@@ -383,7 +391,7 @@ function BacktestPanel() {
           <tbody>
             {verdictRows.map((r) => (
               <tr key={r.verdict} className="border-b border-card-border/30">
-                <td className="py-1.5 font-mono text-[11px] text-foreground">{r.verdict.replace(/_/g, " ")}</td>
+                <td className="py-1.5 font-mono text-2xs text-foreground">{r.verdict.replace(/_/g, " ")}</td>
                 <td className="py-1.5 text-right text-muted-foreground tabular-nums">{r.count}</td>
                 <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn1d, r.count)}`}>{fmtPct(r.avgReturn1d, r.count)}</td>
                 <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn5d, r.count)}`}>{fmtPct(r.avgReturn5d, r.count)}</td>
@@ -394,7 +402,7 @@ function BacktestPanel() {
             ))}
             {/* SPY baseline row */}
             <tr className="border-t-2 border-card-border">
-              <td className="py-1.5 font-mono text-[11px] text-muted-foreground italic">SPY (baseline)</td>
+              <td className="py-1.5 font-mono text-2xs text-muted-foreground italic">SPY (baseline)</td>
               <td className="py-1.5 text-right text-muted-foreground tabular-nums">—</td>
               <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}</td>
               <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}</td>
@@ -407,7 +415,7 @@ function BacktestPanel() {
       </div>
 
       {(data.pendingForwardReturns.d30 > 0 || data.pendingForwardReturns.d90 > 0) && (
-        <div className="text-[11px] text-amber-400/80">
+        <div className="text-2xs text-amber-400/80">
           Pending forward returns: {data.pendingForwardReturns.d1} 1d · {data.pendingForwardReturns.d5} 5d · {data.pendingForwardReturns.d30} 30d · {data.pendingForwardReturns.d90} 90d.
           Filled in once each window closes.
         </div>

@@ -14,7 +14,7 @@ export function HowToRead() {
     <div className="border-t border-border bg-muted/10">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full px-4 py-1.5 flex items-center justify-between text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+        className="w-full px-4 py-1.5 flex items-center justify-between text-micro uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
         data-testid="howto-toggle"
       >
         <span className="flex items-center gap-1.5">
@@ -24,7 +24,7 @@ export function HowToRead() {
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
       {open && (
-        <div className="px-4 pb-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-[11px] text-muted-foreground">
+        <div className="px-4 pb-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-2xs text-muted-foreground">
           <div>
             <div className="text-xs font-semibold text-foreground mb-1">Candles + EMAs</div>
             Price action with 21-day and 50-day exponential moving averages.

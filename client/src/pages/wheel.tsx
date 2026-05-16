@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SIGNAL_BULL, CHART_RSI, ACCENT_AMBER_DEEP } from "@/lib/design-tokens";
 import {
   RefreshCw, DollarSign, Percent, Calendar,
   Target, AlertTriangle, TrendingUp, ShieldCheck,
@@ -199,7 +200,7 @@ export default function WheelCalculator() {
           <strong className="text-foreground"> cash-secured puts (CSPs)</strong> and
           <strong className="text-foreground"> covered calls (CCs)</strong> on a stock you'd be happy to own.
         </p>
-        <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
+        <ol className="list-decimal list-inside space-y-1 text-2xs leading-relaxed">
           <li><strong className="text-foreground">Phase 1 (CSP):</strong> Sell a put at a strike below current price. Set aside strike × 100 in cash per contract.</li>
           <li><strong className="text-foreground">Expiry:</strong> If stock stays above strike, put expires worthless — keep the premium, sell another CSP.</li>
           <li><strong className="text-foreground">Assignment:</strong> If stock drops below strike, you buy 100 shares per contract at the strike. Your cost basis is <em>strike − put premium</em>.</li>
@@ -238,7 +239,7 @@ export default function WheelCalculator() {
           <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-3.5 w-3.5 text-blue-400" />
-              <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">Cash-Secured Put</span>
+              <span className="text-2xs font-semibold text-blue-400 uppercase tracking-wider">Cash-Secured Put</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <NumField label="Put Strike ($)" value={putStrike} onChange={setPutStrike} step={0.5} testId="wheel-put-strike" />
@@ -248,7 +249,7 @@ export default function WheelCalculator() {
           <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="h-3.5 w-3.5 text-green-400" />
-              <span className="text-[11px] font-semibold text-green-400 uppercase tracking-wider">Covered Call (after assignment)</span>
+              <span className="text-2xs font-semibold text-green-400 uppercase tracking-wider">Covered Call (after assignment)</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <NumField label="Call Strike ($)" value={callStrike} onChange={setCallStrike} step={0.5} testId="wheel-call-strike" />
@@ -361,11 +362,11 @@ export default function WheelCalculator() {
                 labelFormatter={(label: number) => `Stock @ $${label}`}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-              <ReferenceLine x={putStrike} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: "#3b82f6", position: "top" }} />
-              <ReferenceLine x={callStrike} stroke="#22c55e" strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: "#22c55e", position: "top" }} />
-              <ReferenceLine x={metrics.breakEven} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: "#f59e0b", position: "top" }} />
-              <Line type="monotone" dataKey="putPL" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="wheelPL" stroke="#22c55e" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <ReferenceLine x={putStrike} stroke=CHART_RSI strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: CHART_RSI, position: "top" }} />
+              <ReferenceLine x={callStrike} stroke=SIGNAL_BULL strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: SIGNAL_BULL, position: "top" }} />
+              <ReferenceLine x={metrics.breakEven} stroke=ACCENT_AMBER_DEEP strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: ACCENT_AMBER_DEEP, position: "top" }} />
+              <Line type="monotone" dataKey="putPL" stroke=CHART_RSI strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="wheelPL" stroke=SIGNAL_BULL strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -399,7 +400,7 @@ export default function WheelCalculator() {
               )}
               <div className="flex-1">
                 <div className="text-xs font-semibold text-foreground">{f.label}</div>
-                <div className="text-[11px] text-muted-foreground">{f.detail}</div>
+                <div className="text-2xs text-muted-foreground">{f.detail}</div>
               </div>
             </li>
           ))}
@@ -423,7 +424,7 @@ function NumField({
 }) {
   return (
     <div>
-      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">{label}</label>
+      <label className="text-2xs font-medium text-muted-foreground mb-1 block">{label}</label>
       <input
         type="number"
         step={step}
@@ -452,12 +453,12 @@ function ResultCard({
     : "text-primary";
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
-      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+      <div className="text-micro font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
       <div className={`text-lg font-bold tabular-nums font-mono ${color}`}>{pct.toFixed(2)}%</div>
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-2xs text-muted-foreground">
         <span className="text-foreground font-semibold tabular-nums">{annualized.toFixed(1)}%</span> annualized
       </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+      <div className="text-micro text-muted-foreground mt-0.5 tabular-nums">
         ${dollar.toLocaleString(undefined, { maximumFractionDigits: 0 })} premium
       </div>
     </div>
@@ -474,9 +475,9 @@ function InfoCard({
 }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
-      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+      <div className="text-micro font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
       <div className={`text-lg font-bold tabular-nums font-mono ${danger ? "text-red-400" : "text-foreground"}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-micro text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

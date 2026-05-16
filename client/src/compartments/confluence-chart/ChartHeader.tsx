@@ -38,7 +38,7 @@ export function ChartHeader({
         {/* Brand */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <img src={logoText} alt="Stock Otter" className="h-7" />
-          <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-widest text-primary px-2 py-0.5 rounded bg-primary/10">
+          <span className="hidden sm:inline-flex items-center gap-1 text-micro font-bold tracking-widest text-primary px-2 py-0.5 rounded bg-primary/10">
             <Activity className="h-3 w-3" />
             CONFLUENCE
           </span>
@@ -77,19 +77,19 @@ export function ChartHeader({
             <div className="hidden lg:flex items-center gap-1">
               <Link
                 href="/profile"
-                className="text-[10px] font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
+                className="text-micro font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
               >
                 Profile <ArrowUpRight className="h-3 w-3" />
               </Link>
               <Link
                 href="/mm-exposure"
-                className="text-[10px] font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
+                className="text-micro font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
               >
                 MM Exposure <ArrowUpRight className="h-3 w-3" />
               </Link>
               <Link
                 href="/scanner"
-                className="text-[10px] font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
+                className="text-micro font-medium text-muted-foreground hover:text-foreground flex items-center gap-0.5 px-2 py-1 rounded hover:bg-muted/50"
               >
                 Scanner <ArrowUpRight className="h-3 w-3" />
               </Link>

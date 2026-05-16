@@ -58,25 +58,25 @@ export function MyTradesWidget() {
           <>
             <div className="grid grid-cols-2 gap-2 px-1 pb-2">
               <div>
-                <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Realized P/L</div>
+                <div className="text-mini text-muted-foreground uppercase tracking-wide">Realized P/L</div>
                 <div className={`text-base font-bold tabular-nums ${pnlColor(summary.data.totalProfit)}`}>
                   {fmtMoney(summary.data.totalProfit)}
                 </div>
-                <div className="text-[10px] text-muted-foreground">
+                <div className="text-micro text-muted-foreground">
                   {summary.data.totalWins} wins ({summary.data.winRate.toFixed(0)}%)
                 </div>
               </div>
               <div>
-                <div className="text-[9px] text-muted-foreground uppercase tracking-wide">Open ({summary.data.openTrades})</div>
+                <div className="text-mini text-muted-foreground uppercase tracking-wide">Open ({summary.data.openTrades})</div>
                 <div className={`text-base font-bold tabular-nums ${pnlColor(summary.data.openPL)}`}>
                   {fmtMoney(summary.data.openPL)}
                 </div>
-                <div className="text-[10px] text-muted-foreground">unrealized</div>
+                <div className="text-micro text-muted-foreground">unrealized</div>
               </div>
             </div>
 
             <div className="border-t border-border pt-1">
-              <div className="text-[9px] text-muted-foreground uppercase tracking-wide px-1 pb-1">Recent closed</div>
+              <div className="text-mini text-muted-foreground uppercase tracking-wide px-1 pb-1">Recent closed</div>
               {recentClosed.length === 0 && (
                 <div className="text-xs text-muted-foreground p-2">No closed trades yet.</div>
               )}
@@ -94,7 +94,7 @@ export function MyTradesWidget() {
                       <TrendingDown className="h-3 w-3 text-red-500 flex-shrink-0" />
                     )}
                     <span className="font-mono font-bold text-xs">{t.symbol}</span>
-                    <span className="text-[9px] text-muted-foreground truncate">{t.tradeType}</span>
+                    <span className="text-mini text-muted-foreground truncate">{t.tradeType}</span>
                   </div>
                   <span className={`text-xs font-bold tabular-nums ${pnlColor(t.profit)}`}>
                     {fmtMoney(t.profit)}

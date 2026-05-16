@@ -12,7 +12,7 @@ import { useFavorites, type FavoriteItem } from "./useFavorites";
 
 function ScoreBadge({ score, verdict }: { score: number | null; verdict: string | null }) {
   if (score === null) {
-    return <span className="text-[10px] text-muted-foreground">—</span>;
+    return <span className="text-micro text-muted-foreground">—</span>;
   }
   const colors = verdict
     ? getVerdictColor(verdict)
@@ -21,7 +21,7 @@ function ScoreBadge({ score, verdict }: { score: number | null; verdict: string 
     <div className="flex items-center gap-1">
       <span className={`text-xs font-bold tabular-nums ${colors.text}`}>{score.toFixed(2)}</span>
       {verdict && (
-        <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${colors.bg} text-white`}>{verdict}</span>
+        <span className={`text-mini font-bold px-1 py-0.5 rounded ${colors.bg} text-white`}>{verdict}</span>
       )}
     </div>
   );

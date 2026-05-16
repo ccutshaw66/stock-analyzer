@@ -7,6 +7,7 @@
  * `useScannerV2` directly (follow-up task).
  */
 import type { ClientCompartmentEntry, CompartmentMeta } from "../types";
+import { TILE_SM, TILE_MIN_SM } from "@/lib/layout-tokens";
 import { BestOppsWidget } from "./BestOppsWidget";
 
 const meta: CompartmentMeta = {
@@ -20,8 +21,8 @@ const meta: CompartmentMeta = {
 export const scannerCompartment: ClientCompartmentEntry = {
   meta,
   WidgetView: BestOppsWidget,
-  widgetDefaultSize: { w: 3, h: 4 },
-  widgetMinSize: { w: 2, h: 3 },
+  widgetDefaultSize: TILE_SM,
+  widgetMinSize: TILE_MIN_SM,
 };
 
 export { meta, BestOppsWidget };

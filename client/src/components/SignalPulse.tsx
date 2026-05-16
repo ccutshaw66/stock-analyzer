@@ -119,7 +119,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
             <span className="text-xl font-bold text-foreground">{data!.ticker}</span>
             <span className="text-xs text-muted-foreground">· Signal Pulse</span>
           </div>
-          <div className="text-[10px] text-muted-foreground">
+          <div className="text-micro text-muted-foreground">
             60-day composite of 12 Scanner 2.0 signals
           </div>
         </div>
@@ -130,7 +130,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
             {trendArrow}
             <div>
               <div className={`text-xs font-bold uppercase tracking-wider ${trendColor}`}>{trendLabel}</div>
-              <div className="text-[10px] text-muted-foreground tabular-nums">
+              <div className="text-micro text-muted-foreground tabular-nums">
                 Today {summary.lastComposite > 0 ? "+" : ""}{summary.lastComposite.toFixed(1)} ·
                 10d avg {summary.avgComposite10d > 0 ? "+" : ""}{summary.avgComposite10d.toFixed(1)}
               </div>
@@ -138,7 +138,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
           </div>
 
           {summary.zeroCross && (
-            <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+            <div className={`px-2 py-1 rounded text-micro font-bold uppercase ${
               summary.zeroCross === "bullish"
                 ? "bg-green-500/20 text-green-300 border border-green-500/40"
                 : "bg-red-500/20 text-red-300 border border-red-500/40"
@@ -182,7 +182,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
             fired each day. Green dot = bullish direction, red dot = bearish. Look for stacking (multiple greens in
             a column) as a conviction cue.
           </p>
-          <p className="text-muted-foreground text-[10px] italic">
+          <p className="text-muted-foreground text-micro italic">
             Catalyst signals (earnings, insider, options, analyst, gamma, small-float) only evaluate on today's
             live data — they aren't replayable historically.
           </p>
@@ -221,13 +221,13 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
 
       {/* Per-signal stack */}
       <div className="mt-3">
-        <div className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Signal Stack (technical)</div>
+        <div className="text-micro text-muted-foreground uppercase font-semibold mb-1">Signal Stack (technical)</div>
         <div className="relative" style={{ height: `${SIGNAL_ROWS * ROW_H + 12}px` }}>
           {/* signal labels */}
           {days[days.length - 1].perSignal.slice(0, SIGNAL_ROWS).map((sig, rowIdx) => (
             <div
               key={sig.id}
-              className="absolute left-0 text-[9px] text-muted-foreground font-medium whitespace-nowrap"
+              className="absolute left-0 text-mini text-muted-foreground font-medium whitespace-nowrap"
               style={{ top: `${rowIdx * ROW_H + 3}px`, width: "88px" }}
             >
               {sig.label}
@@ -261,14 +261,14 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
       {/* Catalyst row (live only) */}
       {data!.catalysts?.length ? (
         <div className="mt-3 pt-3 border-t border-card-border/50">
-          <div className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">
+          <div className="text-micro text-muted-foreground uppercase font-semibold mb-1">
             Catalyst signals <span className="font-normal normal-case">(live only — not replayable)</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {data!.catalysts.map(c => (
               <span
                 key={c.id}
-                className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/40 text-zinc-400 border border-zinc-600/30"
+                className="text-micro px-2 py-0.5 rounded bg-zinc-700/40 text-zinc-400 border border-zinc-600/30"
                 title={c.note}
               >
                 {c.label}
@@ -279,7 +279,7 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
       ) : null}
 
       {/* Footer legend */}
-      <div className="mt-3 pt-3 border-t border-card-border/50 flex items-center gap-4 text-[10px] text-muted-foreground flex-wrap">
+      <div className="mt-3 pt-3 border-t border-card-border/50 flex items-center gap-4 text-micro text-muted-foreground flex-wrap">
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 bg-green-500 rounded-sm" />
           Bullish firing

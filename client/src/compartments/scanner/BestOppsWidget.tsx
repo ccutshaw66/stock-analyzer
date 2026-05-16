@@ -36,7 +36,7 @@ function Row({ row, onSelect }: { row: ScannerV2Row; onSelect: () => void }) {
         <DirectionIcon direction={row.direction} />
         <span className="font-mono font-bold text-sm">{row.symbol}</span>
         {row.topSignals[0] && (
-          <span className="text-[9px] text-muted-foreground truncate hidden sm:inline">
+          <span className="text-mini text-muted-foreground truncate hidden sm:inline">
             {row.topSignals[0].replace(/_/g, " ")}
           </span>
         )}
@@ -84,7 +84,7 @@ export function BestOppsWidget() {
               <Play className="h-3 w-3" />
               Run scan
             </button>
-            <p className="text-[10px] text-muted-foreground mt-2">Top 5 confluence setups, market-wide.</p>
+            <p className="text-micro text-muted-foreground mt-2">Top 5 confluence setups, market-wide.</p>
           </div>
         )}
 

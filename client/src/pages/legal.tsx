@@ -12,7 +12,7 @@ export default function LegalPage() {
   });
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#040d22" }}>
+    <div className="min-h-screen bg-brand-bg">
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
@@ -21,21 +21,21 @@ export default function LegalPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-8 border-b border-[#1E2235]">
+        <div className="flex gap-4 mb-8 border-b border-brand-border">
           <button
             onClick={() => setTab("terms")}
-            className={`pb-3 text-sm font-semibold ${tab === "terms" ? "text-white border-b-2 border-primary" : "text-[#6b7084]"}`}
+            className={`pb-3 text-sm font-semibold ${tab === "terms" ? "text-white border-b-2 border-primary" : "text-brand-text-faded"}`}
           >Terms of Service</button>
           <button
             onClick={() => setTab("privacy")}
-            className={`pb-3 text-sm font-semibold ${tab === "privacy" ? "text-white border-b-2 border-primary" : "text-[#6b7084]"}`}
+            className={`pb-3 text-sm font-semibold ${tab === "privacy" ? "text-white border-b-2 border-primary" : "text-brand-text-faded"}`}
           >Privacy Policy</button>
         </div>
 
         {tab === "terms" ? <TermsOfService /> : <PrivacyPolicy />}
 
-        <div className="mt-12 pt-6 border-t border-[#1E2235] text-center">
-          <p className="text-[11px] text-[#4a4f65]">Stock Otter &copy; {new Date().getFullYear()} &mdash; All rights reserved.</p>
+        <div className="mt-12 pt-6 border-t border-brand-border text-center">
+          <p className="text-2xs text-brand-text-dim">Stock Otter &copy; {new Date().getFullYear()} &mdash; All rights reserved.</p>
         </div>
       </div>
     </div>
@@ -46,7 +46,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div className="mb-8">
       <h2 className="text-base font-bold text-white mb-3">{title}</h2>
-      <div className="text-sm text-[#8b8fa3] leading-relaxed space-y-3">{children}</div>
+      <div className="text-sm text-brand-text-muted leading-relaxed space-y-3">{children}</div>
     </div>
   );
 }
@@ -55,7 +55,7 @@ function TermsOfService() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-white mb-2">Terms of Service</h1>
-      <p className="text-xs text-[#6b7084] mb-8">Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+      <p className="text-xs text-brand-text-faded mb-8">Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
 
       <Section title="1. Acceptance of Terms">
         <p>By accessing or using Stock Otter ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
@@ -112,7 +112,7 @@ function PrivacyPolicy() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-white mb-2">Privacy Policy</h1>
-      <p className="text-xs text-[#6b7084] mb-8">Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+      <p className="text-xs text-brand-text-faded mb-8">Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
 
       <Section title="1. Information We Collect">
         <p><strong className="text-white">Account Information:</strong> Email address, display name, and encrypted password when you register.</p>

@@ -9,6 +9,50 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Design system compartmentalized (colors, fonts, tile sizes)
+
+**Why:** Chris asked whether the design elements were compartmentalized like the code. Audit found they were NOT — 188 hardcoded hex codes across 19 files (recurring brand greens, reds, indigo, navy bgs duplicated everywhere), 424 arbitrary `text-[Npx]` font sizes across 48 files, and raw `{ w, h }` literals scattered across 5 compartment manifests + the server default layout. Brand-color or palette changes would have required hunting through dozens of files. Confluence Chart's chart pane in particular had 9 hex codes baked into a single file. After Chris's "Confluence Chart Round 9" episode this was untenable.
+
+**What:**
+
+### Single source of truth — design tokens
+- New `client/src/lib/design-tokens.ts` — every recurring color exported as a named TypeScript constant. Brand navy surfaces (BRAND_BG, BRAND_BG_ELEVATED, BRAND_BG_CARD, etc.), brand text tiers (BRIGHT / MUTED / FADED / DIM), semantic signals (SIGNAL_BULL / BEAR / WATCH / REDUCE / TREND_EXIT / SHORT_ADD with light variants), chart series (CHART_EMA_*, CHART_RSI, CHART_CROSSHAIR, CHART_WICK, etc.), brand accents (BRAND_ACCENT indigo + deep), miscellaneous utilities, and rgba overlays for translucent fills.
+- Matching CSS variables added to `client/src/index.css` as space-separated RGB triplets so Tailwind's `rgb(var(--token) / <alpha-value>)` pattern unlocks alpha utilities (`bg-bull/10`, `text-brand-text-muted/60`).
+- New Tailwind color tokens wired in `tailwind.config.js`: `brand-bg`, `brand-bg-elevated`, `brand-bg-card`, `brand-bg-card-alt`, `brand-surface-raised`, `brand-border`, `brand-border-strong`, `brand-border-subtle`, `brand-text-bright`, `brand-text-muted`, `brand-text-faded`, `brand-text-dim`, `brand-accent`, `brand-accent-deep`, plus semantic signals `bull`, `bear`, `watch`, `watch-short`, `reduce`, `trend-exit`, `short-add`, and light variants `bull-light` / `bear-light` / `watch-light`.
+
+### Extended font-size scale
+- Added `text-tiny` (8px), `text-mini` (9px), `text-micro` (10px), `text-2xs` (11px) to the Tailwind `fontSize` scale.
+- All 424 arbitrary `text-[Npx]` uses across 48 files swept to the named tokens via bulk sed pass.
+
+### Named tile sizes
+- New `shared/dashboard/layout-tokens.ts` (in `shared/` so client + server import from the same place) exports `TILE_SM`, `TILE_MD`, `TILE_LG`, `TILE_FULL`, plus matching `TILE_MIN_*` minimum sizes.
+- Client compartment manifests (`favorites`, `scanner`, `trades`, `confluence-chart`) now reference named slots instead of raw `{ w: 3, h: 4 }` objects.
+- `server/dashboard/layout.ts` spread-imports the same slots so default-layout widget sizes never drift from manifests.
+- `client/src/lib/layout-tokens.ts` re-exports from the shared module so client ergonomics stay the same.
+
+### Sweep summary
+- 188 hardcoded hex codes across 19 files → 0 in components, 100% migrated to imported constants or Tailwind color tokens.
+- 424 arbitrary `text-[Npx]` values across 48 files → 0 remaining, all named.
+- 10 raw `{ w, h }` literals across 4 compartment manifests + server layout → 0 remaining, all named tile slots.
+- Allowed exceptions: `client/src/lib/design-tokens.ts` (canonical source), `client/src/index.css` (canonical CSS vars), `client/src/components/ui/chart.tsx` (shadcn Recharts attribute selectors `#ccc`/`#fff` — library override syntax, not app colors), `client/src/components/AppLayout.tsx` (`#add-trade` URL hash fragments, not colors).
+
+### `/verify-work` skill upgraded — load-bearing enforcement
+- Added three new BLOCKER rules: design-tokens rule (no new hex/rgb in components), font-size rule (no new `text-[Npx]`), tile-size rule (no new `{ w, h }` literals in manifests).
+- Documented the allowed exception files explicitly so reviewers know what `#…` patterns are legitimate.
+- Added a "Site-wide audit mode" section: when Chris asks for a full-site audit (vs the current diff), the skill expands scope and reports counts/offenders across the whole tree for compartment-rule adherence — hex leakage, font-size leakage, tile-size leakage, cache-layer bypasses, Yahoo/Polygon ghost code, strategy registry drift, compartments not registered, mixed signal-color palette.
+
+### Existing color values preserved
+- This was a pure compartmentalization move, not a rebrand. Every existing color value carries through verbatim — only the source has changed. Visual output is identical to the prior commit.
+
+**Files touched (summary):** new `client/src/lib/design-tokens.ts`, new `client/src/lib/layout-tokens.ts`, new `shared/dashboard/layout-tokens.ts`, expanded `client/src/index.css` + `tailwind.config.js`, sweeps across ~30 client components/pages, 4 compartment manifests, `server/dashboard/layout.ts`, `.claude/skills/verify-work/SKILL.md`, `CHANGES.md`.
+
+**Site-wide audit findings (not in this ship — surfaced for follow-up):**
+- ~369 Yahoo references and ~224 Polygon references still in client/server code (both providers slated for kill per memory).
+- ~608 Tailwind palette classes (`text-green-400` / `bg-red-500/15` / etc.) used for signal colors instead of the new semantic tokens (`text-bull` / `bg-bear/15`). Visually identical but breaks the "single source" guarantee — a future palette change won't reach them. Cleanup is a separate ship.
+
+**Not in this ship:** `docs/FMP_REFERENCE.md` modifications and `docs/FMP_API_DOCS_RAW.md` — pre-existing in-progress work, separate from this design tokens migration.
+
+---
 ## 2026-05-15 — `/interview` skill: front-load scope before any new feature
 
 **Why:** Every non-trivial new feature historically started with assumptions that got unwound rounds later. Confluence Chart Round 9 was the high-profile example — built once as a 3-line widget Chris called "useless", rebuilt as a full page. An interview at the start would have caught the scope mismatch before any code was written.

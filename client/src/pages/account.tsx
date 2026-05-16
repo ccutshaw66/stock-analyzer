@@ -107,7 +107,7 @@ export default function AccountPage() {
           </div>
 
           {user?.createdAt && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Account created {new Date(user.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
             </p>
           )}

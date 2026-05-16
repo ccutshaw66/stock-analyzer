@@ -7,6 +7,7 @@
  * The failed Round-8 ConfluenceChartWidget has been removed.
  */
 import type { ClientCompartmentEntry, CompartmentMeta } from "../types";
+import { TILE_SM, TILE_MIN_SM } from "@/lib/layout-tokens";
 import { ConfluenceTeaser } from "./ConfluenceTeaser";
 
 const meta: CompartmentMeta = {
@@ -20,8 +21,8 @@ const meta: CompartmentMeta = {
 export const confluenceChartCompartment: ClientCompartmentEntry = {
   meta,
   WidgetView: ConfluenceTeaser,
-  widgetDefaultSize: { w: 3, h: 4 },
-  widgetMinSize: { w: 2, h: 3 },
+  widgetDefaultSize: TILE_SM,
+  widgetMinSize: TILE_MIN_SM,
 };
 
 export { meta, ConfluenceTeaser };

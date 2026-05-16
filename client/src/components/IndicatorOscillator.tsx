@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useTimeframe } from "@/contexts/TimeframeContext";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  CHART_RSI,
+  SIGNAL_WATCH_SHORT,
+  SIGNAL_SHORT_ADD,
+} from "@/lib/design-tokens";
+
+const GRID_NEUTRAL = "rgb(82,82,91)";
 
 interface Bar {
   t: number;
@@ -29,7 +38,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
 
   if (isLoading) {
     return (
-      <div className="h-24 flex items-center justify-center text-[10px] text-muted-foreground">
+      <div className="h-24 flex items-center justify-center text-micro text-muted-foreground">
         Loading indicators…
       </div>
     );
@@ -37,7 +46,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
   const series = data?.series || [];
   if (!series.length) {
     return (
-      <div className="h-24 flex items-center justify-center text-[10px] text-muted-foreground">
+      <div className="h-24 flex items-center justify-center text-micro text-muted-foreground">
         No indicator data
       </div>
     );
@@ -73,7 +82,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+      <div className="flex items-center justify-between text-micro text-muted-foreground mb-1">
         <span>MACD(12,26,9) · RSI(14) · {series.length}d</span>
         <span className="tabular-nums">
           <span className={last.hist >= 0 ? "text-green-400" : "text-red-400"}>
@@ -99,14 +108,14 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
       {/* MACD pane */}
       <svg viewBox={`0 0 ${W} ${MACD_H}`} className="w-full" preserveAspectRatio="none" style={{ height: `${MACD_H}px` }}>
         {/* zero line */}
-        <line x1={PAD_X} x2={W - PAD_X} y1={MACD_H / 2} y2={MACD_H / 2} stroke="rgb(82,82,91)" strokeWidth="0.5" strokeDasharray="2,2" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={MACD_H / 2} y2={MACD_H / 2} stroke={GRID_NEUTRAL} strokeWidth="0.5" strokeDasharray="2,2" />
         {/* histogram bars */}
         {series.map((s, i) => {
           const y0 = MACD_H / 2;
           const y1 = macdY(s.hist);
           const top = Math.min(y0, y1);
           const h = Math.abs(y1 - y0);
-          const color = s.hist >= 0 ? "rgb(34,197,94)" : "rgb(239,68,68)";
+          const color = s.hist >= 0 ? SIGNAL_BULL : SIGNAL_BEAR;
           return (
             <rect
               key={i}
@@ -120,22 +129,22 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
           );
         })}
         {/* MACD line */}
-        <polyline points={macdLinePts} fill="none" stroke="rgb(59,130,246)" strokeWidth="1" />
+        <polyline points={macdLinePts} fill="none" stroke={CHART_RSI} strokeWidth="1" />
         {/* Signal line */}
-        <polyline points={sigLinePts} fill="none" stroke="rgb(249,115,22)" strokeWidth="1" />
+        <polyline points={sigLinePts} fill="none" stroke={SIGNAL_WATCH_SHORT} strokeWidth="1" />
       </svg>
 
       {/* RSI pane */}
       <svg viewBox={`0 0 ${W} ${RSI_H}`} className="w-full mt-1" preserveAspectRatio="none" style={{ height: `${RSI_H}px` }}>
         {/* overbought/oversold bands */}
-        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(70)} y2={rsiY(70)} stroke="rgb(239,68,68)" strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
-        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(50)} y2={rsiY(50)} stroke="rgb(82,82,91)" strokeWidth="0.5" strokeDasharray="2,2" />
-        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(30)} y2={rsiY(30)} stroke="rgb(34,197,94)" strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
-        <polyline points={rsiLinePts} fill="none" stroke="rgb(217,70,239)" strokeWidth="1.2" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(70)} y2={rsiY(70)} stroke={SIGNAL_BEAR} strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
+        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(50)} y2={rsiY(50)} stroke={GRID_NEUTRAL} strokeWidth="0.5" strokeDasharray="2,2" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(30)} y2={rsiY(30)} stroke={SIGNAL_BULL} strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
+        <polyline points={rsiLinePts} fill="none" stroke={SIGNAL_SHORT_ADD} strokeWidth="1.2" />
       </svg>
 
       {/* Legend */}
-      <div className="flex items-center gap-3 text-[9px] text-muted-foreground mt-1">
+      <div className="flex items-center gap-3 text-mini text-muted-foreground mt-1">
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-blue-500 rounded-sm" />MACD</span>
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-orange-500 rounded-sm" />Signal</span>
         <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-fuchsia-500 rounded-sm" />RSI</span>

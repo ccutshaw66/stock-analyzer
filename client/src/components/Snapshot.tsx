@@ -83,7 +83,7 @@ function MetricRow({ label, value, signal, testId }: { label: string; value: str
       </div>
       <div className="flex items-center gap-2">
         <span className={`text-sm font-semibold tabular-nums ${getSignalColor(signal)}`} data-testid={testId}>{value}</span>
-        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+        <span className={`text-micro font-medium px-1.5 py-0.5 rounded ${
           signal === "good" ? "bg-green-500/15 text-green-500" :
           signal === "bad" ? "bg-red-500/15 text-red-500" :
           "bg-yellow-500/15 text-yellow-500"
@@ -154,7 +154,7 @@ export function Snapshot({ data }: SnapshotProps) {
               <span className={`inline-block w-2 h-2 rounded-full ${rangeSignalColor}`} />
               <span>52-Week Range</span>
             </div>
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+            <span className={`text-micro font-medium px-1.5 py-0.5 rounded ${
               rangeSignal === "good" ? "bg-green-500/15 text-green-500" :
               rangeSignal === "bad" ? "bg-red-500/15 text-red-500" :
               "bg-yellow-500/15 text-yellow-500"

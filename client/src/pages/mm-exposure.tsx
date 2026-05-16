@@ -1,6 +1,16 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  SIGNAL_WATCH,
+  BRAND_ACCENT,
+  CHART_EMA_200,
+  BRAND_BG_ELEVATED,
+  BRAND_BORDER_STRONG,
+  COLOR_GRAY_500,
+} from "@/lib/design-tokens";
+import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
   ComposedChart, Area,
 } from "recharts";
@@ -140,7 +150,7 @@ export default function MMExposure() {
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <span className="text-xs text-muted-foreground">Scanning {ticker} options chain...</span>
-            <span className="text-[10px] text-muted-foreground">Fetching 4 expirations, calculating GEX...</span>
+            <span className="text-micro text-muted-foreground">Fetching 4 expirations, calculating GEX...</span>
           </div>
         </div>
       )}
@@ -187,7 +197,7 @@ export default function MMExposure() {
         <div className="flex flex-col items-center justify-center py-16 text-center bg-card border border-card-border rounded-lg">
           <Shield className="h-10 w-10 text-muted-foreground/30 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">Enter a symbol to expose market maker positioning</p>
-          <p className="text-[11px] text-muted-foreground mt-1">Works best on optionable stocks with high open interest (SPY, QQQ, AAPL, TSLA, NVDA...)</p>
+          <p className="text-2xs text-muted-foreground mt-1">Works best on optionable stocks with high open interest (SPY, QQQ, AAPL, TSLA, NVDA...)</p>
         </div>
       )}
 
@@ -201,7 +211,7 @@ export default function MMExposure() {
               <p className="text-xs text-muted-foreground">{data.companyName} · ${data.spot.toFixed(2)}</p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-muted-foreground">Expirations scanned</p>
+              <p className="text-micro text-muted-foreground">Expirations scanned</p>
               <p className="text-xs font-mono text-foreground">{data.expirations.join(", ")}</p>
             </div>
           </div>
@@ -270,32 +280,32 @@ export default function MMExposure() {
           {/* GEX Chart */}
           <div className="bg-card border border-card-border rounded-lg p-4" data-testid="gex-chart">
             <h3 className="text-sm font-bold text-foreground mb-1">Gamma Exposure by Strike</h3>
-            <p className="text-[10px] text-muted-foreground mb-3">Green = Call GEX (resistance above). Red = Put GEX (support below). Net GEX shown as line.</p>
+            <p className="text-micro text-muted-foreground mb-3">Green = Call GEX (resistance above). Red = Put GEX (support below). Net GEX shown as line.</p>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={data.gexByStrike} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                   <XAxis
                     dataKey="strike"
-                    tick={{ fontSize: 10, fill: "#888" }}
+                    tick={{ fontSize: 10, fill: COLOR_GRAY_500 }}
                     tickFormatter={(v: number) => `$${v}`}
                     interval="preserveStartEnd"
                   />
-                  <YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => v >= 1000000 ? `${(v / 1000000).toFixed(0)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                  <YAxis tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} tickFormatter={(v: number) => v >= 1000000 ? `${(v / 1000000).toFixed(0)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
                   <Tooltip
-                    contentStyle={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
+                    contentStyle={{ background: BRAND_BG_ELEVATED, border: `1px solid ${BRAND_BORDER_STRONG}`, borderRadius: 8, fontSize: 11 }}
                     labelFormatter={(v: number) => `Strike: $${v}`}
                     formatter={(value: number, name: string) => {
                       const label = name === "callGEX" ? "Call GEX" : name === "putGEX" ? "Put GEX" : "Net GEX";
                       return [`$${Math.abs(value).toLocaleString()}`, label];
                     }}
                   />
-                  <ReferenceLine x={data.spot} stroke="#6366f1" strokeDasharray="3 3" label={{ value: `Spot $${data.spot.toFixed(0)}`, fill: "#6366f1", fontSize: 10, position: "top" }} />
-                  {data.callWall && <ReferenceLine x={data.callWall.strike} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Call Wall", fill: "#ef4444", fontSize: 9, position: "top" }} />}
-                  {data.putWall && <ReferenceLine x={data.putWall.strike} stroke="#22c55e" strokeDasharray="3 3" label={{ value: "Put Wall", fill: "#22c55e", fontSize: 9, position: "top" }} />}
-                  {data.gammaFlip && <ReferenceLine x={data.gammaFlip} stroke="#eab308" strokeDasharray="5 3" label={{ value: "Flip", fill: "#eab308", fontSize: 9, position: "insideTopRight" }} />}
-                  <Bar dataKey="callGEX" fill="#22c55e" opacity={0.6} />
-                  <Bar dataKey="putGEX" fill="#ef4444" opacity={0.6} />
-                  <Area type="monotone" dataKey="netGEX" stroke="#6366f1" fill="none" strokeWidth={2} dot={false} />
+                  <ReferenceLine x={data.spot} stroke=BRAND_ACCENT strokeDasharray="3 3" label={{ value: `Spot $${data.spot.toFixed(0)}`, fill: BRAND_ACCENT, fontSize: 10, position: "top" }} />
+                  {data.callWall && <ReferenceLine x={data.callWall.strike} stroke=SIGNAL_BEAR strokeDasharray="3 3" label={{ value: "Call Wall", fill: SIGNAL_BEAR, fontSize: 9, position: "top" }} />}
+                  {data.putWall && <ReferenceLine x={data.putWall.strike} stroke=SIGNAL_BULL strokeDasharray="3 3" label={{ value: "Put Wall", fill: SIGNAL_BULL, fontSize: 9, position: "top" }} />}
+                  {data.gammaFlip && <ReferenceLine x={data.gammaFlip} stroke=SIGNAL_WATCH strokeDasharray="5 3" label={{ value: "Flip", fill: SIGNAL_WATCH, fontSize: 9, position: "insideTopRight" }} />}
+                  <Bar dataKey="callGEX" fill=SIGNAL_BULL opacity={0.6} />
+                  <Bar dataKey="putGEX" fill=SIGNAL_BEAR opacity={0.6} />
+                  <Area type="monotone" dataKey="netGEX" stroke=BRAND_ACCENT fill="none" strokeWidth={2} dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -304,21 +314,21 @@ export default function MMExposure() {
           {/* OI Chart */}
           <div className="bg-card border border-card-border rounded-lg p-4" data-testid="oi-chart">
             <h3 className="text-sm font-bold text-foreground mb-1">Open Interest by Strike</h3>
-            <p className="text-[10px] text-muted-foreground mb-3">Where the positions are. Tall bars = heavily defended levels.</p>
+            <p className="text-micro text-muted-foreground mb-3">Where the positions are. Tall bars = heavily defended levels.</p>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.gexByStrike} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <XAxis dataKey="strike" tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => `$${v}`} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
+                  <XAxis dataKey="strike" tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} tickFormatter={(v: number) => `$${v}`} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
                   <Tooltip
-                    contentStyle={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
+                    contentStyle={{ background: BRAND_BG_ELEVATED, border: `1px solid ${BRAND_BORDER_STRONG}`, borderRadius: 8, fontSize: 11 }}
                     labelFormatter={(v: number) => `Strike: $${v}`}
                     formatter={(value: number, name: string) => [value.toLocaleString(), name === "callOI" ? "Call OI" : "Put OI"]}
                   />
-                  <ReferenceLine x={data.spot} stroke="#6366f1" strokeDasharray="3 3" />
-                  <ReferenceLine x={data.maxPain} stroke="#a855f7" strokeDasharray="3 3" label={{ value: "Max Pain", fill: "#a855f7", fontSize: 9, position: "top" }} />
-                  <Bar dataKey="callOI" fill="#22c55e" opacity={0.5} />
-                  <Bar dataKey="putOI" fill="#ef4444" opacity={0.5} />
+                  <ReferenceLine x={data.spot} stroke=BRAND_ACCENT strokeDasharray="3 3" />
+                  <ReferenceLine x={data.maxPain} stroke=CHART_EMA_200 strokeDasharray="3 3" label={{ value: "Max Pain", fill: CHART_EMA_200, fontSize: 9, position: "top" }} />
+                  <Bar dataKey="callOI" fill=SIGNAL_BULL opacity={0.5} />
+                  <Bar dataKey="putOI" fill=SIGNAL_BEAR opacity={0.5} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -339,14 +349,14 @@ export default function MMExposure() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-xs font-bold text-foreground">{idea.strategy}</span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                      <span className={`text-mini font-bold px-1.5 py-0.5 rounded ${
                         idea.sentiment === "Bullish" ? "bg-green-500/15 text-green-400" :
                         idea.sentiment === "Bearish" ? "bg-red-500/15 text-red-400" :
                         "bg-yellow-500/15 text-yellow-400"
                       }`}>{idea.sentiment}</span>
-                      <span className="text-[10px] font-mono text-primary">{idea.level}</span>
+                      <span className="text-micro font-mono text-primary">{idea.level}</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">{idea.reasoning}</p>
+                    <p className="text-2xs text-muted-foreground leading-relaxed">{idea.reasoning}</p>
                   </div>
                 </div>
               ))}
@@ -359,7 +369,7 @@ export default function MMExposure() {
               <div className="flex items-center gap-2 mb-3">
                 <Volume2 className="h-4 w-4 text-yellow-400" />
                 <h3 className="text-sm font-bold text-foreground">Unusual Options Activity</h3>
-                <span className="text-[10px] text-muted-foreground">Volume/OI ratio &gt; 2.0 = fresh positioning</span>
+                <span className="text-micro text-muted-foreground">Volume/OI ratio &gt; 2.0 = fresh positioning</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -379,7 +389,7 @@ export default function MMExposure() {
                     {data.unusualActivity.map((u, i) => (
                       <tr key={i} className="border-b border-card-border/30 hover:bg-muted/30">
                         <td className="py-2 px-2">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${u.type === "CALL" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+                          <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${u.type === "CALL" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
                             {u.type}
                           </span>
                         </td>
@@ -420,10 +430,10 @@ function LevelCard({ label, value, subtitle, icon, color, hint }: {
     <div className="bg-card border border-card-border rounded-lg p-3">
       <div className="flex items-center gap-1 mb-1">
         <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      <span className="block text-[9px] text-muted-foreground">{subtitle || hint}</span>
+      <span className="block text-mini text-muted-foreground">{subtitle || hint}</span>
     </div>
   );
 }
@@ -431,7 +441,7 @@ function LevelCard({ label, value, subtitle, icon, color, hint }: {
 function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="bg-muted/20 border border-card-border/50 rounded-lg p-2.5">
-      <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
+      <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
       <span className={`text-xs font-bold tabular-nums font-mono ${color}`}>{value}</span>
     </div>
   );

@@ -185,7 +185,7 @@ export function ConfluenceDashboardPanel({ bars, indicators, quick }: Confluence
   return (
     <div className="border-t border-border" data-testid="confluence-dashboard-panel">
       <div className="px-4 py-2 flex items-center justify-between">
-        <h3 className="text-[10px] font-bold tracking-widest text-muted-foreground uppercase">
+        <h3 className="text-micro font-bold tracking-widest text-muted-foreground uppercase">
           Confluence Dashboard
         </h3>
         {summary && (
@@ -219,10 +219,10 @@ export function ConfluenceDashboardPanel({ bars, indicators, quick }: Confluence
               data-testid={`confluence-row-${r.label.replace(/\W+/g, "-").toLowerCase()}`}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[11px] text-muted-foreground truncate">{r.label}</span>
+                <span className="text-2xs text-muted-foreground truncate">{r.label}</span>
                 <span className="text-xs font-mono tabular-nums text-foreground truncate">{r.value}</span>
               </div>
-              <span className={`flex items-center gap-0.5 text-[10px] font-bold rounded px-1.5 py-0.5 ${style.bg} ${style.text}`}>
+              <span className={`flex items-center gap-0.5 text-micro font-bold rounded px-1.5 py-0.5 ${style.bg} ${style.text}`}>
                 <Icon className="h-3 w-3" />
                 {style.label}
               </span>

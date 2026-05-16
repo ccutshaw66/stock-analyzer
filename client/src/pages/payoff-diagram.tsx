@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { SIGNAL_BULL, SIGNAL_BEAR, BRAND_ACCENT } from "@/lib/design-tokens";
 import {
   BarChart3, TrendingUp, DollarSign, Target,
   AlertTriangle, Download, LineChart as LineChartIcon,
@@ -326,7 +327,7 @@ export default function PayoffDiagram() {
             <div className="mt-2 p-3 bg-muted/20 border border-card-border/50 rounded-lg">
               {openOptions.length > 0 ? (
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Select an open option position</label>
+                  <label className="text-2xs font-medium text-muted-foreground mb-1 block">Select an open option position</label>
                   <select
                     value={selectedTradeId}
                     onChange={e => handleImportTrade(e.target.value)}
@@ -352,7 +353,7 @@ export default function PayoffDiagram() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="col-span-2 md:col-span-1">
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Strategy</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Strategy</label>
             <select
               value={strategy}
               onChange={e => setStrategy(e.target.value as Strategy)}
@@ -366,7 +367,7 @@ export default function PayoffDiagram() {
           </div>
           {def.fields.map(field => (
             <div key={field}>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">{FIELD_LABELS[field]}</label>
+              <label className="text-2xs font-medium text-muted-foreground mb-1 block">{FIELD_LABELS[field]}</label>
               <input
                 type="number"
                 step={field === "contracts" ? 1 : 0.5}
@@ -444,12 +445,12 @@ export default function PayoffDiagram() {
               {currentStockPrice != null && (
                 <ReferenceLine
                   x={Math.round(currentStockPrice * 100) / 100}
-                  stroke="#6366f1"
+                  stroke=BRAND_ACCENT
                   strokeWidth={2}
                   strokeDasharray="6 3"
                   label={{
                     value: `Current $${currentStockPrice.toFixed(2)}`,
-                    fill: "#6366f1",
+                    fill: BRAND_ACCENT,
                     fontSize: 11,
                     fontWeight: 700,
                     position: "top",
@@ -459,8 +460,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="gain"
-                stroke="#22c55e"
-                fill="#22c55e"
+                stroke=SIGNAL_BULL
+                fill=SIGNAL_BULL
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}
@@ -470,8 +471,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="loss"
-                stroke="#ef4444"
-                fill="#ef4444"
+                stroke=SIGNAL_BEAR
+                fill=SIGNAL_BEAR
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}
@@ -491,7 +492,7 @@ export default function PayoffDiagram() {
 function ResultCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
+      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
       <span className={`text-sm font-bold tabular-nums ${color}`}>{value}</span>
     </div>
   );

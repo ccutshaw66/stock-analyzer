@@ -37,7 +37,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
   };
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#040d22' }}>
+    <div className="min-h-screen flex bg-brand-bg">
       {/* Left side — Branding */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-center items-center p-12 relative overflow-hidden">
         {/* Mesh gradient background */}
@@ -172,7 +172,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
                 <button
                   type="button"
                   onClick={() => { setMode("forgot"); setError(""); setForgotSent(false); }}
-                  className="text-[11px] text-primary hover:underline mt-1.5 block ml-auto"
+                  className="text-2xs text-primary hover:underline mt-1.5 block ml-auto"
                 >
                   Forgot password?
                 </button>

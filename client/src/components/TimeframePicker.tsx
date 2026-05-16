@@ -5,7 +5,7 @@ export function TimeframePicker() {
 
   return (
     <div className="flex items-center gap-1.5 shrink-0" data-testid="timeframe-picker">
-      <span className="hidden md:inline text-[10px] uppercase tracking-wider text-muted-foreground/70">TF</span>
+      <span className="hidden md:inline text-micro uppercase tracking-wider text-muted-foreground/70">TF</span>
       <select
         value={timeframe}
         onChange={(e) => setTimeframe(e.target.value as TimeframeValue)}

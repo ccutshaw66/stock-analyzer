@@ -82,7 +82,7 @@ export default function ConfluenceChartPage() {
       <div className="relative flex-1 flex flex-col">
         <div className="relative" style={{ height: "55vh", minHeight: 360 }}>
           {/* EMA toggle legend — top-left of the candle pane */}
-          <div className="absolute top-2 left-3 z-10 flex items-center gap-1 text-[10px]">
+          <div className="absolute top-2 left-3 z-10 flex items-center gap-1 text-micro">
             <button
               onClick={() => setShowEma21((v) => !v)}
               className={`px-1.5 py-0.5 rounded transition-colors ${

@@ -9,6 +9,7 @@
  * in `trade-tracker.tsx:115-297`.
  */
 import type { ClientCompartmentEntry, CompartmentMeta } from "../types";
+import { TILE_MD, TILE_MIN_MD } from "@/lib/layout-tokens";
 import { MyTradesWidget } from "./MyTradesWidget";
 
 const meta: CompartmentMeta = {
@@ -22,8 +23,8 @@ const meta: CompartmentMeta = {
 export const tradesCompartment: ClientCompartmentEntry = {
   meta,
   WidgetView: MyTradesWidget,
-  widgetDefaultSize: { w: 4, h: 4 },
-  widgetMinSize: { w: 3, h: 3 },
+  widgetDefaultSize: TILE_MD,
+  widgetMinSize: TILE_MIN_MD,
 };
 
 export { meta, MyTradesWidget };

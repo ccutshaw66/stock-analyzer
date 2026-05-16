@@ -26,7 +26,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} 
-        className="text-[11px] text-primary hover:underline flex items-center gap-1 mb-3"
+        className="text-2xs text-primary hover:underline flex items-center gap-1 mb-3"
         data-testid="button-import-position">
         <Download className="h-3 w-3" /> Import Open Position
       </button>
@@ -51,7 +51,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
           </option>
         ))}
       </select>
-      <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground mt-1">Cancel</button>
+      <button onClick={() => setOpen(false)} className="text-micro text-muted-foreground hover:text-foreground mt-1">Cancel</button>
     </div>
   );
 }
@@ -127,7 +127,7 @@ function RiskCalculator() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Trade Type</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
           <select value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground" data-testid="risk-trade-type">
             {optionTypes.map(code => (
@@ -136,29 +136,29 @@ function RiskCalculator() {
           </select>
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block"># Contracts</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block"># Contracts</label>
           <input type="number" value={contracts} onChange={e => setContracts(parseInt(e.target.value) || 1)} min={1}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         {typeDef.legs >= 2 && (
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Spread Width ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Spread Width ($)</label>
             <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(parseFloat(e.target.value) || 0)}
               className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
           </div>
         )}
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Open Price <span className="text-[9px]">(+ credit / - debit)</span></label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Open Price <span className="text-mini">(+ credit / - debit)</span></label>
           <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Account Value ($)</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Account Value ($)</label>
           <input type="number" value={accountValue} onChange={e => setAccountValue(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Max Risk %</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Max Risk %</label>
           <input type="number" step="0.5" value={maxRiskPct} onChange={e => setMaxRiskPct(parseFloat(e.target.value) || 5)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
@@ -240,19 +240,19 @@ function VerticalExpectancy() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">
             {mode === "short" ? "Credit Received ($)" : "Max Profit ($)"}
           </label>
           <input type="number" value={credit} onChange={e => setCredit(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Prob. OTM (%)</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Prob. OTM (%)</label>
           <input type="number" value={probOTM} onChange={e => setProbOTM(parseFloat(e.target.value) || 50)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block"># Trades</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block"># Trades</label>
           <input type="number" value={numTrades} onChange={e => setNumTrades(parseInt(e.target.value) || 10)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
@@ -339,27 +339,27 @@ function DefinedRiskReward() {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Commission ($)</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Commission ($)</label>
           <input type="number" step="0.01" value={commission} onChange={e => setCommission(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">POP (%)</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">POP (%)</label>
           <input type="number" value={pop} onChange={e => setPop(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Strike Width ($)</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Strike Width ($)</label>
           <input type="number" step="0.5" value={strikeWidth} onChange={e => setStrikeWidth(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Open Price <span className="text-[9px]">(+ credit / - debit)</span></label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block">Open Price <span className="text-mini">(+ credit / - debit)</span></label>
           <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(parseFloat(e.target.value) || 0)}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-muted-foreground mb-1 block"># Contracts</label>
+          <label className="text-2xs font-medium text-muted-foreground mb-1 block"># Contracts</label>
           <input type="number" value={contracts} onChange={e => setContracts(parseInt(e.target.value) || 1)} min={1}
             className="w-full h-8 px-2 text-xs bg-background border border-card-border rounded-md text-foreground tabular-nums" />
         </div>
@@ -380,9 +380,9 @@ function DefinedRiskReward() {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-muted-foreground border-b border-card-border">
-              <th className="text-left pb-2 text-[11px] font-semibold uppercase tracking-wider">Exit Target</th>
-              <th className="text-right pb-2 text-[11px] font-semibold uppercase tracking-wider">Close at Profit</th>
-              <th className="text-right pb-2 text-[11px] font-semibold uppercase tracking-wider">Stop at Loss</th>
+              <th className="text-left pb-2 text-2xs font-semibold uppercase tracking-wider">Exit Target</th>
+              <th className="text-right pb-2 text-2xs font-semibold uppercase tracking-wider">Close at Profit</th>
+              <th className="text-right pb-2 text-2xs font-semibold uppercase tracking-wider">Stop at Loss</th>
             </tr>
           </thead>
           <tbody>
@@ -454,7 +454,7 @@ function WeightedPriceCalculator() {
         </div>
         <div className="flex items-center gap-2">
           <select value={calcType} onChange={e => setCalcType(e.target.value as "OPTIONS" | "STOCKS")}
-            className="h-7 px-2 text-[11px] bg-background border border-card-border rounded-md text-foreground">
+            className="h-7 px-2 text-2xs bg-background border border-card-border rounded-md text-foreground">
             <option value="OPTIONS">Options</option>
             <option value="STOCKS">Stocks / ETF</option>
           </select>
@@ -513,8 +513,8 @@ function LegSection({ label, legs, calcType, addLeg, removeLeg, updateLeg, total
       </div>
       <div className="space-y-2">
         <div className="grid grid-cols-[1fr_1fr_28px] gap-2">
-          <span className="text-[10px] text-muted-foreground font-semibold"># {calcType === "OPTIONS" ? "Contracts" : "Shares"}</span>
-          <span className="text-[10px] text-muted-foreground font-semibold">Price</span>
+          <span className="text-micro text-muted-foreground font-semibold"># {calcType === "OPTIONS" ? "Contracts" : "Shares"}</span>
+          <span className="text-micro text-muted-foreground font-semibold">Price</span>
           <span></span>
         </div>
         {legs.map(leg => (
@@ -572,10 +572,10 @@ function ResultCard({ label, value, color, warning, subtitle }: {
     <div className={`bg-muted/30 border rounded-lg p-2.5 ${warning ? "border-red-500/50" : "border-card-border/50"}`}>
       <div className="flex items-center gap-1 mb-0.5">
         {warning && <AlertTriangle className="h-3 w-3 text-red-400" />}
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[10px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-micro text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }

@@ -76,6 +76,36 @@ Grep the diff for:
 
 5. **CHANGES.md entry exists** for the work. Read the top of `CHANGES.md` — if the newest entry doesn't describe what's in the diff, that's a blocker (per the CHANGES.md rule).
 
+6. **Design-tokens rule — every color comes from tokens (BLOCKER for any new `client/` code).**
+
+   The compartmentalization rule says one source of truth. After the design-tokens ship (2026-05-15), the ONLY files allowed to contain raw hex codes or `rgb()`/`rgba()` color literals are:
+   - `client/src/lib/design-tokens.ts` (canonical TS source)
+   - `client/src/index.css` (canonical CSS-variable source)
+   - `client/src/components/ui/chart.tsx` (shadcn Recharts library override selectors — `#ccc` / `#fff` are CSS attribute selectors, not app colors)
+
+   Grep the diff in `client/` for:
+   - `#[0-9a-fA-F]{6}` and `#[0-9a-fA-F]{3}\b` — six- or three-digit hex codes outside the allowed files. **Block.**
+   - `rgba?\(` — raw rgb/rgba calls outside the allowed files. **Block unless** it's the `rgb(var(--token) / alpha)` form that references a CSS variable (that form IS allowed).
+   - Tailwind arbitrary color values like `bg-[#…]`, `text-[#…]`, `border-[#…]`. **Block.** Use named Tailwind tokens (`bg-bull`, `text-brand-text-muted`, `border-brand-border`).
+
+   Exception: URL hash fragments in `path="#anchor"` style props and `href="#anchor"` are NOT hex codes. The regex `#[0-9a-fA-F]{3,6}` won't match these because anchor names typically contain letters outside `a-f`. If a false positive appears, surface it but don't block.
+
+7. **Font-size rule — every font size comes from the scale (BLOCKER for any new `client/` code).**
+
+   No new `text-[Npx]` arbitrary tailwind values are allowed. The font-size scale in `tailwind.config.js` covers:
+   - `text-tiny` (8px), `text-mini` (9px), `text-micro` (10px), `text-2xs` (11px)
+   - Plus the standard Tailwind scale (`text-xs`, `text-sm`, `text-base`, …)
+
+   Grep the diff for `text-\[[0-9]+px\]`. Any hit in `client/` is a blocker — replace with the appropriate named token. If a size isn't covered, add it to the `fontSize` config in `tailwind.config.js` first.
+
+8. **Tile-size rule — every dashboard widget size comes from layout tokens (BLOCKER for any new compartment manifest).**
+
+   Compartment manifests must not contain raw `{ w, h }` numbers for `widgetDefaultSize` or `widgetMinSize`. They must reference named slots from `@shared/dashboard/layout-tokens`:
+   - `TILE_SM`, `TILE_MD`, `TILE_LG`, `TILE_FULL`
+   - `TILE_MIN_SM`, `TILE_MIN_MD`, `TILE_MIN_LG`
+
+   Same rule applies to `server/dashboard/layout.ts` and any other server code that produces a default layout — widget positions must spread `...TILE_*` for `w`/`h`, not literal numbers.
+
 ### C. Efficiency & code quality (SHOULD-FIX)
 
 1. **Duplicated indicator math.** If the diff adds an EMA/RSI/MACD/SMA computation, check whether `server/indicators/` already has one. Duplication is a smell.
@@ -127,6 +157,30 @@ Plain English, no file paths in chat unless asked. Group by severity:
 If verdict is READY, end with: "Safe to ship." Chris can chain `/ship` from there.
 
 If verdict is NOT READY, end with: "Fix blockers then re-run /verify-work." Don't auto-fix — Chris decides which findings get addressed.
+
+## Site-wide audit mode
+
+When Chris asks to "audit the whole site" / "report what's not adhering to the compartment rule" / "site-wide verify" (NOT just the current diff), expand the scope and report on the entire `client/` + `server/` tree, not the diff.
+
+What to check site-wide:
+
+1. **Hex/rgb leakage.** `grep -rE "#[0-9a-fA-F]{6}" client/src --include="*.tsx" --include="*.ts"` outside the allowed files (see rule B6). Same for `rgba?\(...\)` outside the var-reference form. Same for `bg-[#…]` / `text-[#…]` / `border-[#…]` arbitrary-color Tailwind values.
+
+2. **Font-size leakage.** `grep -rE "text-\[[0-9]+px\]" client/src --include="*.tsx"`. Any hit = a component reaching for an arbitrary size. Should be a named token.
+
+3. **Tile-size leakage.** `grep -rE "widgetDefaultSize:|widgetMinSize:" client/src --include="*.ts" --include="*.tsx"` and check the value side — should be `TILE_*` identifiers, not `{ w: N, h: N }` literals. Same for `widgets: [...]` arrays in `server/dashboard/`.
+
+4. **Cache layer bypasses.** `grep -rn "fmpGet(" server/` outside the canonical cache modules (`server/cache.ts`, `server/institutional-cache.ts`, `server/long-range-cache.ts`, `server/market-pulse-cache.ts`, `server/long-range-warmup.ts`, etc.) — direct FMP calls in route handlers or compartment data accessors are fine if they're truly request-scoped (real-time quotes), but flag any that look like quarterly / fundamentals data hitting the wire on every request.
+
+5. **Yahoo / Polygon ghost code.** `grep -rni "yahoo\|polygon" client/src server/` — surface every remaining reference, even in comments. Per the kill plan, both providers should be drained over time.
+
+6. **Strategy registry drift.** Strategies under `server/signals/strategies/` should all be referenced in the strategy registry AND the `/chart` page toggles. If one is registered server-side but missing from the client toggle, that's drift.
+
+7. **Compartments not in the registry.** Any folder under `server/compartments/` or `client/src/compartments/` that isn't imported in the matching `registry.ts`. Manifest must be wired.
+
+8. **Mixed-source signal colors.** Any chart legend or badge using `text-green-400` / `text-red-400` / `bg-yellow-500/15` (Tailwind palette classes) instead of the semantic `text-bull` / `text-bear` / `bg-watch/15` tokens. These visually overlap but break the "single source" rule — a brand-color swap won't reach them.
+
+Site-wide audit output is a categorized report with a count per category, top offending files, and a one-line recommendation per category. Don't auto-fix anything — Chris decides priority.
 
 ## Hard rules
 

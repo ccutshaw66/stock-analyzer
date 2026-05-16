@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  BRAND_BG_ELEVATED,
+  BRAND_BORDER_STRONG,
+  COLOR_GRAY_500,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Trophy, TrendingUp, TrendingDown, Target, BarChart3,
@@ -161,13 +168,13 @@ export default function TrackRecord() {
               <div className="h-[200px] mb-3">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.byScoreBracket.day30.filter(b => b.count > 0)} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#888" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => `${v}%`} />
-                    <Tooltip contentStyle={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }} />
-                    <ReferenceLine y={0} stroke="#333" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} />
+                    <YAxis tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} tickFormatter={(v: number) => `${v}%`} />
+                    <Tooltip contentStyle={{ background: BRAND_BG_ELEVATED, border: `1px solid ${BRAND_BORDER_STRONG}`, borderRadius: 8, fontSize: 11 }} />
+                    <ReferenceLine y={0} stroke="rgb(var(--brand-border-strong))" />
                     <Bar dataKey="avgReturn" name="Avg Return">
                       {data.byScoreBracket.day30.filter(b => b.count > 0).map((entry, i) => (
-                        <Cell key={i} fill={entry.avgReturn >= 0 ? "#22c55e" : "#ef4444"} opacity={0.7} />
+                        <Cell key={i} fill={entry.avgReturn >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} opacity={0.7} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -207,7 +214,7 @@ export default function TrackRecord() {
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-card-border/30 last:border-0">
                     <div>
                       <span className="font-mono font-bold text-xs text-foreground">{c.ticker}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">{c.date}</span>
+                      <span className="text-micro text-muted-foreground ml-2">{c.date}</span>
                     </div>
                     <span className="font-mono font-bold text-xs text-green-400">+{c.return30d?.toFixed(1)}%</span>
                   </div>
@@ -223,7 +230,7 @@ export default function TrackRecord() {
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-card-border/30 last:border-0">
                     <div>
                       <span className="font-mono font-bold text-xs text-foreground">{c.ticker}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">{c.date}</span>
+                      <span className="text-micro text-muted-foreground ml-2">{c.date}</span>
                     </div>
                     <span className="font-mono font-bold text-xs text-red-400">{c.return30d?.toFixed(1)}%</span>
                   </div>
@@ -257,7 +264,7 @@ export default function TrackRecord() {
                       <td className="py-2 px-2 text-muted-foreground font-mono">{s.date.substring(5)}</td>
                       <td className="py-2 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
                       <td className="py-2 px-2 text-center">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${signalBg(s.signal)} ${signalColor(s.signal)}`}>
+                        <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${signalBg(s.signal)} ${signalColor(s.signal)}`}>
                           {s.signal.replace("_", " ")}
                         </span>
                       </td>
@@ -301,10 +308,10 @@ function StatCard({ label, value, icon, color, subtitle }: {
     <div className="bg-card border border-card-border rounded-lg p-3">
       <div className="flex items-center gap-1 mb-1">
         <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[9px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-mini text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }

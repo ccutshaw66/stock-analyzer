@@ -104,7 +104,7 @@ function signalBadge(signal: string) {
     "NEUTRAL": "bg-yellow-500/20 text-yellow-400",
   };
   return (
-    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md uppercase ${colors[signal] || colors.NEUTRAL}`}>
+    <span className={`text-2xs font-bold px-2 py-0.5 rounded-md uppercase ${colors[signal] || colors.NEUTRAL}`}>
       {signal}
     </span>
   );
@@ -401,18 +401,18 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{tx.insider}</span>
                       {notable && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
+                        <span className="text-mini px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
                           Key
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">{tx.relation}</span>
+                    <span className="text-micro text-muted-foreground">{tx.relation}</span>
                   </td>
                   <td className="py-2 pr-2">
                     <div className="flex items-center gap-1.5" title={tx.explain || ""}>
                       <span className={`font-medium ${dirColor}`}>{tx.type}</span>
                       {tx.typeCode && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                        <span className="text-mini px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
                           {tx.typeCode}
                         </span>
                       )}
@@ -437,9 +437,9 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
 function MiniCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
+      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
       <span className={`text-sm font-bold tabular-nums ${color || "text-foreground"}`}>{value}</span>
-      {sub && <span className="block text-[10px] text-muted-foreground">{sub}</span>}
+      {sub && <span className="block text-micro text-muted-foreground">{sub}</span>}
     </div>
   );
 }
@@ -460,7 +460,7 @@ function ResultCard({ data, rank, onClick }: { data: InstitutionalData; rank: nu
               <span className="font-mono font-bold text-base text-foreground">{data.ticker}</span>
               {signalBadge(data.signal)}
               {volSurge && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex items-center gap-0.5">
+                <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex items-center gap-0.5">
                   <Zap className="h-2.5 w-2.5" />{volRatio.toFixed(1)}x Vol
                 </span>
               )}
@@ -678,7 +678,7 @@ export default function Institutional() {
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground placeholder:text-muted-foreground"
               data-testid="input-custom-tickers"
             />
-            <p className="text-[10px] text-muted-foreground mt-1">Comma-separated, max 50. Scans each ticker for institutional activity.</p>
+            <p className="text-micro text-muted-foreground mt-1">Comma-separated, max 50. Scans each ticker for institutional activity.</p>
           </div>
         )}
 
@@ -695,7 +695,7 @@ export default function Institutional() {
 
       {/* Scan Status */}
       {scanData && !scanFetching && (
-        <div className="text-center text-[11px] text-muted-foreground">
+        <div className="text-center text-2xs text-muted-foreground">
           Scanned {scanData.totalScanned} stocks at {new Date(scanData.scannedAt).toLocaleTimeString()} · {(scanData.results ?? []).length} results · Ranked by money flow strength
         </div>
       )}

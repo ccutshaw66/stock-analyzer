@@ -18,6 +18,19 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BULL_EMERALD,
+  SIGNAL_BEAR,
+  SIGNAL_WATCH,
+  SIGNAL_REDUCE,
+  SIGNAL_SHORT_ADD,
+  SIGNAL_TREND_EXIT,
+  COLOR_GRAY_NEUTRAL,
+  ACCENT_SKY,
+  CHART_RSI,
+  CHART_GRID_DARK,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,14 +183,14 @@ type DotCategory =
   | "info";             // hollow magenta/orange — info-only (shorts, watch_sell)
 
 const CATEGORY_COLOR: Record<DotCategory, string> = {
-  core_entry: "#0ea5e9",
-  tactical_entry: "#10b981",
-  long_entry: "#10b981",
-  exit_win: "#14b8a6",
-  exit_loss: "#ef4444",
-  exit_clean: "#64748b",
-  watch: "#eab308",
-  info: "#d946ef",
+  core_entry: ACCENT_SKY,
+  tactical_entry: SIGNAL_BULL_EMERALD,
+  long_entry: SIGNAL_BULL_EMERALD,
+  exit_win: SIGNAL_REDUCE,
+  exit_loss: SIGNAL_BEAR,
+  exit_clean: COLOR_GRAY_NEUTRAL,
+  watch: SIGNAL_WATCH,
+  info: SIGNAL_SHORT_ADD,
 };
 
 function categorizeDot(s: ChartSignalDot): DotCategory {
@@ -188,8 +201,8 @@ function categorizeDot(s: ChartSignalDot): DotCategory {
   if (!s.filled) return "info";
   if (s.type === "EXIT") {
     // Color signal preserves win/loss/clean distinction set by the backend.
-    if (s.color === "#14b8a6") return "exit_win";
-    if (s.color === "#ef4444") return "exit_loss";
+    if (s.color === SIGNAL_REDUCE) return "exit_win";
+    if (s.color === SIGNAL_BEAR) return "exit_loss";
     return "exit_clean";
   }
   if (s.type === "REDUCE") return "exit_win";
@@ -338,17 +351,17 @@ function StrategyChart({ data, highlightedTradeNum }: {
     <div className="w-full" style={{ height: 420 }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 30 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_DARK} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tick={{ fontSize: 10, fill: SIGNAL_TREND_EXIT }}
             interval="preserveStartEnd"
             minTickGap={50}
             type="category"
             allowDuplicatedCategory={false}
           />
           <YAxis
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tick={{ fontSize: 10, fill: SIGNAL_TREND_EXIT }}
             domain={["auto", "auto"]}
             tickFormatter={v => `$${typeof v === "number" ? v.toFixed(0) : v}`}
           />
@@ -360,7 +373,7 @@ function StrategyChart({ data, highlightedTradeNum }: {
               key={area.key}
               x1={area.x1}
               x2={area.x2}
-              fill={area.regime === "BULLISH" ? "#10b981" : "#ef4444"}
+              fill={area.regime === "BULLISH" ? SIGNAL_BULL_EMERALD : SIGNAL_BEAR}
               fillOpacity={0.06}
               ifOverflow="extendDomain"
             />
@@ -369,7 +382,7 @@ function StrategyChart({ data, highlightedTradeNum }: {
           <Line
             type="monotone"
             dataKey="close"
-            stroke="#3b82f6"
+            stroke=CHART_RSI
             strokeWidth={1.5}
             dot={false}
             isAnimationActive={false}
@@ -420,7 +433,7 @@ function SummaryStats({ summary }: { summary: ChartSummary }) {
         <div key={i} className="bg-card border border-card-border rounded-lg p-3">
           <div className="text-xs text-muted-foreground">{c.label}</div>
           <div className={`text-lg font-bold tabular-nums ${c.color}`}>{c.value}</div>
-          <div className="text-[10px] text-muted-foreground mt-0.5 truncate" title={c.hint}>{c.hint}</div>
+          <div className="text-micro text-muted-foreground mt-0.5 truncate" title={c.hint}>{c.hint}</div>
         </div>
       ))}
     </div>
@@ -551,7 +564,7 @@ function TradeList({
               >
                 <td className="px-2 py-1.5 text-muted-foreground tabular-nums font-semibold">{t.tradeNumber}</td>
                 <td className="px-2 py-1.5">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  <span className={`text-micro px-1.5 py-0.5 rounded ${
                     t.layer === "CORE" ? "bg-sky-500/20 text-sky-300" :
                     t.layer === "TACTICAL" ? "bg-emerald-500/20 text-emerald-300" :
                     "bg-zinc-500/20 text-zinc-300"
@@ -561,10 +574,10 @@ function TradeList({
                 <td className="px-2 py-1.5">
                   <span className={t.side === "LONG" ? "text-green-400" : "text-red-400"}>{t.side}</span>
                 </td>
-                <td className="px-2 py-1.5 font-mono text-[11px]">
+                <td className="px-2 py-1.5 font-mono text-2xs">
                   {fmtDate(t.entryDate)} <span className="text-muted-foreground">${t.entryPrice.toFixed(2)}</span>
                 </td>
-                <td className="px-2 py-1.5 font-mono text-[11px]">
+                <td className="px-2 py-1.5 font-mono text-2xs">
                   {t.isOpen
                     ? <span className="text-blue-400">OPEN</span>
                     : <>{fmtDate(t.exitDate)} <span className="text-muted-foreground">${t.exitPrice?.toFixed(2)}</span></>}
@@ -576,7 +589,7 @@ function TradeList({
                 <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${won ? "text-green-400" : "text-red-400"}`}>
                   {fmtMoney(t.pnlDollar)}
                 </td>
-                <td className="px-2 py-1.5 text-[10px] text-muted-foreground">
+                <td className="px-2 py-1.5 text-micro text-muted-foreground">
                   {t.exitReason ?? "—"}
                 </td>
               </tr>
@@ -663,7 +676,7 @@ export default function ChartPage() {
           {/* Methodology context — replaces the misleading "$5.28M basket" badge.
               The basket result is OUR test methodology, not a user-experience
               guarantee. */}
-          <div className="mt-2 text-[11px] text-muted-foreground bg-muted/30 border border-card-border rounded p-2 leading-relaxed">
+          <div className="mt-2 text-2xs text-muted-foreground bg-muted/30 border border-card-border rounded p-2 leading-relaxed">
             <strong className="text-foreground">Backtest methodology:</strong> All five strategies were backtested over 10 years (2015–2026) on an 80-ticker basket spanning all 11 sectors plus SPY/QQQ/DIA/IWM benchmarks. Results vary widely by ticker — this page shows you exactly how each strategy traded the active ticker, not basket averages. Past results don&apos;t guarantee future performance.
           </div>
         </CardContent>
@@ -709,15 +722,15 @@ export default function ChartPage() {
             <CardContent className="p-3">
               <StrategyChart data={data} highlightedTradeNum={highlightedTradeNum} />
               {/* Legend */}
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 mt-2 text-micro text-muted-foreground">
                 {data.regimeBands.length > 0 && (
                   <>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: "#10b98140" }} />
+                      <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: `${SIGNAL_BULL_EMERALD}40` }} />
                       Bullish regime
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: "#ef444440" }} />
+                      <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: `${SIGNAL_BEAR}40` }} />
                       Bearish regime
                     </span>
                   </>
@@ -725,38 +738,38 @@ export default function ChartPage() {
                 {data.strategy.startsWith("tft") ? (
                   <>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#0ea5e9" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: ACCENT_SKY }} />
                       Core entry
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#10b981" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_BULL_EMERALD }} />
                       Tactical entry
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#14b8a6" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_REDUCE }} />
                       Win exit
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#ef4444" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_BEAR }} />
                       Loss exit
                     </span>
                   </>
                 ) : (
                   <>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#10b981" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_BULL_EMERALD }} />
                       Long entry
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#14b8a6" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_REDUCE }} />
                       Reduce / win exit
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#ef4444" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: SIGNAL_BEAR }} />
                       Stop / loss
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: "#64748b" }} />
+                      <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: COLOR_GRAY_NEUTRAL }} />
                       Trend exit
                     </span>
                   </>
@@ -790,7 +803,7 @@ export default function ChartPage() {
                 {highlightedTradeNum != null && (
                   <button
                     onClick={() => setHighlightedTradeNum(null)}
-                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                    className="text-micro text-muted-foreground hover:text-foreground"
                   >
                     clear highlight
                   </button>

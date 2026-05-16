@@ -251,7 +251,7 @@ export default function MarketPulsePage() {
             </div>
           </div>
           {data.breadth.universeSize != null && (
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-micro text-muted-foreground">
               Across {data.breadth.universeSize} S&amp;P 500 names · refreshed {timeAgo(data.breadthAsOf)}
             </div>
           )}
@@ -298,7 +298,7 @@ export default function MarketPulsePage() {
               <div className="flex items-baseline justify-between">
                 <div>
                   <div className="text-sm font-bold text-foreground">{idx.symbol}</div>
-                  <div className="text-[11px] text-muted-foreground">{idx.name}</div>
+                  <div className="text-2xs text-muted-foreground">{idx.name}</div>
                 </div>
                 <div className={`flex items-center gap-1 text-sm font-semibold ${pctColor(idx.changePct)}`}>
                   {idx.changePct != null && (idx.changePct >= 0
@@ -310,7 +310,7 @@ export default function MarketPulsePage() {
               <div className="mt-2 text-xl font-bold text-foreground tabular-nums">
                 {idx.price == null ? "—" : formatCurrency(idx.price)}
               </div>
-              <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <div className="mt-2 flex items-center gap-3 text-2xs text-muted-foreground">
                 <span className={idx.above50d ? "text-green-400" : idx.above50d === false ? "text-red-400" : ""}>
                   {idx.above50d == null ? "—" : (idx.above50d ? "✓" : "✗")} 50d
                 </span>
@@ -365,7 +365,7 @@ export default function MarketPulsePage() {
             </div>
           </div>
         </div>
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-micro text-muted-foreground">
           Regime tag: &gt;80 silver looks cheap · 60–80 fair · &lt;60 gold looks cheap.
         </div>
       </section>

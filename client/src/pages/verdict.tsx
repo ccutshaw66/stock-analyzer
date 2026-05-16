@@ -1,4 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL_LIGHT,
+  SIGNAL_BEAR_LIGHT,
+  SIGNAL_WATCH_LIGHT,
+  OVERLAY_BULL_30,
+  OVERLAY_WATCH_25,
+  OVERLAY_BEAR_30,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
@@ -91,15 +99,15 @@ function ringColorClass(score: number): string {
 }
 
 function ringStrokeColor(score: number): string {
-  if (score >= 70) return "#4ade80";
-  if (score >= 40) return "#facc15";
-  return "#f87171";
+  if (score >= 70) return SIGNAL_BULL_LIGHT;
+  if (score >= 40) return SIGNAL_WATCH_LIGHT;
+  return SIGNAL_BEAR_LIGHT;
 }
 
 function ringGlowColor(score: number): string {
-  if (score >= 70) return "rgba(74, 222, 128, 0.3)";
-  if (score >= 40) return "rgba(250, 204, 21, 0.25)";
-  return "rgba(248, 113, 113, 0.3)";
+  if (score >= 70) return OVERLAY_BULL_30;
+  if (score >= 40) return OVERLAY_WATCH_25;
+  return OVERLAY_BEAR_30;
 }
 
 function barColor(color: string): string {
@@ -338,7 +346,7 @@ export default function Verdict() {
         <div className="text-center py-16 text-muted-foreground">
           <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
-          <p className="text-[10px] mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
+          <p className="text-micro mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
         </div>
       </div>
     );
@@ -471,7 +479,7 @@ export default function Verdict() {
           <div className={`mt-5 px-5 py-1.5 rounded-full border text-sm font-bold tracking-wider uppercase ${verdictBadgeStyle(data.finalVerdict)}`}>
             {data.finalVerdict}
           </div>
-          <span className="mt-2 text-[10px] text-muted-foreground/50 uppercase tracking-widest">Long-Term Outlook — Not a Trade Signal</span>
+          <span className="mt-2 text-micro text-muted-foreground/50 uppercase tracking-widest">Long-Term Outlook — Not a Trade Signal</span>
 
           {/* Company info */}
           <h2 className="mt-4 text-lg font-semibold text-foreground">{data.companyName}</h2>
@@ -504,7 +512,7 @@ export default function Verdict() {
                   <span className="text-sm font-medium text-foreground">{factor.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md uppercase ${signalBadgeColor(factor.color)}`}>
+                  <span className={`text-2xs font-bold px-2 py-0.5 rounded-md uppercase ${signalBadgeColor(factor.color)}`}>
                     {factor.signal}
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">
@@ -594,7 +602,7 @@ export default function Verdict() {
             </table>
           </div>
 
-          <div className="px-6 py-2.5 border-t border-card-border/40 text-[10px] text-muted-foreground flex items-center gap-1.5">
+          <div className="px-6 py-2.5 border-t border-card-border/40 text-micro text-muted-foreground flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm bg-green-500/[0.08] border border-green-500/20" />
             <span>Highlighted rows indicate {data.ticker} outperformed the S&amp;P 500</span>
           </div>
@@ -619,7 +627,7 @@ export default function Verdict() {
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-semibold text-foreground">Fundamental Analysis</span>
                   </div>
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border uppercase ${
+                  <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.analysis.verdict === "YES"
                       ? "bg-green-500/15 text-green-400 border-green-500/20"
                       : data.analysis.verdict === "NO"
@@ -666,7 +674,7 @@ export default function Verdict() {
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-semibold text-foreground">Institutional Flow</span>
                   </div>
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border uppercase ${
+                  <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.institutional.signal.includes("INFLOW") || data.institutional.signal === "ACCUMULATING"
                       ? "bg-green-500/15 text-green-400 border-green-500/20"
                       : data.institutional.signal.includes("OUTFLOW") || data.institutional.signal === "DISTRIBUTING"
@@ -692,27 +700,27 @@ export default function Verdict() {
                 {/* Quick stats */}
                 <div className="grid grid-cols-2 gap-3 border-t border-card-border pt-3">
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Institutional %</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Institutional %</p>
                     <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.institutionPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider %</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider %</p>
                     <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.insiderPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
                     <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.instIncreased}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Inst. Decreasing</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Decreasing</p>
                     <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.instDecreased}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider Buys</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Buys</p>
                     <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.insiderBuyCount}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider Sells</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Sells</p>
                     <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.insiderSellCount}</p>
                   </div>
                 </div>

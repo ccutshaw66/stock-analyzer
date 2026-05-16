@@ -115,7 +115,7 @@ export default function OnboardingTour({ onComplete }: { onComplete: () => void 
 
         {/* Header with skip */}
         <div className="flex items-center justify-between px-5 pt-4">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">
             Step {step + 1} of {TOUR_STEPS.length}
           </span>
           <button
@@ -137,7 +137,7 @@ export default function OnboardingTour({ onComplete }: { onComplete: () => void 
               <p className="text-sm text-muted-foreground leading-relaxed">{current.description}</p>
               <div className="mt-3 flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
                 <Rocket className="h-3 w-3 text-primary mt-0.5 shrink-0" />
-                <span className="text-[11px] text-primary/80">{current.tip}</span>
+                <span className="text-2xs text-primary/80">{current.tip}</span>
               </div>
             </div>
           </div>

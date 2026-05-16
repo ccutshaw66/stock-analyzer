@@ -149,7 +149,7 @@ function StickyHeader({
 
       {/* Logo */}
       <Link href="/">
-        <div className="hidden sm:flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: '#040d22' }}>
+        <div className="hidden sm:flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={logoTextUrl} alt="Stock Otter" className="h-8 w-auto" />
         </div>
       </Link>
@@ -183,9 +183,9 @@ function StickyHeader({
                 >
                   <div className="min-w-0">
                     <span className="font-mono font-bold text-xs text-foreground">{r.symbol}</span>
-                    <span className="text-[10px] text-muted-foreground ml-2 truncate">{r.name}</span>
+                    <span className="text-micro text-muted-foreground ml-2 truncate">{r.name}</span>
                   </div>
-                  <span className="text-[9px] text-muted-foreground shrink-0 ml-2">{r.type}</span>
+                  <span className="text-mini text-muted-foreground shrink-0 ml-2">{r.type}</span>
                 </div>
               ))}
             </div>
@@ -225,7 +225,7 @@ function StickyHeader({
             <p className="text-sm font-bold text-foreground truncate max-w-[200px] leading-tight" data-testid="header-company">
               {analysisData.companyName}
             </p>
-            <p className="text-[10px] text-muted-foreground leading-tight">
+            <p className="text-micro text-muted-foreground leading-tight">
               <span className="font-mono font-semibold text-foreground" data-testid="header-ticker">{analysisData.ticker}</span>
               <span className="mx-1">·</span>{analysisData.assetType}
               <span className="mx-1">·</span>{analysisData.sector}
@@ -238,7 +238,7 @@ function StickyHeader({
               <span className="text-base font-bold tabular-nums text-foreground" data-testid="header-price">
                 {formatCurrency(analysisData.price)}
               </span>
-              <span className={`text-[11px] font-semibold tabular-nums ${changeColor}`} data-testid="header-change">
+              <span className={`text-2xs font-semibold tabular-nums ${changeColor}`} data-testid="header-change">
                 {analysisData.changePercent !== null
                   ? (analysisData.changePercent >= 0 ? "+" : "") + analysisData.changePercent.toFixed(2) + "%"
                   : ""}
@@ -251,7 +251,7 @@ function StickyHeader({
             <span className={`text-lg font-bold tabular-nums ${verdictColor.text}`}>
               {analysisData.score.toFixed(2)}
             </span>
-            <span className="text-[9px] text-muted-foreground"> / 10</span>
+            <span className="text-mini text-muted-foreground"> / 10</span>
           </div>
         </div>
       )}
@@ -296,7 +296,7 @@ function StickyHeader({
               <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-card-border rounded-xl shadow-lg z-50 py-2">
                 <div className="px-3 py-2 border-b border-card-border">
                   <p className="text-sm font-semibold text-foreground truncate">{user.displayName || "User"}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                  <p className="text-2xs text-muted-foreground truncate">{user.email}</p>
                 </div>
                 <div className="py-1">
                   <div
@@ -374,7 +374,7 @@ function ScoreBadge({
             }`} />
           ))}
         </div>
-        <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
+        <span className={`text-mini font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
           {verdict}
         </span>
       </div>
@@ -383,7 +383,7 @@ function ScoreBadge({
 
   // Legacy profile score — show refresh indicator
   return (
-    <span className="text-[9px] text-muted-foreground/50 italic">refresh</span>
+    <span className="text-mini text-muted-foreground/50 italic">refresh</span>
   );
 }
 
@@ -906,9 +906,9 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
                   <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-foreground">{selected.symbol}</span>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{selected.tradeType}</span>
+                      <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{selected.tradeType}</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
+                    <p className="text-2xs text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
                   </div>
                   <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
                     <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required /></div>
@@ -916,7 +916,7 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"}</label>
                     <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50" required
                       className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
-                    <p className="text-[10px] text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
+                    <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
                   <button type="submit" disabled={closeMut.isPending}
                     className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50">
                     {closeMut.isPending ? "Closing..." : "Close Trade"}
@@ -946,9 +946,9 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
-          <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
+          <span className={`text-mini font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-micro text-muted-foreground">
           {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
         </p>
       </div>
@@ -956,16 +956,16 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
         {t.currentPrice ? (
           t.tradeCategory === 'Stock' ? (
             <>
-              <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+              <div className={`text-2xs font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
                 {isUp ? '+' : ''}{pl.toFixed(0)}
               </div>
-              <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+              <div className="text-mini text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
             </>
           ) : (
-            <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+            <div className="text-mini text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
           )
         ) : (
-          <span className="text-[10px] text-muted-foreground">—</span>
+          <span className="text-micro text-muted-foreground">—</span>
         )}
       </div>
     </div>
@@ -997,11 +997,11 @@ function SidebarContent({
     <>
       {/* Logo */}
       {expanded ? (
-        <div className="px-2 py-3 border-b border-card-border" style={{ backgroundColor: '#040d22' }}>
+        <div className="px-2 py-3 border-b border-card-border" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={logoUrl} alt="Stock Otter" className="w-full h-auto" />
         </div>
       ) : (
-        <div className="p-1.5 border-b border-card-border flex justify-center" style={{ backgroundColor: '#040d22' }}>
+        <div className="p-1.5 border-b border-card-border flex justify-center" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={iconUrl} alt="Stock Otter" className="w-full h-auto rounded-lg" />
         </div>
       )}
@@ -1015,7 +1015,7 @@ function SidebarContent({
               {expanded && (
                 <button
                   onClick={() => setGroupOpen((prev: any) => ({ ...prev, [group.label]: !isOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  className="flex items-center justify-between w-full px-3 py-1 text-micro font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
                 >
                   {group.label}
                   {isOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
@@ -1067,13 +1067,13 @@ function SidebarContent({
               {expanded ? (
                 <button
                   onClick={() => setGroupOpen((prev: any) => ({ ...prev, Watchlist: !isWatchlistOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  className="flex items-center justify-between w-full px-3 py-1 text-micro font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
                   data-testid="toggle-watchlist"
                 >
                   <span className="flex items-center gap-2">
                     Watchlist
                     {sortedWatchlist.length > 0 && (
-                      <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
+                      <span className="text-micro bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
                         {sortedWatchlist.length}
                       </span>
                     )}
@@ -1088,7 +1088,7 @@ function SidebarContent({
               {isWatchlistOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
                   {sortedWatchlist.length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground text-center py-3">
+                    <p className="text-micro text-muted-foreground text-center py-3">
                       No stocks on watchlist
                     </p>
                   ) : (
@@ -1107,7 +1107,7 @@ function SidebarContent({
                           <span className="font-mono font-bold text-xs text-foreground">
                             {item.ticker}
                           </span>
-                          <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">
+                          <p className="text-micro text-muted-foreground truncate max-w-[100px]">
                             {item.companyName}
                           </p>
                         </div>
@@ -1135,7 +1135,7 @@ function SidebarContent({
                     <button
                       onClick={() => refreshMutation.mutate("watchlist")}
                       disabled={refreshMutation.isPending}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-micro text-muted-foreground hover:text-foreground transition-colors"
                       data-testid="button-refresh-watchlist"
                     >
                       <RefreshCw
@@ -1161,12 +1161,12 @@ function SidebarContent({
               {expanded ? (
                 <button
                   onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Options": !isOptionsOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  className="flex items-center justify-between w-full px-3 py-1 text-micro font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
                   data-testid="toggle-trades"
                 >
                   <span className="flex items-center gap-2">
                     Active Options
-                    {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
+                    {optionTrades.length > 0 && <span className="text-micro bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
                   </span>
                   {isOptionsOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
                 </button>
@@ -1177,7 +1177,7 @@ function SidebarContent({
               )}
               {isOptionsOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
-                  {optionTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open options</p>
+                  {optionTrades.length === 0 ? <p className="text-micro text-muted-foreground text-center py-2">No open options</p>
                   : optionTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
                 </div>
               )}
@@ -1194,11 +1194,11 @@ function SidebarContent({
               {expanded ? (
                 <button
                   onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Stocks": !isStocksOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  className="flex items-center justify-between w-full px-3 py-1 text-micro font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
                 >
                   <span className="flex items-center gap-2">
                     Active Stocks
-                    {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
+                    {stockTrades.length > 0 && <span className="text-micro bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
                   </span>
                   {isStocksOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
                 </button>
@@ -1209,7 +1209,7 @@ function SidebarContent({
               )}
               {isStocksOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
-                  {stockTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open stocks</p>
+                  {stockTrades.length === 0 ? <p className="text-micro text-muted-foreground text-center py-2">No open stocks</p>
                   : stockTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
                 </div>
               )}

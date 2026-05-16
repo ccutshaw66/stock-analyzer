@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { SIGNAL_BULL, SIGNAL_BEAR, SIGNAL_WATCH } from "@/lib/design-tokens";
 import {
   BarChart3, TrendingUp, Target, DollarSign,
   Activity, AlertTriangle, Percent, Award,
@@ -147,7 +148,7 @@ export default function TradeAnalytics() {
       .map(t => ({
         label: `${t.symbol} (${t.tradeType})`,
         efficiency: Math.round(t.exitEfficiency * 10) / 10,
-        fill: t.exitEfficiency >= 70 ? "#22c55e" : t.exitEfficiency >= 30 ? "#eab308" : "#ef4444",
+        fill: t.exitEfficiency >= 70 ? SIGNAL_BULL : t.exitEfficiency >= 30 ? SIGNAL_WATCH : SIGNAL_BEAR,
       }));
   }, [mfeData]);
 
@@ -327,7 +328,7 @@ export default function TradeAnalytics() {
                 subtitle="of available profit captured"
               />
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">
+            <p className="text-micro text-muted-foreground mt-2">
               Exit efficiency = Actual P/L ÷ Max Favorable Excursion. Shows how well you time your exits.
             </p>
           </div>
@@ -359,7 +360,7 @@ export default function TradeAnalytics() {
                 />
                 <Bar dataKey="pl" radius={[4, 4, 0, 0]}>
                   {monthlyData.map((entry, index) => (
-                    <Cell key={index} fill={entry.pl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+                    <Cell key={index} fill={entry.pl >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} fillOpacity={0.8} />
                   ))}
                 </Bar>
               </BarChart>
@@ -399,7 +400,7 @@ export default function TradeAnalytics() {
                 />
                 <Bar dataKey="profit" radius={[0, 4, 4, 0]}>
                   {byTypeData.map((entry, index) => (
-                    <Cell key={index} fill={entry.profit >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+                    <Cell key={index} fill={entry.profit >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} fillOpacity={0.8} />
                   ))}
                 </Bar>
               </BarChart>
@@ -436,7 +437,7 @@ export default function TradeAnalytics() {
                 />
                 <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
                   {dayData.map((entry, index) => (
-                    <Cell key={index} fill={entry.profit >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+                    <Cell key={index} fill={entry.profit >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} fillOpacity={0.8} />
                   ))}
                 </Bar>
               </BarChart>
@@ -492,7 +493,7 @@ export default function TradeAnalytics() {
               <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
                 <Info className="h-6 w-6 text-muted-foreground/40 mb-2" />
                 <p className="text-xs text-muted-foreground font-medium">No duration data available</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Close some trades with different holding periods to see analysis.</p>
+                <p className="text-micro text-muted-foreground mt-1">Close some trades with different holding periods to see analysis.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -509,7 +510,7 @@ export default function TradeAnalytics() {
                         <div className="flex items-center justify-between mb-2">
                           <div>
                             <p className="text-xs font-bold text-foreground">{cat.label}</p>
-                            <p className="text-[10px] text-muted-foreground">{cat.sublabel}</p>
+                            <p className="text-micro text-muted-foreground">{cat.sublabel}</p>
                           </div>
                           {cat.data.count > 0 && (
                             <span className={`text-lg font-bold tabular-nums font-mono ${
@@ -521,29 +522,29 @@ export default function TradeAnalytics() {
                         </div>
                         {cat.data.count > 0 ? (
                           <div className="space-y-1">
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Trades</span>
                               <span className="font-mono text-foreground">{cat.data.count} ({cat.data.wins}W)</span>
                             </div>
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Total P/L</span>
                               <span className={`font-mono font-semibold ${cat.data.totalPL >= 0 ? "text-green-400" : "text-red-400"}`}>
                                 ${cat.data.totalPL.toFixed(2)}
                               </span>
                             </div>
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Avg P/L</span>
                               <span className={`font-mono font-semibold ${cat.data.avgPL >= 0 ? "text-green-400" : "text-red-400"}`}>
                                 ${cat.data.avgPL.toFixed(2)}
                               </span>
                             </div>
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-micro">
                               <span className="text-muted-foreground">Avg Days</span>
                               <span className="font-mono text-foreground">{cat.data.avgDays}</span>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-[10px] text-muted-foreground">No trades</p>
+                          <p className="text-micro text-muted-foreground">No trades</p>
                         )}
                       </div>
                     );
@@ -587,12 +588,12 @@ export default function TradeAnalytics() {
                         />
                         <Bar yAxisId="left" dataKey="winRate" radius={[4, 4, 0, 0]}>
                           {chartData.map((entry, index) => (
-                            <Cell key={index} fill={entry.winRate >= 55 ? "#22c55e" : entry.winRate >= 45 ? "#eab308" : "#ef4444"} fillOpacity={0.8} />
+                            <Cell key={index} fill={entry.winRate >= 55 ? SIGNAL_BULL : entry.winRate >= 45 ? SIGNAL_WATCH : SIGNAL_BEAR} fillOpacity={0.8} />
                           ))}
                         </Bar>
                         <Bar yAxisId="right" dataKey="avgPL" radius={[4, 4, 0, 0]}>
                           {chartData.map((entry, index) => (
-                            <Cell key={index} fill={entry.avgPL >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.5} />
+                            <Cell key={index} fill={entry.avgPL >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} fillOpacity={0.5} />
                           ))}
                         </Bar>
                       </BarChart>
@@ -635,7 +636,7 @@ export default function TradeAnalytics() {
           <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
             <Info className="h-6 w-6 text-muted-foreground/40 mb-2" />
             <p className="text-xs text-muted-foreground font-medium">No MFE/MAE data yet</p>
-            <p className="text-[10px] text-muted-foreground mt-1 max-w-sm">
+            <p className="text-micro text-muted-foreground mt-1 max-w-sm">
               MFE/MAE data builds over time as you refresh prices on open trades.
               Click "Refresh P/L" on the Trade Tracker page to start recording price snapshots.
             </p>
@@ -678,7 +679,7 @@ export default function TradeAnalytics() {
             {scatterData.length > 0 && (
               <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2">MFE vs MAE Scatter</h4>
-                <p className="text-[10px] text-muted-foreground mb-3">Each dot is a trade. X = max drawdown (MAE), Y = peak profit (MFE). Green = profitable exit, Red = loss.</p>
+                <p className="text-micro text-muted-foreground mb-3">Each dot is a trade. X = max drawdown (MAE), Y = peak profit (MFE). Green = profitable exit, Red = loss.</p>
                 <ResponsiveContainer width="100%" height={280}>
                   <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.5} />
@@ -717,8 +718,8 @@ export default function TradeAnalytics() {
                         );
                       }}
                     />
-                    <Scatter data={scatterData.filter(d => d.profitable === 1)} fill="#22c55e" fillOpacity={0.7} />
-                    <Scatter data={scatterData.filter(d => d.profitable === 0)} fill="#ef4444" fillOpacity={0.7} />
+                    <Scatter data={scatterData.filter(d => d.profitable === 1)} fill=SIGNAL_BULL fillOpacity={0.7} />
+                    <Scatter data={scatterData.filter(d => d.profitable === 0)} fill=SIGNAL_BEAR fillOpacity={0.7} />
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
@@ -728,7 +729,7 @@ export default function TradeAnalytics() {
             {exitEfficiencyBars.length > 0 && (
               <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2">Exit Efficiency by Trade</h4>
-                <p className="text-[10px] text-muted-foreground mb-3">Green (&gt;70%) = excellent, Yellow (30-70%) = acceptable, Red (&lt;30%) = needs work.</p>
+                <p className="text-micro text-muted-foreground mb-3">Green (&gt;70%) = excellent, Yellow (30-70%) = acceptable, Red (&lt;30%) = needs work.</p>
                 <ResponsiveContainer width="100%" height={Math.max(150, exitEfficiencyBars.length * 32)}>
                   <BarChart data={exitEfficiencyBars} layout="vertical" margin={{ top: 5, right: 30, bottom: 5, left: 80 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--card-border))" opacity={0.5} />
@@ -762,7 +763,7 @@ export default function TradeAnalytics() {
             {timelineTrades.length > 0 && (
               <div className="bg-muted/20 border border-card-border/50 rounded-lg p-3">
                 <h4 className="text-xs font-semibold text-muted-foreground mb-2">Trade P/L Timeline</h4>
-                <p className="text-[10px] text-muted-foreground mb-3">Unrealized P/L over time for top tracked trades. Peak = MFE, Trough = MAE.</p>
+                <p className="text-micro text-muted-foreground mb-3">Unrealized P/L over time for top tracked trades. Peak = MFE, Trough = MAE.</p>
                 <div className="space-y-4">
                   {timelineTrades.map(trade => {
                     const data = trade.history.map(h => ({
@@ -775,7 +776,7 @@ export default function TradeAnalytics() {
                       <div key={trade.tradeId} className="border border-card-border/30 rounded-lg p-2">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-foreground">{trade.symbol} <span className="text-muted-foreground font-normal">({trade.tradeType})</span></span>
-                          <span className={`text-[10px] font-mono ${trade.exitEfficiency >= 50 ? "text-green-400" : trade.exitEfficiency >= 0 ? "text-yellow-400" : "text-red-400"}`}>
+                          <span className={`text-micro font-mono ${trade.exitEfficiency >= 50 ? "text-green-400" : trade.exitEfficiency >= 0 ? "text-yellow-400" : "text-red-400"}`}>
                             Efficiency: {trade.exitEfficiency.toFixed(1)}%
                           </span>
                         </div>
@@ -796,8 +797,8 @@ export default function TradeAnalytics() {
                               formatter={(value: number) => [`$${value.toFixed(2)}`, "Unrealized P/L"]}
                             />
                             <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" opacity={0.5} />
-                            <ReferenceLine y={maxPL} stroke="#22c55e" strokeDasharray="4 4" opacity={0.6} label={{ value: `MFE: $${maxPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: "#22c55e" } }} />
-                            <ReferenceLine y={minPL} stroke="#ef4444" strokeDasharray="4 4" opacity={0.6} label={{ value: `MAE: $${minPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: "#ef4444" } }} />
+                            <ReferenceLine y={maxPL} stroke=SIGNAL_BULL strokeDasharray="4 4" opacity={0.6} label={{ value: `MFE: $${maxPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BULL } }} />
+                            <ReferenceLine y={minPL} stroke=SIGNAL_BEAR strokeDasharray="4 4" opacity={0.6} label={{ value: `MAE: $${minPL.toFixed(0)}`, position: "right", style: { fontSize: 8, fill: SIGNAL_BEAR } }} />
                             <Line
                               type="monotone"
                               dataKey="pl"
@@ -830,10 +831,10 @@ function MetricCard({ label, value, color, icon, subtitle }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5">
       <div className="flex items-center gap-1 mb-0.5">
         {icon && <span className={`${color} opacity-70`}>{icon}</span>}
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[10px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-micro text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }

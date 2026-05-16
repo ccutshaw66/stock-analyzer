@@ -9,7 +9,7 @@ export function HelpBlock({ title, children, defaultOpen = false }: { title: str
       <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:text-primary/80">
         <Info className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 text-left">{title}</span>
-        <span className="text-[10px] text-muted-foreground">{open ? "Hide" : "Show"}</span>
+        <span className="text-micro text-muted-foreground">{open ? "Hide" : "Show"}</span>
       </button>
       {open && <div className="px-3 pb-3 text-xs text-muted-foreground leading-relaxed space-y-2">{children}</div>}
     </div>
@@ -28,7 +28,7 @@ export function ScoreRange({ label, range, color, description }: { label: string
   const bgClass = color === "green" ? "bg-green-500/15" : color === "red" ? "bg-red-500/15" : "bg-yellow-500/15";
   return (
     <div className="flex items-start gap-2">
-      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${bgClass} ${colorClass} shrink-0 mt-0.5`}>{range}</span>
+      <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${bgClass} ${colorClass} shrink-0 mt-0.5`}>{range}</span>
       <div>
         <span className={`font-semibold ${colorClass}`}>{label}</span>
         <span className="text-muted-foreground"> — {description}</span>

@@ -183,7 +183,7 @@ export default function SectorHeatmap() {
                     }
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] text-muted-foreground font-mono">{sector.symbol}</span>
+                    <span className="text-micro text-muted-foreground font-mono">{sector.symbol}</span>
                     <span className="text-xs text-muted-foreground font-mono tabular-nums">
                       ${sector.price.toFixed(2)}
                     </span>
@@ -202,8 +202,8 @@ export default function SectorHeatmap() {
                         <div key={key} className={`flex-1 text-center rounded py-0.5 ${
                           key === timeframe ? "bg-foreground/10" : ""
                         }`}>
-                          <div className="text-[8px] text-muted-foreground">{label}</div>
-                          <div className={`text-[9px] font-mono tabular-nums font-semibold ${v >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          <div className="text-tiny text-muted-foreground">{label}</div>
+                          <div className={`text-mini font-mono tabular-nums font-semibold ${v >= 0 ? "text-green-400" : "text-red-400"}`}>
                             {v >= 0 ? "+" : ""}{v.toFixed(1)}%
                           </div>
                         </div>
@@ -303,7 +303,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
                     <td className="py-2 pr-2 text-muted-foreground">{i + 1}</td>
                     <td className="py-2 pr-2">
                       <div className="font-semibold">{l.ticker}</div>
-                      <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
+                      <div className="text-micro text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums">${l.price.toFixed(2)}</td>
                     <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -326,7 +326,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
               </tbody>
             </table>
           )}
-          <p className="text-[10px] text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
+          <p className="text-micro text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
         </div>
       </div>
     </div>

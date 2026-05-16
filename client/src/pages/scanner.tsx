@@ -39,7 +39,7 @@ const PRICE_RANGES = [
 // ─── Shared Components ───
 
 function SignalBadge({ signal, size = "sm" }: { signal: string; size?: "sm" | "md" }) {
-  const base = size === "md" ? "px-3 py-1.5 text-sm" : "px-2 py-0.5 text-[11px]";
+  const base = size === "md" ? "px-3 py-1.5 text-sm" : "px-2 py-0.5 text-2xs";
   const s = (signal || "").toUpperCase();
   const isUp = /↑/.test(signal) || /_UP$|_BUY$|BULL/.test(s);
   const isDown = /↓/.test(signal) || /_DOWN$|_SELL$|BEAR/.test(s);
@@ -152,13 +152,13 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
               <span onClick={onClick} title="Load in Signal Pulse" className="font-mono font-bold text-base text-foreground hover:text-primary cursor-pointer transition-colors">{result.ticker}</span>
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
               {onAnalyze && (
-                <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
+                <button onClick={onAnalyze} className="text-micro px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
               )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {result.bbtc.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.bbtc.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
-              <span className="text-[10px] text-muted-foreground">{result.bbtc.trend} · {result.bbtc.bias}</span>
-              {result.ver.rsi !== null && <span className={`text-[10px] ml-1 ${result.ver.rsi < 30 ? "text-green-400" : result.ver.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
+              <span className="text-micro text-muted-foreground">{result.bbtc.trend} · {result.bbtc.bias}</span>
+              {result.ver.rsi !== null && <span className={`text-micro ml-1 ${result.ver.rsi < 30 ? "text-green-400" : result.ver.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.ver.rsi}</span>}
             </div>
           </div>
         </div>
@@ -169,7 +169,7 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
       {g && (
         <div className="flex items-center gap-2 mb-3">
           <GatePips gatesCleared={g.gatesCleared} />
-          <span className={`text-[10px] font-semibold tracking-wider ${
+          <span className={`text-micro font-semibold tracking-wider ${
             label.startsWith("GO") ? "text-green-400" :
             label.startsWith("SET") ? "text-blue-400" :
             label.startsWith("READY") ? "text-amber-400" :
@@ -188,9 +188,9 @@ function ThreeStrategyCard({ result, rank, onClick, onAnalyze }: { result: any; 
       {expanded && (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.ver.signal} /><span className="text-[9px] text-muted-foreground">VER</span></div>
-            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.bbtc.signal} /><span className="text-[9px] text-muted-foreground">BBTC</span></div>
-            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.confirmation.signal} /><span className="text-[9px] text-muted-foreground">Confirm</span></div>
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.ver.signal} /><span className="text-mini text-muted-foreground">VER</span></div>
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.bbtc.signal} /><span className="text-mini text-muted-foreground">BBTC</span></div>
+            <div className="flex flex-col items-center gap-0.5"><SignalBadge signal={result.confirmation.signal} /><span className="text-mini text-muted-foreground">Confirm</span></div>
             <div className="ml-auto"><ScoreBar score={result.score} max={7} /></div>
           </div>
           <ConfirmationDetail c={result.confirmation} />
@@ -220,14 +220,14 @@ function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: numb
               <span className="text-sm tabular-nums text-muted-foreground">${result.price.toFixed(2)}</span>
               <SignalBadge signal={result.signal} />
               {onAnalyze && (
-                <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
+                <button onClick={onAnalyze} className="text-micro px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold">Analyze →</button>
               )}
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
               {result.trend === "UP" ? <TrendingUp className="h-3 w-3 text-green-500" /> : result.trend === "DOWN" ? <TrendingDown className="h-3 w-3 text-red-500" /> : <Minus className="h-3 w-3 text-yellow-500" />}
-              <span className="text-[10px] text-muted-foreground">{result.trend}</span>
-              {result.mode !== "flat" && <span className={`text-[10px] ${result.mode === "momentum" ? "text-green-400" : "text-cyan-400"}`}>· {result.mode}</span>}
-              {result.rsi !== null && <span className={`text-[10px] ${result.rsi < 30 ? "text-green-400" : result.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.rsi}</span>}
+              <span className="text-micro text-muted-foreground">{result.trend}</span>
+              {result.mode !== "flat" && <span className={`text-micro ${result.mode === "momentum" ? "text-green-400" : "text-cyan-400"}`}>· {result.mode}</span>}
+              {result.rsi !== null && <span className={`text-micro ${result.rsi < 30 ? "text-green-400" : result.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>· RSI {result.rsi}</span>}
             </div>
           </div>
         </div>
@@ -252,23 +252,23 @@ function AMCCard({ result, rank, onClick, onAnalyze }: { result: any; rank: numb
       {expanded && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 pt-3 border-t border-card-border/50">
           <div className="text-center">
-            <p className="text-[9px] text-muted-foreground uppercase">MACD</p>
+            <p className="text-mini text-muted-foreground uppercase">MACD</p>
             <p className={`text-xs font-bold ${result.macd === "bullish" ? "text-green-400" : "text-red-400"}`}>{result.macd} {result.macdAccel ? "↑" : ""}</p>
           </div>
           <div className="text-center">
-            <p className="text-[9px] text-muted-foreground uppercase">RSI</p>
+            <p className="text-mini text-muted-foreground uppercase">RSI</p>
             <p className={`text-xs font-bold tabular-nums ${result.rsi >= 45 && result.rsi <= 65 ? "text-green-400" : result.rsi < 30 ? "text-cyan-400" : result.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>{result.rsi ?? "N/A"}</p>
           </div>
           <div className="text-center">
-            <p className="text-[9px] text-muted-foreground uppercase">VAMI</p>
+            <p className="text-mini text-muted-foreground uppercase">VAMI</p>
             <p className={`text-xs font-bold tabular-nums ${result.vami > 0 ? "text-green-400" : "text-red-400"}`}>{result.vami}</p>
           </div>
           <div className="text-center">
-            <p className="text-[9px] text-muted-foreground uppercase">Trend</p>
+            <p className="text-mini text-muted-foreground uppercase">Trend</p>
             <p className={`text-xs font-bold ${result.trend === "UP" ? "text-green-400" : result.trend === "DOWN" ? "text-red-400" : "text-yellow-400"}`}>{result.trend}</p>
           </div>
           <div className="text-center">
-            <p className="text-[9px] text-muted-foreground uppercase">Close</p>
+            <p className="text-mini text-muted-foreground uppercase">Close</p>
             <p className={`text-xs font-bold ${result.greenClose ? "text-green-400" : "text-red-400"}`}>{result.greenClose ? "Green ↑" : "Red ↓"}</p>
           </div>
           <div className="col-span-2 sm:col-span-5 bg-background/40 rounded p-2 mt-1">
@@ -313,7 +313,7 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
         <button onClick={onClick} title="Load in Signal Pulse" className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-base font-bold text-foreground tracking-tight">{result.symbol}</span>
-            <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 uppercase border ${dirStyle}`}>
+            <span className={`text-micro font-bold rounded px-1.5 py-0.5 uppercase border ${dirStyle}`}>
               {direction === "up" ? "↑ UP" : direction === "down" ? "↓ DOWN" : "↔ EITHER"}
             </span>
           </div>
@@ -322,11 +322,11 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
           </p>
         </button>
         {onAnalyze && (
-          <button onClick={onAnalyze} className="text-[10px] px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold flex-shrink-0">Analyze →</button>
+          <button onClick={onAnalyze} className="text-micro px-2 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-semibold flex-shrink-0">Analyze →</button>
         )}
         <div className="text-right flex-shrink-0">
           <span className={`text-xs font-bold rounded px-2 py-1 ${scoreColor}`}>{score}</span>
-          <p className="text-[10px] text-muted-foreground mt-0.5">score</p>
+          <p className="text-micro text-muted-foreground mt-0.5">score</p>
         </div>
         <button onClick={() => setExpanded(!expanded)} className="flex-shrink-0 text-muted-foreground hover:text-foreground">
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -342,7 +342,7 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
               : s.direction === "down" ? "bg-red-500/15 text-red-400 border-red-500/30"
               : "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
             return (
-              <span key={s.id} className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border ${chipColor}`} title={s.detail || ""}>
+              <span key={s.id} className={`text-micro font-semibold rounded px-1.5 py-0.5 border ${chipColor}`} title={s.detail || ""}>
                 {s.label} · {(s.strength ?? 0).toFixed(2)}
               </span>
             );
@@ -362,11 +362,11 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
               <span className={`font-medium w-32 ${s.triggered ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
               <span className="text-muted-foreground flex-1 truncate">{s.detail || "—"}</span>
               {s.triggered && (
-                <span className="text-[10px] tabular-nums text-muted-foreground">{s.strength.toFixed(2)}</span>
+                <span className="text-micro tabular-nums text-muted-foreground">{s.strength.toFixed(2)}</span>
               )}
             </div>
           ))}
-          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-card-border/30 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-card-border/30 text-micro text-muted-foreground">
             <span>Price ${result.price?.toFixed(2)}</span>
             <span>Vol {result.volume?.toLocaleString?.()}</span>
             <span>Mkt Cap ${((result.marketCap ?? 0) / 1e9).toFixed(1)}B</span>
@@ -570,13 +570,13 @@ export default function Scanner() {
             <div className="px-4 pb-4 space-y-4 border-t border-card-border">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3">
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Sector</label>
+                  <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Sector</label>
                   <select value={sector} onChange={(e) => setSector(e.target.value)} className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground" data-testid="select-sector">
                     {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Market Cap</label>
+                  <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Market Cap</label>
                   <select value={marketCap} onChange={(e) => setMarketCap(e.target.value)} className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground" data-testid="select-marketcap">
                     {MARKET_CAP_TIERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
@@ -585,7 +585,7 @@ export default function Scanner() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {scanMode !== "v2" && (
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Price Range</label>
                     <select value={priceRange} onChange={(e) => setPriceRange(e.target.value)} className="w-full bg-background border border-card-border rounded-md px-3 py-2 text-sm text-foreground" data-testid="select-price">
                       {PRICE_RANGES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                     </select>
@@ -593,7 +593,7 @@ export default function Scanner() {
                 )}
                 {scanMode !== "v2" && (
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
                     <div className="flex gap-2">
                       {[10, 15, 25].map(n => (
                         <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
@@ -603,7 +603,7 @@ export default function Scanner() {
                 )}
                 {scanMode !== "v2" && (
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Signal</label>
                     <div className="flex gap-2">
                       {(["both", "buy", "sell"] as const).map(sf => (
                         <button key={sf} onClick={() => setSignalFilter(sf)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${signalFilter === sf ? (sf === "buy" ? "bg-green-600 text-white" : sf === "sell" ? "bg-red-600 text-white" : "bg-primary text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{sf}</button>
@@ -613,7 +613,7 @@ export default function Scanner() {
                 )}
                 {scanMode === "v2" && (
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Direction</label>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Direction</label>
                     <div className="flex gap-2">
                       {(["either", "up", "down"] as const).map(d => (
                         <button key={d} onClick={() => setV2Direction(d)} data-testid={`v2-dir-${d}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors capitalize ${v2Direction === d ? (d === "up" ? "bg-green-600 text-white" : d === "down" ? "bg-red-600 text-white" : "bg-fuchsia-600 text-white") : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{d}</button>
@@ -623,7 +623,7 @@ export default function Scanner() {
                 )}
                 {scanMode === "v2" && (
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Min Score</label>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Min Score</label>
                     <div className="flex gap-2">
                       {[5, 10, 20, 30].map(n => (
                         <button key={n} onClick={() => setV2MinScore(n)} data-testid={`v2-score-${n}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${v2MinScore === n ? "bg-fuchsia-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}+</button>
@@ -651,7 +651,7 @@ export default function Scanner() {
 
         {/* Scan status */}
         {data && !isFetching && (
-          <div className="text-center text-[11px] text-muted-foreground">
+          <div className="text-center text-2xs text-muted-foreground">
             {scanMode === "v2"
               ? <>Scanned {data.universeSize} stocks in {((data.scanDurationMs || 0) / 1000).toFixed(1)}s at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} triggered</>
               : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} gate-ready</>}

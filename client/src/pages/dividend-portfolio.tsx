@@ -113,10 +113,10 @@ function MiniStat({ label, value, color, icon, subtitle }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
       <div className="flex items-center gap-1 mb-0.5">
         {icon && <span className={`${color} opacity-70`}>{icon}</span>}
-        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-xs font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[9px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-mini text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }
@@ -204,40 +204,40 @@ export default function DividendPortfolio() {
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <Wallet className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Market Value</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Market Value</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">${summary.totalMarket.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span className={`block text-[10px] font-mono tabular-nums ${plColor(summary.totalUnrealizedPL)}`}>
+            <span className={`block text-micro font-mono tabular-nums ${plColor(summary.totalUnrealizedPL)}`}>
               {summary.totalUnrealizedPL >= 0 ? "+" : ""}{summary.totalUnrealizedPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} P/L
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <PiggyBank className="h-3 w-3 text-green-400 opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Annual Income</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Annual Income</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-green-400">${summary.totalAnnualIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               ${summary.monthlyIncome.toFixed(2)} / mo
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <Percent className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Avg Yield</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Avg Yield</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">{summary.avgYield.toFixed(2)}%</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               YoC: {summary.avgYieldOnCost.toFixed(2)}%
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <BarChart3 className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dividend Stocks</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Dividend Stocks</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">{summary.count}</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               Cost: ${summary.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -248,7 +248,7 @@ export default function DividendPortfolio() {
       {positions.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sort by</label>
+            <label className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Sort by</label>
             <select value={sortBy} onChange={e => setSortBy(e.target.value)}
               className="h-7 px-2 text-xs bg-background border border-card-border rounded-md text-foreground"
               data-testid="sort-dividend-portfolio"
@@ -279,7 +279,7 @@ export default function DividendPortfolio() {
         <div className="flex flex-col items-center justify-center py-12 text-center bg-card border border-card-border rounded-lg">
           <Landmark className="h-10 w-10 text-muted-foreground/30 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">No dividend-paying positions found</p>
-          <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
+          <p className="text-2xs text-muted-foreground mt-1 max-w-xs">
             When you have open LONG stock positions that pay dividends, they'll appear here automatically. Add stock trades via the Trade Tracker.
           </p>
         </div>
@@ -326,7 +326,7 @@ export default function DividendPortfolio() {
 
       {/* Info note */}
       {!isLoading && sorted.length > 0 && (
-        <div className="flex items-start gap-2 text-[10px] text-muted-foreground px-1">
+        <div className="flex items-start gap-2 text-micro text-muted-foreground px-1">
           <Info className="h-3 w-3 mt-0.5 shrink-0" />
           <span>Only open LONG stock positions with active dividends appear here. Close a position in Trade Tracker and it leaves this list automatically.</span>
         </div>
@@ -360,7 +360,7 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
             <div>
               <span className="font-mono font-bold text-foreground cursor-pointer hover:text-primary"
                 onClick={e => { e.stopPropagation(); onSelectTicker(); }}>{pos.symbol}</span>
-              <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{pos.companyName}</p>
+              <p className="text-micro text-muted-foreground truncate max-w-[120px]">{pos.companyName}</p>
             </div>
           </div>
         </td>
@@ -383,14 +383,14 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
           ${pos.annualIncome.toFixed(2)}
         </td>
         <td className="py-2.5 px-2 text-center hidden md:table-cell">
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+          <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
             {pos.frequency}
           </span>
         </td>
-        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-[10px]">
+        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-micro">
           {pos.exDividendDate || "—"}
         </td>
-        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-[10px]">
+        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-micro">
           {pos.distributionDate || "—"}
         </td>
         <td className={`py-2.5 px-2 text-right font-mono font-bold hidden md:table-cell ${scoreColor(pos.score)}`}>

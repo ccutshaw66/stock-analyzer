@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import iconUrl from "@/assets/icon.png";
 import logoTextUrl from "@/assets/logo-text.png";
+import { BRAND_ACCENT, ACCENT_VIOLET } from "@/lib/design-tokens";
+
+const BRAND_GRADIENT = `linear-gradient(135deg, ${BRAND_ACCENT}, ${ACCENT_VIOLET})`;
 import {
   Shield,
   Building2,
@@ -42,14 +45,14 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
 
   return (
     <div
-      className="min-h-screen text-foreground"
-      style={{ backgroundColor: "#040d22", scrollBehavior: "smooth" }}
+      className="min-h-screen text-foreground bg-brand-bg"
+      style={{ scrollBehavior: "smooth" }}
     >
       {/* ─── Navigation ──────────────────────────────────────────────── */}
       <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           scrolled
-            ? "bg-[#040d22]/80 backdrop-blur-xl border-b border-[#1E2235]/60"
+            ? "bg-brand-bg/80 backdrop-blur-xl border-b border-brand-border/60"
             : "bg-transparent"
         }`}
         data-testid="landing-nav"
@@ -63,28 +66,28 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           <div className="hidden md:flex items-center gap-8">
             <button
               onClick={() => scrollTo("features")}
-              className="text-sm text-[#8b8fa3] hover:text-white transition-colors"
+              className="text-sm text-brand-text-muted hover:text-white transition-colors"
               data-testid="nav-features"
             >
               Features
             </button>
             <button
               onClick={() => scrollTo("pricing")}
-              className="text-sm text-[#8b8fa3] hover:text-white transition-colors"
+              className="text-sm text-brand-text-muted hover:text-white transition-colors"
               data-testid="nav-pricing"
             >
               Pricing
             </button>
             <button
               onClick={onLogin}
-              className="text-sm text-[#8b8fa3] hover:text-white transition-colors"
+              className="text-sm text-brand-text-muted hover:text-white transition-colors"
               data-testid="nav-login"
             >
               Log In
             </button>
             <button
               onClick={onRegister}
-              className="h-9 px-5 text-sm font-semibold rounded-lg bg-[#6366F1] text-white hover:bg-[#5558e6] transition-colors glow-button"
+              className="h-9 px-5 text-sm font-semibold rounded-lg bg-brand-accent text-white hover:bg-brand-accent-deep transition-colors glow-button"
               data-testid="nav-get-started"
             >
               Get Started Free
@@ -95,14 +98,14 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           <div className="flex md:hidden items-center gap-3">
             <button
               onClick={onLogin}
-              className="text-sm text-[#8b8fa3] hover:text-white"
+              className="text-sm text-brand-text-muted hover:text-white"
               data-testid="nav-login-mobile"
             >
               Log In
             </button>
             <button
               onClick={onRegister}
-              className="h-8 px-4 text-xs font-semibold rounded-lg bg-[#6366F1] text-white"
+              className="h-8 px-4 text-xs font-semibold rounded-lg bg-brand-accent text-white"
               data-testid="nav-get-started-mobile"
             >
               Get Started
@@ -118,7 +121,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              "radial-gradient(ellipse 60% 50% at 50% 30%, rgba(99,102,241,0.12) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 70% 60%, rgba(139,92,246,0.08) 0%, transparent 60%)",
+              "radial-gradient(ellipse 60% 50% at 50% 30%, rgb(var(--brand-accent) / 0.12) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 70% 60%, rgb(var(--accent-violet) / 0.08) 0%, transparent 60%)",
           }}
         />
 
@@ -128,7 +131,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             <br />
             <span className="gradient-text">Not Harder</span>
           </h1>
-          <p className="text-base sm:text-lg text-[#8b8fa3] max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-base sm:text-lg text-brand-text-muted max-w-2xl mx-auto mb-10 leading-relaxed">
             The all-in-one trading analysis platform. Real-time verdicts,
             institutional flow tracking, options calculators, and a professional
             trade journal — everything you need in one place.
@@ -137,7 +140,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
             <button
               onClick={onRegister}
-              className="h-12 px-8 text-sm font-semibold rounded-xl bg-[#6366F1] text-white hover:bg-[#5558e6] transition-all glow-button flex items-center justify-center gap-2"
+              className="h-12 px-8 text-sm font-semibold rounded-xl bg-brand-accent text-white hover:bg-brand-accent-deep transition-all glow-button flex items-center justify-center gap-2"
               data-testid="hero-cta-primary"
             >
               Start Free Trial
@@ -145,7 +148,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             </button>
             <button
               onClick={() => scrollTo("how-it-works")}
-              className="h-12 px-8 text-sm font-semibold rounded-xl border border-[#2a2f45] text-[#c4c7d4] hover:border-[#6366F1]/50 hover:text-white transition-all flex items-center justify-center gap-2"
+              className="h-12 px-8 text-sm font-semibold rounded-xl border border-brand-surface-raised text-brand-text-bright hover:border-brand-accent/50 hover:text-white transition-all flex items-center justify-center gap-2"
               data-testid="hero-cta-secondary"
             >
               See How It Works
@@ -155,55 +158,55 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
 
           {/* App preview card */}
           <div className="max-w-xl mx-auto" data-testid="hero-preview-card">
-            <div className="bg-[#0c1225] border border-[#1E2235] rounded-2xl p-6 shadow-2xl">
+            <div className="bg-brand-bg-card-alt border border-brand-border rounded-2xl p-6 shadow-2xl">
               {/* Title bar */}
               <div className="flex items-center gap-2 mb-5">
                 <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]/60" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]/60" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-bear/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-watch/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-bull/60" />
                 </div>
-                <span className="text-[10px] text-[#4a4f65] font-mono ml-2">
+                <span className="text-micro text-brand-text-dim font-mono ml-2">
                   AAPL — Apple Inc.
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-[#141829] border border-[#1E2235] rounded-xl p-4 text-center">
-                  <div className="text-[10px] font-semibold text-[#6b7084] uppercase tracking-wider mb-1">
+                <div className="bg-brand-bg-card border border-brand-border rounded-xl p-4 text-center">
+                  <div className="text-micro font-semibold text-brand-text-faded uppercase tracking-wider mb-1">
                     Score
                   </div>
                   <div className="text-2xl font-bold text-white font-mono tabular-nums">
                     78
                   </div>
-                  <div className="text-[10px] text-[#22c55e] font-semibold mt-0.5">
+                  <div className="text-micro text-bull font-semibold mt-0.5">
                     / 100
                   </div>
                 </div>
-                <div className="bg-[#141829] border border-[#1E2235] rounded-xl p-4 text-center">
-                  <div className="text-[10px] font-semibold text-[#6b7084] uppercase tracking-wider mb-1">
+                <div className="bg-brand-bg-card border border-brand-border rounded-xl p-4 text-center">
+                  <div className="text-micro font-semibold text-brand-text-faded uppercase tracking-wider mb-1">
                     Verdict
                   </div>
-                  <div className="text-sm font-bold text-[#22c55e] mt-1">
+                  <div className="text-sm font-bold text-bull mt-1">
                     STRONG
                   </div>
-                  <div className="text-sm font-bold text-[#22c55e]">BUY</div>
+                  <div className="text-sm font-bold text-bull">BUY</div>
                 </div>
-                <div className="bg-[#141829] border border-[#1E2235] rounded-xl p-4 text-center">
-                  <div className="text-[10px] font-semibold text-[#6b7084] uppercase tracking-wider mb-1">
+                <div className="bg-brand-bg-card border border-brand-border rounded-xl p-4 text-center">
+                  <div className="text-micro font-semibold text-brand-text-faded uppercase tracking-wider mb-1">
                     Win Rate
                   </div>
-                  <div className="text-2xl font-bold text-[#6366F1] font-mono tabular-nums">
+                  <div className="text-2xl font-bold text-brand-accent font-mono tabular-nums">
                     62%
                   </div>
-                  <div className="text-[10px] text-[#6b7084] font-semibold mt-0.5">
+                  <div className="text-micro text-brand-text-faded font-semibold mt-0.5">
                     last 30 trades
                   </div>
                 </div>
               </div>
 
               {/* Mini chart placeholder */}
-              <div className="mt-4 h-16 bg-[#141829] border border-[#1E2235] rounded-lg flex items-end px-3 pb-2 gap-[3px] overflow-hidden">
+              <div className="mt-4 h-16 bg-brand-bg-card border border-brand-border rounded-lg flex items-end px-3 pb-2 gap-[3px] overflow-hidden">
                 {[28, 32, 30, 35, 38, 36, 42, 40, 45, 48, 44, 50, 52, 48, 55, 58, 54, 60, 62, 58, 65, 68, 72, 70, 75].map(
                   (v, i) => (
                     <div
@@ -213,8 +216,8 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
                         height: `${v}%`,
                         backgroundColor:
                           i >= 20
-                            ? "rgba(99,102,241,0.7)"
-                            : "rgba(99,102,241,0.3)",
+                            ? "rgb(var(--brand-accent) / 0.7)"
+                            : "rgb(var(--brand-accent) / 0.3)",
                       }}
                     />
                   )
@@ -232,7 +235,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Everything You Need to Trade with Confidence
             </h2>
-            <p className="text-[#8b8fa3] text-base max-w-xl mx-auto">
+            <p className="text-brand-text-muted text-base max-w-xl mx-auto">
               One platform with all the tools serious traders use — no more
               juggling five different apps.
             </p>
@@ -279,7 +282,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              "radial-gradient(ellipse 50% 40% at 30% 50%, rgba(99,102,241,0.06) 0%, transparent 70%)",
+              "radial-gradient(ellipse 50% 40% at 30% 50%, rgb(var(--brand-accent) / 0.06) 0%, transparent 70%)",
           }}
         />
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
@@ -287,7 +290,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Get Started in 3 Steps
             </h2>
-            <p className="text-[#8b8fa3] text-base max-w-md mx-auto">
+            <p className="text-brand-text-muted text-base max-w-md mx-auto">
               From search to trade in under a minute.
             </p>
           </div>
@@ -322,7 +325,7 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               Simple, Transparent Pricing
             </h2>
-            <p className="text-[#8b8fa3] text-base max-w-md mx-auto">
+            <p className="text-brand-text-muted text-base max-w-md mx-auto">
               Start free. Upgrade when you're ready.
             </p>
           </div>
@@ -385,18 +388,18 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
       </section>
 
       {/* ─── Footer ──────────────────────────────────────────────────── */}
-      <footer className="border-t border-[#1E2235] py-12">
+      <footer className="border-t border-brand-border py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2.5">
               <img src={iconUrl} alt="" className="h-7 w-7 rounded-lg" />
               <img src={logoTextUrl} alt="Stock Otter" className="h-5 w-auto" />
-              <span className="text-xs text-[#4a4f65] ml-2 hidden sm:inline">
+              <span className="text-xs text-brand-text-dim ml-2 hidden sm:inline">
                 Smart Trading Analysis
               </span>
             </div>
 
-            <div className="flex items-center gap-6 text-xs text-[#6b7084]">
+            <div className="flex items-center gap-6 text-xs text-brand-text-faded">
               <button
                 onClick={() => scrollTo("features")}
                 className="hover:text-white transition-colors"
@@ -409,17 +412,17 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
               >
                 Pricing
               </button>
-              <span className="text-[#2a2f45]">|</span>
+              <span className="text-brand-surface-raised">|</span>
               <a href="/#/terms" className="hover:text-white transition-colors">Terms</a>
               <a href="/#/privacy" className="hover:text-white transition-colors">Privacy</a>
             </div>
 
-            <div className="text-xs text-[#4a4f65]">
+            <div className="text-xs text-brand-text-dim">
               &copy; 2026 Stock Otter. All rights reserved.
             </div>
           </div>
 
-          <p className="text-[10px] text-[#3a3f55] text-center mt-8 max-w-lg mx-auto leading-relaxed">
+          <p className="text-micro text-brand-border-subtle text-center mt-8 max-w-lg mx-auto leading-relaxed">
             Stock Otter is not a financial advisor. All data is provided for
             informational purposes only. Trading involves risk and you may lose
             money. Past performance does not guarantee future results.
@@ -442,12 +445,12 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="group bg-[#0c1225]/80 border border-[#1E2235] rounded-xl p-6 transition-all duration-200 hover:border-[#6366F1]/30 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_-10px_rgba(99,102,241,0.15)]">
-      <div className="w-10 h-10 rounded-lg bg-[#6366F1]/10 border border-[#6366F1]/20 flex items-center justify-center mb-4 group-hover:bg-[#6366F1]/15 transition-colors">
-        <Icon className="h-5 w-5 text-[#6366F1]" />
+    <div className="group bg-brand-bg-card-alt/80 border border-brand-border rounded-xl p-6 transition-all duration-200 hover:border-brand-accent/30 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_-10px_rgb(var(--brand-accent)/0.15)]">
+      <div className="w-10 h-10 rounded-lg bg-brand-accent/10 border border-brand-accent/20 flex items-center justify-center mb-4 group-hover:bg-brand-accent/15 transition-colors">
+        <Icon className="h-5 w-5 text-brand-accent" />
       </div>
       <h3 className="text-base font-semibold text-white mb-2">{title}</h3>
-      <p className="text-sm text-[#8b8fa3] leading-relaxed">{description}</p>
+      <p className="text-sm text-brand-text-muted leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -471,7 +474,7 @@ function StepCard({
         <div
           className="absolute inset-0 rounded-2xl"
           style={{
-            background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+            background: BRAND_GRADIENT,
           }}
         />
         <div className="relative w-full h-full rounded-2xl flex items-center justify-center">
@@ -479,10 +482,10 @@ function StepCard({
         </div>
       </div>
       <div className="w-10 h-10 mx-auto mb-3 flex items-center justify-center">
-        <Icon className="h-5 w-5 text-[#8b8fa3]" />
+        <Icon className="h-5 w-5 text-brand-text-muted" />
       </div>
       <h3 className="text-base font-semibold text-white mb-2">{title}</h3>
-      <p className="text-sm text-[#8b8fa3] leading-relaxed max-w-xs mx-auto">
+      <p className="text-sm text-brand-text-muted leading-relaxed max-w-xs mx-auto">
         {description}
       </p>
     </div>
@@ -516,17 +519,17 @@ function PricingCard({
     <div
       className={`relative rounded-2xl p-6 transition-all duration-200 ${
         highlighted
-          ? "bg-[#0c1225] border-2 border-[#6366F1]/50 scale-[1.02] shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)] z-10"
-          : "bg-[#0c1225]/60 border border-[#1E2235] hover:border-[#2a2f45]"
+          ? "bg-brand-bg-card-alt border-2 border-brand-accent/50 scale-[1.02] shadow-[0_0_40px_-10px_rgb(var(--brand-accent)/0.2)] z-10"
+          : "bg-brand-bg-card-alt/60 border border-brand-border hover:border-brand-surface-raised"
       }`}
       data-testid={`pricing-card-${name.toLowerCase()}`}
     >
       {badge && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
           <span
-            className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full text-white"
+            className="text-micro font-bold uppercase tracking-wider px-3 py-1 rounded-full text-white"
             style={{
-              background: "linear-gradient(135deg, #6366F1, #8B5CF6)",
+              background: BRAND_GRADIENT,
             }}
           >
             {badge}
@@ -536,10 +539,10 @@ function PricingCard({
 
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-white mb-1">{name}</h3>
-        <p className="text-xs text-[#6b7084] mb-4">{description}</p>
+        <p className="text-xs text-brand-text-faded mb-4">{description}</p>
         <div className="flex items-baseline gap-1">
           <span className="text-4xl font-bold text-white">{price}</span>
-          <span className="text-sm text-[#6b7084]">{period}</span>
+          <span className="text-sm text-brand-text-faded">{period}</span>
         </div>
       </div>
 
@@ -547,13 +550,13 @@ function PricingCard({
         {features.map((f, i) => (
           <div key={i} className="flex items-center gap-2.5">
             {f.included ? (
-              <Check className="h-4 w-4 text-[#22c55e] shrink-0" />
+              <Check className="h-4 w-4 text-bull shrink-0" />
             ) : (
-              <Minus className="h-4 w-4 text-[#3a3f55] shrink-0" />
+              <Minus className="h-4 w-4 text-brand-border-subtle shrink-0" />
             )}
             <span
               className={`text-sm ${
-                f.included ? "text-[#c4c7d4]" : "text-[#4a4f65]"
+                f.included ? "text-brand-text-bright" : "text-brand-text-dim"
               }`}
             >
               {f.text}
@@ -566,8 +569,8 @@ function PricingCard({
         onClick={onCta}
         className={`w-full h-11 rounded-xl text-sm font-semibold transition-all ${
           highlighted
-            ? "bg-[#6366F1] text-white hover:bg-[#5558e6] glow-button"
-            : "bg-[#141829] border border-[#2a2f45] text-[#c4c7d4] hover:border-[#6366F1]/40 hover:text-white"
+            ? "bg-brand-accent text-white hover:bg-brand-accent-deep glow-button"
+            : "bg-brand-bg-card border border-brand-surface-raised text-brand-text-bright hover:border-brand-accent/40 hover:text-white"
         }`}
         data-testid={`pricing-cta-${name.toLowerCase()}`}
       >

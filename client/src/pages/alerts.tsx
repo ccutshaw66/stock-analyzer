@@ -93,9 +93,9 @@ export default function AlertsPage() {
       <div className="mb-6 p-3 bg-muted/30 border border-card-border rounded-lg">
         <p className="text-xs font-semibold text-foreground mb-1">Delivery channels</p>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-500/15 text-green-400">In-app ✓</span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">Email — coming soon</span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">SMS / Push — coming soon</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-green-500/15 text-green-400">In-app ✓</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">Email — coming soon</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">SMS / Push — coming soon</span>
         </div>
       </div>
 
@@ -124,9 +124,9 @@ export default function AlertsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-foreground">{meta.label}</p>
-                    {r.ticker && <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-foreground">{r.ticker}</span>}
+                    {r.ticker && <span className="text-micro font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-foreground">{r.ticker}</span>}
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-2xs text-muted-foreground mt-0.5">
                     {r.kind === "SCANNER_VERDICT" && (cfg.verdicts?.length ? `Watching: ${cfg.verdicts.join(", ")}` : "Watching: GO, SET, PULLBACK")}
                     {r.kind === "EARNINGS" && `${cfg.daysBefore ?? 7} days before earnings`}
                     {r.kind === "PRICE_TARGET" && (r.tradeId ? `Trade #${r.tradeId} target` : "Any open position target")}
@@ -200,13 +200,13 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
             >
               {availableKinds.map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
-            <p className="text-[10px] text-muted-foreground mt-1">{KIND_META[kind]?.desc}</p>
+            <p className="text-micro text-muted-foreground mt-1">{KIND_META[kind]?.desc}</p>
           </div>
 
           {(kind === "SCANNER_VERDICT" || kind === "EARNINGS" || kind === "PRICE_TARGET" || kind === "PRICE_STOP") && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Ticker <span className="text-[10px]">(optional — leave blank to apply to watchlist + open positions)</span>
+                Ticker <span className="text-micro">(optional — leave blank to apply to watchlist + open positions)</span>
               </label>
               <input
                 type="text"
@@ -223,7 +223,7 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Verdicts to watch</label>
               <div className="flex flex-wrap gap-1.5">
                 {["GO ↑", "GO ↓", "SET ↑", "SET ↓", "READY ↑", "READY ↓", "PULLBACK"].map(v => (
-                  <label key={v} className={`px-2 py-1 text-[11px] font-semibold rounded border cursor-pointer transition-colors ${verdicts.includes(v) ? "bg-primary/20 border-primary text-primary" : "bg-muted border-card-border text-muted-foreground"}`}>
+                  <label key={v} className={`px-2 py-1 text-2xs font-semibold rounded border cursor-pointer transition-colors ${verdicts.includes(v) ? "bg-primary/20 border-primary text-primary" : "bg-muted border-card-border text-muted-foreground"}`}>
                     <input
                       type="checkbox"
                       checked={verdicts.includes(v)}
@@ -252,7 +252,7 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
           )}
 
           {(kind === "PRICE_TARGET" || kind === "PRICE_STOP") && (
-            <p className="text-[10px] text-amber-400">
+            <p className="text-micro text-amber-400">
               Note: Per-position rules work best created from the trade row itself (coming soon — for now this rule will match any open position's target/stop on that ticker).
             </p>
           )}

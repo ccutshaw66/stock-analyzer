@@ -33,18 +33,32 @@ interface CandlePaneProps {
   showEma200?: boolean;
 }
 
-// Brand-tuned palette (matches Stock Otter dark theme).
-const BULL = "#22c55e";
-const BEAR = "#ef4444";
-const WICK = "#6b7280";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  CHART_WICK,
+  CHART_TEXT,
+  CHART_EMA_21_CANDLE,
+  CHART_EMA_50_CANDLE,
+  CHART_EMA_200_CANDLE,
+  CHART_CROSSHAIR,
+  OVERLAY_BULL_40,
+  OVERLAY_BEAR_40,
+  OVERLAY_NEUTRAL_8,
+} from "@/lib/design-tokens";
+
+// Brand-tuned palette — all values come from design-tokens.ts (single source).
+const BULL = SIGNAL_BULL;
+const BEAR = SIGNAL_BEAR;
+const WICK = CHART_WICK;
 const BG = "transparent";
-const TEXT = "#a1a1aa";
-const GRID = "rgba(127, 127, 127, 0.08)";
-const EMA21_COLOR = "#facc15"; // yellow
-const EMA50_COLOR = "#a78bfa"; // brand-adjacent purple
-const EMA200_COLOR = "#e4e4e7"; // near-white
-const VOLUME_UP = "rgba(34, 197, 94, 0.4)";
-const VOLUME_DOWN = "rgba(239, 68, 68, 0.4)";
+const TEXT = CHART_TEXT;
+const GRID = OVERLAY_NEUTRAL_8;
+const EMA21_COLOR = CHART_EMA_21_CANDLE;
+const EMA50_COLOR = CHART_EMA_50_CANDLE;
+const EMA200_COLOR = CHART_EMA_200_CANDLE;
+const VOLUME_UP = OVERLAY_BULL_40;
+const VOLUME_DOWN = OVERLAY_BEAR_40;
 
 function dateToTime(dateStr: string): UTCTimestamp {
   // Bars from /api/analyze come as ISO date strings (YYYY-MM-DD or similar).
@@ -83,8 +97,8 @@ export function CandlePane({
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: "#6366f1", width: 1, style: 3 }, // dashed indigo
-        horzLine: { color: "#6366f1", width: 1, style: 3 },
+        vertLine: { color: CHART_CROSSHAIR, width: 1, style: 3 }, // dashed indigo
+        horzLine: { color: CHART_CROSSHAIR, width: 1, style: 3 },
       },
       rightPriceScale: {
         borderColor: GRID,

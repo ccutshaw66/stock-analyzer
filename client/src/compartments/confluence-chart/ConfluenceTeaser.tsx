@@ -77,16 +77,16 @@ export function ConfluenceTeaser(_props: WidgetViewProps) {
               </div>
             )}
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded mt-1 ${style.bg} ${style.text}`}
+              className={`text-micro font-bold px-2 py-0.5 rounded mt-1 ${style.bg} ${style.text}`}
             >
               {style.label}
             </span>
             {quick?.score != null && (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-micro text-muted-foreground">
                 Gates <span className="font-bold text-foreground tabular-nums">{quick.score}/3</span>
               </div>
             )}
-            <div className="text-[10px] text-primary mt-2 flex items-center gap-0.5">
+            <div className="text-micro text-primary mt-2 flex items-center gap-0.5">
               Open full chart <ArrowUpRight className="h-3 w-3" />
             </div>
           </>

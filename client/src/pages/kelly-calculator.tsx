@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { SIGNAL_BULL, SIGNAL_BEAR, CHART_RSI } from "@/lib/design-tokens";
 import {
   Target, TrendingUp, DollarSign, Percent,
   AlertTriangle, Activity, BarChart3,
@@ -132,7 +133,7 @@ export default function KellyCalculator() {
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Win Rate (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Win Rate (%)</label>
             <input
               type="number" step="0.5" min={0} max={100} value={winRate}
               onChange={e => setWinRate(parseFloat(e.target.value) || 0)}
@@ -141,7 +142,7 @@ export default function KellyCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Avg Win ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Avg Win ($)</label>
             <input
               type="number" step="1" min={0} value={avgWin}
               onChange={e => setAvgWin(parseFloat(e.target.value) || 0)}
@@ -150,7 +151,7 @@ export default function KellyCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Avg Loss ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Avg Loss ($)</label>
             <input
               type="number" step="1" min={0} value={avgLoss}
               onChange={e => setAvgLoss(parseFloat(e.target.value) || 0)}
@@ -159,7 +160,7 @@ export default function KellyCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Account Value ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Account Value ($)</label>
             <input
               type="number" step="100" min={0} value={accountValue}
               onChange={e => setAccountValue(parseFloat(e.target.value) || 0)}
@@ -177,7 +178,7 @@ export default function KellyCalculator() {
               {isFetching ? "Loading…" : "Auto from Trades"}
             </button>
             {populatedTradeCount !== null && (
-              <span className="text-[10px] text-muted-foreground text-center" data-testid="kelly-trade-count">
+              <span className="text-micro text-muted-foreground text-center" data-testid="kelly-trade-count">
                 Populated from {populatedTradeCount} closed trade{populatedTradeCount !== 1 ? "s" : ""}
               </span>
             )}
@@ -255,9 +256,9 @@ export default function KellyCalculator() {
                 wrapperStyle={{ fontSize: 10 }}
                 formatter={(value: string) => value === "full" ? "Full Kelly" : value === "half" ? "Half Kelly" : "Quarter Kelly"}
               />
-              <Line type="monotone" dataKey="full" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="half" stroke="#22c55e" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="quarter" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="full" stroke=SIGNAL_BEAR strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="half" stroke=SIGNAL_BULL strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="quarter" stroke=CHART_RSI strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -275,9 +276,9 @@ function KellyCard({ label, pct, amount, hasEdge, subtitle, recommended }: {
   return (
     <div className={`bg-muted/30 border rounded-lg p-3 ${recommended ? "border-green-500/40" : "border-card-border/50"}`}>
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
         {recommended && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-500/15 text-green-400">RECOMMENDED</span>
+          <span className="text-mini font-bold px-1.5 py-0.5 rounded bg-green-500/15 text-green-400">RECOMMENDED</span>
         )}
       </div>
       <span className={`text-lg font-bold tabular-nums font-mono ${color}`}>{pct.toFixed(2)}%</span>
@@ -286,7 +287,7 @@ function KellyCard({ label, pct, amount, hasEdge, subtitle, recommended }: {
           Risk <span className="text-foreground font-semibold tabular-nums font-mono">${amount.toFixed(2)}</span> per trade
         </span>
       )}
-      <span className="block text-[10px] text-muted-foreground mt-0.5">{subtitle}</span>
+      <span className="block text-micro text-muted-foreground mt-0.5">{subtitle}</span>
     </div>
   );
 }

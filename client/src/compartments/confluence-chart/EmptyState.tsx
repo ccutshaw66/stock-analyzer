@@ -52,7 +52,7 @@ export function EmptyState() {
         </button>
       </form>
       <div className="mt-4 flex items-center gap-2 flex-wrap justify-center max-w-md">
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Featured</span>
+        <span className="text-micro uppercase tracking-widest text-muted-foreground">Featured</span>
         {featured.map((t) => (
           <button
             key={t}

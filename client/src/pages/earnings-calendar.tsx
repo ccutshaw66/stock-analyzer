@@ -142,7 +142,7 @@ export default function EarningsCalendar() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-foreground">{entry.ticker}</span>
                         {days != null && (
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          <span className={`text-mini font-bold px-1.5 py-0.5 rounded ${
                             days <= 7
                               ? "bg-red-500/15 text-red-400"
                               : days <= 30
@@ -169,13 +169,13 @@ export default function EarningsCalendar() {
                   {/* Estimates Row */}
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="bg-card/50 border border-card-border/30 rounded-md p-2">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">EPS Estimate</span>
+                      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block">EPS Estimate</span>
                       <span className="text-sm font-bold font-mono tabular-nums text-foreground">
                         {entry.epsEstimate != null ? `$${entry.epsEstimate.toFixed(2)}` : "N/A"}
                       </span>
                     </div>
                     <div className="bg-card/50 border border-card-border/30 rounded-md p-2">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Revenue Estimate</span>
+                      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block">Revenue Estimate</span>
                       <span className="text-sm font-bold font-mono tabular-nums text-foreground">
                         {formatRevenue(entry.revenueEstimate)}
                       </span>
@@ -185,18 +185,18 @@ export default function EarningsCalendar() {
                   {/* Earnings History Table */}
                   {entry.history.length > 0 && (
                     <div>
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+                      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
                         Quarterly Earnings History
                       </span>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="text-muted-foreground border-b border-card-border/50">
-                              <th className="text-left pb-1.5 text-[10px] font-semibold uppercase tracking-wider">Quarter</th>
-                              <th className="text-right pb-1.5 text-[10px] font-semibold uppercase tracking-wider">Actual</th>
-                              <th className="text-right pb-1.5 text-[10px] font-semibold uppercase tracking-wider">Estimate</th>
-                              <th className="text-right pb-1.5 text-[10px] font-semibold uppercase tracking-wider">Surprise</th>
-                              <th className="text-right pb-1.5 text-[10px] font-semibold uppercase tracking-wider">Result</th>
+                              <th className="text-left pb-1.5 text-micro font-semibold uppercase tracking-wider">Quarter</th>
+                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Actual</th>
+                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Estimate</th>
+                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Surprise</th>
+                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Result</th>
                             </tr>
                           </thead>
                           <tbody>

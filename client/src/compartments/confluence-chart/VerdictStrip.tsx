@@ -83,7 +83,7 @@ export function VerdictStrip({ quick, lastUpdated }: VerdictStripProps) {
           )}
         </div>
         {ago && (
-          <span className="text-[10px] text-muted-foreground tabular-nums">Last updated {ago}</span>
+          <span className="text-micro text-muted-foreground tabular-nums">Last updated {ago}</span>
         )}
       </div>
     </div>

@@ -154,7 +154,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} 
-        className="text-[11px] text-primary hover:underline flex items-center gap-1 mb-3"
+        className="text-2xs text-primary hover:underline flex items-center gap-1 mb-3"
         data-testid="button-import-position">
         <Download className="h-3 w-3" /> Import Open Position
       </button>
@@ -179,7 +179,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
           </option>
         ))}
       </select>
-      <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground mt-1">Cancel</button>
+      <button onClick={() => setOpen(false)} className="text-micro text-muted-foreground hover:text-foreground mt-1">Cancel</button>
     </div>
   );
 }
@@ -252,7 +252,7 @@ export default function GreeksCalculator() {
         {/* Inputs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Stock Price ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Stock Price ($)</label>
             <input
               type="number" step="0.5" min={0.01} value={stockPrice}
               onChange={e => setStockPrice(parseFloat(e.target.value) || 0)}
@@ -261,7 +261,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Strike Price ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Strike Price ($)</label>
             <input
               type="number" step="0.5" min={0.01} value={strikePrice}
               onChange={e => setStrikePrice(parseFloat(e.target.value) || 0)}
@@ -270,7 +270,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Days to Expiry</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Days to Expiry</label>
             <input
               type="number" step="1" min={1} value={dte}
               onChange={e => setDte(parseInt(e.target.value) || 1)}
@@ -279,7 +279,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">IV (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">IV (%)</label>
             <input
               type="number" step="0.5" min={0.1} value={iv}
               onChange={e => setIv(parseFloat(e.target.value) || 0)}
@@ -288,7 +288,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Risk-Free Rate (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Risk-Free Rate (%)</label>
             <input
               type="number" step="0.1" min={0} value={riskFreeRate}
               onChange={e => setRiskFreeRate(parseFloat(e.target.value) || 0)}
@@ -297,7 +297,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Option Type</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Option Type</label>
             <select
               value={optionType}
               onChange={e => setOptionType(e.target.value as "call" | "put")}
@@ -372,8 +372,8 @@ export default function GreeksCalculator() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-muted-foreground border-b border-card-border">
-                      <th className="text-left pb-2 text-[11px] font-semibold uppercase tracking-wider">Scenario</th>
-                      <th className="text-right pb-2 text-[11px] font-semibold uppercase tracking-wider">$ Change</th>
+                      <th className="text-left pb-2 text-2xs font-semibold uppercase tracking-wider">Scenario</th>
+                      <th className="text-right pb-2 text-2xs font-semibold uppercase tracking-wider">$ Change</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -432,10 +432,10 @@ function GreekCard({ label, value, color, icon, interpretation }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
       <div className="flex items-center gap-1.5 mb-1">
         <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-lg font-bold tabular-nums font-mono block ${color}`}>{value}</span>
-      <span className="text-[10px] text-muted-foreground leading-snug block mt-1">{interpretation}</span>
+      <span className="text-micro text-muted-foreground leading-snug block mt-1">{interpretation}</span>
     </div>
   );
 }

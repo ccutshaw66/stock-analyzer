@@ -67,7 +67,7 @@ export function AlertsBell() {
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-micro font-bold rounded-full flex items-center justify-center">
             {unread > 99 ? "99+" : unread}
           </span>
         )}
@@ -81,12 +81,12 @@ export function AlertsBell() {
               <span className="text-sm font-semibold text-foreground">Alerts</span>
               <div className="flex items-center gap-2">
                 {unread > 0 && (
-                  <button onClick={() => readAll.mutate()} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                  <button onClick={() => readAll.mutate()} className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground">
                     <CheckCheck className="h-3.5 w-3.5" /> Mark all read
                   </button>
                 )}
                 <Link href="/alerts">
-                  <span className="text-[11px] text-primary hover:underline cursor-pointer" onClick={() => setOpen(false)}>Manage</span>
+                  <span className="text-2xs text-primary hover:underline cursor-pointer" onClick={() => setOpen(false)}>Manage</span>
                 </Link>
               </div>
             </div>
@@ -97,7 +97,7 @@ export function AlertsBell() {
                   <Bell className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">No alerts yet</p>
                   <Link href="/alerts">
-                    <span className="text-[11px] text-primary hover:underline cursor-pointer" onClick={() => setOpen(false)}>Create your first rule</span>
+                    <span className="text-2xs text-primary hover:underline cursor-pointer" onClick={() => setOpen(false)}>Create your first rule</span>
                   </Link>
                 </div>
               ) : (
@@ -107,15 +107,15 @@ export function AlertsBell() {
                     className={`group px-3 py-2.5 border-b border-card-border/50 flex gap-2 ${!a.read ? "bg-primary/5" : ""} hover:bg-muted/30 transition-colors`}
                     onClick={() => !a.read && markRead.mutate(a.id)}
                   >
-                    <span className={`shrink-0 mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded ${SEV_COLOR[a.severity] || SEV_COLOR.info}`}>
+                    <span className={`shrink-0 mt-0.5 text-mini font-bold px-1.5 py-0.5 rounded ${SEV_COLOR[a.severity] || SEV_COLOR.info}`}>
                       {a.kind === "SCANNER_VERDICT" ? "SCAN" : a.kind === "PRICE_TARGET" ? "TGT" : a.kind === "PRICE_STOP" ? "STOP" : a.kind === "EARNINGS" ? "EARN" : a.kind}
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold text-foreground truncate">{a.title}</p>
-                        <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(a.createdAt)}</span>
+                        <span className="text-micro text-muted-foreground shrink-0">{timeAgo(a.createdAt)}</span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground line-clamp-2">{a.body}</p>
+                      <p className="text-2xs text-muted-foreground line-clamp-2">{a.body}</p>
                     </div>
                     <button
                       onClick={(e) => { e.stopPropagation(); dismiss.mutate(a.id); }}

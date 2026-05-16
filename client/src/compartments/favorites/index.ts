@@ -6,6 +6,7 @@
  * once it migrates to call `useFavorites` directly.
  */
 import type { ClientCompartmentEntry, CompartmentMeta } from "../types";
+import { TILE_SM, TILE_MIN_SM } from "@/lib/layout-tokens";
 import { WatchlistWidget } from "./WatchlistWidget";
 
 const meta: CompartmentMeta = {
@@ -18,8 +19,8 @@ const meta: CompartmentMeta = {
 export const favoritesCompartment: ClientCompartmentEntry = {
   meta,
   WidgetView: WatchlistWidget,
-  widgetDefaultSize: { w: 3, h: 4 },
-  widgetMinSize: { w: 2, h: 3 },
+  widgetDefaultSize: TILE_SM,
+  widgetMinSize: TILE_MIN_SM,
 };
 
 export { meta, WatchlistWidget };
