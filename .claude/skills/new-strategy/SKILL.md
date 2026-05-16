@@ -13,6 +13,17 @@ Adds a new strategy the right way — foundation-first, registry-driven, evaluat
 - Splitting an existing strategy into two variants.
 - Replacing a demoted strategy after a rebuild (e.g. the short-side rebuild, VER_WATCH_SELL rebuild).
 
+## Universal structure rule (master constraint)
+
+Per the 2026-05-15 rule (`rule_universal_structure` in memory): no new strategy is built as a one-off. The strategy must:
+- Plug into the existing strategy registry — not a parallel implementation, not a separate page.
+- Import every indicator period / threshold from `shared/indicators/constants.ts` — not hardcoded RSI 14, EMA 21, MACD 12/26/9, etc. If the constant doesn't exist yet, add it to the constants module first.
+- Reuse indicator helpers from `server/indicators/` — never duplicate EMA / RSI / MACD math.
+- Visualize via the existing chart components (CandlePane, SignalPulse, IndicatorOscillator) — never spawn a new chart variant.
+- Render its toggle in the Strategy Chart page via the registry — never edit the page directly to add a toggle.
+
+If any of the above can't be honored as-is, propose the foundation change FIRST (extend the constants module, generalize a chart component, etc.), get Chris's OK, then build the strategy on top.
+
 ## Conventions (read these first)
 
 - Strategy files live in `server/signals/strategies/` — one file per strategy. Existing examples: `bbtc.ts`, `ver.ts`, `amc.ts`, `tft.ts`.

@@ -1,7 +1,9 @@
 /**
- * MACD (12, 26, 9). Used by Gate 2 / momentum confirmation.
+ * MACD — periods from shared/indicators/constants (industry-standard 12/26/9).
+ * Used by Gate 2 / momentum confirmation.
  */
 import type { OHLCV } from "../data/types";
+import { MACD_FAST, MACD_SLOW, MACD_SIGNAL } from "@shared/indicators/constants";
 
 export interface MACDValue {
   macd: number;
@@ -20,7 +22,7 @@ function ema(values: number[], period: number): number[] {
   return out;
 }
 
-export function computeMACD(bars: OHLCV[], fast = 12, slow = 26, signal = 9): MACDValue | null {
+export function computeMACD(bars: OHLCV[], fast = MACD_FAST, slow = MACD_SLOW, signal = MACD_SIGNAL): MACDValue | null {
   if (bars.length < slow + signal) return null;
   const closes = bars.map((b) => b.c);
   const emaFast = ema(closes, fast);

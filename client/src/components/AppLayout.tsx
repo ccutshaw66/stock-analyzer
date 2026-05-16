@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
+import { getNavGroups } from "@/lib/page-registry";
 import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -520,56 +521,14 @@ function Sidebar({
     if (isMobile) onClose();
   };
 
-  // Grouped nav structure
-  const navGroups = [
-    {
-      label: "Trade Tracker",
-      items: [
-        { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-        { path: "/market-pulse", label: "Market Pulse", icon: Activity },
-        { path: "/tracker", label: "Current Positions", icon: ClipboardList },
-        { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
-        { path: "#add-trade", label: "Add Trade", icon: Plus },
-        { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
-        { path: "/analytics", label: "Performance Analytics", icon: PieChart },
-      ],
-    },
-    {
-      label: "Company Research",
-      items: [
-        { path: "/profile", label: "Profile", icon: BarChart3 },
-        { path: "/trade", label: "Trade Analysis", icon: Microscope },
-        { path: "/chart/confluence", label: "Confluence Chart", icon: Layers },
-        { path: "/chart", label: "Strategy Chart", icon: FlaskConical },
-        ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
-        { path: "/institutional", label: "Institutions", icon: Building2 },
-        { path: "/conviction", label: "Conviction Compass", icon: Compass },
-        { path: "/verdict", label: "Long-Term Outlook", icon: Award },
-      ],
-    },
-    {
-      label: "Investment Opportunities",
-      items: [
-        { path: "/scanner", label: "Scanner", icon: Radar },
-        { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
-        { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
-        { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
-        { path: "/track-record", label: "Track Record", icon: Trophy },
-        { path: "/alerts", label: "Alerts", icon: Bell },
-      ],
-    },
-    {
-      label: "Calculators",
-      items: [
-        { path: "/calculator", label: "Options Calculator", icon: Calculator },
-        { path: "/payoff", label: "Payoff Diagram", icon: Spline },
-        { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
-        { path: "/kelly", label: "Kelly Criterion", icon: Percent },
-        { path: "/wheel", label: "Wheel Strategy", icon: RefreshCw },
-      ],
-    },
-  ];
-  const helpItem = { path: "/help", label: "Help / FAQ", icon: BookOpen };
+  // Sidebar nav comes from the page registry — single source of truth.
+  // Adding a page = one entry in `client/src/lib/page-registry.ts`.
+  // Help is split off because it renders separately at the bottom of the nav.
+  const allGroups = getNavGroups(tier as "free" | "starter" | "premium");
+  const navGroups = allGroups.filter((g) => g.label !== "Help");
+  const helpItem = allGroups
+    .find((g) => g.label === "Help")
+    ?.items[0] ?? { path: "/help", label: "Help / FAQ", icon: BookOpen };
 
   const sortedWatchlist = [...watchlistItems].sort(
     (a, b) => (b.score ?? 0) - (a.score ?? 0)

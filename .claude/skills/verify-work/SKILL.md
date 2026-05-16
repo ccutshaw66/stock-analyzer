@@ -67,6 +67,15 @@ Any error in either is a blocker. Don't try to ship around it. If errors exist i
 
 ### B. Project-rule violations (BLOCKER)
 
+**Universal structure rule (2026-05-15) — the master rule.** No new feature may be built as a one-off. Every build plugs into the existing universal structure: compartments, widgets, registries, and shared token modules. Check the diff for violations:
+- New page that doesn't register in `client/src/lib/page-registry.ts`.
+- New widget / scanner signal / strategy that doesn't register in its matching registry.
+- New color, font size, tile size, indicator period, or signal threshold hardcoded in a component instead of imported from `lib/design-tokens.ts` / `shared/dashboard/layout-tokens.ts` / `shared/indicators/constants.ts` / tailwind config.
+- New page-chrome (header bar, branded strip) that doesn't use the standard `<PageHeader>` template.
+- "Just add it here for now" pattern — short-circuiting the registry by editing the host page directly to wire a new entry. The registry must be the seam, always.
+
+This is the master rule above. The individual rules below are specific applications of it.
+
 Grep the diff for:
 
 1. **Yahoo or Polygon usage in new code** — both are kill targets. New code may NOT introduce calls to:

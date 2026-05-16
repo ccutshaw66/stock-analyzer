@@ -9,9 +9,11 @@
  * Matches TradingView / ThinkOrSwim default RSI.
  */
 import type { OHLCV } from "../data/types";
+import { RSI_PERIOD } from "@shared/indicators/constants";
 
 export interface RSIOptions {
-  period?: number; // default 14
+  /** Defaults to the canonical RSI_PERIOD (14) from shared/indicators/constants. */
+  period?: number;
 }
 
 /**
@@ -58,7 +60,7 @@ function wildersRSISeries(closes: number[], period: number): number[] {
  * Use this when you just need the latest RSI (e.g. gate checks, single-quote UI).
  */
 export function computeRSI(bars: OHLCV[], opts: RSIOptions = {}): number | null {
-  const period = opts.period ?? 14;
+  const period = opts.period ?? RSI_PERIOD;
   if (bars.length < period + 1) return null;
   const closes = bars.map(b => b.c);
   const series = wildersRSISeries(closes, period);
@@ -74,6 +76,6 @@ export function computeRSI(bars: OHLCV[], opts: RSIOptions = {}): number | null 
  * backtests, scanner loops).
  */
 export function computeRSISeries(closes: number[], opts: RSIOptions = {}): number[] {
-  const period = opts.period ?? 14;
+  const period = opts.period ?? RSI_PERIOD;
   return wildersRSISeries(closes, period);
 }

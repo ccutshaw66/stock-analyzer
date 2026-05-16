@@ -16,6 +16,8 @@
  * Track Record, and any future caller must import from here.
  */
 
+import { RSI_PERIOD, ADX_PERIOD, ATR_PERIOD } from "@shared/indicators/constants";
+
 export type BBTCSignal =
   | "BUY"        // open long
   | "SELL"       // open short (or close long via state weakening)
@@ -75,8 +77,8 @@ const SMA200_SLOPE_LOOKBACK = 20; // bars to compare SMA200 vs SMA200[i-N] for s
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
-// Wilder's ADX(14). Self-contained.
-function computeADX(highs: number[], lows: number[], closes: number[], period = 14): number[] {
+// Wilder's ADX — default period from shared/indicators/constants (14).
+function computeADX(highs: number[], lows: number[], closes: number[], period = ADX_PERIOD): number[] {
   const len = closes.length;
   const adx = new Array(len).fill(NaN);
   if (len < period * 2 + 1) return adx;
@@ -163,7 +165,7 @@ function computeSMA(data: number[], period: number): number[] {
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
-  const rsi14 = input.rsi14 ?? computeRSISeries(closes, 14);
+  const rsi14 = input.rsi14 ?? computeRSISeries(closes, RSI_PERIOD);
   const sma200 = computeSMA(closes, 200);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
   const signalSides: BBTCSignalSide[] = new Array(closes.length).fill(null);

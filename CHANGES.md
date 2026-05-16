@@ -9,6 +9,47 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-15 — Universal structure rule + page registry + indicator constants module
+
+**Why:** Chris established a new architectural rule: no new feature is built independently — every build plugs into compartments, widgets, registries, and shared token modules. The TradingView-style chart rollout is starting across every page, and the building blocks underneath (indicator periods, signal colors, page chrome, layout sizes) must come from one source or drift makes the rollout meaningless. Two concrete violations exposed this ship: (1) sidebar icons and page-header icons lived in two separate files and drifted; (2) RSI period 14, EMA 9/21/50/200, MACD 12/26/9, BB 20/2, ATR 14, Volume MA 20 were hardcoded in indicator files and strategy files. Same numbers, eight places.
+
+**What:**
+
+### Universal structure rule established
+- New memory file `rule_universal_structure.md`. Rule text + tiebreaker order + list of the universal-structure infrastructure (design-tokens, layout-tokens, page-registry, compartments registry, etc.) so future-Claude knows where things plug in.
+- `/verify-work` gains a "master rule" section at the top of project-rule checks — calls out the universal-structure rule explicitly and lists the specific violations it blocks (unregistered page, unregistered widget/strategy, hardcoded color/size/period, custom page chrome bypassing PageHeader, "just add it here" pattern).
+- `/new-strategy` gains a "universal structure rule" section: every new strategy must register, must import indicator periods from `shared/indicators/constants.ts`, must reuse indicator helpers, must use existing chart components, must wire into registry-driven Strategy Chart toggles.
+
+### Page registry — single source for page metadata
+- New `client/src/lib/page-registry.ts` exports `PAGE_REGISTRY` — every page declared once with path, label, icon, group, optional subtitle, optional tier gate. Adding a page = one entry, no other edits.
+- `PageHeader` component upgraded to auto-resolve icon + title + subtitle from the registry by matching the current route. Pages can still pass overrides (per-state titles in loading/error branches). Default form `<PageHeader />` with no props pulls everything from the registry.
+- `AppLayout` sidebar nav now consumes `getNavGroups(tier)` from the registry — the inline 50-line nav array deleted. Sidebar icon ↔ page-header icon can no longer drift.
+
+### Indicator constants module (rogue connection #1)
+- New `shared/indicators/constants.ts` — the canonical periods + signal levels:
+  - `RSI_PERIOD = 14`, `ATR_PERIOD = 14`, `ADX_PERIOD = 14`
+  - `EMA_FAST = 9`, `EMA_MID = 21`, `EMA_SLOW = 50`, `EMA_TREND = 200` (+ tuple `EMA_PERIODS`)
+  - `MACD_FAST = 12`, `MACD_SLOW = 26`, `MACD_SIGNAL = 9`
+  - `BB_PERIOD = 20`, `BB_STDDEV = 2`
+  - `VOLUME_MA_PERIOD = 20`, `SMA_TREND_PERIOD = 200`
+  - `RSI_OVERBOUGHT = 70`, `RSI_OVERSOLD = 30`, `RSI_MIDLINE = 50`
+  - `COMPACT_PANE_BAR_COUNT = 60`
+- Lives in `shared/` so client (chart panes) and server (strategies, indicators) consume the same values. When the TV-chart rollout starts, every chart pane and every strategy reads RSI/EMA/MACD periods from one file.
+- Indicator helpers migrated:
+  - `server/indicators/rsi.ts` defaults to `RSI_PERIOD`
+  - `server/indicators/macd.ts` defaults to `MACD_FAST/SLOW/SIGNAL`
+  - `server/indicators/bollinger.ts` defaults to `BB_PERIOD/BB_STDDEV`
+  - `server/indicators/volume.ts` defaults to `VOLUME_MA_PERIOD`
+- BBTC strategy migrated: ADX period → `ADX_PERIOD`, RSI series period → `RSI_PERIOD`. Strategy-specific thresholds (BBTC's RSI ceiling 65, RSI floor short 35, ATR multipliers) stay strategy-internal — those are intentional strategy choices, not universal indicator settings.
+
+### What remains (next ship)
+- Strategy-specific constants in `tft.ts`, `ver.ts`, `amc.ts` still have hardcoded periods in some helpers — sweep the remaining files.
+- Client-side chart components (CandlePane, IndicatorOscillator, etc.) currently get periods from API responses; once they compute locally, they'll consume the constants too.
+- Some pages still pass explicit `icon=`, `title=`, `subtitle=` props to PageHeader. Those are harmless overrides — the registry is the source. Optional sweep to drop them for full visual consistency.
+
+**Files touched:** new `client/src/lib/page-registry.ts`, new `shared/indicators/constants.ts`, new memory `rule_universal_structure.md`, `client/src/components/PageHeader.tsx` (route-auto-resolve), `client/src/components/AppLayout.tsx` (registry-driven nav), `server/indicators/{rsi,macd,bollinger,volume}.ts`, `server/signals/strategies/bbtc.ts`, `.claude/skills/verify-work/SKILL.md`, `.claude/skills/new-strategy/SKILL.md`, `MEMORY.md`, `CHANGES.md`.
+
+---
 ## 2026-05-15 — Payoff Diagram icon: LineChart → Spline (more distinct from Strategy Chart)
 
 **Why:** After de-duping Strategy Chart to `FlaskConical`, Payoff Diagram still used the generic `LineChart` icon. Chris said the two pages still looked the same. `LineChart` is too generic for a page that specifically shows option P/L curves; `Spline` (smooth curve) reads as "payoff curve" and is visually completely distinct from a flask.
