@@ -388,7 +388,8 @@ export default function Scanner() {
   const [priceRange, setPriceRange] = useState("all");
   const [marketCap, setMarketCap] = useState("all");
   const [showAll, setShowAll] = useState(true);
-  const [scanCount, setScanCount] = useState(25);
+  const [scanCount, setScanCount] = useState(250);
+  const [v2UniverseSize, setV2UniverseSize] = useState(2000);
   const [signalFilter, setSignalFilter] = useState<"both" | "buy" | "sell">("both");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [pulseTicker, setPulseTicker] = useState<string | null>(null);
@@ -456,7 +457,7 @@ export default function Scanner() {
           marketCap,
           direction: v2Direction,
           minScore: String(v2MinScore),
-          universeSize: "2000",
+          universeSize: String(v2UniverseSize),
           count: "100",
         }).toString();
         endpoint = `/api/scanner/v2?${v2Params}`;
@@ -595,7 +596,7 @@ export default function Scanner() {
                   <div>
                     <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Stocks to Scan</label>
                     <div className="flex gap-2">
-                      {[10, 15, 25].map(n => (
+                      {[50, 100, 250, 500].map(n => (
                         <button key={n} onClick={() => setScanCount(n)} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${scanCount === n ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
                       ))}
                     </div>
@@ -631,6 +632,16 @@ export default function Scanner() {
                     </div>
                   </div>
                 )}
+                {scanMode === "v2" && (
+                  <div>
+                    <label className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">Universe Size</label>
+                    <div className="flex gap-2">
+                      {[1000, 2000, 3000].map(n => (
+                        <button key={n} onClick={() => setV2UniverseSize(n)} data-testid={`v2-universe-${n}`} className={`flex-1 py-2 text-xs font-semibold rounded-md transition-colors ${v2UniverseSize === n ? "bg-fuchsia-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between pt-1">
                 {scanMode !== "v2" ? (
@@ -642,7 +653,7 @@ export default function Scanner() {
                   <span className="text-xs text-muted-foreground">Scanning 2000 liquid US stocks</span>
                 )}
                 <button onClick={() => refetch()} disabled={isFetching} className={`inline-flex items-center gap-2 ${scanMode === "amc" ? "bg-purple-600 hover:bg-purple-500" : scanMode === "v2" ? "bg-fuchsia-600 hover:bg-fuchsia-500" : "bg-primary hover:bg-primary/90"} text-white font-semibold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-50`} data-testid="button-scan">
-                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />{data ? "New Scan" : scanMode === "v2" ? "Scan 2000 Stocks" : `Scan ${scanCount} Stocks`}</>)}
+                  {isFetching ? (<><Radar className="h-4 w-4 animate-spin" />Scanning...</>) : (<><Search className="h-4 w-4" />{data ? "New Scan" : scanMode === "v2" ? `Scan ${v2UniverseSize} Stocks` : `Scan ${scanCount} Stocks`}</>)}
                 </button>
               </div>
             </div>
@@ -706,17 +717,25 @@ export default function Scanner() {
             const dir = r.gates?.direction;
             // Direction is the source of truth when present (BULLISH / BEARISH
             // from the gate system). Score-based fallback only kicks in when
-            // gates couldn't run for this row — and uses tighter thresholds
-            // so BUY/SELL don't pick up neutral ticks.
+            // gates couldn't run for this row — and requires sub-signals
+            // (BBTC / VER / Confirmation) to not contradict the picked side.
             if (signalFilter === "buy") {
               if (dir === "BULLISH") return true;
               if (dir === "BEARISH") return false;
-              return r.score >= 5;
+              const noBearishSubSignal =
+                r.bbtc?.signal !== "SELL" &&
+                r.ver?.signal !== "SELL" &&
+                !String(r.confirmation?.signal ?? "").includes("SELL");
+              return r.score >= 5 && noBearishSubSignal;
             }
             if (signalFilter === "sell") {
               if (dir === "BEARISH") return true;
               if (dir === "BULLISH") return false;
-              return r.score <= -3;
+              const noBullishSubSignal =
+                r.bbtc?.signal !== "ENTER" &&
+                r.ver?.signal !== "ENTER" &&
+                !String(r.confirmation?.signal ?? "").includes("BUY");
+              return r.score <= -3 && noBullishSubSignal;
             }
             return true;
           });

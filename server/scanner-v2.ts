@@ -608,7 +608,10 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
   // Apply post-scan filters
   let filtered = rows;
   if (filters.direction && filters.direction !== "either") {
-    filtered = filtered.filter((r) => r.direction === filters.direction || r.direction === "either");
+    // Strict: when user picks "up" or "down", DROP bias-neutral ("either") rows.
+    // Previously kept them, which surfaced sell-leaning tickers under BUY and
+    // vice versa — that's the "BUY toggle returns sell-side results" bug.
+    filtered = filtered.filter((r) => r.direction === filters.direction);
   }
   if (filters.minScore != null) {
     filtered = filtered.filter((r) => r.score >= filters.minScore!);

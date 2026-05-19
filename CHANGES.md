@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-18 — Scanner: BUY/SELL filter strictness + lift the universe restrictions
+
+**Why:** Two long-standing scanner bugs reported on 2026-05-05 and not yet fully closed: (1) BUY toggle still surfaces sell-side results in Scanner v2, and (2) the 3-strategy / AMC scanners visibly restrict the user to a fixed list — only 10/15/25 tickers selectable in the UI even though the server allows up to 1000.
+
+**What:**
+
+### Bug — BUY/SELL filter leaked bias-neutral rows (Scanner v2)
+- `server/scanner-v2.ts:610-614` — direction post-filter previously kept rows where `r.direction === filters.direction || r.direction === "either"`. The `|| "either"` clause meant bias-neutral tickers (where `scoreRow` couldn't lean up or down decisively) leaked into both BUY and SELL result sets. Now strict: only rows whose computed direction matches the picked side survive. Comment in code explains why.
+
+### Bug — 3-strategy / AMC scan-count UI capped at 25 stocks
+- `client/src/pages/scanner.tsx:598` — replaced the `[10, 15, 25]` button row with `[50, 100, 250, 500]`. Server cap is 1000, no need to gate the user at 25.
+- `client/src/pages/scanner.tsx:391` — default `scanCount` bumped `25 → 250`. Existing 250-batch perf profile completes well under nginx's 60s limit (per main-scanner comment block).
+
+### New — Scanner v2 universe-size picker
+- Previously hard-coded `universeSize: "2000"` in the URL builder, leaving the user with no UI to widen or narrow the screened set.
+- Added `v2UniverseSize` state (default 2000) + a 3-button picker (1000 / 2000 / 3000) inside the v2 filter card next to Min Score.
+- The "Scan 2000 Stocks" CTA label now reads dynamically from the picked size (`Scan ${v2UniverseSize} Stocks`).
+- Server cap at `Math.min(universeSize, 3000)` already exists — picker stays within it.
+
+### Defense-in-depth — 3-strategy filter score-fallback
+- `client/src/pages/scanner.tsx:704-728` — when `gates.direction` is null (gate engine couldn't run), the buy/sell fallback now additionally requires that BBTC / VER / Confirmation sub-signals don't contradict the picked side. Prevents the edge case where a high-score ticker with a strong opposite sub-signal slips through.
+
+**Files touched:** `server/scanner-v2.ts`, `client/src/pages/scanner.tsx`, `CHANGES.md`.
+
+**Verification:** TypeScript clean, build clean. Browser spot-check pending — Chris should pick BUY on Scanner v2 and confirm no "either"-direction rows appear in results.
+
+---
 ## 2026-05-16 — Type the EMA-toggle contract + bake browser-verify into `verify-work`
 
 **Why:** Same-day follow-up to the EMA-toggle fix. The bug had been "fixed" four times before it actually went away (commits 035bde4, 9af9c23, 5f3b01f, 5467148) — every prior attempt was based on the false signal that `tsc` clean + visible-button-state = working feature. This commit removes the structural conditions that allowed those false signals.
