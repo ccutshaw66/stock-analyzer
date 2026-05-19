@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-18 — Scanner BUY/SELL filter: drop score-fallback, count gate-ready honestly
+
+**Why:** Same-day follow-up to the BUY/SELL strictness fix earlier today. Chris ran a 500-stock scan: BUY returned 13 cards (correctly mostly READY ↑ / SET ↑ / GO ↑), but SELL returned 3 cards that included a "NO SETUP" and a "GATES CLOSED" — and the BOTH-filter status label said "50 gate-ready" when 35 of those 50 were actually NO SETUP fill rows. Two real defects: (a) score-fallback was leaking NO-SETUP and exit signals into BUY/SELL, and (b) the "gate-ready" count label included server-side fill rows that aren't gate-ready at all.
+
+**What:**
+
+### Scanner.tsx — strict BUY/SELL filter, no more score-fallback
+- `client/src/pages/scanner.tsx:703-731` — replaced the gate-direction-with-score-fallback logic with a single pass over `gates.signal`: only rows whose signal matches `^(GO|SET|READY|PULLBACK)` are eligible for BUY/SELL, AND the direction must match the picked side. Excludes `NO SETUP` (nothing actionable), `GATES CLOSED` (exit signal, not a SELL entry), and any row where the gate engine couldn't compute at all (no guessing from score sums).
+- The earlier defense-in-depth sub-signal check is gone — superseded by the cleaner signal-shape gate.
+
+### Scanner.tsx — honest gate-ready counts
+- `client/src/pages/scanner.tsx:663-680` — the "Scanned N stocks · X gate-ready" status under the scan button used to set `X = data.results.length`, but the server returns up to 50 results including non-gate-ready fill when `showAll=true`. Now `X` is computed client-side as the count of results whose signal matches `^(GO|SET|READY|PULLBACK)`, with the label reading `… X gate-ready of N shown`.
+- `client/src/pages/scanner.tsx:735-739` — the section heading for BOTH filter now reads `${filtered.length} Stocks · ${gateReadyCount} Gate-Ready` instead of falsely calling all 50 results gate-ready. BUY/SELL filter heading still reads `${filtered.length} Gate-Ready (buy|sell)` since the strict filter guarantees all surviving rows are gate-ready.
+
+**Files touched:** `client/src/pages/scanner.tsx`, `CHANGES.md`.
+
+**Verification:** TypeScript clean, build clean. Browser spot-check pending — Chris should pick BUY and SELL on a 500-stock scan and confirm:
+- SELL no longer includes any "NO SETUP" / "GATES CLOSED" / mismatched-direction cards.
+- BOTH filter status label reads honest "X gate-ready of N shown" instead of overstating.
+
+---
 ## 2026-05-18 — Scanner: BUY/SELL filter strictness + lift the universe restrictions
 
 **Why:** Two long-standing scanner bugs reported on 2026-05-05 and not yet fully closed: (1) BUY toggle still surfaces sell-side results in Scanner v2, and (2) the 3-strategy / AMC scanners visibly restrict the user to a fixed list — only 10/15/25 tickers selectable in the UI even though the server allows up to 1000.

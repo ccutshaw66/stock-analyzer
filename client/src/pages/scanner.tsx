@@ -661,13 +661,20 @@ export default function Scanner() {
         </div>
 
         {/* Scan status */}
-        {data && !isFetching && (
-          <div className="text-center text-2xs text-muted-foreground">
-            {scanMode === "v2"
-              ? <>Scanned {data.universeSize} stocks in {((data.scanDurationMs || 0) / 1000).toFixed(1)}s at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} triggered</>
-              : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} gate-ready</>}
-          </div>
-        )}
+        {data && !isFetching && (() => {
+          const gateReady = scanMode === "v2"
+            ? null
+            : (data.results || []).filter((r: any) =>
+                /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
+              ).length;
+          return (
+            <div className="text-center text-2xs text-muted-foreground">
+              {scanMode === "v2"
+                ? <>Scanned {data.universeSize} stocks in {((data.scanDurationMs || 0) / 1000).toFixed(1)}s at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} triggered</>
+                : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {gateReady} gate-ready of {data.results.length} shown</>}
+            </div>
+          );
+        })()}
 
         {/* Loading */}
         {isFetching && (
@@ -714,36 +721,28 @@ export default function Scanner() {
         {data && !isFetching && scanMode !== "v2" && (() => {
           const filtered = data.results.filter((r: any) => {
             if (signalFilter === "both") return true;
+            // Strict BUY/SELL: only actionable entry-direction setups.
+            //   GO / SET / READY / PULLBACK — yes (with matching direction)
+            //   NO SETUP — no (nothing to act on)
+            //   GATES CLOSED — no (exit signal, not an entry)
+            //   gates null — no (couldn't compute; don't guess from score)
             const dir = r.gates?.direction;
-            // Direction is the source of truth when present (BULLISH / BEARISH
-            // from the gate system). Score-based fallback only kicks in when
-            // gates couldn't run for this row — and requires sub-signals
-            // (BBTC / VER / Confirmation) to not contradict the picked side.
-            if (signalFilter === "buy") {
-              if (dir === "BULLISH") return true;
-              if (dir === "BEARISH") return false;
-              const noBearishSubSignal =
-                r.bbtc?.signal !== "SELL" &&
-                r.ver?.signal !== "SELL" &&
-                !String(r.confirmation?.signal ?? "").includes("SELL");
-              return r.score >= 5 && noBearishSubSignal;
-            }
-            if (signalFilter === "sell") {
-              if (dir === "BEARISH") return true;
-              if (dir === "BULLISH") return false;
-              const noBullishSubSignal =
-                r.bbtc?.signal !== "ENTER" &&
-                r.ver?.signal !== "ENTER" &&
-                !String(r.confirmation?.signal ?? "").includes("BUY");
-              return r.score <= -3 && noBullishSubSignal;
-            }
+            const signal = String(r.gates?.signal ?? "");
+            if (!/^(GO|SET|READY|PULLBACK)/.test(signal)) return false;
+            if (signalFilter === "buy") return dir === "BULLISH";
+            if (signalFilter === "sell") return dir === "BEARISH";
             return true;
           });
+          const gateReadyCount = filtered.filter((r: any) =>
+            /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
+          ).length;
           return filtered.length > 0 ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  {filtered.length} Gate-Ready {signalFilter !== "both" && `(${signalFilter})`}
+                  {signalFilter === "both"
+                    ? `${filtered.length} Stocks · ${gateReadyCount} Gate-Ready`
+                    : `${filtered.length} Gate-Ready (${signalFilter})`}
                 </h3>
                 <span className="text-xs text-muted-foreground">
                   Ranked by gate progression + RSI extremes
