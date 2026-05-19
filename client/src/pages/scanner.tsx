@@ -399,6 +399,7 @@ export default function Scanner() {
     minPrice: String(priceConfig.min), maxPrice: String(priceConfig.max),
     sector: sector === "All Sectors" ? "all" : sector,
     marketCap, count: String(scanCount), showAll: String(showAll),
+    direction: signalFilter,
     timeframe,
   }).toString();
 
@@ -662,16 +663,22 @@ export default function Scanner() {
 
         {/* Scan status */}
         {data && !isFetching && (() => {
-          const gateReady = scanMode === "v2"
-            ? null
-            : (data.results || []).filter((r: any) =>
-                /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
-              ).length;
+          const results = data.results || [];
+          let gateReady: number | null = null;
+          if (scanMode === "amc") {
+            gateReady = results.filter((r: any) => r.amcScore >= 3).length;
+          } else if (scanMode !== "v2") {
+            gateReady = results.filter((r: any) =>
+              /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
+            ).length;
+          }
           return (
             <div className="text-center text-2xs text-muted-foreground">
               {scanMode === "v2"
                 ? <>Scanned {data.universeSize} stocks in {((data.scanDurationMs || 0) / 1000).toFixed(1)}s at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} triggered</>
-                : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {gateReady} gate-ready of {data.results.length} shown</>}
+                : signalFilter === "both"
+                  ? <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {gateReady} {scanMode === "amc" ? "AMC setups" : "gate-ready"} of {data.results.length} shown</>
+                  : <>Scanned {data.totalScanned} stocks at {new Date(data.scannedAt).toLocaleTimeString()} · {data.results.length} {signalFilter} {scanMode === "amc" ? "setups" : "setups"}</>}
             </div>
           );
         })()}
@@ -719,30 +726,25 @@ export default function Scanner() {
         )}
 
         {data && !isFetching && scanMode !== "v2" && (() => {
-          const filtered = data.results.filter((r: any) => {
-            if (signalFilter === "both") return true;
-            // Strict BUY/SELL: only actionable entry-direction setups.
-            //   GO / SET / READY / PULLBACK — yes (with matching direction)
-            //   NO SETUP — no (nothing to act on)
-            //   GATES CLOSED — no (exit signal, not an entry)
-            //   gates null — no (couldn't compute; don't guess from score)
-            const dir = r.gates?.direction;
-            const signal = String(r.gates?.signal ?? "");
-            if (!/^(GO|SET|READY|PULLBACK)/.test(signal)) return false;
-            if (signalFilter === "buy") return dir === "BULLISH";
-            if (signalFilter === "sell") return dir === "BEARISH";
-            return true;
-          });
-          const gateReadyCount = filtered.filter((r: any) =>
-            /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
-          ).length;
+          // Server already filtered by `direction` query param (BUY/SELL drop
+          // NO SETUP and direction-mismatched rows server-side). Client just
+          // displays what came back.
+          const filtered = data.results;
+          const gateReadyCount = scanMode === "amc"
+            ? filtered.filter((r: any) => r.amcScore >= 3).length
+            : filtered.filter((r: any) =>
+                /^(GO|SET|READY|PULLBACK)/.test(String(r.gates?.signal ?? ""))
+              ).length;
           return filtered.length > 0 ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  {signalFilter === "both"
-                    ? `${filtered.length} Stocks · ${gateReadyCount} Gate-Ready`
-                    : `${filtered.length} Gate-Ready (${signalFilter})`}
+                  {(() => {
+                    const setupWord = scanMode === "amc" ? "AMC Setups" : "Gate-Ready";
+                    return signalFilter === "both"
+                      ? `${filtered.length} Stocks · ${gateReadyCount} ${setupWord}`
+                      : `${filtered.length} ${setupWord} (${signalFilter})`;
+                  })()}
                 </h3>
                 <span className="text-xs text-muted-foreground">
                   Ranked by gate progression + RSI extremes

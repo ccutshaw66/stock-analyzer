@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-18 — Scanner direction filter moved server-side (BUY/SELL counts now honest)
+
+**Why:** After tightening the client-side BUY/SELL filter, Chris reported the counts were still erratic and inconsistent ("Sell shows 1, BUY shows 3, both shows 30+ NO SETUP"). Root cause: the server caps at 50 results — qualified rows on top, NO SETUP fill below. Client filtered AFTER that cap, so BUY/SELL got "whatever survived from the 50-mix." Combined with the universe shuffle (different 500-ticker subset every scan), the counts were both small and randomly varying.
+
+**What:**
+
+### Server-side direction filter on `/api/scanner` (3-strategy)
+- `server/routes.ts` — new `direction` query param (`buy` | `sell` | `both`, default `both`). When `buy`/`sell`, the server filters `allResults` to rows whose `gates.signal` matches `^(GO|SET|READY|PULLBACK)` AND `gates.direction` matches the picked side, BEFORE the TOP_N truncation. Fill rows are dropped entirely under BUY/SELL — no more NO SETUP padding.
+- `filters` block in the response payload now echoes the `direction` so the client can confirm what the server applied.
+
+### Server-side direction filter on `/api/scanner/amc`
+- `server/routes.ts` — same `direction` param. AMC results don't have gate signals — they have `signal: "ENTER" | "HOLD" | "SELL"`. BUY filter → `signal === "ENTER"`, SELL filter → `signal === "SELL"`. Same truncation pattern: drop fill under BUY/SELL.
+
+### Client — pass `direction` to server, drop the redundant client filter
+- `client/src/pages/scanner.tsx` — `queryParams` now includes `direction: signalFilter`. The non-v2 client-side filter block is gone — server is authoritative. Display the server's response directly.
+- Count labels: BUY/SELL status bar reads `"X buy setups"` / `"X sell setups"` (X = server result count = actual count). BOTH still reads `"X gate-ready of N shown"` or `"X AMC setups of N shown"` depending on scan mode.
+
+**Net effect for the user:**
+- BUY/SELL counts now mean "this many actionable entry-direction setups were found in the N stocks scanned." No fill padding, no over-counting.
+- The cross-scan variation is now ONLY the universe shuffle (different random 500 tickers each time) — not also "different 50-row mix." More setups means widening the scan count or running again.
+
+**Files touched:** `server/routes.ts`, `client/src/pages/scanner.tsx`, `CHANGES.md`.
+
+**Verification:** TypeScript clean, build clean. Browser spot-check pending — Chris should run a 500-stock scan three ways (BOTH, BUY, SELL) and confirm: BUY shows only ↑-direction setups, SELL shows only ↓-direction setups, BOTH still surfaces the full 50-result mix.
+
+---
 ## 2026-05-18 — Scanner BUY/SELL filter: drop score-fallback, count gate-ready honestly
 
 **Why:** Same-day follow-up to the BUY/SELL strictness fix earlier today. Chris ran a 500-stock scan: BUY returned 13 cards (correctly mostly READY ↑ / SET ↑ / GO ↑), but SELL returned 3 cards that included a "NO SETUP" and a "GATES CLOSED" — and the BOTH-filter status label said "50 gate-ready" when 35 of those 50 were actually NO SETUP fill rows. Two real defects: (a) score-fallback was leaking NO-SETUP and exit signals into BUY/SELL, and (b) the "gate-ready" count label included server-side fill rows that aren't gate-ready at all.

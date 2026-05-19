@@ -3705,6 +3705,7 @@ export async function registerRoutes(
     // feel "stuck on the same tickers."
     const scanSize = Math.min(Number(req.query.count) || 500, 1000);
     const showAll = req.query.showAll === "true";
+    const direction = ((req.query.direction as string) || "both").toLowerCase();
     const tf = parseTimeframe(req);
 
     // Map market cap tier to min/max
@@ -3988,26 +3989,45 @@ export async function registerRoutes(
         return b.score - a.score;
       });
 
-      // Default-pass-fewer-out filter. The previous version threw away any
-      // ticker without a fully-cleared gate or score>=5 — that left scans
-      // returning only 2-3 tickers (typically tech megacaps that hit the
-      // strict alignment bar). Now we always return 50 ranked candidates:
-      // gate-cleared and strong-buy on top, then merely "Buy" / "Lean Buy"
-      // / neutral fill the rest. The user can see WHY each shows up via
-      // its score + gates fields.
+      // Direction filter applied BEFORE truncation so the result count
+      // reflects what's actually present in the scanned universe — not
+      // "top 50 by sort, then client filters down to 3."
+      //   - "buy"  → only GO/SET/READY/PULLBACK signals with BULLISH direction
+      //   - "sell" → only GO/SET/READY/PULLBACK signals with BEARISH direction
+      //   - "both" → no direction filter (existing behavior)
+      const ENTRY_SIGNAL_RE = /^(GO|SET|READY|PULLBACK)/;
+      const directionFiltered = (direction === "buy" || direction === "sell")
+        ? sorted.filter(r => {
+            if (!ENTRY_SIGNAL_RE.test(String(r.gates?.signal ?? ""))) return false;
+            const dir = r.gates?.direction;
+            return direction === "buy" ? dir === "BULLISH" : dir === "BEARISH";
+          })
+        : sorted;
+
+      // Default-pass-fewer-out filter for the BOTH view. The previous version
+      // threw away any ticker without a fully-cleared gate or score>=5 — that
+      // left scans returning only 2-3 tickers. Now we return 50 ranked
+      // candidates: gate-cleared and strong-buy on top, then merely "Buy" /
+      // "Lean Buy" / neutral fill the rest. The user can see WHY each shows
+      // up via its score + gates fields.
       const TOP_N = 50;
-      const qualified = sorted.filter(r => {
+      const qualified = directionFiltered.filter(r => {
         const gates = r.gates?.gatesCleared ?? 0;
         return gates >= 1 || r.score >= 3;
       });
-      const fill = sorted.filter(r => !qualified.includes(r));
+      const fill = directionFiltered.filter(r => !qualified.includes(r));
       const merged = [...qualified, ...fill];
-      const results = showAll ? sorted.slice(0, TOP_N) : merged.slice(0, TOP_N);
+      // For BUY/SELL directional filters: drop fill entirely. We've already
+      // filtered to actionable entry signals; padding with NO SETUP rows would
+      // re-introduce the inconsistency.
+      const results = (direction === "buy" || direction === "sell")
+        ? directionFiltered.slice(0, TOP_N)
+        : showAll ? directionFiltered.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
-        filters: { minPrice, maxPrice, sector, marketCapTier },
+        filters: { minPrice, maxPrice, sector, marketCapTier, direction },
         results,
       };
       // Route cache removed — see comment on the cache-read block above.
@@ -4080,6 +4100,7 @@ export async function registerRoutes(
     // nginx's 60s timeout window.
     const scanSize = Math.min(Number(req.query.count) || 500, 1000);
     const showAll = req.query.showAll === "true";
+    const direction = ((req.query.direction as string) || "both").toLowerCase();
     const tf = parseTimeframe(req);
 
     let minMarketCap = 500_000_000;
@@ -4228,16 +4249,28 @@ export async function registerRoutes(
       // logic as the main scanner: always return 50 ranked candidates with
       // amcScore>=3 on top, then fill from the rest.
       const sorted = allResults.sort((a, b) => b.amcScore - a.amcScore || b.vami - a.vami);
+
+      // Direction filter applied BEFORE truncation so BUY/SELL counts reflect
+      // actual AMC entry/exit signals in the scanned universe.
+      //   - "buy"  → AMC signal === "ENTER"
+      //   - "sell" → AMC signal === "SELL"
+      //   - "both" → no direction filter
+      const directionFiltered = (direction === "buy" || direction === "sell")
+        ? sorted.filter(r => direction === "buy" ? r.signal === "ENTER" : r.signal === "SELL")
+        : sorted;
+
       const TOP_N = 50;
-      const qualified = sorted.filter(r => r.amcScore >= 3);
-      const fill = sorted.filter(r => !qualified.includes(r));
+      const qualified = directionFiltered.filter(r => r.amcScore >= 3);
+      const fill = directionFiltered.filter(r => !qualified.includes(r));
       const merged = [...qualified, ...fill];
-      const results = showAll ? sorted.slice(0, TOP_N) : merged.slice(0, TOP_N);
+      const results = (direction === "buy" || direction === "sell")
+        ? directionFiltered.slice(0, TOP_N)
+        : showAll ? directionFiltered.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
-        filters: { minPrice, maxPrice, sector, marketCapTier },
+        filters: { minPrice, maxPrice, sector, marketCapTier, direction },
         results,
       };
       // Route cache removed — see comment on the cache-read block above.
