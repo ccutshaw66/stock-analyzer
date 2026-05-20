@@ -132,19 +132,6 @@ function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
-function daysSince(dateStr: string): number {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return -1;
-  const dayMs = 24 * 60 * 60 * 1000;
-  return Math.max(0, Math.round((Date.now() - d.getTime()) / dayMs));
-}
-
-function daysColor(d: number): string {
-  if (d <= 1) return "text-bull-light";       // today / yesterday — freshest
-  if (d <= 3) return "text-watch-light";      // a few days old
-  return "text-bear-light";                    // getting stale
-}
-
 function fmtAgo(isoOrDate: string | Date | null): string {
   if (!isoOrDate) return "never";
   const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
@@ -184,7 +171,6 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
           <tr>
             <th className="px-3 py-2 text-left">Symbol</th>
             <th className="px-3 py-2 text-right">Score</th>
-            <th className="px-3 py-2 text-right">Days</th>
             <th className="px-3 py-2 text-right">Breakout</th>
             <th className="px-3 py-2 text-right">Target</th>
             <th className="px-3 py-2 text-right">Stop</th>
@@ -211,12 +197,6 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
                 <span className={`px-2 py-0.5 rounded border ${scoreBg(r.qualityScore)}`}>
                   {r.qualityScore}
                 </span>
-              </td>
-              <td
-                className={`px-3 py-2 text-right tabular-nums font-bold ${daysColor(daysSince(r.breakoutDate))}`}
-                title={`Breakout: ${r.breakoutDate}`}
-              >
-                {daysSince(r.breakoutDate) === 0 ? "today" : `${daysSince(r.breakoutDate)}d`}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt$(r.breakoutPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmt$(r.targetPrice)}</td>
@@ -288,6 +268,11 @@ function TodaysSetupsTab() {
               <> · {data.universeSize.toLocaleString()} tickers · {data.count} live</>
             )}
           </span>
+          {data.count > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded border border-bull/40 bg-bull/10 text-bull-light font-semibold">
+              Enter at next market open
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="minScore" className="text-xs">Min score</Label>
@@ -751,15 +736,14 @@ export default function HtfSetupsPage() {
         </div>
 
         <div className="space-y-1">
-          <div className="font-semibold text-foreground">Freshness — only live setups land here</div>
+          <div className="font-semibold text-foreground">Only setups firing right now</div>
           <p>
-            A breakout is only useful if you can still trade it. Each scan filters out setups where
-            the breakout is more than <span className="font-semibold">5 trading days old</span>,
-            price has already <span className="font-semibold">hit the target</span>, price has
-            already <span className="font-semibold">stopped out</span>, or price has run more than{" "}
-            <span className="font-semibold">10% past the breakout</span> (chased). The
-            <span className="font-mono"> Days</span> column shows when each breakout fired —
-            green = today/yesterday, yellow = 2–3 days, red = getting stale.
+            Givens' rule says enter at the <span className="font-semibold">next market open</span>{" "}
+            after a breakout. So a breakout is only tradeable if it fired on the{" "}
+            <span className="font-semibold">most recent available bar</span> — once any bar later
+            exists, entry is already in the past. This scanner only shows setups that meet that bar.
+            It also drops anything where price already hit the target, already stopped out, or
+            already ran more than 10% past the breakout.
           </p>
         </div>
 

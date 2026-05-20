@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: only breakouts on the most recent bar (entry = next open)
+
+**Why:** Chris's point — a breakout from 3 days ago is untradeable because Givens says you enter at the *next* market open after the breakout fires. By the time the bar after that exists, the entry window has already closed. The previous 5-trading-day filter was still showing setups that fired Monday when it's Thursday — pointless for a "trade right now" surface.
+
+**What:**
+- `server/compartments/htf-scanner/orchestrator.ts` — `MAX_DAYS_SINCE_BREAKOUT` tightened from `5` → `0`. The breakout candidate must be the most recent available bar; anything older means the entry-day open has already happened. Comment block updated.
+- `client/src/pages/htf-setups.tsx` — dropped the now-useless "Days" column from the table (every row was the same value), removed the `daysSince` / `daysColor` helpers. Added a small green badge above the table: **"Enter at next market open"** so the action is obvious. Updated the "How it works" block to explain the most-recent-bar rule.
+
+**Net behaviour:** the list now only contains tickers whose breakout fired on the latest available bar. Looking at the page Monday afternoon? Shows breakouts that fired Monday (after close, once that bar is published) or Friday close, depending on what FMP's EOD data has been refreshed to. Either way, every row is one you can actually enter at the next bell.
+
+---
 ## 2026-05-19 — HTF: kill the scan-history model — single live in-memory snapshot
 
 **Why:** Chris doesn't want a record of past runs. He wants to know "is this firing NOW?" The persisted `htf_setups` table created friction (rows from yesterday's run lingering as if relevant) and added no value for the live-trading use case. Plus the table itself wasn't necessary — bars are already file-cached, so re-scans are fast.

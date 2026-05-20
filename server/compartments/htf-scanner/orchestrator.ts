@@ -19,11 +19,10 @@ import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
 
 // ─── Live-setup filters ────────────────────────────────────────────────
-// A breakout is only useful if it's recent AND price is still in the
-// actionable zone. Without these filters, scanHtf returns every breakout
-// in the past year — which surfaces "great" setups whose entry/target/stop
-// fired months ago.
-const MAX_DAYS_SINCE_BREAKOUT = 5;     // trading days; calendar approx fine
+// A breakout is only tradeable on the NEXT market open after it fires.
+// So we require breakout = the most recent available bar — once a bar
+// older than that, entry is already in the past per Givens' rules.
+const MAX_DAYS_SINCE_BREAKOUT = 0;     // breakout must be the latest bar
 const MAX_CHASE_PCT = 0.10;            // skip setups where price ran >10% past breakout
 import {
   DEFAULT_ACCOUNT_CONFIG,
