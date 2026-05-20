@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react";
+import { useTicker } from "@/contexts/TickerContext";
 import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
@@ -131,6 +132,11 @@ function fmtPct(n: number | null | undefined): string {
 // ─── Setups table ─────────────────────────────────────────────────────────
 function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
   const [, navigate] = useLocation();
+  const { setActiveTicker } = useTicker();
+  const openResearch = (symbol: string) => {
+    setActiveTicker(symbol);
+    navigate("/trade");
+  };
   if (rows.length === 0) {
     return (
       <BrandedEmptyState
@@ -168,7 +174,7 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
           {rows.map(r => (
             <tr
               key={r.id}
-              onClick={() => navigate(`/chart?ticker=${r.symbol}`)}
+              onClick={() => openResearch(r.symbol)}
               className="cursor-pointer border-t border-border hover:bg-muted/30 transition-colors"
               data-testid={`htf-row-${r.symbol}`}
             >

@@ -9,6 +9,14 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF row click → Trade Analysis (matches scanner behaviour)
+
+**Why:** Chris reported the /htf row-click navigated to `/chart?ticker=…` instead of opening the global research surface. Site-wide convention is `setActiveTicker(symbol)` + `navigate("/trade")` — same as `client/src/pages/scanner.tsx:490`. HTF rows now follow the same pattern.
+
+**What:**
+- `client/src/pages/htf-setups.tsx` — `SetupsTable` now pulls `setActiveTicker` from `useTicker()` and the row `onClick` calls `openResearch(symbol)` which sets the global ticker context then navigates to `/trade`. The `?ticker=` URL-param path is gone.
+
+---
 ## 2026-05-19 — HTF (High Tight Flag) trading system — full integration
 
 **Why:** Chris dropped a complete HTF design doc + Python reference modules in `docs/htf/` and `backend/patterns/` — Ross Givens' loosened version of Bulkowski's #1-ranked breakout pattern. Goal: detect 30%+ pole / tight-flag breakouts on the small-mid-cap universe and surface position-sized setups for the $7K personal account, with portfolio-level risk gates (max 5 open, 30% total-risk cap, 40% per-sector). The Python was reference-only — production needed to live in TS to plug into the existing signals registry, FMP client, and drizzle DB instead of bolting on a parallel runtime.
