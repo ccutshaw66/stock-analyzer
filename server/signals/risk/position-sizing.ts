@@ -103,9 +103,13 @@ export function sizePosition(hit: HtfHit, config: AccountConfig): PositionRecomm
   if (recommended < 1) {
     blockedReason =
       `unaffordable: 1 share = $${entry.toFixed(2)} exceeds max position $${maxPositionSize(config).toFixed(0)}`;
-  } else if (rewardRiskRatio < 1.0) {
+  } else if (rewardRiskRatio < config.minRewardRiskRatio) {
+    // Hard block — R/R below the user's configured minimum is a non-trade
+    // by definition, not a "warning, but allowed." Setting `minRewardRiskRatio`
+    // to 5 in Config means anything below 5:1 disappears from the actionable
+    // list entirely.
     blockedReason =
-      `reward/risk ${rewardRiskRatio.toFixed(1)}:1 — losing trade by design`;
+      `reward/risk ${rewardRiskRatio.toFixed(2)}:1 below your minimum ${config.minRewardRiskRatio}:1`;
   }
 
   const positionValue = recommended * entry;
@@ -113,9 +117,7 @@ export function sizePosition(hit: HtfHit, config: AccountConfig): PositionRecomm
   const pctCapital = config.capital > 0 ? positionValue / config.capital : 0;
   const expectedProfit = recommended * rewardPerShare;
 
-  if (rewardRiskRatio < config.minRewardRiskRatio) {
-    warnings.push(`R/R ${rewardRiskRatio.toFixed(1)} below min ${config.minRewardRiskRatio}`);
-  }
+  // (R/R-below-min is now a hard block above; no soft warning here.)
   if (pctCapital > 0.2) {
     warnings.push(`large position (${Math.round(pctCapital * 100)}% of capital)`);
   }

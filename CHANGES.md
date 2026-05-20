@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: current price column + R/R hard block + Watch tab uses it too
+
+**Why:** Chris's three asks: (1) "I need to know what the price is now" on every row, (2) "fix the R/R filter, I have it at 1 and see 1.0–1.9:1 rows, need ≥5:1," (3) "even on watch list — don't care if it can't make me less than that."
+
+**What:**
+
+### R/R is now a hard block, not a warning
+- `server/signals/risk/position-sizing.ts` — `sizePosition` rule changed: trades with `rewardRiskRatio < config.minRewardRiskRatio` are now **blocked** (not just warned). Setting Min R/R to 5 in Config drops anything below 5:1 from the actionable list entirely. The previous "blocked at <1.0 only" rule is gone — `minRewardRiskRatio` is the single source of truth. Soft warnings for the same condition removed (would be redundant).
+
+### Watch tab applies the same hard filter
+- `client/src/pages/htf-setups.tsx` — `WatchTab` now passes `actionableOnly: true` to the hook. Forming patterns that wouldn't satisfy the R/R / sizing / portfolio rules at the hypothetical breakout don't get surfaced. Comment block explains the rationale ("'watch this' only makes sense if it's actually tradeable").
+
+### Current price + % from entry plumbed end-to-end
+- `server/compartments/htf-scanner/orchestrator.ts` — new `HtfLiveSetupRow` type extends the drizzle row with `currentPrice` (latest close) and `pctFromEntry` (% change from breakoutPrice to currentPrice). `processSymbol` reads the last bar's close and passes it into `rowFromHitAndRec`. `HtfScanResult.rows` now typed as `HtfLiveSetupRow[]`.
+- `server/compartments/htf-scanner/index.ts` — `LiveSetupsResponse` carries the new shape; `resizeSetup` preserves the new fields; dropped the dead `projectRow`/`HtfSetup` projection now that we never write to the drizzle schema's strict type.
+- `client/src/compartments/htf-scanner/useHtfScanner.ts` — `HtfSetupRow` adds `currentPrice` + `pctFromEntry`; dropped the no-longer-emitted `id` field.
+- `client/src/pages/htf-setups.tsx` — table now has **Current** and **vs entry** columns next to Symbol/Score. For Live: positive % = trade has run since breakout (chase risk visible). For Watch: negative % = price still below the trigger (good — flag still intact). Color-coded green/yellow.
+
+**Net behaviour:** raise Min R/R to 5 in Config — Live and Watch immediately drop everything below 5:1. Every remaining row shows current price + how far it is from the entry/trigger so you can read at a glance: "RKLB current $5.20, entry $5.05, +3% since breakout" or "VRT current $108, trigger $112, -3.6% still in flag."
+
+---
 ## 2026-05-19 — HTF: Live + Watch tabs (about-to-blow + forming patterns)
 
 **Why:** Chris's UX feedback: "gives me time to react and watch. Maybe a watch list of potential and then a 'this bitch is about to blow' page. I don't understand the filter page." The previous tab layout exposed too much internal scaffolding (Filtered = blocked-by-rules noise) and didn't separate "watch this forming" from "trade this now."

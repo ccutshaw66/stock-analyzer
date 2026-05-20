@@ -14,6 +14,23 @@
  */
 
 import type { InsertHtfSetup } from "@shared/schema";
+
+/**
+ * In-memory row shape. Drizzle's `InsertHtfSetup` is the persisted schema
+ * (no longer written at runtime — see the kill-the-history-table change),
+ * but we carry a few extra fields the schema doesn't include so the page
+ * can render current price + pct-from-trigger without re-fetching bars.
+ */
+export type HtfLiveSetupRow = InsertHtfSetup & {
+  /** Latest available close for the symbol — what price is RIGHT NOW. */
+  currentPrice: number;
+  /**
+   * Percent change from the breakout / trigger level to current price.
+   *  - Live (fired): positive = trade has run since the breakout (chase risk).
+   *  - Watch (forming): negative = price is still below the trigger.
+   */
+  pctFromEntry: number;
+};
 import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, scanFormingHtf, type HtfHit } from "../../signals/strategies/htf";
@@ -83,9 +100,12 @@ function rowFromHitAndRec(
   portfolioCheck: { allowed: boolean; reason: string },
   sector: string,
   runDate: string,
-): InsertHtfSetup {
+  currentPrice: number,
+): HtfLiveSetupRow {
   const actionable = rec.blockedReason === null && portfolioCheck.allowed;
   const blockedReason = rec.blockedReason ?? (portfolioCheck.allowed ? null : portfolioCheck.reason);
+  const pctFromEntry =
+    hit.breakoutPrice > 0 ? ((currentPrice - hit.breakoutPrice) / hit.breakoutPrice) * 100 : 0;
   return {
     runDate,
     symbol: hit.symbol,
@@ -107,6 +127,8 @@ function rowFromHitAndRec(
     actionable,
     blockedReason,
     warnings: rec.warnings,
+    currentPrice,
+    pctFromEntry,
     sector,
   };
 }
@@ -132,22 +154,23 @@ async function processSymbol(
   runDate: string,
   minScore: number,
   forceRefresh: boolean,
-): Promise<{ rows: InsertHtfSetup[]; error: boolean }> {
+): Promise<{ rows: HtfLiveSetupRow[]; error: boolean }> {
   try {
     const bars = await getHtfBars(row.symbol, { forceRefresh });
     if (bars.length === 0) return { rows: [], error: false };
 
     const lastBar = bars[bars.length - 1];
+    const currentPrice = lastBar.c;
     const sector = row.sector || "Unknown";
 
     // 1) Fired setup — breakout already happened on a recent bar.
     const hits = scanHtf(bars, row.symbol, { minScore });
     const newestFired = hits[0];
-    if (newestFired && isLiveSetup(newestFired, lastBar.c, lastBar.t)) {
+    if (newestFired && isLiveSetup(newestFired, currentPrice, lastBar.t)) {
       const rec = sizePosition(newestFired, config);
       const check = portfolio.canAddPosition(rec, newestFired, config, sector);
       return {
-        rows: [rowFromHitAndRec(newestFired, rec, check, sector, runDate)],
+        rows: [rowFromHitAndRec(newestFired, rec, check, sector, runDate, currentPrice)],
         error: false,
       };
     }
@@ -161,7 +184,7 @@ async function processSymbol(
       const rec = sizePosition(formingHit, config);
       const check = portfolio.canAddPosition(rec, formingHit, config, sector);
       return {
-        rows: [rowFromHitAndRec(formingHit, rec, check, sector, runDate)],
+        rows: [rowFromHitAndRec(formingHit, rec, check, sector, runDate, currentPrice)],
         error: false,
       };
     }
@@ -206,7 +229,7 @@ export interface HtfScanResult {
   universeSize: number;
   scanned: number;
   errors: number;
-  rows: InsertHtfSetup[];
+  rows: HtfLiveSetupRow[];
 }
 
 /**
@@ -240,7 +263,7 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanResu
   );
 
   let errors = 0;
-  const allRows: InsertHtfSetup[] = [];
+  const allRows: HtfLiveSetupRow[] = [];
   for (const r of results) {
     if (r.error) errors++;
     for (const row of r.rows) allRows.push(row);

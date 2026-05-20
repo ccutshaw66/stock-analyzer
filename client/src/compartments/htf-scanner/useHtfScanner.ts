@@ -13,9 +13,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 export interface HtfSetupRow {
-  id: number;
   symbol: string;
-  pattern: string;
+  pattern: string;          // "HTF_Givens" (fired) | "HTF_Givens_Forming"
   breakoutDate: string;
   breakoutPrice: number;
   targetPrice: number;
@@ -34,6 +33,10 @@ export interface HtfSetupRow {
   blockedReason: string | null;
   warnings: string[] | null;
   sector: string | null;
+  /** Latest available close. */
+  currentPrice: number;
+  /** % change from breakoutPrice (the entry/trigger level) to currentPrice. */
+  pctFromEntry: number;
 }
 
 export interface HtfSetupsResponse {

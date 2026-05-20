@@ -143,7 +143,9 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
           <tr>
             <th className="px-3 py-2 text-left">Symbol</th>
             <th className="px-3 py-2 text-right">Score</th>
-            <th className="px-3 py-2 text-right">Breakout</th>
+            <th className="px-3 py-2 text-right">Current</th>
+            <th className="px-3 py-2 text-right">Entry / Trigger</th>
+            <th className="px-3 py-2 text-right">vs entry</th>
             <th className="px-3 py-2 text-right">Target</th>
             <th className="px-3 py-2 text-right">Stop</th>
             <th className="px-3 py-2 text-right">R/R</th>
@@ -159,7 +161,7 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
         <tbody>
           {rows.map(r => (
             <tr
-              key={r.id}
+              key={r.symbol}
               onClick={() => openChart(r.symbol)}
               className="cursor-pointer border-t border-border hover:bg-muted/30 transition-colors"
               data-testid={`htf-row-${r.symbol}`}
@@ -173,7 +175,20 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
                   {r.qualityScore}
                 </span>
               </td>
+              <td className="px-3 py-2 text-right tabular-nums font-semibold text-foreground">
+                {fmt$(r.currentPrice)}
+              </td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt$(r.breakoutPrice)}</td>
+              <td
+                className={`px-3 py-2 text-right tabular-nums text-xs ${
+                  r.pctFromEntry > 0 ? "text-bull-light" : r.pctFromEntry < 0 ? "text-watch-light" : "text-muted-foreground"
+                }`}
+                title={r.pattern === "HTF_Givens_Forming"
+                  ? "Negative = price below the trigger (good — still in flag). Positive = already broke out."
+                  : "Positive = trade has run since breakout (chase risk). Negative = pulled back below the breakout close."}
+              >
+                {r.pctFromEntry > 0 ? "+" : ""}{r.pctFromEntry.toFixed(1)}%
+              </td>
               <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmt$(r.targetPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmt$(r.stopPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{r.rewardRiskRatio.toFixed(1)}</td>
@@ -260,7 +275,10 @@ function LiveTab() {
 /** "Watch" tab — patterns still forming. Pole + flag valid, no breakout yet. */
 function WatchTab() {
   const [minScore, setMinScore] = useState(70);
-  const q = useHtfScanner({ minScore, stage: "forming" });
+  // actionableOnly: true applies the R/R + sizing + portfolio caps here too,
+  // so a Watch row with <minRR doesn't slip past the page just because it
+  // hasn't fired yet. "Watch this" only makes sense if it's tradeable.
+  const q = useHtfScanner({ actionableOnly: true, minScore, stage: "forming" });
 
   if (q.isLoading) {
     return (
@@ -691,8 +709,9 @@ export default function HtfSetupsPage() {
             For each breakout, the scanner sizes a position using your account config (Config tab):
             shares are capped by both <span className="font-mono">max-risk-per-trade</span> (default 10% =
             $700 on $7K) and <span className="font-mono">max-position-size</span> (default 25% = $1,750).
-            Trades with reward-to-risk below 1:1 are <span className="text-bear-light">blocked</span>;
-            ones below your minimum R/R (default 2:1) are warned but allowed.
+            Trades with reward-to-risk below your <span className="font-mono">Min R/R</span> (default 2:1)
+            are <span className="text-bear-light">blocked</span> entirely — they never appear on Live
+            or Watch. Set Min R/R to 5 in Config and you'll only ever see 5:1-or-better setups.
           </p>
         </div>
 

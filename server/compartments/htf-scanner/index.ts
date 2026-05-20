@@ -12,7 +12,6 @@
  */
 
 import type { ServerCompartmentEntry, CompartmentMeta } from "../types";
-import type { HtfSetup, InsertHtfSetup } from "@shared/schema";
 import {
   getLiveSetups,
   runHtfScan,
@@ -20,6 +19,7 @@ import {
   invalidateScanCache,
   type HtfScanOptions,
   type HtfScanResult,
+  type HtfLiveSetupRow,
 } from "./orchestrator";
 import { mountRoutes } from "./routes";
 import {
@@ -53,10 +53,10 @@ export interface HtfSetupsQuery {
 }
 
 /** Reconstruct just enough of an HtfHit from a row to re-size it. */
-function rowToHit(row: InsertHtfSetup): HtfHit {
+function rowToHit(row: HtfLiveSetupRow): HtfHit {
   return {
     symbol: row.symbol,
-    pattern: "HTF_Givens",
+    pattern: row.pattern === "HTF_Givens_Forming" ? "HTF_Givens_Forming" : "HTF_Givens",
     direction: "long",
     breakoutDate: new Date(row.breakoutDate),
     breakoutPrice: row.breakoutPrice,
@@ -85,10 +85,10 @@ function rowToHit(row: InsertHtfSetup): HtfHit {
  * config was active when it ran; this lets the page resize without rescanning.
  */
 export function resizeSetup(
-  row: InsertHtfSetup,
+  row: HtfLiveSetupRow,
   config: AccountConfig,
   portfolio: PortfolioState,
-): InsertHtfSetup {
+): HtfLiveSetupRow {
   const hit = rowToHit(row);
   const rec: PositionRecommendation = sizePosition(hit, config);
   const sector = row.sector ?? "Unknown";
@@ -108,24 +108,11 @@ export function resizeSetup(
   };
 }
 
-function projectRow(row: InsertHtfSetup): HtfSetup {
-  // Shape the in-memory row as if it came from the DB, so the API contract
-  // is unchanged for callers / the frontend.
-  return {
-    id: 0,
-    createdAt: new Date(),
-    ...row,
-    warnings: (row.warnings as string[] | null) ?? null,
-    blockedReason: row.blockedReason ?? null,
-    sector: row.sector ?? null,
-  } as HtfSetup;
-}
-
 export interface LiveSetupsResponse {
   scannedAt: Date | null;
   durationMs: number;
   universeSize: number;
-  rows: HtfSetup[];
+  rows: HtfLiveSetupRow[];
 }
 
 export const htfScannerData = {
@@ -145,7 +132,7 @@ export const htfScannerData = {
       ? await runHtfScan({ config: q.config, portfolio: q.portfolio })
       : await getLiveSetups({ config: q.config, portfolio: q.portfolio });
 
-    let rows: InsertHtfSetup[] = scan.rows;
+    let rows: HtfLiveSetupRow[] = scan.rows;
     if (q.minScore !== undefined) {
       rows = rows.filter(r => r.qualityScore >= q.minScore!);
     }
@@ -174,7 +161,7 @@ export const htfScannerData = {
       scannedAt: scan.scannedAt,
       durationMs: scan.durationMs,
       universeSize: scan.universeSize,
-      rows: rows.map(projectRow),
+      rows,
     };
   },
 
