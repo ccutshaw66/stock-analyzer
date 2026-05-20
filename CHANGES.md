@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: kill the scan-history model — single live in-memory snapshot
+
+**Why:** Chris doesn't want a record of past runs. He wants to know "is this firing NOW?" The persisted `htf_setups` table created friction (rows from yesterday's run lingering as if relevant) and added no value for the live-trading use case. Plus the table itself wasn't necessary — bars are already file-cached, so re-scans are fast.
+
+**What:**
+
+### Live in-memory scan, no DB persistence
+- `server/compartments/htf-scanner/orchestrator.ts` — new module-level `latestScan` cache (in-memory only). `runHtfScan` returns rows directly and replaces the cache. New `getLiveSetups(opts)` returns the cache if fresh (<30 min) or runs a scan if stale. Concurrent callers share the same in-flight promise — no thundering herd. The `db.delete`/`db.insert` calls are gone; the `htfSetups` drizzle table is no longer touched at runtime (left in the schema as a no-op until we strip it in a follow-up — keeps this PR migration-free).
+- New shape: `HtfScanResult = { scannedAt, durationMs, universeSize, scanned, errors, rows }`. The `runDate`-based summary type is gone.
+
+### Compartment + routes refactor
+- `server/compartments/htf-scanner/index.ts` — `htfScannerData.getSetups()` now consults the live cache, applies the live config-driven resize on top, returns `LiveSetupsResponse = { scannedAt, durationMs, universeSize, rows }`. New `peek()` + `invalidate()` helpers for diagnostics.
+- `server/compartments/htf-scanner/routes.ts` — `GET /api/htf/setups` accepts `?refresh=true` to bypass the cache. `POST /api/htf/scan/run` always forces a fresh scan. Responses now carry `scannedAt`/`durationMs`/`universeSize` instead of `runDate`.
+
+### Frontend
+- `client/src/pages/htf-setups.tsx` — page auto-fetches on load; if the cache is cold the server runs a fresh scan synchronously (`staleTime: 60s` so React Query doesn't time out during the first ~1 min). "Run scan" button renamed to **"Refresh"**, tooltip explains the cache-bypass behaviour. Loader copy updated: "Scanning the universe for live HTF setups… (first run can take ~1 min)". `runDate` strip replaced with `Scanned <relative time> · N tickers · X live`.
+- Updated the "How it works" help-block bullet to clarify the live-cache semantics.
+
+**Net behaviour:** open /htf → if no recent scan, server runs one and returns it (~30s once bars are warm, ~1-2 min on a cold cache); page renders. Returning to /htf within 30 min uses the cache (instant). "Refresh" forces a re-scan any time. There is no "what was firing yesterday" view — there never will be one.
+
+**Files touched:** `server/compartments/htf-scanner/orchestrator.ts`, `server/compartments/htf-scanner/index.ts`, `server/compartments/htf-scanner/routes.ts`, `client/src/pages/htf-setups.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-19 — HTF: only show LIVE setups (filter stale + played-out breakouts)
 
 **Why:** Chris hit `/htf`, clicked RLMD, saw a "great" setup: breakout $2.77 / target $3.81 / stop $1.94 — except RLMD's current price is $6.34. The breakout was from months ago and had already smashed past the target. Every row he clicked turned out to be a historical breakout, not anything he could trade today. `scanHtf` returns every HTF breakout in the past ~year and the orchestrator was persisting all of them — useless for a "tradeable today" surface.

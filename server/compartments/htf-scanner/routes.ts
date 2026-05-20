@@ -71,32 +71,40 @@ async function loadPortfolio(userId: number): Promise<PortfolioState> {
 }
 
 export function mountRoutes(app: Express): void {
-  // ─── Read setups ──────────────────────────────────────────────────────
-  // Sizing + actionable flag are recomputed live against the current config
-  // + portfolio so Config tab edits flow through without a re-scan.
+  // ─── Read live setups ─────────────────────────────────────────────────
+  // The scanner is live: there's one in-memory snapshot of what's firing
+  // right now. If the cache is fresh, return it. If stale or missing, run
+  // a fresh scan first. Sizing + actionable status are recomputed live
+  // against the current config + portfolio so Config edits propagate
+  // without a re-scan.
   app.get("/api/htf/setups", requireAuth, async (req: Request, res: Response) => {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const runDate = typeof req.query.date === "string" ? req.query.date : undefined;
       const minScore = req.query.minScore ? Number(req.query.minScore) : undefined;
       const symbol = typeof req.query.symbol === "string" ? req.query.symbol : undefined;
       const actionableOnly = req.query.actionableOnly === "true";
+      const forceRefresh = req.query.refresh === "true";
       const config = loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
-      const rows = await htfScannerData.getSetups({
-        runDate,
+      const result = await htfScannerData.getSetups({
         minScore,
         symbol,
         actionableOnly,
+        forceRefresh,
         config,
         portfolio,
       });
-      const latestRunDate = runDate ?? (await htfScannerData.latestRunDate());
-      res.json({ runDate: latestRunDate, count: rows.length, rows });
+      res.json({
+        scannedAt: result.scannedAt,
+        durationMs: result.durationMs,
+        universeSize: result.universeSize,
+        count: result.rows.length,
+        rows: result.rows,
+      });
     } catch (err: any) {
       console.error("[htf] GET /setups failed:", err?.message || err);
-      res.status(500).json({ error: "scan_read_failed" });
+      res.status(500).json({ error: "scan_read_failed", message: String(err?.message || err) });
     }
   });
 
@@ -104,16 +112,20 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const runDate = typeof req.query.date === "string" ? req.query.date : undefined;
       const config = loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
-      const all = await htfScannerData.getSetups({ runDate, config, portfolio });
-      const filtered = all.filter(r => !r.actionable);
-      const latestRunDate = runDate ?? (await htfScannerData.latestRunDate());
-      res.json({ runDate: latestRunDate, count: filtered.length, rows: filtered });
+      const all = await htfScannerData.getSetups({ config, portfolio });
+      const filtered = all.rows.filter(r => !r.actionable);
+      res.json({
+        scannedAt: all.scannedAt,
+        durationMs: all.durationMs,
+        universeSize: all.universeSize,
+        count: filtered.length,
+        rows: filtered,
+      });
     } catch (err: any) {
       console.error("[htf] GET /setups/filtered failed:", err?.message || err);
-      res.status(500).json({ error: "scan_read_failed" });
+      res.status(500).json({ error: "scan_read_failed", message: String(err?.message || err) });
     }
   });
 
@@ -162,7 +174,8 @@ export function mountRoutes(app: Express): void {
     }
   });
 
-  // ─── Admin: trigger scan ──────────────────────────────────────────────
+  // ─── Force a fresh scan ───────────────────────────────────────────────
+  // Bypasses the 30-min memory cache. Returns the live row count + timing.
   app.post("/api/htf/scan/run", requireAuth, async (req: Request, res: Response) => {
     const userId = getUserId(req, res);
     if (!userId) return;
@@ -171,8 +184,16 @@ export function mountRoutes(app: Express): void {
       const portfolio = await loadPortfolio(userId);
       const forceRefresh = req.body?.forceRefresh === true;
       const minScore = typeof req.body?.minScore === "number" ? req.body.minScore : 0;
-      const summary = await runHtfScan({ config, portfolio, forceRefresh, minScore });
-      res.json(summary);
+      const result = await runHtfScan({ config, portfolio, forceRefresh, minScore });
+      res.json({
+        scannedAt: result.scannedAt,
+        durationMs: result.durationMs,
+        universeSize: result.universeSize,
+        scanned: result.scanned,
+        hits: result.rows.length,
+        actionable: result.rows.filter(r => r.actionable).length,
+        errors: result.errors,
+      });
     } catch (err: any) {
       console.error("[htf] POST /scan/run failed:", err?.message || err);
       res.status(500).json({ error: "scan_run_failed", message: String(err?.message || err) });

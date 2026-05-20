@@ -13,9 +13,7 @@
  * symbol's CPU cost is trivial — the bottleneck is HTTP, not compute.
  */
 
-import { and, eq, inArray, ne } from "drizzle-orm";
-import { db } from "../../storage";
-import { htfSetups, type InsertHtfSetup } from "@shared/schema";
+import type { InsertHtfSetup } from "@shared/schema";
 import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
@@ -176,12 +174,29 @@ async function runPool<T, R>(
 }
 
 /**
- * Run a full HTF scan and persist results to htf_setups.
- *
- * Idempotent per (runDate, symbol). Returns aggregate counters; per-row data
- * lives in the DB and is read by the API endpoints.
+ * In-memory cache of the most recent scan. There is exactly one live scan
+ * state for the process — the page asks "what's firing NOW?" and gets
+ * either this snapshot (if fresh) or a freshly-run scan. No DB history.
  */
-export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanSummary> {
+let latestScan: HtfScanResult | null = null;
+let scanInFlight: Promise<HtfScanResult> | null = null;
+const CACHE_TTL_MS = 30 * 60 * 1000;     // 30 min — fine for EOD data
+
+export interface HtfScanResult {
+  scannedAt: Date;
+  durationMs: number;
+  universeSize: number;
+  scanned: number;
+  errors: number;
+  rows: InsertHtfSetup[];
+}
+
+/**
+ * Run a fresh HTF scan and return its rows directly. Does NOT touch the DB —
+ * the result lives in memory only. Use `getLiveSetups()` to read with the
+ * shared cache; only call this when you want to force a refresh.
+ */
+export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanResult> {
   const config = opts.config ?? DEFAULT_ACCOUNT_CONFIG;
   const minScore = opts.minScore ?? 0;
   const portfolio = opts.portfolio ?? new PortfolioState();
@@ -206,63 +221,56 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanSumm
     processSymbol(row, config, portfolio, runDate, minScore, forceRefresh),
   );
 
-  let hits = 0;
-  let actionable = 0;
-  let blocked = 0;
   let errors = 0;
   const allRows: InsertHtfSetup[] = [];
   for (const r of results) {
     if (r.error) errors++;
-    for (const row of r.rows) {
-      hits++;
-      if (row.actionable) actionable++;
-      else blocked++;
-      allRows.push(row);
-    }
-  }
-
-  // Wipe every row from prior runs — only live setups from THIS scan matter.
-  // Without this, breakouts from a scan a week ago linger after their target
-  // or stop has already fired in the market.
-  await db.delete(htfSetups).where(ne(htfSetups.runDate, runDate));
-  // And replace today's same-run rows so a re-scan is fully idempotent.
-  if (allRows.length > 0) {
-    const symbols = Array.from(new Set(allRows.map(r => r.symbol)));
-    await db
-      .delete(htfSetups)
-      .where(and(eq(htfSetups.runDate, runDate), inArray(htfSetups.symbol, symbols)));
-  }
-
-  let persisted = 0;
-  if (allRows.length > 0) {
-    // Drizzle pg-core handles batch inserts; do it in chunks to keep
-    // parameter counts under PG's 65k limit.
-    const CHUNK = 200;
-    for (let i = 0; i < allRows.length; i += CHUNK) {
-      const slice = allRows.slice(i, i + CHUNK);
-      await db.insert(htfSetups).values(slice);
-      persisted += slice.length;
-    }
+    for (const row of r.rows) allRows.push(row);
   }
 
   const finishedAt = new Date();
-  const summary: HtfScanSummary = {
-    runDate,
-    startedAt,
-    finishedAt,
+  const result: HtfScanResult = {
+    scannedAt: finishedAt,
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     universeSize: universe.length,
     scanned: universe.length - errors,
-    hits,
-    actionable,
-    blocked,
     errors,
-    persisted,
+    rows: allRows,
   };
+  latestScan = result;
+
+  const actionable = allRows.filter(r => r.actionable).length;
   log(
-    `done: ${summary.universeSize} tickers, ${hits} hits ` +
-      `(${actionable} actionable / ${blocked} blocked), ${errors} errors, ${persisted} persisted, ` +
-      `${(summary.durationMs / 1000).toFixed(1)}s`,
+    `done: ${universe.length} tickers, ${allRows.length} live hits ` +
+      `(${actionable} actionable / ${allRows.length - actionable} blocked), ${errors} errors, ` +
+      `${(result.durationMs / 1000).toFixed(1)}s`,
   );
-  return summary;
+  return result;
+}
+
+/**
+ * Get the latest live scan. Returns the in-memory cache if it's fresh
+ * (<30min), kicks off a new scan otherwise. Multiple concurrent callers
+ * share the same in-flight promise — no thundering herd.
+ */
+export async function getLiveSetups(opts: HtfScanOptions = {}): Promise<HtfScanResult> {
+  const now = Date.now();
+  if (latestScan && now - latestScan.scannedAt.getTime() <= CACHE_TTL_MS) {
+    return latestScan;
+  }
+  if (scanInFlight) return scanInFlight;
+  scanInFlight = runHtfScan(opts).finally(() => {
+    scanInFlight = null;
+  });
+  return scanInFlight;
+}
+
+/** Most recent in-memory scan without triggering a new one. */
+export function peekLatestScan(): HtfScanResult | null {
+  return latestScan;
+}
+
+/** Clear the in-memory cache so the next read triggers a fresh scan. */
+export function invalidateScanCache(): void {
+  latestScan = null;
 }

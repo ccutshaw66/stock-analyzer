@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react";
+import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react"; // Play retained for Backtest tab
 import { useTicker } from "@/contexts/TickerContext";
 import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
@@ -54,7 +54,9 @@ interface HtfSetupRow {
 }
 
 interface SetupsResponse {
-  runDate: string | null;
+  scannedAt: string | null;
+  durationMs: number;
+  universeSize: number;
   count: number;
   rows: HtfSetupRow[];
 }
@@ -141,6 +143,17 @@ function daysColor(d: number): string {
   if (d <= 1) return "text-bull-light";       // today / yesterday — freshest
   if (d <= 3) return "text-watch-light";      // a few days old
   return "text-bear-light";                    // getting stale
+}
+
+function fmtAgo(isoOrDate: string | Date | null): string {
+  if (!isoOrDate) return "never";
+  const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ago`;
 }
 
 // ─── Setups table ─────────────────────────────────────────────────────────
@@ -244,15 +257,22 @@ function TodaysSetupsTab() {
       );
       return r.json();
     },
+    // First load may run a fresh scan on the server (1-2 min if bars
+    // aren't cached yet); don't time out.
+    staleTime: 60_000,
   });
 
-  if (q.isLoading) return <BrandedLoader message="Loading today's setups…" />;
+  if (q.isLoading) {
+    return (
+      <BrandedLoader message="Scanning the universe for live HTF setups… (first run can take ~1 min)" />
+    );
+  }
   if (q.isError) {
     return (
       <BrandedEmptyState
         icon={AlertTriangle}
         title="Couldn't load setups"
-        description="The HTF scan endpoint returned an error. Try refreshing in a moment."
+        description={(q.error as any)?.message || "The HTF scan endpoint returned an error."}
       />
     );
   }
@@ -263,10 +283,11 @@ function TodaysSetupsTab() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">
-            Run date: <span className="text-foreground font-mono">{data.runDate ?? "no scan yet"}</span>
+            Scanned <span className="text-foreground font-semibold">{fmtAgo(data.scannedAt)}</span>
+            {data.universeSize > 0 && (
+              <> · {data.universeSize.toLocaleString()} tickers · {data.count} live</>
+            )}
           </span>
-          <span className="text-xs text-muted-foreground">·</span>
-          <span className="text-xs text-muted-foreground">{data.count} actionable</span>
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="minScore" className="text-xs">Min score</Label>
@@ -290,6 +311,7 @@ function FilteredTab() {
   const q = useQuery<SetupsResponse>({
     queryKey: ["/api/htf/setups/filtered"],
     queryFn: async () => (await apiRequest("GET", "/api/htf/setups/filtered")).json(),
+    staleTime: 60_000,
   });
   if (q.isLoading) return <BrandedLoader message="Loading filtered setups…" />;
   if (q.isError || !q.data) {
@@ -304,6 +326,7 @@ function FilteredTab() {
   return (
     <div className="space-y-3">
       <div className="text-xs text-muted-foreground">
+        Scanned <span className="text-foreground font-semibold">{fmtAgo(q.data.scannedAt)}</span> ·{" "}
         {q.data.count} breakouts blocked by R/R, portfolio, or sector rules.
       </div>
       <SetupsTable rows={q.data.rows} showBlocked={true} />
@@ -647,13 +670,14 @@ export default function HtfSetupsPage() {
             disabled={scan.isPending}
             size="sm"
             data-testid="htf-run-scan"
+            title="Force a fresh scan of the universe (bypasses the 30-min cache)"
           >
             {scan.isPending ? (
               <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
             ) : (
-              <Play className="h-4 w-4 mr-1" />
+              <RefreshCw className="h-4 w-4 mr-1" />
             )}
-            Run scan
+            Refresh
           </Button>
         }
       />
@@ -718,7 +742,7 @@ export default function HtfSetupsPage() {
         <div className="space-y-1">
           <div className="font-semibold text-foreground">The five tabs</div>
           <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
-            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts from the latest scan. Click any row to open Trade Analysis for that ticker.</li>
+            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts firing right now (in-memory; 30-min cache, "Refresh" forces a re-scan). Click any row to open Trade Analysis for that ticker.</li>
             <li><span className="font-semibold">Filtered</span> — breakouts blocked by R/R, portfolio cap, or sector cap, with the reason</li>
             <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk, sector breakdown (reads from Trade Tracker)</li>
             <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history</li>
