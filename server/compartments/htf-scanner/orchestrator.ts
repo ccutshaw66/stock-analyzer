@@ -13,12 +13,20 @@
  * symbol's CPU cost is trivial — the bottleneck is HTTP, not compute.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "../../storage";
 import { htfSetups, type InsertHtfSetup } from "@shared/schema";
 import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
+
+// ─── Live-setup filters ────────────────────────────────────────────────
+// A breakout is only useful if it's recent AND price is still in the
+// actionable zone. Without these filters, scanHtf returns every breakout
+// in the past year — which surfaces "great" setups whose entry/target/stop
+// fired months ago.
+const MAX_DAYS_SINCE_BREAKOUT = 5;     // trading days; calendar approx fine
+const MAX_CHASE_PCT = 0.10;            // skip setups where price ran >10% past breakout
 import {
   DEFAULT_ACCOUNT_CONFIG,
   PortfolioState,
@@ -100,6 +108,20 @@ function rowFromHitAndRec(
   };
 }
 
+function isLiveSetup(hit: HtfHit, currentPrice: number, currentDate: Date): boolean {
+  // Recency
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysSince = Math.round((currentDate.getTime() - hit.breakoutDate.getTime()) / dayMs);
+  if (daysSince > MAX_DAYS_SINCE_BREAKOUT) return false;
+  // Already hit target — trade is over
+  if (currentPrice >= hit.targetPrice) return false;
+  // Already stopped out
+  if (currentPrice <= hit.stopPrice) return false;
+  // Chased — price ran too far past the breakout for a clean entry today
+  if (currentPrice > hit.breakoutPrice * (1 + MAX_CHASE_PCT)) return false;
+  return true;
+}
+
 async function processSymbol(
   row: HtfUniverseRow,
   config: AccountConfig,
@@ -114,19 +136,21 @@ async function processSymbol(
     const hits = scanHtf(bars, row.symbol, { minScore });
     if (hits.length === 0) return { rows: [], error: false };
 
-    const out: InsertHtfSetup[] = [];
-    // The detector returns newest-first; size + check in that order so the
-    // most-recent breakout consumes portfolio capacity first.
-    for (const hit of hits) {
-      const rec = sizePosition(hit, config);
-      const check = portfolio.canAddPosition(rec, hit, config, row.sector || "Unknown");
-      out.push(rowFromHitAndRec(hit, rec, check, row.sector || "Unknown", runDate));
-      // Don't mutate the working portfolio — the rec is informational. We
-      // only treat the portfolio as "what the user has actually taken,"
-      // not what the scanner *suggests*. Real adds happen via the trade
-      // tracker.
+    // Only the most-recent hit matters for a "tradeable today" surface —
+    // skip every older breakout the detector found in the lookback window.
+    const newest = hits[0];
+
+    const lastBar = bars[bars.length - 1];
+    if (!isLiveSetup(newest, lastBar.c, lastBar.t)) {
+      return { rows: [], error: false };
     }
-    return { rows: out, error: false };
+
+    const rec = sizePosition(newest, config);
+    const check = portfolio.canAddPosition(rec, newest, config, row.sector || "Unknown");
+    return {
+      rows: [rowFromHitAndRec(newest, rec, check, row.sector || "Unknown", runDate)],
+      error: false,
+    };
   } catch {
     return { rows: [], error: true };
   }
@@ -197,14 +221,20 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanSumm
     }
   }
 
-  let persisted = 0;
+  // Wipe every row from prior runs — only live setups from THIS scan matter.
+  // Without this, breakouts from a scan a week ago linger after their target
+  // or stop has already fired in the market.
+  await db.delete(htfSetups).where(ne(htfSetups.runDate, runDate));
+  // And replace today's same-run rows so a re-scan is fully idempotent.
   if (allRows.length > 0) {
-    // Replace any prior rows for these (runDate, symbol) pairs — keeps
-    // re-runs idempotent without losing other days' data.
     const symbols = Array.from(new Set(allRows.map(r => r.symbol)));
     await db
       .delete(htfSetups)
       .where(and(eq(htfSetups.runDate, runDate), inArray(htfSetups.symbol, symbols)));
+  }
+
+  let persisted = 0;
+  if (allRows.length > 0) {
     // Drizzle pg-core handles batch inserts; do it in chunks to keep
     // parameter counts under PG's 65k limit.
     const CHUNK = 200;

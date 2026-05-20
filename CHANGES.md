@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: only show LIVE setups (filter stale + played-out breakouts)
+
+**Why:** Chris hit `/htf`, clicked RLMD, saw a "great" setup: breakout $2.77 / target $3.81 / stop $1.94 — except RLMD's current price is $6.34. The breakout was from months ago and had already smashed past the target. Every row he clicked turned out to be a historical breakout, not anything he could trade today. `scanHtf` returns every HTF breakout in the past ~year and the orchestrator was persisting all of them — useless for a "tradeable today" surface.
+
+**What:**
+
+### Scan-time live filter
+- `server/compartments/htf-scanner/orchestrator.ts` — `isLiveSetup(hit, currentPrice, currentDate)` accepts only the newest hit per symbol and only when:
+  - **Breakout within 5 trading days** of today (`MAX_DAYS_SINCE_BREAKOUT`)
+  - **Price hasn't hit target** (`currentPrice < target`)
+  - **Price hasn't stopped out** (`currentPrice > stop`)
+  - **Price hasn't been chased** (`currentPrice <= breakoutPrice × 1.10`)
+
+  Older breakouts and played-out trades never land in the DB. `processSymbol` now considers `hits[0]` only — every prior breakout the detector finds in the lookback window is dropped.
+
+### Wipe stale runs
+- `orchestrator.ts` — at the end of every scan, `DELETE FROM htf_setups WHERE run_date != <today>`. Old runs from a week ago vanish so they can't keep showing as "setups." Each scan replaces the table; there's no growing history.
+
+### UI freshness signal
+- `client/src/pages/htf-setups.tsx` — new "Days" column shows how many days since the breakout. Color-coded: today/yesterday = green (freshest), 2-3 days = yellow, 4+ = red (getting stale, will drop off the list at day 6). Updated the "How it works" help block to document the freshness rule.
+
+**Files touched:** `server/compartments/htf-scanner/orchestrator.ts`, `client/src/pages/htf-setups.tsx`, `CHANGES.md`.
+
+**Next time Chris hits "Run scan":** stale rows wipe, scanner repopulates with only setups whose breakout is recent AND price is still in the actionable zone. Clicking any row should now open a stock whose current price is plausibly within striking distance of the breakout level shown.
+
+---
 ## 2026-05-19 — HTF: Config edits actually drive the sizing now (resize-on-read + file persistence)
 
 **Why:** Chris reported that every $ Position on the /htf table read ~$17xx (25% of $7K) and editing Config changed nothing. Two compounding bugs caused this:

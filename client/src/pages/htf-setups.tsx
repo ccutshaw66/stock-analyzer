@@ -130,6 +130,19 @@ function fmtPct(n: number | null | undefined): string {
   return `${n.toFixed(1)}%`;
 }
 
+function daysSince(dateStr: string): number {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return -1;
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.round((Date.now() - d.getTime()) / dayMs));
+}
+
+function daysColor(d: number): string {
+  if (d <= 1) return "text-bull-light";       // today / yesterday — freshest
+  if (d <= 3) return "text-watch-light";      // a few days old
+  return "text-bear-light";                    // getting stale
+}
+
 // ─── Setups table ─────────────────────────────────────────────────────────
 function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
   const [, navigate] = useLocation();
@@ -158,6 +171,7 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
           <tr>
             <th className="px-3 py-2 text-left">Symbol</th>
             <th className="px-3 py-2 text-right">Score</th>
+            <th className="px-3 py-2 text-right">Days</th>
             <th className="px-3 py-2 text-right">Breakout</th>
             <th className="px-3 py-2 text-right">Target</th>
             <th className="px-3 py-2 text-right">Stop</th>
@@ -184,6 +198,12 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
                 <span className={`px-2 py-0.5 rounded border ${scoreBg(r.qualityScore)}`}>
                   {r.qualityScore}
                 </span>
+              </td>
+              <td
+                className={`px-3 py-2 text-right tabular-nums font-bold ${daysColor(daysSince(r.breakoutDate))}`}
+                title={`Breakout: ${r.breakoutDate}`}
+              >
+                {daysSince(r.breakoutDate) === 0 ? "today" : `${daysSince(r.breakoutDate)}d`}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{fmt$(r.breakoutPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmt$(r.targetPrice)}</td>
@@ -704,6 +724,19 @@ export default function HtfSetupsPage() {
             <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history</li>
             <li><span className="font-semibold">Config</span> — edit your capital, risk caps, and position-sizing knobs</li>
           </ul>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">Freshness — only live setups land here</div>
+          <p>
+            A breakout is only useful if you can still trade it. Each scan filters out setups where
+            the breakout is more than <span className="font-semibold">5 trading days old</span>,
+            price has already <span className="font-semibold">hit the target</span>, price has
+            already <span className="font-semibold">stopped out</span>, or price has run more than{" "}
+            <span className="font-semibold">10% past the breakout</span> (chased). The
+            <span className="font-mono"> Days</span> column shows when each breakout fired —
+            green = today/yesterday, yellow = 2–3 days, red = getting stale.
+          </p>
         </div>
 
         <p className="text-muted-foreground/80 italic">
