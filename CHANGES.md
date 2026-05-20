@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF basket-level $ P&L evaluator (`/api/diag/strategy-htf-pnl`)
+
+**Why:** HTF shipped end-to-end on 2026-05-19 with a per-ticker backtest tab, but had never been measured at the basket level the way every other production strategy has been (BBTC+VER → `/api/diag/strategy-pnl`, TFT variants → `/api/diag/strategy-tft-pnl`). Per the project rule "nothing gets re-enabled until per-trade dollar P&L is positive on backtest", HTF needs the same apples-to-apples treatment before the Live recommendations are trusted as profitable.
+
+**What:**
+- **`server/diag/strategy-htf-pnl.ts`** (NEW) — basket evaluator that fetches 10y of bars directly via FMP (not the 1y HTF cache), runs `scanHtf` over the full window, simulates each detected breakout with Givens' exit rules (hard stop at flag_low × 0.99, 1/3 partial after 3 cumulative close-strength days, 20-MA trail on remaining 2/3), and aggregates per-ticker + basket-wide using the same `TickerPnL` / `BasketAgg` shape as `strategy-pnl.ts`. SPY benchmark included so the URL is a drop-in comparison.
+- **`server/routes.ts`** — new endpoint:
+  ```
+  GET /api/diag/strategy-htf-pnl?symbols=AAPL,MSFT,...&days=3650[&positionSize=10000][&detail=1][&minScore=70]
+  ```
+  - days: 30..3650 (default 3650 = ~10y)
+  - positionSize: dollars per trade (default 10000)
+  - detail=1 to include per-trade records
+  - minScore: 0..100 (default 70 = production threshold)
+
+**Differs from `htf-scanner/backtest.ts`** in two ways: (1) fetches 10y bars directly instead of using the 1y HTF cache (apples-to-apples with strategy-pnl), (2) emits dollar P&L per trade and basket aggregates, not just per-trade percent returns.
+
+**Strictly additive.** New file + new route; no existing code touched. Live `/htf` page behavior unaffected.
+
+**Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
+
+---
 ## 2026-05-19 — HTF: current price column + R/R hard block + Watch tab uses it too
 
 **Why:** Chris's three asks: (1) "I need to know what the price is now" on every row, (2) "fix the R/R filter, I have it at 1 and see 1.0–1.9:1 rows, need ≥5:1," (3) "even on watch list — don't care if it can't make me less than that."

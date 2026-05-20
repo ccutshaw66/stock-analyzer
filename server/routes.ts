@@ -5296,6 +5296,39 @@ export async function registerRoutes(
     }
   });
 
+  // HTF (High Tight Flag, Givens variant) per-ticker dollar P&L evaluator.
+  // Same response shape as /api/diag/strategy-pnl so direct apples-to-apples
+  // comparison against BBTC+VER and TFT is just a URL swap.
+  //
+  //   GET /api/diag/strategy-htf-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&minScore=70]
+  //
+  // - days: 30..3650 (default 3650 = ~10y). HTF needs ~200 bars warmup.
+  // - positionSize: dollars per trade (default 10000, min 100, max 1000000).
+  // - detail=1 to include per-trade records.
+  // - minScore: 0..100 (default 70 = production threshold). Set to 0 to include all detected patterns.
+  app.get("/api/diag/strategy-htf-pnl", async (req, res) => {
+    try {
+      const { runStrategyHtfPnL } = await import("./diag/strategy-htf-pnl");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const result = await runStrategyHtfPnL(symbols, days, positionSize, detail, minScore);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-htf-pnl failed" });
+    }
+  });
+
   // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
   // exactly what FMP's symbol-positions-summary + extract-analytics/holder
   // endpoints return for a ticker. Used for diagnosing field-name drift on
