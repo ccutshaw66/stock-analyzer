@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF pattern chart on each setup (candles + volume + 20-MA + pole/flag + breakout/target/stop)
+
+**Why:** Chris asked for a chart per setup so he can eyeball the pattern before trading: candles + volume + the 20-day MA trail line + markers showing where the pole/flag/breakout sit + horizontal lines at entry / target / stop. Numbers alone don't tell you whether the consolidation is tight or if the breakout looks legitimate.
+
+**What:**
+
+### Reusable price-line support on the canonical chart primitive
+- `client/src/components/chart/types.ts` — new `PriceLine` shape (price + color + width + style + title).
+- `client/src/components/chart/CandlePane.tsx` — new `priceLines?: PriceLine[]` prop. A `useEffect` attaches the lines to the candle series via lightweight-charts' `createPriceLine` API, removes them cleanly on re-render. Honors the universal-structure rule — every chart on the site still goes through CandlePane.
+- `client/src/components/chart/index.ts` — re-exports `PriceLine`.
+
+### Backend chart endpoint
+- `server/compartments/htf-scanner/routes.ts` — new `GET /api/htf/chart/:symbol`. Loads bars from the cache, re-runs `scanHtf`, takes the newest hit, returns the last ~120 bars (extended back to include the pole start when older than the default window) + `sma20` per bar + the full annotation (pole start, flag start, flag high/low, breakout date/price, target, stop, quality score).
+
+### HTF chart component
+- `client/src/components/HtfPatternChart.tsx` (new) — fetches `/api/htf/chart/:symbol`, hands the bars + overlays + markers + price lines to CandlePane. Markers: pole-start dot (green, "+X% pole"), flag-start dot (amber, "X-day flag"), breakout arrow (green, "Y× vol"). Price lines: target (dashed green), entry/flag-high (solid light-green), flag-low (dotted light-red), stop (dashed red). Plus a stat strip above the chart (Score · Pole · Flag · Breakout vol · Entry · Target · Stop · R/R) and a legend below.
+
+### Setups table wiring
+- `client/src/pages/htf-setups.tsx` — new chart-icon column on every row. Clicking the icon opens a Dialog with the `HtfPatternChart`. Clicking the rest of the row still navigates to Trade Analysis (existing behavior). State is just `chartSymbol: string | null` at the page root; the Dialog closes when set to null.
+
+**Net behaviour:** click the little chart icon on any row → modal opens with the full HTF pattern annotated — pole, flag, breakout, target, stop, 20-MA — so you can see at a glance whether the chart pattern actually looks like a clean HTF or noise.
+
+**Files touched:** `client/src/components/chart/types.ts`, `client/src/components/chart/CandlePane.tsx`, `client/src/components/chart/index.ts`, `server/compartments/htf-scanner/routes.ts`, `client/src/components/HtfPatternChart.tsx` (new), `client/src/pages/htf-setups.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-19 — HTF: only breakouts on the most recent bar (entry = next open)
 
 **Why:** Chris's point — a breakout from 3 days ago is untradeable because Givens says you enter at the *next* market open after the breakout fires. By the time the bar after that exists, the entry window has already closed. The previous 5-trading-day filter was still showing setups that fired Monday when it's Thursday — pointless for a "trade right now" surface.

@@ -42,7 +42,9 @@ import {
   HistogramSeries,
   CrosshairMode,
   ColorType,
+  LineStyle,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
   type Time,
@@ -60,7 +62,7 @@ import {
   OVERLAY_NEUTRAL_8,
 } from "@/lib/design-tokens";
 import otterMascot from "@/assets/icon.png";
-import type { ChartBar, LineOverlay, ChartMarker } from "./types";
+import type { ChartBar, LineOverlay, ChartMarker, PriceLine } from "./types";
 
 export interface CandlePaneProps {
   /** Bars to render. */
@@ -69,6 +71,8 @@ export interface CandlePaneProps {
   overlays?: LineOverlay[];
   /** Signal markers (entry/exit arrows, alerts). */
   markers?: ChartMarker[];
+  /** Horizontal price lines (target, stop, breakout level, etc.). */
+  priceLines?: PriceLine[];
   /** Show the volume histogram in the bottom 20% of the pane. Default true. */
   showVolume?: boolean;
   /** Show the otter watermark in the corner. Default true. */
@@ -88,6 +92,7 @@ export function CandlePane({
   bars,
   overlays = [],
   markers = [],
+  priceLines = [],
   showVolume = true,
   showWatermark = true,
   testId = "candle-pane",
@@ -101,6 +106,8 @@ export function CandlePane({
   /** Markers plugin — v5 API attaches markers via a separate plugin instance,
    * not via `series.setMarkers`. Created once at chart init and reused. */
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  /** Active price-line handles so we can remove them on re-render. */
+  const priceLineRefs = useRef<IPriceLine[]>([]);
 
   // Initialize chart once. All data updates flow through refs.
   useEffect(() => {
@@ -291,6 +298,34 @@ export function CandlePane({
       .sort((a, b) => (a.time as number) - (b.time as number));
     markersPluginRef.current.setMarkers(seriesMarkers);
   }, [markers]);
+
+  // Sync horizontal price lines. Each call removes the old set and creates
+  // fresh ones — small N (typically <10), so the cost is negligible. Drawn
+  // on the candle series so they share the candle price scale.
+  useEffect(() => {
+    const candle = candleSeriesRef.current;
+    if (!candle) return;
+    for (const handle of priceLineRefs.current) {
+      try { candle.removePriceLine(handle); } catch { /* ignore */ }
+    }
+    priceLineRefs.current = [];
+    const styleMap = {
+      solid: LineStyle.Solid,
+      dashed: LineStyle.Dashed,
+      dotted: LineStyle.Dotted,
+    } as const;
+    for (const pl of priceLines) {
+      const handle = candle.createPriceLine({
+        price: pl.price,
+        color: pl.color,
+        lineWidth: (pl.width ?? 1) as 1 | 2 | 3 | 4,
+        lineStyle: styleMap[pl.style ?? "dashed"],
+        title: pl.title ?? "",
+        axisLabelVisible: pl.axisLabelVisible ?? true,
+      });
+      priceLineRefs.current.push(handle);
+    }
+  }, [JSON.stringify(priceLines)]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative w-full h-full" data-testid={testId}>

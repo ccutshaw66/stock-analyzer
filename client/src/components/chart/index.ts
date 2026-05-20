@@ -8,4 +8,4 @@
 export { CandlePane, type CandlePaneProps } from "./CandlePane";
 export { emaOverlays, EMA_TOGGLES, confluenceEMAOverlays, tradeAnalysisEMAOverlays } from "./overlays";
 export { EmaToggleStrip, type EmaToggleState } from "./EmaToggleStrip";
-export type { ChartBar, LineOverlay, ChartMarker } from "./types";
+export type { ChartBar, LineOverlay, ChartMarker, PriceLine } from "./types";

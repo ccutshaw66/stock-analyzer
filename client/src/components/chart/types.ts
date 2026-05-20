@@ -61,6 +61,25 @@ export interface LineOverlay {
 }
 
 /**
+ * A horizontal price line drawn across the chart (target / stop / breakout
+ * level, etc.). Mapped 1:1 to lightweight-charts' `series.createPriceLine`.
+ */
+export interface PriceLine {
+  /** Price level the line is drawn at. */
+  price: number;
+  /** Line color in hex/rgb. */
+  color: string;
+  /** Line width in pixels. Default 1. */
+  width?: number;
+  /** Line style. Default "dashed". */
+  style?: "solid" | "dashed" | "dotted";
+  /** Short label shown on the price scale. */
+  title?: string;
+  /** Show the price label on the axis? Default true. */
+  axisLabelVisible?: boolean;
+}
+
+/**
  * A signal marker placed on a bar (entry, exit, alert, etc.).
  * Mapped 1:1 to Lightweight Charts' marker API at render time.
  */

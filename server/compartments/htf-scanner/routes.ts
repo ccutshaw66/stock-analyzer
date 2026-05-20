@@ -28,9 +28,10 @@ import {
   type OpenPosition,
 } from "../../signals/risk/position-sizing";
 import { htfScannerData } from ".";
-import { htfCacheStats } from "../../data/htf-ohlcv-cache";
+import { htfCacheStats, getHtfBars } from "../../data/htf-ohlcv-cache";
 import { runHtfScan } from "./orchestrator";
 import { readAccountConfig, writeAccountConfig } from "./account-config-store";
+import { scanHtf } from "../../signals/strategies/htf";
 
 const STOCK_TRADE_TYPES = new Set(["S", "L", "ST"]);     // see shared/schema.ts TRADE_TYPES
 
@@ -204,6 +205,100 @@ export function mountRoutes(app: Express): void {
   app.get("/api/htf/cache/stats", requireAuth, async (req: Request, res: Response) => {
     if (!getUserId(req, res)) return;
     res.json(htfCacheStats());
+  });
+
+  // ─── Pattern chart data ───────────────────────────────────────────────
+  // Returns the last ~120 bars + the newest HTF hit's full annotation so
+  // the frontend can draw pole/flag windows, breakout level, target/stop
+  // lines, and the 20-MA trail line in one fetch.
+  app.get("/api/htf/chart/:symbol", requireAuth, async (req: Request, res: Response) => {
+    if (!getUserId(req, res)) return;
+    try {
+      const symbol = String(req.params.symbol || "").toUpperCase();
+      if (!symbol) {
+        res.status(400).json({ error: "symbol_required" });
+        return;
+      }
+      const allBars = await getHtfBars(symbol);
+      if (allBars.length === 0) {
+        res.status(404).json({ error: "no_bars" });
+        return;
+      }
+      const hits = scanHtf(allBars, symbol);
+      const newest = hits[0] ?? null;
+
+      // Window the bars to ~120 days for chart readability — extend back to
+      // include the pole start when the pole is older than the default window.
+      const WINDOW_BARS = 120;
+      let sliceStart = Math.max(0, allBars.length - WINDOW_BARS);
+      if (newest) {
+        for (let i = 0; i < allBars.length; i++) {
+          if (allBars[i].t.getTime() === newest.patternStart.getTime()) {
+            sliceStart = Math.max(0, i - 5); // a few bars of context before pole start
+            break;
+          }
+        }
+      }
+      const windowBars = allBars.slice(sliceStart);
+
+      // 20-bar SMA — Givens' trailing-stop reference, also the canonical
+      // moving average drawn on the chart.
+      const closes = windowBars.map(b => b.c);
+      const sma20: Array<number | null> = new Array(closes.length).fill(null);
+      let sum = 0;
+      for (let i = 0; i < closes.length; i++) {
+        sum += closes[i];
+        if (i >= 20) sum -= closes[i - 20];
+        if (i >= 19) sma20[i] = sum / 20;
+      }
+
+      const bars = windowBars.map((b, i) => ({
+        date: b.t.toISOString().slice(0, 10),
+        open: b.o,
+        high: b.h,
+        low: b.l,
+        close: b.c,
+        volume: b.v,
+        sma20: sma20[i] ?? undefined,
+      }));
+
+      const annotation = newest
+        ? {
+            poleStartDate: newest.patternStart.toISOString().slice(0, 10),
+            poleStartPrice: newest.extras.poleStartPrice,
+            poleEndPrice: newest.extras.poleEndPrice,
+            poleGainPct: newest.extras.poleGainPct,
+            poleDays: newest.extras.poleDays,
+            flagStartDate: (() => {
+              // Flag begins flagDays bars before the breakout bar (inclusive).
+              const breakoutIdx = windowBars.findIndex(
+                b => b.t.getTime() === newest.breakoutDate.getTime(),
+              );
+              const flagStartIdx = breakoutIdx >= 0
+                ? Math.max(0, breakoutIdx - newest.extras.flagDays)
+                : -1;
+              return flagStartIdx >= 0
+                ? windowBars[flagStartIdx].t.toISOString().slice(0, 10)
+                : null;
+            })(),
+            flagDays: newest.extras.flagDays,
+            flagHigh: newest.extras.flagHigh,
+            flagLow: newest.extras.flagLow,
+            flagPullbackPct: newest.extras.flagPullbackPct,
+            breakoutDate: newest.breakoutDate.toISOString().slice(0, 10),
+            breakoutPrice: newest.breakoutPrice,
+            breakoutVolRatio: newest.extras.breakoutVolRatio,
+            targetPrice: newest.targetPrice,
+            stopPrice: newest.stopPrice,
+            qualityScore: newest.qualityScore,
+          }
+        : null;
+
+      res.json({ symbol, bars, annotation });
+    } catch (err: any) {
+      console.error("[htf] GET /chart failed:", err?.message || err);
+      res.status(500).json({ error: "chart_fetch_failed", message: String(err?.message || err) });
+    }
   });
 
   // ─── Backtest (Phase 7 fills in the body) ─────────────────────────────
