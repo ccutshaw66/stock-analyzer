@@ -10,6 +10,7 @@ vite.config.ts.*
 .env
 data.db
 data/long-range-cache/
+data/htf-ohlcv-cache/
 
 # Claude Code — keep skills + shared settings, exclude local/runtime state
 .claude/settings.local.json

@@ -11,11 +11,13 @@ import type { ServerCompartmentEntry } from "./types";
 import { favoritesCompartment } from "./favorites";
 import { scannerCompartment } from "./scanner";
 import { tradesCompartment } from "./trades";
+import { htfScannerCompartment } from "./htf-scanner";
 
 const serverCompartments: ServerCompartmentEntry[] = [
   favoritesCompartment,
   scannerCompartment,
   tradesCompartment,
+  htfScannerCompartment,
 ];
 
 export function listServerCompartments(): readonly ServerCompartmentEntry[] {

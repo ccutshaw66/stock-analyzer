@@ -26,3 +26,20 @@ export type {
   AMCInput,
   AMCResult,
 } from "./strategies/amc";
+export { scanHtf } from "./strategies/htf";
+export type { HtfHit, HtfExtras, HtfScanOptions } from "./strategies/htf";
+export {
+  DEFAULT_ACCOUNT_CONFIG,
+  sizePosition,
+  isActionable,
+  PortfolioState,
+  maxRiskPerTrade,
+  maxPositionSize,
+  maxTotalOpenRisk,
+  maxSectorExposure,
+} from "./risk/position-sizing";
+export type {
+  AccountConfig,
+  PositionRecommendation,
+  OpenPosition,
+} from "./risk/position-sizing";

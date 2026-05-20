@@ -72,6 +72,10 @@ export const accountSettings = pgTable("account_settings", {
   // yet, getAccountSettings in storage.ts has a raw-SQL fallback that
   // tolerates the missing column, so deploys never 500 on a migration lag.
   cashBalance: doublePrecision("cash_balance").default(0),
+  // HTF scanner overrides — null = use DEFAULT_ACCOUNT_CONFIG from
+  // server/signals/risk/position-sizing.ts. Stored as full AccountConfig
+  // JSON so we don't fragment the schema as new HTF knobs get added.
+  htfConfig: jsonb("htf_config"),
 });
 
 export const accountTransactions = pgTable("account_transactions", {
@@ -259,6 +263,41 @@ export const dashboardLayouts = pgTable("dashboard_layouts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export const insertDashboardLayoutSchema = createInsertSchema(dashboardLayouts).omit({ id: true });
+
+// ─── HTF setups (Phase 6 — High Tight Flag scanner) ─────────────────────────
+// One row per detected breakout from the nightly /htf scan. The actionable
+// vs filtered split is determined by `actionable` + `blockedReason`.
+export const htfSetups = pgTable("htf_setups", {
+  id: serial("id").primaryKey(),
+  runDate: text("run_date").notNull(),              // YYYY-MM-DD — scan date
+  symbol: text("symbol").notNull(),
+  pattern: text("pattern").notNull(),               // "HTF_Givens"
+  breakoutDate: text("breakout_date").notNull(),    // YYYY-MM-DD
+  breakoutPrice: doublePrecision("breakout_price").notNull(),
+  targetPrice: doublePrecision("target_price").notNull(),
+  stopPrice: doublePrecision("stop_price").notNull(),
+  qualityScore: integer("quality_score").notNull(),
+  poleGainPct: doublePrecision("pole_gain_pct").notNull(),
+  poleDays: integer("pole_days").notNull(),
+  flagDays: integer("flag_days").notNull(),
+  flagPullbackPct: doublePrecision("flag_pullback_pct").notNull(),
+  breakoutVolRatio: doublePrecision("breakout_vol_ratio").notNull(),
+  // Position-sizing snapshot at scan time (so historical setups remain
+  // interpretable even if AccountConfig changes later)
+  recommendedShares: integer("recommended_shares").notNull(),
+  positionValue: doublePrecision("position_value").notNull(),
+  actualRisk: doublePrecision("actual_risk").notNull(),
+  rewardRiskRatio: doublePrecision("reward_risk_ratio").notNull(),
+  actionable: boolean("actionable").notNull(),
+  blockedReason: text("blocked_reason"),
+  warnings: jsonb("warnings"),                      // string[]
+  sector: text("sector"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byRunDate: index("htf_setups_run_date_idx").on(table.runDate),
+  bySymbolDate: index("htf_setups_symbol_date_idx").on(table.symbol, table.breakoutDate),
+}));
+export const insertHtfSetupSchema = createInsertSchema(htfSetups).omit({ id: true, createdAt: true });
 export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfolio).omit({ id: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
@@ -286,6 +325,8 @@ export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
 export type DashboardLayoutRow = typeof dashboardLayouts.$inferSelect;
 export type InsertDashboardLayout = z.infer<typeof insertDashboardLayoutSchema>;
+export type HtfSetup = typeof htfSetups.$inferSelect;
+export type InsertHtfSetup = z.infer<typeof insertHtfSetupSchema>;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 

@@ -20,7 +20,10 @@
     "jobs:smoke": "tsx scripts/jobs-smoke.ts",
     "fmp:smoke": "tsx scripts/fmp-smoke.ts",
     "ratings:smoke": "tsx scripts/ratings-smoke.ts",
-    "earnings:smoke": "tsx scripts/earnings-smoke.ts"
+    "earnings:smoke": "tsx scripts/earnings-smoke.ts",
+    "htf:smoke": "tsx scripts/htf-smoke.ts",
+    "htf:parity": "tsx scripts/htf-sizing-parity.ts",
+    "htf:backtest": "tsx scripts/htf-backtest.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -9,6 +9,55 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF (High Tight Flag) trading system — full integration
+
+**Why:** Chris dropped a complete HTF design doc + Python reference modules in `docs/htf/` and `backend/patterns/` — Ross Givens' loosened version of Bulkowski's #1-ranked breakout pattern. Goal: detect 30%+ pole / tight-flag breakouts on the small-mid-cap universe and surface position-sized setups for the $7K personal account, with portfolio-level risk gates (max 5 open, 30% total-risk cap, 40% per-sector). The Python was reference-only — production needed to live in TS to plug into the existing signals registry, FMP client, and drizzle DB instead of bolting on a parallel runtime.
+
+**What:**
+
+### Strategy + sizing (Phase 1)
+- `server/signals/strategies/htf.ts` — 1:1 TS port of `backend/patterns/htf_givens.py`. Walks each bar as a candidate breakout, tries flag widths 3–30 days, takes longest valid window, verifies 30%+ pole leading in, confirms close above flag-high on ≥1.3× 30-day-avg volume. Returns `HtfHit[]` with measure-rule target + below-flag-low stop + 0–100 quality score.
+- `server/signals/risk/position-sizing.ts` — port of `position_sizing.py`. `AccountConfig`, `sizePosition()` (caps shares by both max-risk-per-trade and max-position-size; blocks trades with R/R < 1.0), `PortfolioState` with `canAddPosition()` enforcing max-open / total-risk / sector caps.
+- `server/signals/index.ts` — exports `scanHtf`, `sizePosition`, `PortfolioState`, types.
+
+### Universe + cache (Phases 2-3)
+- `server/signals/universe/htf-universe.ts` — `getHtfUniverse()` calls FMP `/company-screener` filtered to price $5–$75, avg vol ≥750K, mcap ≥$200M, NYSE/NASDAQ/AMEX, US, active, non-ETF/non-fund, IPOs >6mo. Per-stage counters for logging.
+- `server/data/htf-ohlcv-cache.ts` — disk cache at `data/htf-ohlcv-cache/<SYM>.json` mirroring the long-range-cache pattern. 18h TTL = one fetch per trading day. Soft-fails to empty `[]` so the orchestrator can skip bad tickers without aborting a 1,500-name scan.
+- `server/data/providers/fmp.client.ts` — added 24h TTL entries for `/company-screener` and `/stock-list`.
+- `.gitignore` — excludes `data/htf-ohlcv-cache/`.
+
+### Orchestrator + DB (Phase 4)
+- `shared/schema.ts` — new `htf_setups` table (one row per detected breakout, with sizing snapshot + actionable/blocked flag + reason). Indexed on `run_date` and `(symbol, breakout_date)`. Added `htf_config` jsonb column to `account_settings` for HTF-specific overrides.
+- `server/compartments/htf-scanner/orchestrator.ts` — `runHtfScan()` pipeline: universe → cached bars → `scanHtf` → `sizePosition` → portfolio gate → persist. Idempotent per `(runDate, symbol)`. Concurrency-pool (default 6) parallelises bar fetches without tripping FMP rate limits.
+- `server/compartments/htf-scanner/index.ts` — canonical `htfScannerData` accessor + `htfScannerCompartment` registered in `server/compartments/registry.ts`.
+
+### API (Phase 5)
+- `server/compartments/htf-scanner/routes.ts` — `GET /api/htf/setups` · `GET /api/htf/setups/filtered` · `GET /api/htf/portfolio` (reads from existing `trades` table) · `GET /PUT /api/htf/config` (persists in `account_settings.htf_config`) · `POST /api/htf/scan/run` · `POST /api/htf/backtest` · `GET /api/htf/cache/stats`. Self-protecting `requireAuth` per-route (mounted before global API auth).
+
+### Backtester (Phase 7)
+- `server/compartments/htf-scanner/backtest.ts` — `backtestSymbol()` simulates Givens' exit rules: entry = next-day open, hard stop at `flag_low × 0.99`, partial 1/3 after 3 cumulative close-strength days (>5% above entry; counter resets only on non-strength), 20-MA trail on remaining 2/3 once partial fires. Returns per-trade list + summary + per-score-bucket breakdown.
+- `scripts/htf-backtest.ts` — CLI: `npm run htf:backtest -- AAPL TSLA RKLB`.
+
+### Frontend (Phase 6)
+- `client/src/pages/htf-setups.tsx` — `/htf` page with five tabs (Today's Setups / Filtered / Portfolio / Backtest / Config). Score-color-coded rows (green ≥85, yellow 70–84, red <70). Row click navigates to chart. BrandedLoader/BrandedEmptyState/BrandedError for every async state per the quality-bar memory.
+- `client/src/App.tsx` — route registration.
+- `client/src/lib/page-registry.ts` — page-registry entry under "Investment Opportunities" with `Flag` icon, picked up automatically by the sidebar nav and `<PageHeader />`.
+
+### Tests + tooling (Phase 8)
+- `scripts/htf-sizing-parity.ts` — runs the six demo cases from the Python `position_sizing.py` __main__ through the TS `sizePosition()` port and asserts cent-for-cent match (LUNR 74sh@$1745.66, BKSY 42sh@$1737.96, CHEAP 388sh@$1746, EXPENSIVE 18sh@$1710, RKLB/BADRR blocked on R/R, sector cap fires after LUNR fills Aerospace). Passes.
+- `scripts/htf-smoke.ts` — pipeline smoke: 5 known tickers through cache → scanHtf → sizePosition. Gracefully exits 0 when FMP_API_KEY isn't set so it can run on dev boxes without keys.
+- `package.json` — `htf:smoke` · `htf:parity` · `htf:backtest`.
+
+**Notable choices:**
+
+- **Strict-Bulkowski (`htf.py`, 90% pole) kept as reference only** — production uses only the Givens loosening because the strict variant is far too restrictive for a $7K weekly-setup hunter.
+- **Partial-exit rule mirrors the Python code, not the README** — code is *cumulative-with-reset-on-weakness*; README says *consecutive*. Code is what was actually backtested, so the port matches it. One-line comment in `backtest.ts` flags the divergence.
+- **No parallel persistence** — portfolio reads from existing `trades` table, account config reads from existing `account_settings.htf_config`. No `portfolio.json` or `account.json` to dual-source.
+- **Python tree (`backend/patterns/`) untouched** — kept as reference/research surface; not imported at runtime. The detector/sizer/backtester logic now has two implementations in lock-step.
+
+**Net:** the /htf route is live end-to-end. Hit "Run scan" on the page (or `POST /api/htf/scan/run`) to populate today's setups; the nightly cron hook can be wired into `server/cron.ts` in a follow-up. Backtest tab gives any-ticker per-trade history. Config tab edits the risk caps in place.
+
+---
 ## 2026-05-18 — Scanner direction filter moved server-side (BUY/SELL counts now honest)
 
 **Why:** After tightening the client-side BUY/SELL filter, Chris reported the counts were still erratic and inconsistent ("Sell shows 1, BUY shows 3, both shows 30+ NO SETUP"). Root cause: the server caps at 50 results — qualified rows on top, NO SETUP fill below. Client filtered AFTER that cap, so BUY/SELL got "whatever survived from the 50-mix." Combined with the universe shuffle (different 500-ticker subset every scan), the counts were both small and randomly varying.

@@ -1,0 +1,619 @@
+/**
+ * HTF Setups page — High Tight Flag scanner results + portfolio + backtest.
+ *
+ * Five tabs:
+ *   - Today's Setups (actionable)
+ *   - Filtered (blocked + reason)
+ *   - Portfolio (reads open trades, summarises capacity / sector / risk)
+ *   - Backtest (per-ticker walk-forward simulation with Givens exits)
+ *   - Config (account capital + risk caps)
+ *
+ * All loading / empty / error states use the BrandedLoader / BrandedEmptyState
+ * primitives per the quality-bar memory.
+ */
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { BrandedLoader } from "@/components/BrandedLoader";
+import { BrandedEmptyState } from "@/components/BrandedEmptyState";
+import { Disclaimer } from "@/components/Disclaimer";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { apiRequest } from "@/lib/queryClient";
+
+// ─── Types (mirror server payloads) ───────────────────────────────────────
+interface HtfSetupRow {
+  id: number;
+  runDate: string;
+  symbol: string;
+  pattern: string;
+  breakoutDate: string;
+  breakoutPrice: number;
+  targetPrice: number;
+  stopPrice: number;
+  qualityScore: number;
+  poleGainPct: number;
+  poleDays: number;
+  flagDays: number;
+  flagPullbackPct: number;
+  breakoutVolRatio: number;
+  recommendedShares: number;
+  positionValue: number;
+  actualRisk: number;
+  rewardRiskRatio: number;
+  actionable: boolean;
+  blockedReason: string | null;
+  warnings: string[] | null;
+  sector: string | null;
+}
+
+interface SetupsResponse {
+  runDate: string | null;
+  count: number;
+  rows: HtfSetupRow[];
+}
+
+interface PortfolioPosition {
+  symbol: string;
+  sector: string;
+  shares: number;
+  entry: number;
+  stop: number;
+  value: number;
+  atRisk: number;
+}
+
+interface PortfolioResponse {
+  nOpen: number;
+  maxOpen: number;
+  capacityRemaining: number;
+  totalValue: number;
+  totalOpenRisk: number;
+  maxOpenRisk: number;
+  openRiskPct: number;
+  cashRemainingEstimate: number;
+  positions: PortfolioPosition[];
+}
+
+interface AccountConfig {
+  capital: number;
+  maxRiskPerTradePct: number;
+  maxPositionPct: number;
+  maxSimultaneousPositions: number;
+  maxSectorExposurePct: number;
+  maxTotalOpenRiskPct: number;
+  minRewardRiskRatio: number;
+  commissionPerTrade: number;
+  slippagePct: number;
+}
+
+interface BacktestSummary {
+  nTrades: number;
+  winRatePct?: number;
+  avgReturnPct?: number;
+  profitFactor?: number;
+  expectancyPerTradePct?: number;
+  avgHoldDays?: number;
+  bestTrade?: number;
+  worstTrade?: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+function scoreColor(score: number): string {
+  if (score >= 85) return "text-bull";
+  if (score >= 70) return "text-watch-light";
+  return "text-bear-light";
+}
+
+function scoreBg(score: number): string {
+  if (score >= 85) return "bg-bull/15 border-bull/40";
+  if (score >= 70) return "bg-watch/15 border-watch/40";
+  return "bg-bear/15 border-bear/40";
+}
+
+function fmt$(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  return `$${n.toFixed(2)}`;
+}
+function fmt$0(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
+// ─── Setups table ─────────────────────────────────────────────────────────
+function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
+  const [, navigate] = useLocation();
+  if (rows.length === 0) {
+    return (
+      <BrandedEmptyState
+        icon={Flag}
+        title={showBlocked ? "No filtered setups" : "No setups today"}
+        description={
+          showBlocked
+            ? "Every breakout in the latest run was actionable. Filtered setups appear here when portfolio caps or R/R rules block a trade."
+            : "The nightly scan hasn't surfaced any HTF breakouts that pass the volume + flag filters. In choppy markets this is normal — don't loosen the rules to force signals."
+        }
+      />
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-md border border-border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 text-left">Symbol</th>
+            <th className="px-3 py-2 text-right">Score</th>
+            <th className="px-3 py-2 text-right">Breakout</th>
+            <th className="px-3 py-2 text-right">Target</th>
+            <th className="px-3 py-2 text-right">Stop</th>
+            <th className="px-3 py-2 text-right">R/R</th>
+            <th className="px-3 py-2 text-right">Shares</th>
+            <th className="px-3 py-2 text-right">$ Position</th>
+            <th className="px-3 py-2 text-right">$ Risk</th>
+            <th className="px-3 py-2 text-right">Pole</th>
+            <th className="px-3 py-2 text-right">Flag</th>
+            <th className="px-3 py-2 text-right">Vol</th>
+            {showBlocked && <th className="px-3 py-2 text-left">Why blocked</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr
+              key={r.id}
+              onClick={() => navigate(`/chart?ticker=${r.symbol}`)}
+              className="cursor-pointer border-t border-border hover:bg-muted/30 transition-colors"
+              data-testid={`htf-row-${r.symbol}`}
+            >
+              <td className="px-3 py-2 font-bold text-foreground">{r.symbol}</td>
+              <td className={`px-3 py-2 text-right font-bold ${scoreColor(r.qualityScore)}`}>
+                <span className={`px-2 py-0.5 rounded border ${scoreBg(r.qualityScore)}`}>
+                  {r.qualityScore}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">{fmt$(r.breakoutPrice)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmt$(r.targetPrice)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmt$(r.stopPrice)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{r.rewardRiskRatio.toFixed(1)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{r.recommendedShares.toLocaleString()}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{fmt$0(r.positionValue)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{fmt$0(r.actualRisk)}</td>
+              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                +{r.poleGainPct.toFixed(0)}% / {r.poleDays}d
+              </td>
+              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                {r.flagDays}d / -{r.flagPullbackPct.toFixed(1)}%
+              </td>
+              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                {r.breakoutVolRatio.toFixed(1)}×
+              </td>
+              {showBlocked && (
+                <td className="px-3 py-2 text-xs text-bear-light">{r.blockedReason ?? "—"}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────
+function TodaysSetupsTab() {
+  const [minScore, setMinScore] = useState(70);
+  const q = useQuery<SetupsResponse>({
+    queryKey: ["/api/htf/setups", { actionableOnly: true, minScore }],
+    queryFn: async () => {
+      const r = await apiRequest(
+        "GET",
+        `/api/htf/setups?actionableOnly=true&minScore=${minScore}`,
+      );
+      return r.json();
+    },
+  });
+
+  if (q.isLoading) return <BrandedLoader message="Loading today's setups…" />;
+  if (q.isError) {
+    return (
+      <BrandedEmptyState
+        icon={AlertTriangle}
+        title="Couldn't load setups"
+        description="The HTF scan endpoint returned an error. Try refreshing in a moment."
+      />
+    );
+  }
+  const data = q.data;
+  if (!data) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            Run date: <span className="text-foreground font-mono">{data.runDate ?? "no scan yet"}</span>
+          </span>
+          <span className="text-xs text-muted-foreground">·</span>
+          <span className="text-xs text-muted-foreground">{data.count} actionable</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="minScore" className="text-xs">Min score</Label>
+          <Input
+            id="minScore"
+            type="number"
+            value={minScore}
+            onChange={e => setMinScore(Number(e.target.value))}
+            className="w-20 h-8 text-sm"
+            min={0}
+            max={100}
+          />
+        </div>
+      </div>
+      <SetupsTable rows={data.rows} showBlocked={false} />
+    </div>
+  );
+}
+
+function FilteredTab() {
+  const q = useQuery<SetupsResponse>({
+    queryKey: ["/api/htf/setups/filtered"],
+    queryFn: async () => (await apiRequest("GET", "/api/htf/setups/filtered")).json(),
+  });
+  if (q.isLoading) return <BrandedLoader message="Loading filtered setups…" />;
+  if (q.isError || !q.data) {
+    return (
+      <BrandedEmptyState
+        icon={AlertTriangle}
+        title="Couldn't load filtered list"
+        description="The HTF scan endpoint returned an error."
+      />
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-muted-foreground">
+        {q.data.count} breakouts blocked by R/R, portfolio, or sector rules.
+      </div>
+      <SetupsTable rows={q.data.rows} showBlocked={true} />
+    </div>
+  );
+}
+
+function PortfolioTab() {
+  const q = useQuery<PortfolioResponse>({
+    queryKey: ["/api/htf/portfolio"],
+    queryFn: async () => (await apiRequest("GET", "/api/htf/portfolio")).json(),
+  });
+  if (q.isLoading) return <BrandedLoader message="Loading portfolio…" />;
+  if (q.isError || !q.data) {
+    return (
+      <BrandedEmptyState
+        icon={AlertTriangle}
+        title="Couldn't load portfolio"
+        description="The portfolio endpoint returned an error."
+      />
+    );
+  }
+  const p = q.data;
+  const stats: Array<[string, string]> = [
+    ["Open", `${p.nOpen} / ${p.maxOpen}`],
+    ["Capacity left", `${p.capacityRemaining}`],
+    ["Total value", fmt$0(p.totalValue)],
+    ["Total at risk", `${fmt$0(p.totalOpenRisk)} / ${fmt$0(p.maxOpenRisk)} (${fmtPct(p.openRiskPct)})`],
+    ["Cash estimate", fmt$0(p.cashRemainingEstimate)],
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {stats.map(([label, value]) => (
+          <div key={label} className="rounded-md border border-border p-3 bg-card">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div className="text-sm font-bold text-foreground mt-0.5">{value}</div>
+          </div>
+        ))}
+      </div>
+      {p.positions.length === 0 ? (
+        <BrandedEmptyState
+          icon={Activity}
+          title="No open positions"
+          description="Open positions in the Trade Tracker show up here automatically. The HTF scanner uses this to gate new setups against your capacity."
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left">Symbol</th>
+                <th className="px-3 py-2 text-left">Sector</th>
+                <th className="px-3 py-2 text-right">Shares</th>
+                <th className="px-3 py-2 text-right">Entry</th>
+                <th className="px-3 py-2 text-right">Stop</th>
+                <th className="px-3 py-2 text-right">Value</th>
+                <th className="px-3 py-2 text-right">At risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.positions.map(pos => (
+                <tr key={pos.symbol} className="border-t border-border">
+                  <td className="px-3 py-2 font-bold">{pos.symbol}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{pos.sector}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pos.shares.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt$(pos.entry)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmt$(pos.stop)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt$0(pos.value)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmt$0(pos.atRisk)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BacktestTab() {
+  const [symbol, setSymbol] = useState("");
+  const [minScore, setMinScore] = useState(0);
+  const [result, setResult] = useState<{ trades: any[]; summary: BacktestSummary } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const m = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("POST", "/api/htf/backtest", { symbol, minScore });
+      return r.json();
+    },
+    onSuccess: d => {
+      setResult(d);
+      setError(null);
+    },
+    onError: (e: any) => setError(e?.message || "backtest failed"),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <Label htmlFor="bt-sym" className="text-xs">Symbol</Label>
+          <Input
+            id="bt-sym"
+            value={symbol}
+            onChange={e => setSymbol(e.target.value.toUpperCase())}
+            placeholder="e.g. RKLB"
+            className="w-32 h-9"
+          />
+        </div>
+        <div>
+          <Label htmlFor="bt-score" className="text-xs">Min score</Label>
+          <Input
+            id="bt-score"
+            type="number"
+            value={minScore}
+            onChange={e => setMinScore(Number(e.target.value))}
+            className="w-24 h-9"
+            min={0}
+            max={100}
+          />
+        </div>
+        <Button
+          onClick={() => symbol && m.mutate()}
+          disabled={!symbol || m.isPending}
+          className="h-9"
+        >
+          {m.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+          Run
+        </Button>
+      </div>
+      {error && (
+        <div className="rounded-md border border-bear/40 bg-bear/10 p-3 text-sm text-bear-light">
+          {error}
+        </div>
+      )}
+      {m.isPending && <BrandedLoader message={`Backtesting ${symbol}…`} />}
+      {result && !m.isPending && (
+        <>
+          {result.summary.nTrades === 0 ? (
+            <BrandedEmptyState
+              icon={Flag}
+              title="No HTF setups in history"
+              description="This ticker has no breakouts matching the Givens rules in the available bars."
+            />
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {([
+                ["Trades", result.summary.nTrades],
+                ["Win rate", fmtPct(result.summary.winRatePct)],
+                ["Avg return", fmtPct(result.summary.avgReturnPct)],
+                ["Profit factor", result.summary.profitFactor?.toFixed(2) ?? "—"],
+                ["Expectancy", fmtPct(result.summary.expectancyPerTradePct)],
+                ["Avg hold", `${result.summary.avgHoldDays ?? "—"}d`],
+                ["Best", fmtPct(result.summary.bestTrade)],
+                ["Worst", fmtPct(result.summary.worstTrade)],
+              ] as Array<[string, any]>).map(([label, value]) => (
+                <div key={label} className="rounded-md border border-border p-3 bg-card">
+                  <div className="text-xs text-muted-foreground">{label}</div>
+                  <div className="text-sm font-bold text-foreground mt-0.5">{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.trades.length > 0 && (
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Entry</th>
+                    <th className="px-3 py-2 text-left">Exit</th>
+                    <th className="px-3 py-2 text-right">Days</th>
+                    <th className="px-3 py-2 text-right">Entry $</th>
+                    <th className="px-3 py-2 text-right">Exit $</th>
+                    <th className="px-3 py-2 text-right">Return</th>
+                    <th className="px-3 py-2 text-right">DD</th>
+                    <th className="px-3 py-2 text-left">Reason</th>
+                    <th className="px-3 py-2 text-right">Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.trades.map((t: any, i: number) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-3 py-2 font-mono text-xs">{t.entryDate}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{t.exitDate}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{t.holdingDays}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmt$(t.entryPrice)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmt$(t.exitPrice)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums font-bold ${t.blendedReturnPct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+                        {fmtPct(t.blendedReturnPct)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                        {fmtPct(t.maxDrawdownPct)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{t.exitReason}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${scoreColor(t.qualityScore)}`}>
+                        {t.qualityScore}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ConfigTab() {
+  const qc = useQueryClient();
+  const q = useQuery<AccountConfig>({
+    queryKey: ["/api/htf/config"],
+    queryFn: async () => (await apiRequest("GET", "/api/htf/config")).json(),
+  });
+  const [draft, setDraft] = useState<AccountConfig | null>(null);
+  const m = useMutation({
+    mutationFn: async (cfg: AccountConfig) => (await apiRequest("PUT", "/api/htf/config", cfg)).json(),
+    onSuccess: (saved: AccountConfig) => {
+      qc.setQueryData(["/api/htf/config"], saved);
+      setDraft(null);
+    },
+  });
+
+  if (q.isLoading) return <BrandedLoader message="Loading config…" />;
+  if (q.isError || !q.data) {
+    return (
+      <BrandedEmptyState
+        icon={AlertTriangle}
+        title="Couldn't load config"
+        description="The config endpoint returned an error."
+      />
+    );
+  }
+  const cfg = draft ?? q.data;
+  const update = (k: keyof AccountConfig, v: number) =>
+    setDraft({ ...(draft ?? q.data!), [k]: v });
+
+  const fields: Array<[keyof AccountConfig, string, string]> = [
+    ["capital", "Capital ($)", "Starting account value"],
+    ["maxRiskPerTradePct", "Max risk per trade", "Fraction (0.10 = 10%)"],
+    ["maxPositionPct", "Max position size", "Fraction (0.25 = 25%)"],
+    ["maxSimultaneousPositions", "Max open positions", "Integer count"],
+    ["maxSectorExposurePct", "Max sector exposure", "Fraction (0.40 = 40%)"],
+    ["maxTotalOpenRiskPct", "Max total open risk", "Fraction (0.30 = 30%)"],
+    ["minRewardRiskRatio", "Min R/R ratio", "2.0 = 2:1"],
+    ["commissionPerTrade", "Commission per trade", "$"],
+    ["slippagePct", "Slippage", "Fraction (0.002 = 0.2%)"],
+  ];
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {fields.map(([key, label, hint]) => (
+          <div key={key} className="rounded-md border border-border p-3 bg-card">
+            <Label htmlFor={`cfg-${key}`} className="text-xs">{label}</Label>
+            <Input
+              id={`cfg-${key}`}
+              type="number"
+              step="any"
+              value={cfg[key]}
+              onChange={e => update(key, Number(e.target.value))}
+              className="mt-1 h-9"
+            />
+            <div className="text-xs text-muted-foreground mt-1">{hint}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={() => draft && m.mutate(draft)}
+          disabled={!draft || m.isPending}
+        >
+          {m.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
+          Save
+        </Button>
+        {draft && (
+          <Button variant="outline" onClick={() => setDraft(null)}>
+            Cancel
+          </Button>
+        )}
+        {m.isError && (
+          <span className="text-xs text-bear-light">
+            {(m.error as any)?.message || "save failed"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────
+export default function HtfSetupsPage() {
+  const qc = useQueryClient();
+  const scan = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/htf/scan/run", {})).json(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/htf/setups"] });
+      qc.invalidateQueries({ queryKey: ["/api/htf/setups/filtered"] });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        right={
+          <Button
+            onClick={() => scan.mutate()}
+            disabled={scan.isPending}
+            size="sm"
+            data-testid="htf-run-scan"
+          >
+            {scan.isPending ? (
+              <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-1" />
+            )}
+            Run scan
+          </Button>
+        }
+      />
+      <Tabs defaultValue="today" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="today">Today's Setups</TabsTrigger>
+          <TabsTrigger value="filtered">Filtered</TabsTrigger>
+          <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+          <TabsTrigger value="backtest">Backtest</TabsTrigger>
+          <TabsTrigger value="config">Config</TabsTrigger>
+        </TabsList>
+        <TabsContent value="today"><TodaysSetupsTab /></TabsContent>
+        <TabsContent value="filtered"><FilteredTab /></TabsContent>
+        <TabsContent value="portfolio"><PortfolioTab /></TabsContent>
+        <TabsContent value="backtest"><BacktestTab /></TabsContent>
+        <TabsContent value="config"><ConfigTab /></TabsContent>
+      </Tabs>
+      <Disclaimer />
+    </div>
+  );
+}

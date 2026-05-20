@@ -16,7 +16,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity, Award, BarChart3, Bell, BookOpen, Building2, Calculator,
   Calendar, CheckCircle2, ClipboardList, Compass, Crosshair, DollarSign,
-  FlaskConical, Grid3X3, Landmark, Layers, LayoutDashboard, Microscope,
+  Flag, FlaskConical, Grid3X3, Landmark, Layers, LayoutDashboard, Microscope,
   Percent, PieChart, Plus, Radar, RefreshCw, Sigma, Spline, Trophy,
 } from "lucide-react";
 
@@ -70,6 +70,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
 
   // ─── Investment Opportunities ──────────────────────────────────────────
   { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "Confluence-based explosion detector across the universe." },
+  { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Investment Opportunities", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
   { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "Investment Opportunities", subtitle: "Sector strength at a glance." },
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings with expected moves." },
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks." },
