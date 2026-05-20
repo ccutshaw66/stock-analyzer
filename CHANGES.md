@@ -9,6 +9,14 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF page: "How it works" help block
+
+**Why:** The /htf page had no inline explainer — users hitting it cold had to read CHANGES.md or guess at what "actionable" / "filtered" / "score" / "Givens exits" meant. Site convention is a collapsible blue `HelpBlock` at the top (same component the calculators and scanner use).
+
+**What:**
+- `client/src/pages/htf-setups.tsx` — `HelpBlock` titled "How HTF setups work" added above the tab strip. Covers the detection rules (pole / flag / breakout), the 0–100 quality score buckets (85+ / 70–84 / <70 — colored via `ScoreRange`), position-sizing logic, portfolio gates, Givens' suggested exits, and a one-line summary of each of the five tabs. Closes the implicit-knowledge gap without bloating the page (collapses by default).
+
+---
 ## 2026-05-19 — HTF row click → Trade Analysis (matches scanner behaviour)
 
 **Why:** Chris reported the /htf row-click navigated to `/chart?ticker=…` instead of opening the global research surface. Site-wide convention is `setActiveTicker(symbol)` + `navigate("/trade")` — same as `client/src/pages/scanner.tsx:490`. HTF rows now follow the same pattern.

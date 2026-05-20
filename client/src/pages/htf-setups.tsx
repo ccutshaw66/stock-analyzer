@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
 import { Disclaimer } from "@/components/Disclaimer";
+import { HelpBlock, ScoreRange } from "@/components/HelpBlock";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -605,6 +606,80 @@ export default function HtfSetupsPage() {
           </Button>
         }
       />
+      <HelpBlock title="How HTF setups work">
+        <p>
+          <span className="font-semibold text-foreground">The High Tight Flag</span> is Bulkowski's #1-ranked
+          chart pattern. This scanner uses Ross Givens' loosening of the rules — looking for a sharp
+          run-up followed by a tight consolidation, then a breakout on heavy volume.
+        </p>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">What the scanner looks for</div>
+          <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
+            <li><span className="font-semibold">Pole</span> — a 30%+ price rise in 5–60 days</li>
+            <li><span className="font-semibold">Flag</span> — 3–30 days of consolidation, pulling back no more than 25% from the pole high</li>
+            <li><span className="font-semibold">Breakout</span> — close above the consolidation high on volume ≥1.3× the 30-day average</li>
+          </ul>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">Quality score (0–100)</div>
+          <div className="space-y-1">
+            <ScoreRange label="High conviction" range="85+" color="green" description="big pole, tight flag, strong volume — small sample but highest hit rate" />
+            <ScoreRange label="Standard fire" range="70–84" color="yellow" description="production threshold; what the scanner emits as actionable by default" />
+            <ScoreRange label="Noise" range="<70" color="red" description="weak setup; the scanner filters these out unless you lower the threshold" />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">How position sizing works</div>
+          <p>
+            For each breakout, the scanner sizes a position using your account config (Config tab):
+            shares are capped by both <span className="font-mono">max-risk-per-trade</span> (default 10% =
+            $700 on $7K) and <span className="font-mono">max-position-size</span> (default 25% = $1,750).
+            Trades with reward-to-risk below 1:1 are <span className="text-bear-light">blocked</span>;
+            ones below your minimum R/R (default 2:1) are warned but allowed.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">Portfolio gates</div>
+          <p>
+            Before a setup shows up as <span className="text-bull-light">actionable</span>, it must also
+            pass your portfolio rules: max 5 open positions, max 30% total at risk, max 40% in one
+            sector, and you can't already hold the ticker. Blocked setups land in the{" "}
+            <span className="font-semibold">Filtered</span> tab with the reason.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">Suggested exits (Givens' rules)</div>
+          <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
+            <li><span className="font-semibold">Buy</span> the next day's open after the breakout day</li>
+            <li><span className="font-semibold">Hard stop</span> just below the consolidation low</li>
+            <li>After <span className="font-semibold">3 days of strength</span> (close &gt;5% above entry),
+              sell 1/3 of the position</li>
+            <li><span className="font-semibold">Trail</span> the remaining 2/3 with a close below the
+              20-day moving average</li>
+          </ul>
+        </div>
+
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground">The five tabs</div>
+          <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
+            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts from the latest scan. Click any row to open Trade Analysis for that ticker.</li>
+            <li><span className="font-semibold">Filtered</span> — breakouts blocked by R/R, portfolio cap, or sector cap, with the reason</li>
+            <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk, sector breakdown (reads from Trade Tracker)</li>
+            <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history</li>
+            <li><span className="font-semibold">Config</span> — edit your capital, risk caps, and position-sizing knobs</li>
+          </ul>
+        </div>
+
+        <p className="text-muted-foreground/80 italic">
+          In choppy or downtrending markets this scanner may return 0–3 setups per night. That's the
+          system working — don't loosen the filters to force more signals.
+        </p>
+      </HelpBlock>
       <Tabs defaultValue="today" className="space-y-4">
         <TabsList>
           <TabsTrigger value="today">Today's Setups</TabsTrigger>
