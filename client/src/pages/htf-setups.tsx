@@ -506,6 +506,12 @@ function ConfigTab() {
     onSuccess: (saved: AccountConfig) => {
       qc.setQueryData(["/api/htf/config"], saved);
       setDraft(null);
+      // Resize-on-read recomputes shares / $ position / actionable status
+      // against the new config — invalidate every setups + portfolio query
+      // so the next tab visit reflects the edit immediately.
+      qc.invalidateQueries({ queryKey: ["/api/htf/setups"] });
+      qc.invalidateQueries({ queryKey: ["/api/htf/setups/filtered"] });
+      qc.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
     },
   });
 

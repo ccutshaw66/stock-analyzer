@@ -18,7 +18,7 @@
 
 import type { Express, Request, Response } from "express";
 import { and, eq, isNull } from "drizzle-orm";
-import { db, storage } from "../../storage";
+import { db } from "../../storage";
 import { requireAuth } from "../../auth";
 import { trades } from "@shared/schema";
 import {
@@ -30,6 +30,7 @@ import {
 import { htfScannerData } from ".";
 import { htfCacheStats } from "../../data/htf-ohlcv-cache";
 import { runHtfScan } from "./orchestrator";
+import { readAccountConfig, writeAccountConfig } from "./account-config-store";
 
 const STOCK_TRADE_TYPES = new Set(["S", "L", "ST"]);     // see shared/schema.ts TRADE_TYPES
 
@@ -42,17 +43,8 @@ function getUserId(req: Request, res: Response): number | null {
   return uid;
 }
 
-async function loadAccountConfig(userId: number): Promise<AccountConfig> {
-  try {
-    const row = await storage.getAccountSettings(userId);
-    const htfConfig = (row as any)?.htfConfig;
-    if (htfConfig && typeof htfConfig === "object") {
-      return { ...DEFAULT_ACCOUNT_CONFIG, ...htfConfig };
-    }
-  } catch {
-    // table-missing fallback — return defaults so dev/staging still works
-  }
-  return { ...DEFAULT_ACCOUNT_CONFIG };
+function loadAccountConfig(userId: number): AccountConfig {
+  return readAccountConfig(userId);
 }
 
 async function loadPortfolio(userId: number): Promise<PortfolioState> {
@@ -80,18 +72,25 @@ async function loadPortfolio(userId: number): Promise<PortfolioState> {
 
 export function mountRoutes(app: Express): void {
   // ─── Read setups ──────────────────────────────────────────────────────
+  // Sizing + actionable flag are recomputed live against the current config
+  // + portfolio so Config tab edits flow through without a re-scan.
   app.get("/api/htf/setups", requireAuth, async (req: Request, res: Response) => {
-    if (!getUserId(req, res)) return;
+    const userId = getUserId(req, res);
+    if (!userId) return;
     try {
       const runDate = typeof req.query.date === "string" ? req.query.date : undefined;
       const minScore = req.query.minScore ? Number(req.query.minScore) : undefined;
       const symbol = typeof req.query.symbol === "string" ? req.query.symbol : undefined;
       const actionableOnly = req.query.actionableOnly === "true";
+      const config = loadAccountConfig(userId);
+      const portfolio = await loadPortfolio(userId);
       const rows = await htfScannerData.getSetups({
         runDate,
         minScore,
         symbol,
         actionableOnly,
+        config,
+        portfolio,
       });
       const latestRunDate = runDate ?? (await htfScannerData.latestRunDate());
       res.json({ runDate: latestRunDate, count: rows.length, rows });
@@ -102,10 +101,13 @@ export function mountRoutes(app: Express): void {
   });
 
   app.get("/api/htf/setups/filtered", requireAuth, async (req: Request, res: Response) => {
-    if (!getUserId(req, res)) return;
+    const userId = getUserId(req, res);
+    if (!userId) return;
     try {
       const runDate = typeof req.query.date === "string" ? req.query.date : undefined;
-      const all = await htfScannerData.getSetups({ runDate });
+      const config = loadAccountConfig(userId);
+      const portfolio = await loadPortfolio(userId);
+      const all = await htfScannerData.getSetups({ runDate, config, portfolio });
       const filtered = all.filter(r => !r.actionable);
       const latestRunDate = runDate ?? (await htfScannerData.latestRunDate());
       res.json({ runDate: latestRunDate, count: filtered.length, rows: filtered });
@@ -120,7 +122,7 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const config = await loadAccountConfig(userId);
+      const config = loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       res.json(portfolio.statusSummary(config));
     } catch (err: any) {
@@ -133,8 +135,7 @@ export function mountRoutes(app: Express): void {
   app.get("/api/htf/config", requireAuth, async (req: Request, res: Response) => {
     const userId = getUserId(req, res);
     if (!userId) return;
-    const cfg = await loadAccountConfig(userId);
-    res.json(cfg);
+    res.json(loadAccountConfig(userId));
   });
 
   app.put("/api/htf/config", requireAuth, async (req: Request, res: Response) => {
@@ -142,7 +143,7 @@ export function mountRoutes(app: Express): void {
     if (!userId) return;
     try {
       const body = req.body as Partial<AccountConfig>;
-      const merged: AccountConfig = { ...(await loadAccountConfig(userId)), ...body };
+      const merged: AccountConfig = { ...loadAccountConfig(userId), ...body };
       // Validate numeric fields are sane
       if (
         !Number.isFinite(merged.capital) || merged.capital <= 0 ||
@@ -153,20 +154,11 @@ export function mountRoutes(app: Express): void {
         res.status(400).json({ error: "invalid_config" });
         return;
       }
-      // Persist as the `htfConfig` jsonb column on account_settings
-      await db.execute(
-        // Drizzle raw — keep migration-tolerant. Storage may add a typed setter later.
-        // We use a raw query because storage.updateAccountSettings doesn't know about htf_config yet.
-        // @ts-ignore — sql tag is provided by drizzle-orm's `sql` helper imported lazily below.
-        (await import("drizzle-orm")).sql`
-          UPDATE account_settings SET htf_config = ${JSON.stringify(merged)}::jsonb
-          WHERE user_id = ${userId}
-        `,
-      );
+      writeAccountConfig(userId, merged);
       res.json(merged);
     } catch (err: any) {
       console.error("[htf] PUT /config failed:", err?.message || err);
-      res.status(500).json({ error: "config_write_failed" });
+      res.status(500).json({ error: "config_write_failed", message: String(err?.message || err) });
     }
   });
 
@@ -175,7 +167,7 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const config = await loadAccountConfig(userId);
+      const config = loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       const forceRefresh = req.body?.forceRefresh === true;
       const minScore = typeof req.body?.minScore === "number" ? req.body.minScore : 0;

@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: Config edits actually drive the sizing now (resize-on-read + file persistence)
+
+**Why:** Chris reported that every $ Position on the /htf table read ~$17xx (25% of $7K) and editing Config changed nothing. Two compounding bugs caused this:
+
+1. **Snapshots, not live values.** `htf_setups` stored `recommendedShares` / `positionValue` / `actualRisk` / `rewardRiskRatio` / `actionable` / `blockedReason` as snapshots taken at scan time. Editing Config did nothing for existing rows — they'd only update on a re-scan.
+2. **Config persistence relied on a missing migration.** PUT /config wrote to a brand-new `account_settings.htf_config` jsonb column that needs `npm run db:push` to exist. Without the migration the UPDATE threw 500 and the user saw "saved" only because the client cached the response — but every backend read still returned `DEFAULT_ACCOUNT_CONFIG`.
+
+**What:**
+
+### Resize-on-read
+- `server/compartments/htf-scanner/index.ts` — new `resizeSetup(row, config, portfolio)` runs `sizePosition` + `canAddPosition` against the live config + portfolio and overrides the snapshot fields (shares / position value / actual risk / R/R / actionable / blocked reason / warnings) before returning. `htfScannerData.getSetups()` now optionally takes `config` + `portfolio`; when supplied, every row goes through `resizeSetup` before the actionable filter applies.
+- `server/compartments/htf-scanner/routes.ts` — GET /api/htf/setups + /setups/filtered load the user's config + portfolio and pass them to `getSetups`. Sizing now lives in the read path.
+
+### File-based config persistence (no migration needed)
+- `server/compartments/htf-scanner/account-config-store.ts` — `readAccountConfig(userId)` / `writeAccountConfig(userId, cfg)`. Stores at `data/htf-account-config/<userId>.json` — same pattern as the long-range cache and the new OHLCV cache. Survives restarts; no `db:push` required.
+- `routes.ts` — PUT /api/htf/config now writes to the file store instead of the jsonb column. GET /config + scan/run read from it. The old jsonb path is gone; can be re-added as a backup later if Chris runs `db:push`.
+- `.gitignore` — excludes `data/htf-account-config/`.
+
+### Frontend
+- `client/src/pages/htf-setups.tsx` — `ConfigTab` mutation `onSuccess` now invalidates `/api/htf/setups`, `/api/htf/setups/filtered`, and `/api/htf/portfolio` so the next read pulls the resized values immediately. No page refresh needed.
+
+**Net behaviour:** edit Capital from $7K to $50K → save → flip back to Today's Setups → every $ Position jumps to the new max (or its risk-cap value). Edit Max risk per trade from 10% → 25% → save → shares scale up wherever the risk cap was the binding constraint. Edit Min R/R from 2.0 → 4.0 → save → low-R/R setups flip from "warning" to soft-warning-only (still actionable). Edit Max position size from 25% → 10% → save → every $ Position floor halves. All without a re-scan.
+
+**Files touched:** `server/compartments/htf-scanner/index.ts`, `server/compartments/htf-scanner/routes.ts`, `server/compartments/htf-scanner/account-config-store.ts` (new), `client/src/pages/htf-setups.tsx`, `.gitignore`, `CHANGES.md`.
+
+---
 ## 2026-05-19 — HTF Config tab: show percentages as whole numbers, not fractions
 
 **Why:** Chris reported the Config tab was showing `0.10`, `0.25`, `0.002` etc. for the risk-cap fields — confusing and error-prone. The server stores them as fractions (canonical math form), but the UI should show humans whole-number percentages.
