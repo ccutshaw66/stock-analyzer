@@ -19,10 +19,16 @@ import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
 
 // ─── Live-setup filters ────────────────────────────────────────────────
-// A breakout is only tradeable on the NEXT market open after it fires.
-// So we require breakout = the most recent available bar — once a bar
-// older than that, entry is already in the past per Givens' rules.
-const MAX_DAYS_SINCE_BREAKOUT = 0;     // breakout must be the latest bar
+// A breakout is only tradeable on the next market open after it fires.
+// Allowing one bar of grace covers:
+//   - Pre-market scans: latest bar = yesterday's close. A breakout on the
+//     latest bar means entry at today's open (= "this morning"). A breakout
+//     one bar earlier (Monday close, viewed Tuesday) means entry at
+//     Tuesday's open — still actionable today.
+//   - During-session scans where today's bar hasn't been published yet.
+// Tighter than this (0 days) usually returns an empty list because few
+// stocks break out on any single bar.
+const MAX_DAYS_SINCE_BREAKOUT = 1;
 const MAX_CHASE_PCT = 0.10;            // skip setups where price ran >10% past breakout
 import {
   DEFAULT_ACCOUNT_CONFIG,

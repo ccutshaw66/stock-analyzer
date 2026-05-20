@@ -9,6 +9,16 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: relax recency filter to 1 day + fix refresh invalidation
+
+**Why:** Chris reported "now only shows filters not any setups." Root cause was the previous-commit-too-strict recency filter (`MAX_DAYS_SINCE_BREAKOUT = 0`) — required the breakout to fire on the most recent bar literally. On any given day very few stocks break out on the exact latest bar, so the list usually came back empty. Also fixed a latent bug from the audit refactor: the refresh-button invalidation used `queryKey: ["/api/htf/setups"]` but the actual keys now carry the full query string (e.g. `/api/htf/setups?actionableOnly=true&minScore=70`), so Refresh didn't propagate.
+
+**What:**
+- `server/compartments/htf-scanner/orchestrator.ts` — `MAX_DAYS_SINCE_BREAKOUT` from 0 → 1. Still trade-actionable per Givens (entry = next open). Includes both "yesterday's breakout, enter today's open" and "today's breakout, enter tomorrow's open." Comment updated explaining the trade-off.
+- `client/src/compartments/htf-scanner/useHtfScanner.ts` — `useHtfScannerRefresh` now invalidates with a predicate that matches any key starting with `/api/htf/setups` (covers the path-with-query-string keys the page + widget use).
+- `client/src/pages/htf-setups.tsx` — help-block freshness paragraph updated to say "today or yesterday."
+
+---
 ## 2026-05-19 — HTF: re-architecture pass to match the universal-structure rule
 
 **Why:** Audit of the HTF stack against the 2026-05-15 universal-structure rule ("no independent builds. Every feature plugs into compartments / widgets / registries / shared tokens") found 9 violations across client compartment, persistence, cache, design tokens, and API conventions. Fixed in one pass.

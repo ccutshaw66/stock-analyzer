@@ -84,8 +84,15 @@ export function useHtfScannerRefresh() {
   return useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/htf/scan/run", {})).json(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/htf/setups"] });
-      qc.invalidateQueries({ queryKey: ["/api/htf/setups/filtered"] });
+      // Query keys are the FULL request path (with query string), so we
+      // can't invalidate by exact match — use a predicate that catches
+      // any HTF-setups variant the page or widget has subscribed to.
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === "string" && k.startsWith("/api/htf/setups");
+        },
+      });
     },
   });
 }

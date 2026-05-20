@@ -691,11 +691,11 @@ export default function HtfSetupsPage() {
           <div className="font-semibold text-foreground">Only setups firing right now</div>
           <p>
             Givens' rule says enter at the <span className="font-semibold">next market open</span>{" "}
-            after a breakout. So a breakout is only tradeable if it fired on the{" "}
-            <span className="font-semibold">most recent available bar</span> — once any bar later
-            exists, entry is already in the past. This scanner only shows setups that meet that bar.
-            It also drops anything where price already hit the target, already stopped out, or
-            already ran more than 10% past the breakout.
+            after a breakout. This scanner only shows setups where the breakout fired{" "}
+            <span className="font-semibold">today or yesterday</span> — so the entry-day open is
+            either right now (yesterday breakout → today's open) or the next session (today
+            breakout → tomorrow's open). It also drops anything where price already hit the target,
+            already stopped out, or already ran more than 10% past the breakout (you'd be chasing).
           </p>
         </div>
 
