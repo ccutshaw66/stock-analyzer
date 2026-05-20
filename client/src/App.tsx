@@ -42,6 +42,7 @@ import AlertsPage from "@/pages/alerts";
 import Dashboard from "@/pages/dashboard";
 import ConfluenceChartPage from "@/pages/confluence-chart";
 import HtfSetupsPage from "@/pages/htf-setups";
+import HtfChartPage from "@/pages/htf-chart";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -107,6 +108,7 @@ function AuthenticatedApp() {
             <Route path="/chart" component={ChartPage} />
             <Route path="/scanner" component={Scanner} />
             <Route path="/htf" component={HtfSetupsPage} />
+            <Route path="/htf/:symbol" component={HtfChartPage} />
             <Route path="/tracker" component={TradeTracker} />
             <Route path="/calculator" component={OptionsCalculator} />
             <Route path="/verdict" component={Verdict} />

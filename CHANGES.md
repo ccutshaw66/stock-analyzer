@@ -9,6 +9,18 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: ticker click → full-page pattern chart at /htf/:symbol
+
+**Why:** Chris asked for "click on the ticker and it sends me to the chart with those values" — a full-page chart with the HTF pattern annotations, not a modal-on-click. The chart-icon column was redundant once the row itself was the entry point to the chart.
+
+**What:**
+- `client/src/pages/htf-chart.tsx` (new) — full-page route at `/htf/:symbol`. Renders the existing `HtfPatternChart` at full page size with a "Back to setups" link and a Disclaimer at the bottom.
+- `client/src/App.tsx` — registers the new `/htf/:symbol` route (matches more specific than `/htf` so wouter picks the right one).
+- `client/src/pages/htf-setups.tsx` — row click now navigates to `/htf/:symbol` (not Trade Analysis, not a modal). The symbol cell gets a dotted underline so it reads as a link. Dropped the chart-icon column entirely, dropped the Dialog state, dropped the `useTicker` import — all unused now that there's a single click target.
+
+**Net behaviour:** scan the /htf list, click any ticker, land on a full-page chart of that symbol with candles + volume + 20-MA + pole/flag/breakout markers + target/entry/stop price lines. Back link returns to the setup list.
+
+---
 ## 2026-05-19 — HTF pattern chart on each setup (candles + volume + 20-MA + pole/flag + breakout/target/stop)
 
 **Why:** Chris asked for a chart per setup so he can eyeball the pattern before trading: candles + volume + the 20-day MA trail line + markers showing where the pole/flag/breakout sit + horizontal lines at entry / target / stop. Numbers alone don't tell you whether the consolidation is tight or if the breakout looks legitimate.

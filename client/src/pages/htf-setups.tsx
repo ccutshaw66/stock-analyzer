@@ -14,17 +14,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Flag, AlertTriangle, Play, RefreshCw, Activity, BarChart3 } from "lucide-react"; // Play retained for Backtest tab
-import { useTicker } from "@/contexts/TickerContext";
+import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
 import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock, ScoreRange } from "@/components/HelpBlock";
-import { HtfPatternChart } from "@/components/HtfPatternChart";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
@@ -146,20 +143,10 @@ function fmtAgo(isoOrDate: string | Date | null): string {
 }
 
 // ─── Setups table ─────────────────────────────────────────────────────────
-function SetupsTable({
-  rows,
-  showBlocked,
-  onOpenChart,
-}: {
-  rows: HtfSetupRow[];
-  showBlocked: boolean;
-  onOpenChart: (symbol: string) => void;
-}) {
+function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
   const [, navigate] = useLocation();
-  const { setActiveTicker } = useTicker();
-  const openResearch = (symbol: string) => {
-    setActiveTicker(symbol);
-    navigate("/trade");
+  const openChart = (symbol: string) => {
+    navigate(`/htf/${symbol}`);
   };
   if (rows.length === 0) {
     return (
@@ -180,7 +167,6 @@ function SetupsTable({
         <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left">Symbol</th>
-            <th className="px-3 py-2"></th>
             <th className="px-3 py-2 text-right">Score</th>
             <th className="px-3 py-2 text-right">Breakout</th>
             <th className="px-3 py-2 text-right">Target</th>
@@ -199,21 +185,13 @@ function SetupsTable({
           {rows.map(r => (
             <tr
               key={r.id}
-              onClick={() => openResearch(r.symbol)}
+              onClick={() => openChart(r.symbol)}
               className="cursor-pointer border-t border-border hover:bg-muted/30 transition-colors"
               data-testid={`htf-row-${r.symbol}`}
+              title="Open the HTF pattern chart"
             >
-              <td className="px-3 py-2 font-bold text-foreground">{r.symbol}</td>
-              <td className="px-2 py-2">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onOpenChart(r.symbol); }}
-                  className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-muted text-muted-foreground hover:text-primary"
-                  title="View HTF pattern chart"
-                  data-testid={`htf-chart-${r.symbol}`}
-                >
-                  <BarChart3 className="h-4 w-4" />
-                </button>
+              <td className="px-3 py-2 font-bold text-foreground underline decoration-dotted underline-offset-2">
+                {r.symbol}
               </td>
               <td className={`px-3 py-2 text-right font-bold ${scoreColor(r.qualityScore)}`}>
                 <span className={`px-2 py-0.5 rounded border ${scoreBg(r.qualityScore)}`}>
@@ -248,7 +226,7 @@ function SetupsTable({
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────
-function TodaysSetupsTab({ onOpenChart }: { onOpenChart: (s: string) => void }) {
+function TodaysSetupsTab() {
   const [minScore, setMinScore] = useState(70);
   const q = useQuery<SetupsResponse>({
     queryKey: ["/api/htf/setups", { actionableOnly: true, minScore }],
@@ -309,12 +287,12 @@ function TodaysSetupsTab({ onOpenChart }: { onOpenChart: (s: string) => void }) 
           />
         </div>
       </div>
-      <SetupsTable rows={data.rows} showBlocked={false} onOpenChart={onOpenChart} />
+      <SetupsTable rows={data.rows} showBlocked={false} />
     </div>
   );
 }
 
-function FilteredTab({ onOpenChart }: { onOpenChart: (s: string) => void }) {
+function FilteredTab() {
   const q = useQuery<SetupsResponse>({
     queryKey: ["/api/htf/setups/filtered"],
     queryFn: async () => (await apiRequest("GET", "/api/htf/setups/filtered")).json(),
@@ -336,7 +314,7 @@ function FilteredTab({ onOpenChart }: { onOpenChart: (s: string) => void }) {
         Scanned <span className="text-foreground font-semibold">{fmtAgo(q.data.scannedAt)}</span> ·{" "}
         {q.data.count} breakouts blocked by R/R, portfolio, or sector rules.
       </div>
-      <SetupsTable rows={q.data.rows} showBlocked={true} onOpenChart={onOpenChart} />
+      <SetupsTable rows={q.data.rows} showBlocked={true} />
     </div>
   );
 }
@@ -660,7 +638,6 @@ function ConfigTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function HtfSetupsPage() {
   const qc = useQueryClient();
-  const [chartSymbol, setChartSymbol] = useState<string | null>(null);
   const scan = useMutation({
     mutationFn: async () => (await apiRequest("POST", "/api/htf/scan/run", {})).json(),
     onSuccess: () => {
@@ -750,7 +727,7 @@ export default function HtfSetupsPage() {
         <div className="space-y-1">
           <div className="font-semibold text-foreground">The five tabs</div>
           <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
-            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts firing right now (in-memory; 30-min cache, "Refresh" forces a re-scan). Click any row to open Trade Analysis for that ticker.</li>
+            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts firing right now (in-memory; 30-min cache, "Refresh" forces a re-scan). Click any ticker to open the full HTF pattern chart with entry / target / stop lines drawn in.</li>
             <li><span className="font-semibold">Filtered</span> — breakouts blocked by R/R, portfolio cap, or sector cap, with the reason</li>
             <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk, sector breakdown (reads from Trade Tracker)</li>
             <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history</li>
@@ -783,26 +760,12 @@ export default function HtfSetupsPage() {
           <TabsTrigger value="backtest">Backtest</TabsTrigger>
           <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
-        <TabsContent value="today">
-          <TodaysSetupsTab onOpenChart={setChartSymbol} />
-        </TabsContent>
-        <TabsContent value="filtered">
-          <FilteredTab onOpenChart={setChartSymbol} />
-        </TabsContent>
+        <TabsContent value="today"><TodaysSetupsTab /></TabsContent>
+        <TabsContent value="filtered"><FilteredTab /></TabsContent>
         <TabsContent value="portfolio"><PortfolioTab /></TabsContent>
         <TabsContent value="backtest"><BacktestTab /></TabsContent>
         <TabsContent value="config"><ConfigTab /></TabsContent>
       </Tabs>
-      <Dialog open={!!chartSymbol} onOpenChange={(open) => !open && setChartSymbol(null)}>
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>
-              {chartSymbol} — HTF Pattern
-            </DialogTitle>
-          </DialogHeader>
-          {chartSymbol && <HtfPatternChart symbol={chartSymbol} />}
-        </DialogContent>
-      </Dialog>
       <Disclaimer />
     </div>
   );
