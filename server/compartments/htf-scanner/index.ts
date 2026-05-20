@@ -43,6 +43,8 @@ export interface HtfSetupsQuery {
   minScore?: number;
   actionableOnly?: boolean;
   symbol?: string;
+  /** "fired" = breakout already fired; "forming" = still consolidating. */
+  stage?: "fired" | "forming";
   /** When set, recompute sizing + actionable against this config + portfolio. */
   config?: AccountConfig;
   portfolio?: PortfolioState;
@@ -150,6 +152,10 @@ export const htfScannerData = {
     if (q.symbol) {
       const want = q.symbol.toUpperCase();
       rows = rows.filter(r => r.symbol === want);
+    }
+    if (q.stage) {
+      const wantForming = q.stage === "forming";
+      rows = rows.filter(r => (r.pattern === "HTF_Givens_Forming") === wantForming);
     }
     if (q.config) {
       const portfolio = q.portfolio ?? new PortfolioState();

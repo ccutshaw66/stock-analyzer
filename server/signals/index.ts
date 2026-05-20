@@ -53,7 +53,7 @@ export type {
 } from "./strategies/amc";
 
 // ─── Pattern detectors ─────────────────────────────────────────────────────
-export { scanHtf } from "./strategies/htf";
+export { scanHtf, scanFormingHtf } from "./strategies/htf";
 export type { HtfHit, HtfExtras, HtfScanOptions } from "./strategies/htf";
 
 // ─── Risk + portfolio primitives ───────────────────────────────────────────

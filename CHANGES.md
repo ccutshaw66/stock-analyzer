@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: Live + Watch tabs (about-to-blow + forming patterns)
+
+**Why:** Chris's UX feedback: "gives me time to react and watch. Maybe a watch list of potential and then a 'this bitch is about to blow' page. I don't understand the filter page." The previous tab layout exposed too much internal scaffolding (Filtered = blocked-by-rules noise) and didn't separate "watch this forming" from "trade this now."
+
+**What:**
+
+### New detector — forming patterns
+- `server/signals/strategies/htf.ts` — new `scanFormingHtf(bars, symbol)`. Treats the latest bar as the LAST bar of an ongoing flag (not the breakout-candidate-after-flag the way `scanHtf` does). Returns one hit when pole + flag conditions hold AND current price is still inside the flag range. The hit's `breakoutPrice` is the *hypothetical* trigger (flag_high × 1.001) so target/stop sizing math is identical to a fired setup. `HtfHit.pattern` is now a `HtfPattern` union (`"HTF_Givens" | "HTF_Givens_Forming"`) so downstream consumers can distinguish.
+- `server/signals/index.ts` — re-exports `scanFormingHtf` from the Pattern Detectors section.
+
+### Orchestrator fallback
+- `server/compartments/htf-scanner/orchestrator.ts` — `processSymbol` now tries fired first; if no live-fired setup exists for a ticker, falls through to `scanFormingHtf`. Forming hits get `pattern: "HTF_Givens_Forming"` written through `rowFromHitAndRec`. One row per symbol max, fired wins over forming.
+
+### Stage filter at the API + hook level
+- `server/compartments/htf-scanner/index.ts` — `HtfSetupsQuery.stage?: "fired" | "forming"` filters by pattern field.
+- `server/compartments/htf-scanner/routes.ts` — `GET /api/htf/setups?stage=fired|forming` accepted, validated, passed through.
+- `client/src/compartments/htf-scanner/useHtfScanner.ts` — `UseHtfScannerOptions.stage` added; builds into the query path.
+
+### New tab layout — Live / Watch (dropped Filtered)
+- `client/src/pages/htf-setups.tsx` — Filtered tab removed (it was confusing noise). New tabs:
+  - **🔥 Live** — fired breakouts, actionable. Renamed from "Today's Setups". Uses `stage: "fired"`.
+  - **👀 Watch** — forming patterns. Uses `stage: "forming"`. Different empty-state copy and a watch-colored "Entry price = trigger if/when flag high breaks" badge so users know the levels are hypothetical.
+  - Portfolio / Backtest / Config unchanged.
+- Help block rewritten: removed the Filtered bullet, framed Live as "about to blow" and Watch as "gives you time to set an alert."
+
+**Net behaviour:** Open /htf → Live tab is default, shows what's tradeable right now. Switch to Watch to see what's about to form (pole done, flag consolidating, no breakout yet). Click any ticker on either tab — same full-page chart, same target/stop/entry lines (entry is the hypothetical trigger for Watch rows).
+
+---
 ## 2026-05-19 — HTF: relax recency filter to 1 day + fix refresh invalidation
 
 **Why:** Chris reported "now only shows filters not any setups." Root cause was the previous-commit-too-strict recency filter (`MAX_DAYS_SINCE_BREAKOUT = 0`) — required the breakout to fire on the most recent bar literally. On any given day very few stocks break out on the exact latest bar, so the list usually came back empty. Also fixed a latent bug from the audit refactor: the refresh-button invalidation used `queryKey: ["/api/htf/setups"]` but the actual keys now carry the full query string (e.g. `/api/htf/setups?actionableOnly=true&minScore=70`), so Refresh didn't propagate.

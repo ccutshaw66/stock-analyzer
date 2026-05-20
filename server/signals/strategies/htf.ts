@@ -39,9 +39,16 @@ export interface HtfExtras {
   breakoutVolRatio: number;
 }
 
+export type HtfPattern = "HTF_Givens" | "HTF_Givens_Forming";
+
 export interface HtfHit {
   symbol: string;
-  pattern: "HTF_Givens";
+  /**
+   * Detector tag. `HTF_Givens` = breakout has fired (close > flag_high).
+   * `HTF_Givens_Forming` = pole + flag valid right now, no breakout yet
+   * (set by the orchestrator when the forming detector returns a hit).
+   */
+  pattern: HtfPattern;
   direction: "long";
   breakoutDate: Date;
   breakoutPrice: number;        // close on breakout day
@@ -218,4 +225,121 @@ export function scanHtf(
 
   hits.sort((a, b) => b.breakoutDate.getTime() - a.breakoutDate.getTime());
   return hits;
+}
+
+/**
+ * Detect a pattern that's still FORMING — the pole has run, the flag is
+ * consolidating right now, but price hasn't broken above flag_high yet.
+ *
+ * Unlike `scanHtf` which treats bar i as a candidate breakout day, this
+ * function treats the latest bar as the LAST day of an ongoing flag.
+ * If pole + flag conditions hold AND current price is still inside the
+ * flag range (below the breakout level), returns one hit with hypothetical
+ * entry / target / stop levels — what you'd buy if price breaks out
+ * tomorrow.
+ *
+ * Returns `null` when no valid forming pattern exists. The hit's
+ * `breakoutPrice` is the *hypothetical* trigger level (flag_high + pad)
+ * rather than an actual close; `breakoutDate` is the latest bar's date.
+ */
+export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
+  if (bars.length < POLE_MAX_DAYS + FLAG_MAX_DAYS + 5) return null;
+
+  const N = bars.length;
+  const highs = bars.map(b => b.h);
+  const lows = bars.map(b => b.l);
+  const closes = bars.map(b => b.c);
+  const vols = bars.map(b => b.v);
+  const volAvg = rollingVolAvg(vols, HTF_VOL_AVG_WINDOW);
+
+  // Try every flag width ending at TODAY (bar N-1 is the last flag bar).
+  let bestFlagHigh: number | null = null;
+  let bestFlagLow = 0;
+  let bestFlagDays = 0;
+  let bestFlagStart = 0;
+
+  for (let flagDays = FLAG_MIN_DAYS; flagDays <= FLAG_MAX_DAYS; flagDays++) {
+    const flagStart = N - flagDays;
+    if (flagStart < POLE_MIN_DAYS) continue;
+    let fh = -Infinity;
+    let fl = Infinity;
+    for (let k = flagStart; k < N; k++) {
+      if (highs[k] > fh) fh = highs[k];
+      if (lows[k] < fl) fl = lows[k];
+    }
+    if (!isFinite(fh) || !isFinite(fl) || fh <= 0 || fl <= 0) continue;
+    const pullback = (fh - fl) / fh;
+    if (pullback > FLAG_MAX_PULLBACK) continue;
+    if (flagDays > bestFlagDays) {
+      bestFlagDays = flagDays;
+      bestFlagHigh = fh;
+      bestFlagLow = fl;
+      bestFlagStart = flagStart;
+    }
+  }
+  if (bestFlagHigh === null) return null;
+
+  // Pole = run before the flag
+  const flagHighIdx = bestFlagStart;
+  const poleSearchStart = Math.max(0, flagHighIdx - POLE_MAX_DAYS);
+  let poleLowIdx = poleSearchStart;
+  let poleLow = lows[poleSearchStart];
+  for (let k = poleSearchStart + 1; k <= flagHighIdx; k++) {
+    if (lows[k] < poleLow) {
+      poleLow = lows[k];
+      poleLowIdx = k;
+    }
+  }
+  if (flagHighIdx - poleSearchStart + 1 < POLE_MIN_DAYS) return null;
+  const poleDays = flagHighIdx - poleLowIdx;
+  if (poleDays < POLE_MIN_DAYS || poleDays > POLE_MAX_DAYS) return null;
+  const poleGain = poleLow > 0 ? (bestFlagHigh - poleLow) / poleLow : 0;
+  if (poleGain < POLE_MIN_GAIN) return null;
+
+  // Today's price must still be IN the flag (not already broken out or stopped)
+  const currentPrice = closes[N - 1];
+  if (currentPrice > bestFlagHigh * (1 + BREAKOUT_PAD)) return null; // already fired
+  if (currentPrice < bestFlagLow) return null;                       // already stopped
+
+  // Hypothetical entry = the breakout trigger level
+  const triggerPrice = bestFlagHigh * (1 + BREAKOUT_PAD);
+  const stop = bestFlagLow * 0.98;
+  const target = triggerPrice + 0.5 * (bestFlagHigh - poleLow);
+  const pullbackPct = (bestFlagHigh - bestFlagLow) / bestFlagHigh;
+  const lastVa = volAvg[N - 1];
+  const lastVolRatio = lastVa && !isNaN(lastVa) ? vols[N - 1] / lastVa : 0;
+
+  // Scoring — same rubric minus the breakout-vol bonus (no fire yet).
+  let score = 50;
+  if (poleGain >= 1.0) score += 15;
+  else if (poleGain >= 0.6) score += 10;
+  else if (poleGain >= 0.3) score += 5;
+  if (bestFlagDays >= 10) score += 10;
+  else if (bestFlagDays >= 5) score += 5;
+  if (pullbackPct <= 0.1) score += 10;
+  else if (pullbackPct <= 0.15) score += 5;
+
+  return {
+    symbol,
+    pattern: "HTF_Givens",     // shape unchanged — orchestrator overrides to mark forming
+    direction: "long",
+    breakoutDate: bars[N - 1].t,
+    breakoutPrice: triggerPrice,
+    targetPrice: target,
+    stopPrice: stop,
+    qualityScore: clampScore(score),
+    patternStart: bars[poleLowIdx].t,
+    patternEnd: bars[N - 1].t,
+    extras: {
+      poleStartPrice: poleLow,
+      poleEndPrice: bestFlagHigh,
+      poleGainPct: poleGain * 100,
+      poleDays,
+      flagDays: bestFlagDays,
+      flagHigh: bestFlagHigh,
+      flagLow: bestFlagLow,
+      flagPullbackPct: pullbackPct * 100,
+      breakoutVolRatio: lastVolRatio,
+    },
+  };
 }

@@ -98,6 +98,10 @@ export function mountRoutes(app: Express): void {
       const symbol = typeof req.query.symbol === "string" ? req.query.symbol : undefined;
       const actionableOnly = req.query.actionableOnly === "true";
       const forceRefresh = req.query.refresh === "true";
+      const stage =
+        req.query.stage === "fired" || req.query.stage === "forming"
+          ? (req.query.stage as "fired" | "forming")
+          : undefined;
       const config = await loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       const result = await htfScannerData.getSetups({
@@ -105,6 +109,7 @@ export function mountRoutes(app: Express): void {
         symbol,
         actionableOnly,
         forceRefresh,
+        stage,
         config,
         portfolio,
       });

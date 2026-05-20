@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Flag, AlertTriangle, Play, RefreshCw, Activity } from "lucide-react";
+import { Flag, AlertTriangle, Play, RefreshCw, Activity, Flame, Eye } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
@@ -201,9 +201,11 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────
-function TodaysSetupsTab() {
+
+/** "Live" tab — fired breakouts. The actionable "this bitch is about to blow" list. */
+function LiveTab() {
   const [minScore, setMinScore] = useState(70);
-  const q = useHtfScanner({ actionableOnly: true, minScore });
+  const q = useHtfScanner({ actionableOnly: true, minScore, stage: "fired" });
 
   if (q.isLoading) {
     return (
@@ -255,25 +257,65 @@ function TodaysSetupsTab() {
   );
 }
 
-function FilteredTab() {
-  const q = useHtfScanner({ variant: "filtered" });
-  if (q.isLoading) return <BrandedLoader message="Loading filtered setups…" />;
-  if (q.isError || !q.data) {
+/** "Watch" tab — patterns still forming. Pole + flag valid, no breakout yet. */
+function WatchTab() {
+  const [minScore, setMinScore] = useState(70);
+  const q = useHtfScanner({ minScore, stage: "forming" });
+
+  if (q.isLoading) {
+    return (
+      <BrandedLoader message="Scanning for patterns about to break out… (first run can take ~1 min)" />
+    );
+  }
+  if (q.isError) {
     return (
       <BrandedEmptyState
         icon={AlertTriangle}
-        title="Couldn't load filtered list"
-        description="The HTF scan endpoint returned an error."
+        title="Couldn't load watch list"
+        description={(q.error as any)?.message || "The HTF scan endpoint returned an error."}
       />
     );
   }
+  const data = q.data;
+  if (!data) return null;
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted-foreground">
-        Scanned <span className="text-foreground font-semibold">{fmtAgo(q.data.scannedAt)}</span> ·{" "}
-        {q.data.rows.length} breakouts blocked by R/R, portfolio, or sector rules.
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            Scanned <span className="text-foreground font-semibold">{fmtAgo(data.scannedAt)}</span>
+            {data.universeSize > 0 && (
+              <> · {data.universeSize.toLocaleString()} tickers · {data.rows.length} watching</>
+            )}
+          </span>
+          {data.rows.length > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded border border-watch/40 bg-watch/10 text-watch-light font-semibold">
+              Entry price = trigger if/when flag high breaks
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="minScoreW" className="text-xs">Min score</Label>
+          <Input
+            id="minScoreW"
+            type="number"
+            value={minScore}
+            onChange={e => setMinScore(Number(e.target.value))}
+            className="w-20 h-8 text-sm"
+            min={0}
+            max={100}
+          />
+        </div>
       </div>
-      <SetupsTable rows={q.data.rows} showBlocked={true} />
+      {data.rows.length === 0 ? (
+        <BrandedEmptyState
+          icon={Eye}
+          title="No patterns forming right now"
+          description="The watch list surfaces stocks with a 30%+ pole and a tight flag that's still consolidating. Refresh in a few hours, or widen the score floor."
+        />
+      ) : (
+        <SetupsTable rows={data.rows} showBlocked={false} />
+      )}
     </div>
   );
 }
@@ -677,13 +719,13 @@ export default function HtfSetupsPage() {
         </div>
 
         <div className="space-y-1">
-          <div className="font-semibold text-foreground">The five tabs</div>
+          <div className="font-semibold text-foreground">The tabs</div>
           <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
-            <li><span className="font-semibold">Today's Setups</span> — actionable breakouts firing right now (in-memory; 30-min cache, "Refresh" forces a re-scan). Click any ticker to open the full HTF pattern chart with entry / target / stop lines drawn in.</li>
-            <li><span className="font-semibold">Filtered</span> — breakouts blocked by R/R, portfolio cap, or sector cap, with the reason</li>
-            <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk, sector breakdown (reads from Trade Tracker)</li>
-            <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history</li>
-            <li><span className="font-semibold">Config</span> — edit your capital, risk caps, and position-sizing knobs</li>
+            <li><span className="font-semibold text-bull-light">🔥 Live</span> — breakouts that already fired. Enter at the next market open per Givens' rule. The "this is about to blow" list.</li>
+            <li><span className="font-semibold text-watch-light">👀 Watch</span> — patterns still forming. Pole is built (+30% in ≤60d), flag is consolidating, price hasn't broken above the flag high yet. Gives you time to set an alert before the trigger.</li>
+            <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk (reads from Trade Tracker).</li>
+            <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history.</li>
+            <li><span className="font-semibold">Config</span> — edit your capital, risk caps, and position-sizing knobs.</li>
           </ul>
         </div>
 
@@ -704,16 +746,22 @@ export default function HtfSetupsPage() {
           system working — don't loosen the filters to force more signals.
         </p>
       </HelpBlock>
-      <Tabs defaultValue="today" className="space-y-4">
+      <Tabs defaultValue="live" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="today">Today's Setups</TabsTrigger>
-          <TabsTrigger value="filtered">Filtered</TabsTrigger>
+          <TabsTrigger value="live" className="gap-1.5">
+            <Flame className="h-3.5 w-3.5" />
+            Live
+          </TabsTrigger>
+          <TabsTrigger value="watch" className="gap-1.5">
+            <Eye className="h-3.5 w-3.5" />
+            Watch
+          </TabsTrigger>
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="backtest">Backtest</TabsTrigger>
           <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
-        <TabsContent value="today"><TodaysSetupsTab /></TabsContent>
-        <TabsContent value="filtered"><FilteredTab /></TabsContent>
+        <TabsContent value="live"><LiveTab /></TabsContent>
+        <TabsContent value="watch"><WatchTab /></TabsContent>
         <TabsContent value="portfolio"><PortfolioTab /></TabsContent>
         <TabsContent value="backtest"><BacktestTab /></TabsContent>
         <TabsContent value="config"><ConfigTab /></TabsContent>

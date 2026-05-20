@@ -52,6 +52,12 @@ export interface UseHtfScannerOptions {
   symbol?: string;
   /** Endpoint variant: "setups" (full) or "filtered" (blocked only). */
   variant?: "setups" | "filtered";
+  /**
+   * Filter by pattern stage. "fired" = breakout already happened.
+   * "forming" = pole + flag valid now, no breakout yet (entry trigger
+   * hypothetical). Omit to get both.
+   */
+  stage?: "fired" | "forming";
 }
 
 function buildPath(opts: UseHtfScannerOptions): string {
@@ -61,6 +67,7 @@ function buildPath(opts: UseHtfScannerOptions): string {
   if (opts.actionableOnly) qs.set("actionableOnly", "true");
   if (opts.minScore !== undefined) qs.set("minScore", String(opts.minScore));
   if (opts.symbol) qs.set("symbol", opts.symbol);
+  if (opts.stage) qs.set("stage", opts.stage);
   const q = qs.toString();
   return q ? `${base}?${q}` : base;
 }

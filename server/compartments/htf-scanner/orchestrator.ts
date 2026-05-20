@@ -16,7 +16,7 @@
 import type { InsertHtfSetup } from "@shared/schema";
 import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
-import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
+import { scanHtf, scanFormingHtf, type HtfHit } from "../../signals/strategies/htf";
 
 // ─── Live-setup filters ────────────────────────────────────────────────
 // A breakout is only tradeable on the next market open after it fires.
@@ -136,24 +136,37 @@ async function processSymbol(
   try {
     const bars = await getHtfBars(row.symbol, { forceRefresh });
     if (bars.length === 0) return { rows: [], error: false };
-    const hits = scanHtf(bars, row.symbol, { minScore });
-    if (hits.length === 0) return { rows: [], error: false };
-
-    // Only the most-recent hit matters for a "tradeable today" surface —
-    // skip every older breakout the detector found in the lookback window.
-    const newest = hits[0];
 
     const lastBar = bars[bars.length - 1];
-    if (!isLiveSetup(newest, lastBar.c, lastBar.t)) {
-      return { rows: [], error: false };
+    const sector = row.sector || "Unknown";
+
+    // 1) Fired setup — breakout already happened on a recent bar.
+    const hits = scanHtf(bars, row.symbol, { minScore });
+    const newestFired = hits[0];
+    if (newestFired && isLiveSetup(newestFired, lastBar.c, lastBar.t)) {
+      const rec = sizePosition(newestFired, config);
+      const check = portfolio.canAddPosition(rec, newestFired, config, sector);
+      return {
+        rows: [rowFromHitAndRec(newestFired, rec, check, sector, runDate)],
+        error: false,
+      };
     }
 
-    const rec = sizePosition(newest, config);
-    const check = portfolio.canAddPosition(rec, newest, config, row.sector || "Unknown");
-    return {
-      rows: [rowFromHitAndRec(newest, rec, check, row.sector || "Unknown", runDate)],
-      error: false,
-    };
+    // 2) Forming setup — pole done, flag still consolidating, no breakout yet.
+    // Falls through here only when no fired setup is live for this symbol.
+    const forming = scanFormingHtf(bars, row.symbol);
+    if (forming && forming.qualityScore >= minScore) {
+      // Mark it so downstream consumers can distinguish from fired setups.
+      const formingHit: HtfHit = { ...forming, pattern: "HTF_Givens_Forming" };
+      const rec = sizePosition(formingHit, config);
+      const check = portfolio.canAddPosition(rec, formingHit, config, sector);
+      return {
+        rows: [rowFromHitAndRec(formingHit, rec, check, sector, runDate)],
+        error: false,
+      };
+    }
+
+    return { rows: [], error: false };
   } catch {
     return { rows: [], error: true };
   }
