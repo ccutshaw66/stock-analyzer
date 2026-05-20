@@ -25,40 +25,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  useHtfScanner,
+  useHtfScannerRefresh,
+  type HtfSetupRow,
+  type HtfSetupsResponse,
+} from "@/compartments/htf-scanner";
 
-// ─── Types (mirror server payloads) ───────────────────────────────────────
-interface HtfSetupRow {
-  id: number;
-  runDate: string;
-  symbol: string;
-  pattern: string;
-  breakoutDate: string;
-  breakoutPrice: number;
-  targetPrice: number;
-  stopPrice: number;
-  qualityScore: number;
-  poleGainPct: number;
-  poleDays: number;
-  flagDays: number;
-  flagPullbackPct: number;
-  breakoutVolRatio: number;
-  recommendedShares: number;
-  positionValue: number;
-  actualRisk: number;
-  rewardRiskRatio: number;
-  actionable: boolean;
-  blockedReason: string | null;
-  warnings: string[] | null;
-  sector: string | null;
-}
-
-interface SetupsResponse {
-  scannedAt: string | null;
-  durationMs: number;
-  universeSize: number;
-  count: number;
-  rows: HtfSetupRow[];
-}
+// ─── Local types not owned by the compartment ────────────────────────────
+// HtfSetupRow / HtfSetupsResponse come from @/compartments/htf-scanner.
 
 interface PortfolioPosition {
   symbol: string;
@@ -228,19 +203,7 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
 // ─── Tabs ─────────────────────────────────────────────────────────────────
 function TodaysSetupsTab() {
   const [minScore, setMinScore] = useState(70);
-  const q = useQuery<SetupsResponse>({
-    queryKey: ["/api/htf/setups", { actionableOnly: true, minScore }],
-    queryFn: async () => {
-      const r = await apiRequest(
-        "GET",
-        `/api/htf/setups?actionableOnly=true&minScore=${minScore}`,
-      );
-      return r.json();
-    },
-    // First load may run a fresh scan on the server (1-2 min if bars
-    // aren't cached yet); don't time out.
-    staleTime: 60_000,
-  });
+  const q = useHtfScanner({ actionableOnly: true, minScore });
 
   if (q.isLoading) {
     return (
@@ -265,10 +228,10 @@ function TodaysSetupsTab() {
           <span className="text-xs text-muted-foreground">
             Scanned <span className="text-foreground font-semibold">{fmtAgo(data.scannedAt)}</span>
             {data.universeSize > 0 && (
-              <> · {data.universeSize.toLocaleString()} tickers · {data.count} live</>
+              <> · {data.universeSize.toLocaleString()} tickers · {data.rows.length} live</>
             )}
           </span>
-          {data.count > 0 && (
+          {data.rows.length > 0 && (
             <span className="text-xs px-2 py-0.5 rounded border border-bull/40 bg-bull/10 text-bull-light font-semibold">
               Enter at next market open
             </span>
@@ -293,11 +256,7 @@ function TodaysSetupsTab() {
 }
 
 function FilteredTab() {
-  const q = useQuery<SetupsResponse>({
-    queryKey: ["/api/htf/setups/filtered"],
-    queryFn: async () => (await apiRequest("GET", "/api/htf/setups/filtered")).json(),
-    staleTime: 60_000,
-  });
+  const q = useHtfScanner({ variant: "filtered" });
   if (q.isLoading) return <BrandedLoader message="Loading filtered setups…" />;
   if (q.isError || !q.data) {
     return (
@@ -312,7 +271,7 @@ function FilteredTab() {
     <div className="space-y-3">
       <div className="text-xs text-muted-foreground">
         Scanned <span className="text-foreground font-semibold">{fmtAgo(q.data.scannedAt)}</span> ·{" "}
-        {q.data.count} breakouts blocked by R/R, portfolio, or sector rules.
+        {q.data.rows.length} breakouts blocked by R/R, portfolio, or sector rules.
       </div>
       <SetupsTable rows={q.data.rows} showBlocked={true} />
     </div>
@@ -637,14 +596,7 @@ function ConfigTab() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 export default function HtfSetupsPage() {
-  const qc = useQueryClient();
-  const scan = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/htf/scan/run", {})).json(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/htf/setups"] });
-      qc.invalidateQueries({ queryKey: ["/api/htf/setups/filtered"] });
-    },
-  });
+  const scan = useHtfScannerRefresh();
 
   return (
     <div className="space-y-4">

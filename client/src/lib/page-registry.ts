@@ -71,6 +71,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Investment Opportunities ──────────────────────────────────────────
   { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "Confluence-based explosion detector across the universe." },
   { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Investment Opportunities", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
+  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Investment Opportunities", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail." },
   { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "Investment Opportunities", subtitle: "Sector strength at a glance." },
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings with expected moves." },
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks." },

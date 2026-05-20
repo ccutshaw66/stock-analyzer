@@ -62,6 +62,7 @@ export const CHART_EMA_9 = SIGNAL_BULL;         // EMA 9   — green
 export const CHART_EMA_21 = SIGNAL_WATCH_SHORT; // EMA 21  — orange
 export const CHART_EMA_50 = "#06b6d4";          // EMA 50  — cyan
 export const CHART_EMA_200 = "#a855f7";         // SMA 200 — purple
+export const CHART_SMA_20 = "#f59e0b";          // SMA 20 — amber (HTF trail line)
 
 export const CHART_RSI = "#3b82f6";             // RSI series (blue)
 export const CHART_CROSSHAIR = "#6366f1";       // primary indigo crosshair

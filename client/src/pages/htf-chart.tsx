@@ -8,7 +8,7 @@
  */
 import { Link, useRoute } from "wouter";
 import { ChevronLeft } from "lucide-react";
-import { HtfPatternChart } from "@/components/HtfPatternChart";
+import { HtfPatternChart } from "@/components/chart";
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";

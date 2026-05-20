@@ -10,12 +10,14 @@ import { favoritesCompartment } from "./favorites";
 import { scannerCompartment } from "./scanner";
 import { tradesCompartment } from "./trades";
 import { confluenceChartCompartment } from "./confluence-chart";
+import { htfScannerCompartment } from "./htf-scanner";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   favoritesCompartment,
   scannerCompartment,
   tradesCompartment,
   confluenceChartCompartment,
+  htfScannerCompartment,
 ];
 
 export function listClientCompartments(): readonly ClientCompartmentEntry[] {

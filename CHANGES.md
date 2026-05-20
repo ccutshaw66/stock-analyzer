@@ -9,6 +9,41 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF: re-architecture pass to match the universal-structure rule
+
+**Why:** Audit of the HTF stack against the 2026-05-15 universal-structure rule ("no independent builds. Every feature plugs into compartments / widgets / registries / shared tokens") found 9 violations across client compartment, persistence, cache, design tokens, and API conventions. Fixed in one pass.
+
+**What:**
+
+### 1. Client compartment + widget
+- `client/src/compartments/htf-scanner/{index.ts,HtfTeaser.tsx,useHtfScanner.ts}` (new) — canonical client compartment matching `scannerCompartment` / `confluenceChartCompartment` shape. Manifest + `HtfTeaser` dashboard widget + `useHtfScanner` / `useHtfScannerRefresh` hooks.
+- `client/src/compartments/registry.ts` — `htfScannerCompartment` registered. HTF now appears in the widget catalog and can be added to a dashboard tab.
+- `client/src/pages/htf-setups.tsx` — refactored to consume `useHtfScanner` / `useHtfScannerRefresh` from the compartment hook instead of inline `useQuery` blocks. Dropped the duplicated `HtfSetupRow` / `SetupsResponse` local types.
+
+### 2. Canonical storage layer
+- `server/compartments/htf-scanner/routes.ts` — `loadPortfolio` now calls `storage.getAllTrades(userId)` and filters client-side (no more direct drizzle query against `trades`). `loadAccountConfig` reads `storage.getAccountSettings(userId).htfConfig`. PUT `/api/htf/config` writes through `storage.updateAccountSettings({ htfConfig: ... })` — the storage layer's existing migration-lag fallback drops the field silently if `db:push` hasn't run yet, so config save still 200s on a pre-migration DB.
+- `server/compartments/htf-scanner/account-config-store.ts` — **deleted**. No more parallel file-based persistence.
+- `.gitignore` — `data/htf-account-config/` entry removed.
+
+### 3. Shared bar cache
+- `server/data/htf-ohlcv-cache.ts` — rewritten as a thin adapter over `server/long-range-cache.ts`. HTF bars now persist under the canonical disk-cache keyed as `<SYM>__1y__1d.json` (the long-range cache's namespace). Future cache backend migrations (Redis etc.) pick up HTF for free. HTF-specific 18-hour TTL stays at this layer.
+- API surface (`getHtfBars`, `isCacheFresh`, `htfCacheStats`) preserved so callers don't change.
+
+### 4. Chart family placement + design token + page registry
+- `client/src/components/HtfPatternChart.tsx` → `client/src/components/chart/HtfPatternChart.tsx` (moved). Now lives as a sibling of `CandlePane` in the chart family.
+- `client/src/components/chart/index.ts` — re-exports `HtfPatternChart`.
+- `client/src/lib/design-tokens.ts` — new `CHART_SMA_20 = "#f59e0b"` (amber) for the HTF trail line. HtfPatternChart now uses it (was incorrectly using `CHART_EMA_50` cyan, which would confuse anyone seeing EMA50 + SMA20 on adjacent charts).
+- `client/src/lib/page-registry.ts` — `/htf/:symbol` registered alongside `/htf` so PageHeader can resolve "HTF Pattern" metadata for that route.
+
+### 5. Response envelope + TradeType + strategies registry doc
+- `server/compartments/htf-scanner/routes.ts` — dropped redundant `count` field from `/api/htf/setups` and `/api/htf/setups/filtered` responses (`rows.length` is the canonical count). Replaced hard-coded `STOCK_TRADE_TYPES = ["S","L","ST"]` with a filter over the shared `TRADE_TYPES` registry — stays in sync with schema.ts automatically.
+- `server/signals/index.ts` — restructured with section headers (`Confluence + gates`, `Per-bar evaluators`, `Pattern detectors`, `Risk + portfolio primitives`) and a module-level docstring explaining the two strategy flavours and where HTF fits. `scanHtf` is now grouped under "Pattern detectors" rather than appended ad-hoc.
+
+**Net behaviour:** no functional change for the user — same page, same data, same scan semantics. The architectural cleanup means: (a) HTF can now be added as a dashboard widget; (b) Config edits persist through the canonical accountSettings table (with file-store fallback gone); (c) HTF bars share invalidation with the long-range cache; (d) future chart consumers can import `HtfPatternChart` from the canonical `@/components/chart` surface; (e) the 20-MA trail line is now visually distinct from EMA 50.
+
+**Files touched:** `client/src/compartments/htf-scanner/*` (new), `client/src/compartments/registry.ts`, `client/src/pages/htf-setups.tsx`, `client/src/pages/htf-chart.tsx`, `client/src/components/chart/HtfPatternChart.tsx` (moved), `client/src/components/chart/index.ts`, `client/src/lib/design-tokens.ts`, `client/src/lib/page-registry.ts`, `server/compartments/htf-scanner/routes.ts`, `server/compartments/htf-scanner/account-config-store.ts` (deleted), `server/data/htf-ohlcv-cache.ts`, `server/signals/index.ts`, `.gitignore`, `CHANGES.md`.
+
+---
 ## 2026-05-19 — HTF: ticker click → full-page pattern chart at /htf/:symbol
 
 **Why:** Chris asked for "click on the ticker and it sends me to the chart with those values" — a full-page chart with the HTF pattern annotations, not a modal-on-click. The chart-icon column was redundant once the row itself was the entry point to the chart.

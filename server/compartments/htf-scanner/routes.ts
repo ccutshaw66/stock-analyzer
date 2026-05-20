@@ -17,10 +17,9 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { and, eq, isNull } from "drizzle-orm";
-import { db } from "../../storage";
+import { storage } from "../../storage";
 import { requireAuth } from "../../auth";
-import { trades } from "@shared/schema";
+import { TRADE_TYPES } from "@shared/schema";
 import {
   DEFAULT_ACCOUNT_CONFIG,
   PortfolioState,
@@ -30,10 +29,16 @@ import {
 import { htfScannerData } from ".";
 import { htfCacheStats, getHtfBars } from "../../data/htf-ohlcv-cache";
 import { runHtfScan } from "./orchestrator";
-import { readAccountConfig, writeAccountConfig } from "./account-config-store";
 import { scanHtf } from "../../signals/strategies/htf";
 
-const STOCK_TRADE_TYPES = new Set(["S", "L", "ST"]);     // see shared/schema.ts TRADE_TYPES
+// Trade types that represent equity positions (vs option contracts). Filter
+// from the shared TRADE_TYPES registry so this stays in sync with schema.ts
+// — never hard-code the codes here.
+const STOCK_TRADE_TYPES = new Set(
+  Object.entries(TRADE_TYPES)
+    .filter(([, def]) => def.category === "Stock")
+    .map(([code]) => code),
+);
 
 function getUserId(req: Request, res: Response): number | null {
   const uid = req.user?.id;
@@ -44,18 +49,25 @@ function getUserId(req: Request, res: Response): number | null {
   return uid;
 }
 
-function loadAccountConfig(userId: number): AccountConfig {
-  return readAccountConfig(userId);
+async function loadAccountConfig(userId: number): Promise<AccountConfig> {
+  try {
+    const row = await storage.getAccountSettings(userId);
+    const persisted = (row as any)?.htfConfig;
+    if (persisted && typeof persisted === "object") {
+      return { ...DEFAULT_ACCOUNT_CONFIG, ...persisted };
+    }
+  } catch {
+    // Storage threw — fall through to defaults. getAccountSettings already
+    // has a migration-lag fallback (SELECT *) so this branch is rare.
+  }
+  return { ...DEFAULT_ACCOUNT_CONFIG };
 }
 
 async function loadPortfolio(userId: number): Promise<PortfolioState> {
   try {
-    const rows = await db
-      .select()
-      .from(trades)
-      .where(and(eq(trades.userId, userId), isNull(trades.closeDate)));
-    const open: OpenPosition[] = rows
-      .filter(r => STOCK_TRADE_TYPES.has(r.tradeType))
+    const all = await storage.getAllTrades(userId);
+    const open: OpenPosition[] = all
+      .filter(r => r.closeDate === null && STOCK_TRADE_TYPES.has(r.tradeType))
       .map(r => ({
         symbol: r.symbol,
         sector: "Unknown",
@@ -86,7 +98,7 @@ export function mountRoutes(app: Express): void {
       const symbol = typeof req.query.symbol === "string" ? req.query.symbol : undefined;
       const actionableOnly = req.query.actionableOnly === "true";
       const forceRefresh = req.query.refresh === "true";
-      const config = loadAccountConfig(userId);
+      const config = await loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       const result = await htfScannerData.getSetups({
         minScore,
@@ -100,7 +112,6 @@ export function mountRoutes(app: Express): void {
         scannedAt: result.scannedAt,
         durationMs: result.durationMs,
         universeSize: result.universeSize,
-        count: result.rows.length,
         rows: result.rows,
       });
     } catch (err: any) {
@@ -113,7 +124,7 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const config = loadAccountConfig(userId);
+      const config = await loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       const all = await htfScannerData.getSetups({ config, portfolio });
       const filtered = all.rows.filter(r => !r.actionable);
@@ -121,7 +132,6 @@ export function mountRoutes(app: Express): void {
         scannedAt: all.scannedAt,
         durationMs: all.durationMs,
         universeSize: all.universeSize,
-        count: filtered.length,
         rows: filtered,
       });
     } catch (err: any) {
@@ -135,7 +145,7 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const config = loadAccountConfig(userId);
+      const config = await loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       res.json(portfolio.statusSummary(config));
     } catch (err: any) {
@@ -148,7 +158,7 @@ export function mountRoutes(app: Express): void {
   app.get("/api/htf/config", requireAuth, async (req: Request, res: Response) => {
     const userId = getUserId(req, res);
     if (!userId) return;
-    res.json(loadAccountConfig(userId));
+    res.json(await loadAccountConfig(userId));
   });
 
   app.put("/api/htf/config", requireAuth, async (req: Request, res: Response) => {
@@ -156,7 +166,7 @@ export function mountRoutes(app: Express): void {
     if (!userId) return;
     try {
       const body = req.body as Partial<AccountConfig>;
-      const merged: AccountConfig = { ...loadAccountConfig(userId), ...body };
+      const merged: AccountConfig = { ...(await loadAccountConfig(userId)), ...body };
       // Validate numeric fields are sane
       if (
         !Number.isFinite(merged.capital) || merged.capital <= 0 ||
@@ -167,7 +177,12 @@ export function mountRoutes(app: Express): void {
         res.status(400).json({ error: "invalid_config" });
         return;
       }
-      writeAccountConfig(userId, merged);
+      // Persist through the canonical storage layer. updateAccountSettings
+      // already has a migration-lag fallback: if `htf_config` isn't in the
+      // DB yet, the field is dropped from the update silently and the user
+      // sees the merged value in the response (read-from-DB returns
+      // pre-merge until they run db:push). Doc'd in storage.ts.
+      await storage.updateAccountSettings(userId, { htfConfig: merged } as any);
       res.json(merged);
     } catch (err: any) {
       console.error("[htf] PUT /config failed:", err?.message || err);
@@ -181,7 +196,7 @@ export function mountRoutes(app: Express): void {
     const userId = getUserId(req, res);
     if (!userId) return;
     try {
-      const config = loadAccountConfig(userId);
+      const config = await loadAccountConfig(userId);
       const portfolio = await loadPortfolio(userId);
       const forceRefresh = req.body?.forceRefresh === true;
       const minScore = typeof req.body?.minScore === "number" ? req.body.minScore : 0;

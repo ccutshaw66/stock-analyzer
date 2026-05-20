@@ -12,13 +12,13 @@
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CandlePane } from "@/components/chart";
-import type { ChartBar, ChartMarker, LineOverlay, PriceLine } from "@/components/chart";
+import { CandlePane } from "./CandlePane";
+import type { ChartBar, ChartMarker, LineOverlay, PriceLine } from "./types";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
 import { AlertTriangle, Flag } from "lucide-react";
 import {
-  SIGNAL_BULL, SIGNAL_BULL_LIGHT, SIGNAL_BEAR, SIGNAL_BEAR_LIGHT, CHART_EMA_50,
+  SIGNAL_BULL, SIGNAL_BULL_LIGHT, SIGNAL_BEAR, SIGNAL_BEAR_LIGHT, CHART_SMA_20,
 } from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -84,7 +84,7 @@ export function HtfPatternChart({ symbol }: { symbol: string }) {
       {
         dataKey: "sma20",
         label: "20-MA (trail)",
-        color: CHART_EMA_50,
+        color: CHART_SMA_20,
         width: 2,
         visible: true,
         showLastValueLabel: true,
@@ -233,7 +233,7 @@ function ChartLegend() {
     { swatch: SIGNAL_BULL_LIGHT, label: "Entry / flag high" },
     { swatch: SIGNAL_BEAR, label: "Stop (below flag low)", dashed: true },
     { swatch: SIGNAL_BEAR_LIGHT, label: "Flag low" },
-    { swatch: CHART_EMA_50, label: "20-MA (trail line)" },
+    { swatch: CHART_SMA_20, label: "20-MA (trail line)" },
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
