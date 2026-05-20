@@ -523,33 +523,58 @@ function ConfigTab() {
   const update = (k: keyof AccountConfig, v: number) =>
     setDraft({ ...(draft ?? q.data!), [k]: v });
 
-  const fields: Array<[keyof AccountConfig, string, string]> = [
-    ["capital", "Capital ($)", "Starting account value"],
-    ["maxRiskPerTradePct", "Max risk per trade", "Fraction (0.10 = 10%)"],
-    ["maxPositionPct", "Max position size", "Fraction (0.25 = 25%)"],
-    ["maxSimultaneousPositions", "Max open positions", "Integer count"],
-    ["maxSectorExposurePct", "Max sector exposure", "Fraction (0.40 = 40%)"],
-    ["maxTotalOpenRiskPct", "Max total open risk", "Fraction (0.30 = 30%)"],
-    ["minRewardRiskRatio", "Min R/R ratio", "2.0 = 2:1"],
-    ["commissionPerTrade", "Commission per trade", "$"],
-    ["slippagePct", "Slippage", "Fraction (0.002 = 0.2%)"],
+  type Unit = "dollar" | "percent" | "integer" | "ratio";
+  interface Field {
+    key: keyof AccountConfig;
+    label: string;
+    unit: Unit;
+    hint: string;
+    step?: number;
+  }
+  // Server stores percentages as fractions (0.10 = 10%). The UI shows the
+  // human-friendly whole-number percent and converts on save.
+  const fields: Field[] = [
+    { key: "capital", label: "Capital", unit: "dollar", hint: "Starting account value", step: 100 },
+    { key: "maxRiskPerTradePct", label: "Max risk per trade", unit: "percent", hint: "Of capital, per single trade", step: 1 },
+    { key: "maxPositionPct", label: "Max position size", unit: "percent", hint: "Of capital, in any one name", step: 1 },
+    { key: "maxSimultaneousPositions", label: "Max open positions", unit: "integer", hint: "Concurrent trades cap", step: 1 },
+    { key: "maxSectorExposurePct", label: "Max sector exposure", unit: "percent", hint: "Of capital, in any one sector", step: 1 },
+    { key: "maxTotalOpenRiskPct", label: "Max total open risk", unit: "percent", hint: "Sum of risk across all open trades", step: 1 },
+    { key: "minRewardRiskRatio", label: "Min R/R ratio", unit: "ratio", hint: "2 = 2:1 reward-to-risk", step: 0.1 },
+    { key: "commissionPerTrade", label: "Commission per trade", unit: "dollar", hint: "Broker fee per round-trip", step: 0.01 },
+    { key: "slippagePct", label: "Slippage", unit: "percent", hint: "On entry + exit (0.2 = 0.2%)", step: 0.1 },
   ];
+
+  const toDisplay = (f: Field): number => {
+    const v = cfg[f.key];
+    return f.unit === "percent" ? Math.round(v * 1000) / 10 : v;
+  };
+  const fromDisplay = (f: Field, raw: number): number =>
+    f.unit === "percent" ? raw / 100 : raw;
+  const suffix = (u: Unit): string =>
+    u === "percent" ? "%" : u === "dollar" ? "$" : "";
 
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {fields.map(([key, label, hint]) => (
-          <div key={key} className="rounded-md border border-border p-3 bg-card">
-            <Label htmlFor={`cfg-${key}`} className="text-xs">{label}</Label>
+        {fields.map(f => (
+          <div key={f.key} className="rounded-md border border-border p-3 bg-card">
+            <Label htmlFor={`cfg-${f.key}`} className="text-xs">
+              {f.label}
+              {suffix(f.unit) && (
+                <span className="text-muted-foreground ml-1">({suffix(f.unit)})</span>
+              )}
+            </Label>
             <Input
-              id={`cfg-${key}`}
+              id={`cfg-${f.key}`}
               type="number"
-              step="any"
-              value={cfg[key]}
-              onChange={e => update(key, Number(e.target.value))}
+              step={f.step ?? "any"}
+              min={0}
+              value={toDisplay(f)}
+              onChange={e => update(f.key, fromDisplay(f, Number(e.target.value)))}
               className="mt-1 h-9"
             />
-            <div className="text-xs text-muted-foreground mt-1">{hint}</div>
+            <div className="text-xs text-muted-foreground mt-1">{f.hint}</div>
           </div>
         ))}
       </div>

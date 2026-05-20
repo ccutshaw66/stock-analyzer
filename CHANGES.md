@@ -9,6 +9,14 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-19 — HTF Config tab: show percentages as whole numbers, not fractions
+
+**Why:** Chris reported the Config tab was showing `0.10`, `0.25`, `0.002` etc. for the risk-cap fields — confusing and error-prone. The server stores them as fractions (canonical math form), but the UI should show humans whole-number percentages.
+
+**What:**
+- `client/src/pages/htf-setups.tsx` — `ConfigTab` field metadata now carries a `unit` ("dollar" | "percent" | "integer" | "ratio") instead of free-form hint strings. Percent fields display as `10` / `25` / `40` / `30` / `0.2` and convert × 100 on edit / ÷ 100 on save; dollar and ratio fields stay as-is. Each field shows its unit suffix in the label (`Max risk per trade (%)`, `Capital ($)`). Sensible per-field `step` values (1 for whole-number percents, 0.1 for slippage and R/R, 100 for capital). Server payload shape unchanged — round-trips the same fractions it always did.
+
+---
 ## 2026-05-19 — HTF page: "How it works" help block
 
 **Why:** The /htf page had no inline explainer — users hitting it cold had to read CHANGES.md or guess at what "actionable" / "filtered" / "score" / "Givens exits" meant. Site convention is a collapsible blue `HelpBlock` at the top (same component the calculators and scanner use).
