@@ -68,14 +68,17 @@ async function loadAccountConfig(userId: number): Promise<AccountConfig> {
 async function loadPortfolio(userId: number): Promise<PortfolioState> {
   try {
     const all = await storage.getAllTrades(userId);
-    // Filter to HTF-strategy positions only. Other strategies (BBTC+VER,
-    // TFT, manual, etc.) have their own portfolio gates and shouldn't
-    // deplete HTF's slot count. Pre-2026-05-20 trades default to 'manual'
-    // (or the column may be missing — storage layer synthesizes 'manual').
+    // Filter to HTF-strategy open positions. Any trade Chris tagged as HTF
+    // counts toward the cap — stocks, calls, spreads, whatever. One ticker
+    // tagged HTF = one HTF position. The old STOCK_TRADE_TYPES filter was
+    // pre-strategy-tag-system cruft that excluded option entries even when
+    // the user explicitly classified them as HTF exposure.
+    // NOTE: position-sizing risk math downstream is calibrated for stocks
+    // (shares × $/share); options will produce slightly off risk numbers
+    // until per-vehicle risk math is added (TODO).
     const open: OpenPosition[] = all
       .filter(r =>
         r.closeDate === null &&
-        STOCK_TRADE_TYPES.has(r.tradeType) &&
         r.strategy === "htf"
       )
       .map(r => {

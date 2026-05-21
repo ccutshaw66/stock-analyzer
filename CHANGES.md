@@ -9,6 +9,15 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF portfolio counter: drop STOCK_TRADE_TYPES filter
+
+**Why:** Chris tagged PURR/NVTS as HTF on `/tracker`, the strategy headers grouped them correctly, but `/htf` → Portfolio tab still showed 0 HTF positions. Root cause: `loadPortfolio` in `htf-scanner/routes.ts` had a leftover `STOCK_TRADE_TYPES` filter that only counted Stock-category trades. HTF-tagged option positions (calls, spreads) on HTF setups got silently excluded.
+
+**Reasoning:** the original filter dates to before the strategy-tag system. Back then, "HTF position" meant "long stock from the HTF scanner". After the 2026-05-20 strategy-tag rollout, "HTF position" means *any trade Chris explicitly classified as HTF* — could be a long stock, a call option on a breakout setup, a credit spread playing the post-breakout range, etc. One ticker tagged HTF = one HTF position toward the cap.
+
+**Files:** `server/compartments/htf-scanner/routes.ts` — removed the `STOCK_TRADE_TYPES.has(r.tradeType)` clause from the open-trades filter. Comment notes the leftover position-sizing risk math is still stock-calibrated (TODO for per-vehicle risk math).
+
+---
 ## 2026-05-20 — Piece 2 RELAXED reverted + Piece 3 (info-only resistance) shipped
 
 **Piece 2 (relaxed) result:** $437,154 vs piece-1a baseline $668,570 = **−34.6%**. Ship-keep failed.
