@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Form field accessibility: id + name + htmlFor on every input/label pair
+
+**Why:** Chris pasted browser DevTools warnings: *"A form field element should have an id or name attribute"* / *"No label associated with a form field"*. These break browser autofill, screen-reader semantics, and keyboard navigation through form labels. Plus they show up as ongoing warnings in the console, hiding real bugs.
+
+**What:**
+- **`client/src/pages/trade-tracker.tsx`** — every `<label>` / `<input>` / `<select>` / `<textarea>` pair in TradeForm, CloseTradeModal, and SettingsPanel now carries matching `htmlFor` / `id` + `name` attributes. Prefixes scope the IDs to their form:
+  - `tf-*` — Add/Edit/Historical Trade form (strategy, trade-type, pilot-add, symbol, contracts, trade-date, expiration, open-price, strikes, ctv-buy/sell-strikes/price, spread-width, allocation, historical close-date / close-price, behavior-tag, notes)
+  - `ct-*` — Close Trade modal (qty, close-date, close-price)
+  - `set-*` — Settings Panel (one per dynamic field key)
+- **`client/src/components/ui/date-picker.tsx`** — `DatePicker` now accepts `id`, `name`, `required` props and forwards them to the underlying trigger button. Lets labels associate with date pickers via `htmlFor` so they're no longer flagged as unlabeled controls.
+- The `aria-label` was added on a few un-labeled standalone inputs (e.g. CTV strikes/prices inside the dual-vertical card) for screen-reader clarity.
+
+**Foundation note:** browser autofill, screen readers, and a11y audits all key off the label↔input association. Every new form field should ship with `id` + `name` + `htmlFor` from day one, not added retroactively when DevTools complains.
+
+**Files:** `client/src/pages/trade-tracker.tsx`, `client/src/components/ui/date-picker.tsx`.
+
+---
 ## 2026-05-21 — Partial-close 500 fixed (missing createdAt on closed child trade)
 
 **Why:** Chris's browser console: `POST /api/trades/943/close 500 (Internal Server Error)`. The action button opened the modal correctly, qty was pre-filled to 6, user submitted — server 500.

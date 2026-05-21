@@ -506,10 +506,10 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
           {/* Strategy — REQUIRED. Drives Current Positions grouping + lifecycle alerts. */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label htmlFor="tf-strategy" className="text-xs font-medium text-muted-foreground mb-1 block">
               Strategy <span className="text-bear-light">*</span>
             </label>
-            <select value={strategy} onChange={e => setStrategy(e.target.value)}
+            <select id="tf-strategy" name="strategy" value={strategy} onChange={e => setStrategy(e.target.value)}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
               data-testid="select-strategy" required>
               {Object.values(STRATEGY_REGISTRY).map(m => (
@@ -521,12 +521,15 @@ function TradeForm({ mode, initial, settings, onClose }: {
             </div>
             {getStrategyManifest(strategy).requiresReason && (
               <input
+                id="tf-strategy-reason"
+                name="strategyReason"
                 type="text"
                 value={strategyReason}
                 onChange={e => setStrategyReason(e.target.value)}
                 placeholder="Why this trade? (e.g. 'Steve recommended', 'FOMO on news')"
                 className="w-full h-9 px-3 mt-2 text-sm bg-background border border-card-border rounded-md text-foreground"
                 data-testid="input-strategy-reason"
+                aria-label="Reason for this trade"
                 required={getStrategyManifest(strategy).requiresReason}
               />
             )}
@@ -535,8 +538,8 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Type + Pilot/Add */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
-              <select value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
+              <label htmlFor="tf-trade-type" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
+              <select id="tf-trade-type" name="tradeType" value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" data-testid="select-trade-type">
                 {filteredTypes.map(code => (
                   <option key={code} value={code}>{code} - {TRADE_TYPES[code].label}</option>
@@ -544,8 +547,8 @@ function TradeForm({ mode, initial, settings, onClose }: {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
-              <select value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)}
+              <label htmlFor="tf-pilot-add" className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
+              <select id="tf-pilot-add" name="pilotOrAdd" value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
                 <option value="Pilot">Pilot</option>
                 <option value="Add">Add</option>
@@ -556,14 +559,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Symbol + Contracts */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
-              <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL"
+              <label htmlFor="tf-symbol" className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
+              <input id="tf-symbol" name="symbol" type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
                 required data-testid="input-trade-symbol" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
-              <input type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
+              <label htmlFor="tf-contracts" className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
+              <input id="tf-contracts" name="contractsShares" type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
@@ -571,13 +574,13 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
-              <DatePicker value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required />
+              <label htmlFor="tf-trade-date" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
+              <DatePicker id="tf-trade-date" value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required />
             </div>
             {category === "Option" && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
-                <DatePicker value={expiration} onChange={setExpiration} placeholder="Expiration" />
+                <label htmlFor="tf-expiration" className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
+                <DatePicker id="tf-expiration" value={expiration} onChange={setExpiration} placeholder="Expiration" />
               </div>
             )}
           </div>
@@ -585,14 +588,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Price — auto credit/debit label */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
+              <label htmlFor="tf-open-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
                 {isCredit ? "Credit Received" : "Debit Paid"} <span className="text-micro text-muted-foreground">(enter as positive)</span>
               </label>
               <div className="relative">
                 <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
                   {isCredit ? "+" : "−"}
                 </span>
-                <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
+                <input id="tf-open-price" name="openPrice" type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
                   className={`w-full h-9 pl-7 pr-3 text-sm bg-background border rounded-md font-mono text-foreground ${
                     isCredit ? "border-bull/30" : "border-bear/30"
                   }`} required />
@@ -600,10 +603,10 @@ function TradeForm({ mode, initial, settings, onClose }: {
             </div>
             {category === "Option" && numLegs >= 1 && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                <label htmlFor="tf-strikes" className="text-xs font-medium text-muted-foreground mb-1 block">
                   Strike(s) <span className="text-micro">{numLegs >= 3 ? "e.g. 55/60/65" : numLegs >= 2 ? "e.g. 55/60" : "e.g. 55"}</span>
                 </label>
-                <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)}
+                <input id="tf-strikes" name="strikes" type="text" value={strikes} onChange={e => setStrikes(e.target.value)}
                   className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
               </div>
             )}
@@ -615,23 +618,27 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
-                  <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
-                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
+                  <label htmlFor="tf-ctv-buy-strikes" className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
+                  <input id="tf-ctv-buy-strikes" name="ctvBuyStrikes" type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
+                    placeholder="65/70" aria-label="Buy spread strikes"
+                    className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
-                    <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
-                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
+                    <input id="tf-ctv-buy-price" name="ctvBuyPrice" type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
+                      placeholder="1.50" aria-label="Buy spread price"
+                      className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
-                  <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
-                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
+                  <label htmlFor="tf-ctv-sell-strikes" className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
+                  <input id="tf-ctv-sell-strikes" name="ctvSellStrikes" type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
+                    placeholder="70/75" aria-label="Sell spread strikes"
+                    className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
-                    <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
-                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
+                    <input id="tf-ctv-sell-price" name="ctvSellPrice" type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
+                      placeholder="2.50" aria-label="Sell spread price"
+                      className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
@@ -651,14 +658,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {numLegs >= 2 && !isDualVertical && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
-                <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
+                <label htmlFor="tf-spread-width" className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
+                <input id="tf-spread-width" name="spreadWidth" type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
                   className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
-              <input type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
+              <label htmlFor="tf-allocation" className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
+              <input id="tf-allocation" name="allocation" type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
@@ -669,14 +676,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <p className="text-xs font-semibold text-watch-light mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-                  <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
+                  <label htmlFor="tf-historical-close-date" className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+                  <DatePicker id="tf-historical-close-date" value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
                 </div>
                 <div>
-                  <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
+                  <label htmlFor="tf-historical-close-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(positive)</span>
                   </label>
-                  <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
+                  <input id="tf-historical-close-price" name="historicalClosePrice" type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
                     className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
                 </div>
               </div>
@@ -685,16 +692,16 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
           {/* Behavior + Notes */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Behavior Tag</label>
-            <select value={behaviorTag} onChange={e => setBehaviorTag(e.target.value)}
+            <label htmlFor="tf-behavior-tag" className="text-xs font-medium text-muted-foreground mb-1 block">Behavior Tag</label>
+            <select id="tf-behavior-tag" name="behaviorTag" value={behaviorTag} onChange={e => setBehaviorTag(e.target.value)}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
               <option value="">None</option>
               {BEHAVIOR_TAGS.map(tag => <option key={tag} value={tag}>{tag}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Plan Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+            <label htmlFor="tf-notes" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Plan Notes</label>
+            <textarea id="tf-notes" name="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2}
               className="w-full px-3 py-2 text-sm bg-background border border-card-border rounded-md text-foreground resize-none"
               placeholder="Entry rule, catalyst, setup..." />
           </div>
@@ -801,11 +808,11 @@ function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
         </div>
         <form onSubmit={handleClose} className="p-4 space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label htmlFor="ct-qty" className="text-xs font-medium text-muted-foreground mb-1 block">
               Quantity to Close <span className="text-micro text-muted-foreground">(of {trade.contractsShares} {trade.tradeCategory === "Option" ? "contracts" : "shares"})</span>
             </label>
             <div className="flex items-center gap-2">
-              <input type="number" min={1} max={trade.contractsShares} step={1} value={qty}
+              <input id="ct-qty" name="qty" type="number" min={1} max={trade.contractsShares} step={1} value={qty}
                 onChange={e => setQty(e.target.value)}
                 className="flex-1 h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
               <button type="button" onClick={() => setQty(String(trade.contractsShares))}
@@ -818,14 +825,14 @@ function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-            <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
+            <label htmlFor="ct-close-date" className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+            <DatePicker id="ct-close-date" value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
           </div>
           <div>
-            <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
+            <label htmlFor="ct-close-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
               {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(enter positive)</span>
             </label>
-            <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
+            <input id="ct-close-price" name="closePrice" type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
               placeholder={isCredit ? "0.50" : "2.00"}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
             <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless (full profit)" : "Enter 0 if expired worthless (full loss)"}</p>
@@ -866,8 +873,8 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
             ["totalAllocatedLimit", "Total Allocated Limit (decimal)"],
           ] as const).map(([key, label]) => (
             <div key={key}>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
-              <input type="number" step="0.01" value={vals[key] ?? ""}
+              <label htmlFor={`set-${key}`} className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+              <input id={`set-${key}`} name={key} type="number" step="0.01" value={vals[key] ?? ""}
                 onChange={e => setVals(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>

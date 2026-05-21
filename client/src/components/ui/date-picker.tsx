@@ -11,9 +11,17 @@ interface DatePickerProps {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  /**
+   * Optional id propagated to the trigger button. Lets a `<label htmlFor=...>`
+   * associate with this control so screen readers + browser autofill +
+   * DevTools accessibility audits stop flagging the date picker as unlabeled.
+   */
+  id?: string;
+  /** Optional name (mirrors `id` if unspecified) for form-autofill hints. */
+  name?: string;
 }
 
-export function DatePicker({ value, onChange, placeholder = "Pick a date", required, className }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = "Pick a date", required, className, id, name }: DatePickerProps) {
   const [open, setOpen] = useState(false);
 
   const dateObj = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
@@ -24,6 +32,9 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", requi
       <PopoverTrigger asChild>
         <button
           type="button"
+          id={id}
+          name={name ?? id}
+          aria-required={required}
           className={cn(
             "w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-left flex items-center justify-between gap-2 hover:bg-muted/50 transition-colors",
             !value && "text-muted-foreground",
