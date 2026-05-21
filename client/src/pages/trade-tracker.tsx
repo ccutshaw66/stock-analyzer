@@ -4,6 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
 import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
 import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView, type DisplayPoint } from "@shared/strategies/registry";
+import { useHtfScanner, type HtfSetupRow } from "@/compartments/htf-scanner";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
@@ -966,6 +967,18 @@ export default function TradeTracker() {
     },
   });
 
+  // Live HTF scan — used to backfill empty strategyData on pre-auto-fill
+  // HTF-tagged trades. Pre-2026-05-21 HTF trades (entered manually, before
+  // the + button auto-fill flow) have strategy='htf' but no strategyData.
+  // We pull the live scan once and look up by symbol to enrich them at
+  // render time — no schema change, no persisted backfill, just derivation.
+  const htfScan = useHtfScanner();
+  const htfScanBySymbol = useMemo(() => {
+    const map = new Map<string, HtfSetupRow>();
+    for (const r of htfScan.data?.rows ?? []) map.set(r.symbol.toUpperCase(), r);
+    return map;
+  }, [htfScan.data]);
+
   // Filter first, then split open vs closed so we can aggregate open.
   const { openGroups, closedFlat } = useMemo(() => {
     let list = [...trades];
@@ -1251,6 +1264,32 @@ export default function TradeTracker() {
                       const isWin = g.totalOpenPL >= 0;
                       const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
 
+                      // Backfill empty strategyData from the live HTF scan
+                      // for HTF-tagged trades. Pre-auto-fill trades have
+                      // strategy='htf' but no snapshot — if the scanner
+                      // currently sees the symbol, use its data so the
+                      // manifest can fill in Stop/Target/Pole/Flag columns
+                      // instead of showing "—" everywhere.
+                      let effectiveStrategyData = g.lots[0].strategyData;
+                      const hasRealStrategyData =
+                        effectiveStrategyData && Object.keys(effectiveStrategyData).length > 0;
+                      if (!hasRealStrategyData && g.strategy === "htf") {
+                        const scanRow = htfScanBySymbol.get(g.symbol.toUpperCase());
+                        if (scanRow) {
+                          effectiveStrategyData = {
+                            stopPrice: scanRow.stopPrice,
+                            targetPrice: scanRow.targetPrice,
+                            poleGainPct: scanRow.poleGainPct,
+                            poleDays: scanRow.poleDays,
+                            flagDays: scanRow.flagDays,
+                            flagPullbackPct: scanRow.flagPullbackPct,
+                            breakoutVolRatio: scanRow.breakoutVolRatio,
+                            qualityScore: scanRow.qualityScore,
+                            sector: scanRow.sector ?? "Unknown",
+                          };
+                        }
+                      }
+
                       const evalLot: StrategyTradeView = {
                         symbol: g.symbol,
                         openPrice: g.avgOpenPrice,
@@ -1260,7 +1299,7 @@ export default function TradeTracker() {
                         tradeDate: g.firstTradeDate,
                         strategy: g.strategy,
                         strategyReason: g.lots[0].strategyReason,
-                        strategyData: g.lots[0].strategyData,
+                        strategyData: effectiveStrategyData,
                         contractsShares: g.totalQty,
                       };
                       const evalResult = manifest.evaluate(evalLot);

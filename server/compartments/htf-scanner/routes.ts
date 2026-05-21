@@ -28,7 +28,7 @@ import {
 } from "../../signals/risk/position-sizing";
 import { htfScannerData } from ".";
 import { htfCacheStats, getHtfBars } from "../../data/htf-ohlcv-cache";
-import { runHtfScan } from "./orchestrator";
+import { runHtfScan, peekLatestScan } from "./orchestrator";
 import { scanHtf } from "../../signals/strategies/htf";
 import { computeSizingRecommendation, SIZING_PHASES } from "./sizing";
 import { computeClosedTradeProfit } from "@shared/pnl";
@@ -68,14 +68,16 @@ async function loadAccountConfig(userId: number): Promise<AccountConfig> {
 async function loadPortfolio(userId: number): Promise<PortfolioState> {
   try {
     const all = await storage.getAllTrades(userId);
+    // Build a symbol → scan-row lookup so we can backfill stop/target/sector
+    // for HTF trades that were created before the auto-fill flow (pre-2026-
+    // 05-21). peekLatestScan() returns the cached snapshot without triggering
+    // a new scan — fast, no FMP traffic, may be null if no scan has ever run.
+    const latest = peekLatestScan();
+    const scanBySymbol = new Map<string, NonNullable<typeof latest>["rows"][number]>();
+    for (const r of latest?.rows ?? []) scanBySymbol.set(r.symbol.toUpperCase(), r);
+
     // Filter to HTF-strategy open positions. Any trade Chris tagged as HTF
-    // counts toward the cap — stocks, calls, spreads, whatever. One ticker
-    // tagged HTF = one HTF position. The old STOCK_TRADE_TYPES filter was
-    // pre-strategy-tag-system cruft that excluded option entries even when
-    // the user explicitly classified them as HTF exposure.
-    // NOTE: position-sizing risk math downstream is calibrated for stocks
-    // (shares × $/share); options will produce slightly off risk numbers
-    // until per-vehicle risk math is added (TODO).
+    // counts toward the cap — stocks, calls, spreads, whatever.
     const open: OpenPosition[] = all
       .filter(r =>
         r.closeDate === null &&
@@ -83,26 +85,26 @@ async function loadPortfolio(userId: number): Promise<PortfolioState> {
       )
       .map(r => {
         const data = (r.strategyData ?? {}) as any;
+        const scan = scanBySymbol.get(r.symbol.toUpperCase());
         // openPrice is stored signed (negative for debit/buy). Display +
-        // risk math wants the absolute fill price. The sign carries no
-        // info we need here.
+        // risk math want the absolute fill price.
         const entryPrice = Math.abs(r.openPrice);
-        // Real stop only — from the HTF strategyData snapshot. NEVER fall
-        // back to `r.target`: that field is `rawPrice × 0.25` for stocks
-        // (a profit-target ROI, not a stop) and using it produced the
-        // bogus "$1.95 stop on a $7.79 entry" UX. null = no recorded stop,
-        // UI shows "—" and risk math reports $0 instead of fabricating.
-        const stopPrice = typeof data.stopPrice === "number" ? data.stopPrice : null;
-        // Real target from strategyData if present, else the trade's stored
-        // target (only meaningful when not the bogus ROI fallback — keep for
-        // forward compat when HTF entries fully populate strategyData).
+        // Real stop — from strategyData first, else the live scan's
+        // flag-low-derived stop. NEVER fall back to `r.target` (it's the
+        // profit-ROI math, not a stop).
+        const stopPrice =
+          typeof data.stopPrice === "number" ? data.stopPrice
+          : scan?.stopPrice ?? null;
+        // Real target — strategyData → scan target → null.
         const targetPrice =
-          typeof data.targetPrice === "number"
-            ? data.targetPrice
-            : (r.target != null && r.target > entryPrice ? r.target : null);
+          typeof data.targetPrice === "number" ? data.targetPrice
+          : scan?.targetPrice ?? null;
+        const sector =
+          typeof data.sector === "string" ? data.sector
+          : scan?.sector ?? "Unknown";
         return {
           symbol: r.symbol,
-          sector: typeof data.sector === "string" ? data.sector : "Unknown",
+          sector,
           shares: r.contractsShares,
           entryPrice,
           stopPrice,

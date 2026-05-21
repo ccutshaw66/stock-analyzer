@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Fill empty HTF columns from the live scan (PURR/NVTS/ONDS backfill)
+
+**Why:** After the per-strategy refactor, HTF columns (Stop / Take 1/3 / Trail 20-MA / Target / Pole / Flag) still showed "—" for trades that existed before the auto-fill flow shipped. Chris's PURR/NVTS/ONDS were tagged HTF but had empty `strategyData`. He explicitly said: *"NOw fill in the columns."*
+
+**What:**
+
+### Client-side (Current Positions on /tracker)
+- **`client/src/pages/trade-tracker.tsx`** — added `useHtfScanner()` call to fetch the live scan once. Built a `symbol → HtfSetupRow` map. Before each HTF group row calls `manifest.evaluate()`, the page checks if `strategyData` is empty; if yes AND the live scan currently sees the symbol, a synthetic `strategyData` is built from the scan row (stopPrice, targetPrice, poleGainPct, poleDays, flagDays, flagPullbackPct, breakoutVolRatio, qualityScore, sector). The manifest then renders Stop/Target/Pole/Flag/etc. as if the snapshot were captured at trade open.
+- **Read-time only.** Nothing persisted to the trade row. If the scan moves on (setup ages out of the 1-day Live window), the columns will fall back to "—". That's the right behavior — the scan IS the source of truth for "what does the strategy currently see for this symbol."
+
+### Server-side (HTF Portfolio tab on /htf)
+- **`server/compartments/htf-scanner/routes.ts`** — `loadPortfolio` does the same backfill. Uses `peekLatestScan()` (no new scan triggered, just the cached snapshot) to map symbol → scan row. For each open HTF trade, stop/target/sector fall through to the scan's values when `strategyData` is empty. Same null-on-miss semantics.
+
+### Net effect on PURR / NVTS / ONDS / CYRX / CLSK
+If the symbol is currently in the live HTF scan (your screenshot showed CYRX and CLSK there), the trade row inherits the scan's snapshot at render time. Stop / Take 1/3 trigger ($entry × 1.05) / Trail 20-MA / Target / Pole / Flag cells all populate. If the symbol's setup ages out, the cells return to "—" — that's a signal the strategy no longer has an opinion on the live structure.
+
+### Foundation note
+This is a derivation, not a patch. The data lives in one place (the live scanner), and consumers pull from it. No schema change, no manual entry, no persistent backfill that could drift from the source of truth.
+
+**Files:** `client/src/pages/trade-tracker.tsx`, `server/compartments/htf-scanner/routes.ts`.
+
+**Still queued:** when an HTF trade has its strategyData populated from the scan at render time, the values are NOT saved back to the trade row. If we want them frozen at the moment of first inspection (Bulkowski snapshot principle), we'd need a one-time persistence on first render. For now, derivation is cleaner.
+
+---
 ## 2026-05-21 — Current Positions: one table PER STRATEGY with manifest-driven columns; killed Total column
 
 **Why:** Chris (correctly) called out two foundation violations on the Current Positions page:
