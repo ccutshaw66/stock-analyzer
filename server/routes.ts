@@ -6293,7 +6293,12 @@ export async function registerRoutes(
       const prorate = (v: any) => (v == null ? v : Number((Number(v) * ratio).toFixed(2)));
       const remain  = (v: any) => (v == null ? v : Number((Number(v) * (1 - ratio)).toFixed(2)));
 
-      // Create the closed child row (copy open details, prorate $ fields)
+      // Create the closed child row (copy open details, prorate $ fields).
+      // We strip `id` (auto-generated) and `createdAt` (we set a fresh one
+      // for the child row — that's the moment of THIS partial close, not
+      // the original trade open). Without an explicit createdAt the insert
+      // hits the NOT NULL constraint and 500s — root cause of the
+      // 2026-05-21 close-trade 500 on partial sells via the action button.
       const { id: _omitId, createdAt: _omitCreated, ...base } = current as any;
       const closedChild = await storage.createTrade({
         ...base,
@@ -6304,6 +6309,7 @@ export async function registerRoutes(
         closeDate,
         closePrice,
         commOut,
+        createdAt: new Date().toISOString(),
       });
 
       // Reduce the original open row
@@ -6316,6 +6322,9 @@ export async function registerRoutes(
 
       res.json({ closed: closedChild, open: updatedOpen });
     } catch (error: any) {
+      // Log so the server logs carry the stack — the JSON response only
+      // surfaces the message. Helps diagnose future partial-close failures.
+      console.error("[trades] POST /:id/close failed:", error);
       res.status(500).json({ error: error?.message || "Failed to close trade" });
     }
   });

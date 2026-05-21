@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Partial-close 500 fixed (missing createdAt on closed child trade)
+
+**Why:** Chris's browser console: `POST /api/trades/943/close 500 (Internal Server Error)`. The action button opened the modal correctly, qty was pre-filled to 6, user submitted — server 500.
+
+**Root cause:** the partial-close path in `/api/trades/:id/close` creates a "closed child" trade row by spreading the open trade's fields, omitting `id` (auto-generated) and `createdAt` (treated as omitted-then-not-re-added). The `created_at` column is `NOT NULL` with no default in the schema → INSERT failed the NOT NULL constraint → 500. Latent since the partial-close branch was written; only surfaced now because the action button is the first UX that drives users to partial closes regularly.
+
+**What:**
+- **`server/routes.ts`** — explicit `createdAt: new Date().toISOString()` on the `createTrade` call inside the partial-close path. Semantically correct too — the closed child is created at THIS moment (the partial close event), not at the original trade's open.
+- Added `console.error("[trades] POST /:id/close failed:", error)` to the catch so future 500s land in the server logs with the stack trace, not just the JSON message.
+
+**Files:** `server/routes.ts`.
+
+---
 ## 2026-05-21 — Close modal no longer gated on settings query — action button now actually opens it
 
 **Why:** Chris reported: *"still no close the trade on button."* Even after enabling the action button for multi-lot positions, clicking "Sell 6" on NVTS did nothing. Root cause: the Close Trade modal render was gated on `closingTrade && settings && <CloseTradeModal .../>`. If the `/api/account/settings` query was momentarily unresolved (slow load, race after refresh, transient empty cache), `setClosingTrade(...)` set state but the JSX condition skipped the modal because `settings` was falsy. Action button looked dead; really it was firing but the modal silently refused to render.
