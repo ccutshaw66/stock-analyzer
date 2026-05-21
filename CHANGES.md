@@ -9,6 +9,42 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF time-stop harness (gated behind timeStopBars query param)
+
+**Why:** Bulkowski's stat: 50% of HTFs reach their ultimate high in ~3 weeks (~21 trading days); holders past that point are mostly losing money or drifting sideways. Standard "time stop" technique exits stalled trades to free up capital and capture mean-reversion before it turns into a loss.
+
+**What:** Tracks `highestCloseSinceEntry` + `barsSinceNewHigh` on every bar. When the counter hits `timeStopBars` consecutive bars without a new closing-high, exits at the next close with `exitReason: "time_stop"`. Counter increments AFTER stop/target/partial/trail logic so it never shortcuts a real exit signal.
+
+Endpoint: `/api/diag/strategy-htf-pnl?timeStopBars=21`. Default 0 = disabled (baseline unchanged). Clamped 0–252.
+
+**Files**
+- mod: `server/diag/strategy-htf-pnl.ts` — new exit reason `time_stop`, `timeStopBars` parameter on `simulateHtfTrade`/`evalTickerPnL`/`runStrategyHtfPnL`, basket echoes it back.
+- mod: `server/routes.ts` — reads `?timeStopBars` query (0–252).
+
+**Next:** A/B the standard `21` against the locked $698,088 baseline.
+
+---
+## 2026-05-21 — HTF resistance-aware sizing — FINAL: filter doesn't transfer to our universe
+
+**A/B test 2 (3/7 narrow band)**: skip <3%, half-size 3–7%, full ≥7%. Less aggressive than the textbook 5/10 reading.
+
+| | Baseline | 5/10 | 3/7 |
+|---|---|---|---|
+| Total P&L | $698,088 | $392,840 | **$470,178** |
+| Δ vs baseline | — | −43.7% | **−32.6%** |
+| Closed trades | 10,888 | 6,932 | 7,843 |
+| Skipped | 0 | 4,040 | 3,082 |
+| Half-sized | 0 | 1,130 | 1,493 |
+| Win rate | 64.8% | 65.1% | 65.2% |
+| $/trade | $64.12 | $56.67 | $59.95 |
+
+**Final verdict**: 3/7 recovered ~$77K vs 5/10 but still lost $228K vs baseline. Win rate barely moved (+0.4pp) across all three runs — the filter doesn't pick winners better, it just trades less and prunes some of the biggest winners. Two band configurations spanning the credible parameter range both lose money.
+
+**Conclusion**: resistance-as-sizing doesn't work on our universe. Bulkowski's stat is population-average across thousands of patterns and decades; our small/mid-cap basket throws back hard but also rallies hard — exactly the cohort the filter cuts off.
+
+**What ships**: harness stays (gated behind `?sizingMode=resistance`, default fixed = baseline unchanged). Detection (`hasOverheadResistance` + `nearestResistancePct`) still ships on every hit; future ideas can use it as a *quality-score input* rather than a sizing gate. Closing this backlog item.
+
+---
 ## 2026-05-21 — HTF resistance-aware sizing — tunable bands + first A/B result
 
 **A/B test 1 (5/10 bands)**: Bulkowski's textbook reading — `<5% → skip, 5–10% → half-size, ≥10% → full`. Ran against the 491-ticker / 10y / $1,750/trade basket at minScore=70.

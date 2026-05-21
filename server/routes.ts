@@ -5358,8 +5358,14 @@ export async function registerRoutes(
         ? Math.min(Math.max(skipBelowRaw, 0), 50) : 5;
       const halfBelowPct = Number.isFinite(halfBelowRaw)
         ? Math.min(Math.max(halfBelowRaw, skipBelowPct), 50) : 10;
+      // Time-stop bars — exit at next close if N consecutive bars pass
+      // without a new closing-high since entry. 0 = disabled (baseline).
+      // Bulkowski reference value: 21 (~3 weeks of trading days).
+      const timeStopRaw = Number(req.query.timeStopBars);
+      const timeStopBars = Number.isFinite(timeStopRaw)
+        ? Math.min(Math.max(timeStopRaw, 0), 252) : 0;
       const result = await runStrategyHtfPnL(
-        symbols, days, positionSize, detail, minScore, sizingMode, skipBelowPct, halfBelowPct,
+        symbols, days, positionSize, detail, minScore, sizingMode, skipBelowPct, halfBelowPct, timeStopBars,
       );
       res.json(result);
     } catch (error: any) {

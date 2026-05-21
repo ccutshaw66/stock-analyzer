@@ -85,7 +85,7 @@ function barsToOHLCV(b: Bars): OHLCV[] {
 
 // ─── Trade simulation (Givens exits, copied from htf-scanner/backtest.ts) ──
 
-export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
+export type HtfExitReason = "stop" | "trail_20ma" | "time_stop" | "end_of_data";
 
 /**
  * Resistance-aware sizing mode.
@@ -155,6 +155,7 @@ function simulateHtfTrade(
   sizingMode: HtfSizingMode = "fixed",
   skipBelowPct: number = 5,
   halfBelowPct: number = 10,
+  timeStopBars: number = 0,
 ): HtfSimResult {
   // Resistance-aware sizing gate. nearestResistancePct is in percent (e.g.
   // 7.2 means resistance sits 7.2% above the breakout). Bands are parameterised
@@ -199,6 +200,11 @@ function simulateHtfTrade(
   let partialDone = false;
   let maxDrawdown = 0;
   let peakSinceEntry = entryPrice;
+  // Time-stop tracking — count bars since the latest closing-high. Resets
+  // to 0 every time the close prints a new highest close since entry.
+  // When the counter hits `timeStopBars`, the trade has stalled and we exit.
+  let highestCloseSinceEntry = entryPrice;
+  let barsSinceNewHigh = 0;
 
   function finish(
     exitDateD: Date,
@@ -265,6 +271,21 @@ function simulateHtfTrade(
       if (!isNaN(m) && closeJ < m && partialExitPrice !== null) {
         return finish(bars[j].t, closeJ, "trail_20ma", j - entryI, false);
       }
+    }
+
+    // Time-stop check: if N consecutive bars pass without printing a new
+    // closing-high, the trade has stalled. Bulkowski: 50% of HTFs reach
+    // their ultimate high in 3 weeks; holders past that are mostly losing
+    // money. timeStopBars=0 disables. Counter updates AFTER stop/target/
+    // partial/trail so we don't shortcut a real exit signal.
+    if (closeJ > highestCloseSinceEntry) {
+      highestCloseSinceEntry = closeJ;
+      barsSinceNewHigh = 0;
+    } else if (j > entryI) {
+      barsSinceNewHigh++;
+    }
+    if (timeStopBars > 0 && barsSinceNewHigh >= timeStopBars) {
+      return finish(bars[j].t, closeJ, "time_stop", j - entryI, false);
     }
   }
 
@@ -394,6 +415,7 @@ async function evalTickerPnL(
   sizingMode: HtfSizingMode,
   skipBelowPct: number,
   halfBelowPct: number,
+  timeStopBars: number,
 ): Promise<HtfTickerPnL | null> {
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
@@ -404,7 +426,7 @@ async function evalTickerPnL(
   const trades: HtfTrade[] = [];
   let skipped = 0;
   for (const h of hits) {
-    const r = simulateHtfTrade(ohlcv, h, positionSize, sizingMode, skipBelowPct, halfBelowPct);
+    const r = simulateHtfTrade(ohlcv, h, positionSize, sizingMode, skipBelowPct, halfBelowPct, timeStopBars);
     if (r == null) continue;
     if ("skipped" in r) {
       skipped++;
@@ -530,6 +552,7 @@ export interface StrategyHtfPnLResult {
     sizingMode: HtfSizingMode;
     skipBelowPct: number;
     halfBelowPct: number;
+    timeStopBars: number;
   };
   generatedAt: string;
   perTicker: HtfTickerPnL[];
@@ -546,13 +569,14 @@ export async function runStrategyHtfPnL(
   sizingMode: HtfSizingMode = "fixed",
   skipBelowPct: number = 5,
   halfBelowPct: number = 10,
+  timeStopBars: number = 0,
 ): Promise<StrategyHtfPnLResult> {
   const BATCH = 12;
   const tickerResults: HtfTickerPnL[] = [];
   for (let i = 0; i < symbols.length; i += BATCH) {
     const slice = symbols.slice(i, i + BATCH);
     const results = await Promise.allSettled(
-      slice.map(s => evalTickerPnL(s, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct)),
+      slice.map(s => evalTickerPnL(s, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct, timeStopBars)),
     );
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) tickerResults.push(r.value);
@@ -560,20 +584,21 @@ export async function runStrategyHtfPnL(
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
-  const spy = await evalTickerPnL("SPY", days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct).catch(() => null);
+  const spy = await evalTickerPnL("SPY", days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct, timeStopBars).catch(() => null);
 
   const perTicker = includeTradeDetail
     ? tickerResults
     : tickerResults.map(t => ({ ...t, trades: [] }));
 
   return {
-    basket: { symbols, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct },
+    basket: { symbols, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct, timeStopBars },
     generatedAt: new Date().toISOString(),
     perTicker,
     aggregate: aggregateBasket(tickerResults, spy),
     notes: [
       `HTF (High Tight Flag, Givens variant) evaluator. minScore=${minScore} — set to 70 to match production threshold; 0 includes every detected pattern.`,
       `sizingMode=${sizingMode}. "fixed" deploys full positionSize per trade. "resistance" applies tiering: nearestResistancePct <${skipBelowPct}% → skip, ${skipBelowPct}–${halfBelowPct}% → half-size, otherwise full. Bands tunable via skipBelow + halfBelow query params.`,
+      `timeStopBars=${timeStopBars}. 0 = disabled (baseline). >0 = exit at next close if N consecutive bars pass without printing a new closing-high since entry. Bulkowski: 50% of HTFs reach ultimate high in ~21 bars.`,
       "Entry = next day's open after a detected breakout. Stop = flag_low × 0.99 (hard stop, intraday). Partial = sell 1/3 after 3 cumulative close-strength days (close >5% above entry). Trail = exit remaining 2/3 on close < 20-day MA after partial fires.",
       "blendedReturnPct accounts for the 1/3 partial split: (partial − entry)/entry × 1/3 + (final − entry)/entry × 2/3.",
       "pnlDollar = blendedReturnPct/100 × actual deployed size (positionSize × tier multiplier). One trade per detected setup; no portfolio cap applied here (the live /htf page applies per-trade and portfolio caps separately).",
