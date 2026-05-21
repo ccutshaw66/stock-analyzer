@@ -34,7 +34,11 @@ export const SPRING_PIERCE_MIN_PCT = 0.005;   // pierce ≥ 0.5% below TR_low in
 export const SPRING_CLOSE_MAX_BELOW_PCT = 0.01; // close within 1% below TR_low (or above)
 export const SPRING_VOL_MIN_RATIO = 1.0;      // ≥ avg range volume
 
-// ─── Test (optional; adds quality but not required) ───────────────────
+// ─── Test (REQUIRED — quality gate; see 2026-05-21 cohort A/B) ────────
+// Backtest finding: tested Springs earn $45.06/trade vs untested $24.81/trade
+// (81% more $ per trade). Promoting the test bar from "optional bonus" to
+// hard requirement filters the cohort down to high-conviction setups only.
+export const REQUIRE_TEST_BAR = true;
 export const TEST_LOOKAHEAD_MAX_BARS = 10;    // test must occur within 10 bars of spring
 export const TEST_VOL_MAX_RATIO = 0.7;        // test volume ≤ 70% of spring volume
 export const TEST_PRICE_BAND_PCT = 0.02;      // test low within 2% of spring low
@@ -325,7 +329,9 @@ export function scanWyckoffSpring(
       const sosVolRatio = tr.avgVol > 0 ? vols[i] / tr.avgVol : 0;
       if (sosVolRatio < SOS_VOL_MIN_RATIO) continue;
 
-      // Optional test bar between spring and SOS.
+      // Test bar between spring and SOS. Required gate when REQUIRE_TEST_BAR
+      // is true — drops candidates lacking a clean test to filter the
+      // tested-cohort that backtests $45.06/trade vs $24.81/trade untested.
       let hasTest = false;
       let testIdx: number | null = null;
       const testBand = lows[s] * (1 + TEST_PRICE_BAND_PCT);
@@ -338,6 +344,7 @@ export function scanWyckoffSpring(
           break;
         }
       }
+      if (REQUIRE_TEST_BAR && !hasTest) continue;
 
       // Scoring (rubric mirrors HTF: base 50, max bonus 50, max total 100).
       let score = 50;

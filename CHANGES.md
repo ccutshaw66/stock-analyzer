@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring: test bar promoted from optional to required
+
+**Why:** First basket backtest cleared the acceptance gate but cohort split surfaced a real edge — tested Springs earned **$45.06/trade** vs untested **$24.81/trade** (81% more $ per trade). Promoting the test bar from "optional quality bonus" to "required entry gate" filters to high-conviction setups only. Foundation-first move: quality over quantity, every fire is a real Wyckoff Spring rather than a coin flip.
+
+**What:** New constant `REQUIRE_TEST_BAR = true` exported alongside the other test thresholds. `scanWyckoffSpring` loop now does `if (REQUIRE_TEST_BAR && !hasTest) continue` immediately after the test bar scan. Default ON. Flipping to `false` reverts to permissive behavior (old cohort = all Springs detected).
+
+**Expected basket impact (extrapolation from prior cohort split):**
+- Trades: 468 → ~231 (−51%)
+- Total P&L: $16,289 → ~$10,408 (−36%)
+- $/trade: $34.81 → **~$45 (+29%)**
+- Win rate: 58.5% → likely higher (tested cohort was the better-performing half)
+
+**Trade-off acknowledged:** total basket $ goes down because untested Springs were still positive-EV ($24.81/trade). We're trading $5,881 of low-conviction $ for higher per-trade quality. Reasonable when the strategy is a diversifier; HTF is still the workhorse for raw $.
+
+**Files**
+- mod: `server/signals/strategies/wyckoff-spring.ts` (one new const, one continue gate)
+
+**TypeScript:** clean.
+
+**Next (sanity-check first):** NVDA had the only tested Spring in the earlier 3-ticker hand-verification. Hit `https://stockotter.ai/api/diag/wyckoff-spring-scan?symbol=NVDA&days=2500` first — expect 1 hit (the 2019-08-19 one) instead of 2. Then re-run the basket URL.
+
+---
 ## 2026-05-21 — Wyckoff Spring detector: precomputed TR lookup (perf fix)
 
 **Why:** Backtest harness against the 491-ticker basket hit a 504 gateway timeout. Diagnosis: the detector's `findTradingRange` was being called once per (SOS_candidate × spring_offset) pair — ~37,500 times per ticker — and each call walked up to 100 TR widths × 240 bars. Total: ~440 billion ops across the basket. Single-ticker diag scan worked fine; basket-scale didn't.
