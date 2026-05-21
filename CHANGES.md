@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — Piece 2 (relaxed): failed-breakout exit on 2 consecutive closes in 5-bar window
+
+**Piece 1a result (new baseline):** $668,570 / WFE 1.682 / SQN 11.80 / MC95 $12,795 — clean win. Volume gate drop alone added 22.8% more trades and 17.3% more profit, with every quality metric preserved.
+
+**Why piece 2:** Cuts genuine breakout failures (Wyckoff Upthrust / Woods Hikkake) without killing normal pullback-test bars. The original bundle's piece (1 close in 3 bars) cut too aggressively; this relaxed version requires the failure pattern to actually persist.
+
+**What:**
+- New exit reason: `failed_breakout`.
+- Trigger: within first 5 bars after entry, if there are **2 consecutive closes below `flag_high`**, exit at next open.
+- Resets the consecutive counter on any close ≥ `flag_high` (single test bar that bounces does NOT trigger).
+- Applied to both diag simulator (`server/diag/strategy-htf-pnl.ts`) and live-page backtester (`server/compartments/htf-scanner/backtest.ts`) for parity.
+
+**Validation gate:** new baseline is piece 1a's $668,570 / WFE 1.682. Ship-keep:
+- New total ≥ 0.9 × $668,570 ≈ $601,713
+- New WFE ≥ 1.0
+- MC95 not blown out
+
+Expected outcome: total $ may be slightly lower (fewer trades reach normal exits because some close earlier via failed_breakout), but avg loss size should drop and MC95 should improve.
+
+**Files:** `server/diag/strategy-htf-pnl.ts`, `server/compartments/htf-scanner/backtest.ts`.
+
+---
 ## 2026-05-20 — Piece 1 too aggressive: split into 1a (gate only) — REVERTED score change
 
 **Why:** Piece 1 (gate drop 1.3→1.0 + remove volume score bonus) ran $429,302 vs baseline $569,892 — −24.7%, below the 0.9× ship-keep floor. **Diagnosis:** I bundled two effects.
