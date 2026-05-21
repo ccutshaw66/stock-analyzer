@@ -1368,11 +1368,20 @@ export default function TradeTracker() {
                               {topAlert && topAlert.actionShares != null && topAlert.actionShares > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => isSingleLot && openClose(g.lots[0], topAlert.actionShares!)}
-                                  disabled={!isSingleLot}
-                                  title={isSingleLot ? topAlert.message : "Expand the group and act on a single lot"}
+                                  onClick={() => {
+                                    // Always actionable now. Multi-lot groups
+                                    // close from the oldest lot first; the
+                                    // modal caps qty at that lot's shares.
+                                    // If the manifest's actionShares exceeds
+                                    // the oldest lot, the user closes more
+                                    // from subsequent lots after this trade.
+                                    const lot = g.lots[0];
+                                    const qty = Math.min(topAlert.actionShares!, lot.contractsShares);
+                                    openClose(lot, qty);
+                                  }}
+                                  title={topAlert.message}
                                   data-testid={`act-${topAlert.action}-${g.symbol}`}
-                                  className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                  className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors ${
                                     topAlert.action === "dump"          ? "bg-bear text-bear-foreground hover:brightness-110 animate-pulse"
                                     : topAlert.action === "exit"        ? "bg-bear/80 text-bear-foreground hover:bg-bear"
                                     : topAlert.action === "take-partial" ? "bg-watch text-background hover:brightness-110"
@@ -1380,6 +1389,11 @@ export default function TradeTracker() {
                                   }`}
                                 >
                                   {topAlert.actionLabel}
+                                  {!isSingleLot && g.lots[0].contractsShares < topAlert.actionShares! && (
+                                    <span className="block text-2xs opacity-80 font-normal">
+                                      (from oldest lot — close more after)
+                                    </span>
+                                  )}
                                 </button>
                               ) : (
                                 statusBadge

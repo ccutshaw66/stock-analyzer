@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Action button now works on multi-lot positions
+
+**Why:** Chris's "Sell 6" button on NVTS did nothing when clicked. Root cause: the button was `disabled={!isSingleLot}` — if a position was opened across multiple buys (NVTS likely 2 lots of 10 shares), the button rendered slightly dimmed and refused to act. Visual feedback was too subtle; user saw a button labelled "Sell 6" and clicked it expecting something to happen.
+
+**What:**
+- **`client/src/pages/trade-tracker.tsx`** — removed the `disabled` and the `isSingleLot &&` guard from the action button. Click now always opens the Close Trade modal on the **oldest lot** with qty pre-filled to `min(actionShares, lot.contractsShares)`. The Close modal already caps qty at the lot's shares, so this is bounds-safe.
+- For multi-lot positions where the manifest's action targets more shares than the oldest lot holds, the button shows a small subtext: "(from oldest lot — close more after)" so the user knows they may need to repeat for subsequent lots.
+
+**Net behaviour for NVTS-style multi-lot:** click "Sell 6" → Close Trade modal opens with the oldest lot's trade ID + qty=6 (or capped at that lot's shares). User confirms close. If they need to close more shares to hit the full 1/3, they repeat on the next lot.
+
+**Files:** `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Fill empty HTF columns from the live scan (PURR/NVTS/ONDS backfill)
 
 **Why:** After the per-strategy refactor, HTF columns (Stop / Take 1/3 / Trail 20-MA / Target / Pole / Flag) still showed "—" for trades that existed before the auto-fill flow shipped. Chris's PURR/NVTS/ONDS were tagged HTF but had empty `strategyData`. He explicitly said: *"NOw fill in the columns."*
