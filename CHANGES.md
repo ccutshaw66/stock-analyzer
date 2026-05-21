@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — Piece 2 RELAXED reverted + Piece 3 (info-only resistance) shipped
+
+**Piece 2 (relaxed) result:** $437,154 vs piece-1a baseline $668,570 = **−34.6%**. Ship-keep failed.
+
+**Diagnostic:** even with 2-consecutive-closes / 5-bar window, the rule was too aggressive. Trade count basically unchanged (10,999 → 11,078) but **win rate dropped 16pp** (65.3 → 49.2%) and total $ dropped 35%. The rule wasn't filtering — it was just exiting trades earlier as small "losses" where many would have ultimately won. Bulkowski's "throwback" is a price-touch-then-continue pattern; my rule conflated throwbacks (which shouldn't exit) with failures (which should). **Distinguishing the two cleanly needs volume confirmation or lower-low confirmation, not just close-position.** Marked TODO for future research.
+
+Reverted piece 2 via `git revert`. Both diag and live simulators back to piece 1a state.
+
+**Piece 3 (info-only overhead resistance) — shipped:**
+
+- New `detectOverheadResistance()` helper in `htf.ts`: scans ~1y back for prior local-max peaks (7-bar local maximum) above the breakout price but within 10%.
+- New `HtfExtras` fields: `hasOverheadResistance: boolean`, `nearestResistancePct: number | null`.
+- Applied to both `scanHtf` (fired) and `scanFormingHtf` (Watch tab).
+- **DOES NOT affect quality score** — the original bundle's −10/−5 penalty disqualified ~50% of setups, way too aggressive. This version is detection-only; recorded for future sizing / UI logic (per the dynamic position-size suggester architecture).
+
+**Expected validation:** ~identical numbers to piece 1a ($668,570) since this is behavior-neutral on selection + simulation. New fields appended to output; nothing else changes.
+
+**Files:** `server/signals/strategies/htf.ts`.
+
+**Summary of throwback fix outcome:**
+
+| Piece | Effect | Result | Verdict |
+|---|---|---|---|
+| 1 (original) | gate drop + remove vol score | $429K | revert (−25%) |
+| **1a (gate only)** | MIN 1.3 → 1.0, score intact | **$668,570** | **SHIP — new baseline (+17%)** |
+| 1b (vol score removal) | not tested separately | — | deferred |
+| 2 original | failed-breakout 1-close-3-bar | $105K | revert (−81%) |
+| 2 relaxed | failed-breakout 2-close-5-bar | $437K | revert (−35%) |
+| 3 (info-only) | resistance detection, no penalty | ~$668,570 | shipped (neutral) |
+
+**Net: piece 1a is the one keeper.** Strategy now scans more setups (including light-volume HTFs) and records overhead-resistance metadata for future use. No exit-logic changes survive.
+
+---
 ## 2026-05-20 — Piece 1 too aggressive: split into 1a (gate only) — REVERTED score change
 
 **Why:** Piece 1 (gate drop 1.3→1.0 + remove volume score bonus) ran $429,302 vs baseline $569,892 — −24.7%, below the 0.9× ship-keep floor. **Diagnosis:** I bundled two effects.

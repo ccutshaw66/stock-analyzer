@@ -34,6 +34,14 @@ export const BREAKOUT_PAD = 0.001;      // 0.1% above flag high
 // later, after piece 1a baseline is established.
 export const MIN_BREAKOUT_VOL_RATIO = 1.0;
 export const HTF_VOL_AVG_WINDOW = 30;   // Givens uses 30-bar avg
+// 2026-05-20 throwback fix piece 3 — overhead-resistance detection (INFO ONLY).
+// Records prior peaks within 10% above the breakout price so future sizing /
+// UI logic can use it. **Does NOT affect quality score in this version** —
+// the original bundle's −10 score penalty was too aggressive (filtered out
+// 50% of setups). Detection-only ships behavior-neutrally; future iteration
+// can layer it into position-size logic.
+export const OVERHEAD_RESISTANCE_PCT = 0.10;
+export const OVERHEAD_RESISTANCE_LOOKBACK_BARS = 252;
 
 export interface HtfExtras {
   poleStartPrice: number;
@@ -45,6 +53,15 @@ export interface HtfExtras {
   flagLow: number;
   flagPullbackPct: number;
   breakoutVolRatio: number;
+  /**
+   * Piece 3 (info-only): true if a prior local-max peak sits above the
+   * breakout price but within OVERHEAD_RESISTANCE_PCT. Reserved for future
+   * sizing / UI logic — does NOT affect quality score in this version.
+   * Per Bulkowski: 54% throwback rate, throwback trades rise 49% vs 100%.
+   */
+  hasOverheadResistance: boolean;
+  /** Distance from breakout to nearest overhead peak (% above), or null. */
+  nearestResistancePct: number | null;
 }
 
 export type HtfPattern = "HTF_Givens" | "HTF_Givens_Forming";
@@ -90,6 +107,45 @@ function rollingVolAvg(volumes: number[], window: number): number[] {
 
 function clampScore(s: number): number {
   return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+/**
+ * Piece 3 (info-only): scan backward from a candidate bar for prior local-max
+ * peaks above the price but within OVERHEAD_RESISTANCE_PCT. Returns the
+ * nearest peak's distance so future sizing / UI logic can grade by proximity.
+ *
+ * Peak = bar whose high strictly exceeds the highs of the K bars on each side
+ * (K=3 → local 7-bar maximum). Filters minor jitter, catches real swing highs.
+ *
+ * This does NOT affect quality scoring in piece 3 — the original bundle's
+ * −10/−5 penalty was too aggressive. Recorded for future use.
+ */
+function detectOverheadResistance(
+  highs: number[],
+  fromIdx: number,
+  refPrice: number,
+  lookbackBars = OVERHEAD_RESISTANCE_LOOKBACK_BARS,
+  withinPct = OVERHEAD_RESISTANCE_PCT,
+): { hasResistance: boolean; nearestPct: number | null } {
+  const PEAK_K = 3;
+  const ceiling = refPrice * (1 + withinPct);
+  const startIdx = Math.max(PEAK_K, fromIdx - lookbackBars);
+  let nearestPct: number | null = null;
+  for (let k = startIdx; k < fromIdx - PEAK_K; k++) {
+    const h = highs[k];
+    if (h <= refPrice || h > ceiling) continue;
+    let isPeak = true;
+    for (let j = 1; j <= PEAK_K; j++) {
+      if (highs[k - j] >= h || highs[k + j] >= h) {
+        isPeak = false;
+        break;
+      }
+    }
+    if (!isPeak) continue;
+    const pct = (h - refPrice) / refPrice;
+    if (nearestPct == null || pct < nearestPct) nearestPct = pct;
+  }
+  return { hasResistance: nearestPct != null, nearestPct };
 }
 
 /**
@@ -208,6 +264,9 @@ export function scanHtf(
     const finalScore = clampScore(score);
     if (finalScore < minScore) continue;
 
+    // Piece 3 (info-only) — record overhead resistance for downstream use.
+    const { hasResistance, nearestPct } = detectOverheadResistance(highs, i, closes[i]);
+
     hits.push({
       symbol,
       pattern: "HTF_Givens",
@@ -229,6 +288,8 @@ export function scanHtf(
         flagLow: bestFlagLow,
         flagPullbackPct: pullbackPct * 100,
         breakoutVolRatio: volRatio,
+        hasOverheadResistance: hasResistance,
+        nearestResistancePct: nearestPct != null ? Number((nearestPct * 100).toFixed(2)) : null,
       },
     });
     lastIdx = i;
@@ -330,6 +391,10 @@ export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
   if (pullbackPct <= 0.1) score += 10;
   else if (pullbackPct <= 0.15) score += 5;
 
+  // Piece 3 (info-only) — record overhead resistance at the trigger level.
+  const { hasResistance: fHasResistance, nearestPct: fNearestPct } =
+    detectOverheadResistance(highs, N - 1, triggerPrice);
+
   return {
     symbol,
     pattern: "HTF_Givens",     // shape unchanged — orchestrator overrides to mark forming
@@ -351,6 +416,8 @@ export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
       flagLow: bestFlagLow,
       flagPullbackPct: pullbackPct * 100,
       breakoutVolRatio: lastVolRatio,
+      hasOverheadResistance: fHasResistance,
+      nearestResistancePct: fNearestPct != null ? Number((fNearestPct * 100).toFixed(2)) : null,
     },
   };
 }
