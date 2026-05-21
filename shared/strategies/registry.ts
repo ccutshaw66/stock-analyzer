@@ -44,6 +44,15 @@ export interface StrategyTradeView {
    * fall back to share-fraction language when missing.
    */
   contractsShares?: number;
+  /**
+   * Live lifecycle state computed from bars walked from entry → today.
+   * Snapshot data lives in strategyData (locked at entry: stop, target,
+   * pole, flag). DYNAMIC data lives here (partialDone, currentMa20,
+   * hasStopped, hasTargeted, strength-day counter, peak/trough). The
+   * server attaches this on /api/trades for open HTF positions; manifest
+   * reads from it when present, falls back to strategyData otherwise.
+   */
+  lifecycleState?: Record<string, any> | null;
 }
 
 // ─── What each strategy declares ──────────────────────────────────────────
@@ -169,6 +178,7 @@ const HTF_MANIFEST: StrategyManifest = {
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "Pole", "Flag"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
+    const live = trade.lifecycleState ?? {};
     const entry = Math.abs(trade.openPrice);   // openPrice is signed; risk math wants absolute
     const current = trade.currentPrice;
     const shares = trade.contractsShares ?? 0;
@@ -176,8 +186,16 @@ const HTF_MANIFEST: StrategyManifest = {
     const target = (typeof data.targetPrice === "number" ? data.targetPrice : null)
       ?? (trade.target != null && trade.target > entry ? trade.target : null);
     const partialThreshold = entry * 1.05; // close >5% above entry
-    const ma20 = typeof data.ma20 === "number" ? data.ma20 : null;
-    const partialDone = data.partialDone === true;
+    // Dynamic fields: prefer the LIVE lifecycle state (server-computed by
+    // walking bars from entry to today). Snapshot field on strategyData is
+    // a fallback only — it's stale by definition for an active trade.
+    const ma20 = typeof live.currentMa20 === "number" ? live.currentMa20
+      : typeof data.ma20 === "number" ? data.ma20
+      : null;
+    const partialDone = live.partialDone === true || data.partialDone === true;
+    const partialPriceLive = typeof live.partialPrice === "number" ? live.partialPrice : null;
+    const partialDateLive = typeof live.partialDate === "string" ? live.partialDate : null;
+    const currentStrengthDays = typeof live.currentStrengthDays === "number" ? live.currentStrengthDays : 0;
 
     // Pre-computed share splits — every alert below uses these so the
     // trader sees real numbers, not abstract "1/3" arithmetic.
@@ -226,18 +244,25 @@ const HTF_MANIFEST: StrategyManifest = {
       }
     }
 
-    // Take 1/3 — strategy rule: at +5% close-strength, sell 1/3 of position
+    // Take 1/3 — strategy rule: 3 cumulative close-strength days (close >5%
+    // above entry) fires sale of 1/3 the position. The live lifecycle state
+    // tracks whether this has actually FIRED on bars (partialDone), the date
+    // it fired, the price, AND the current cumulative strength-day counter.
     if (!partialDone) {
       let state: DisplayPoint["state"] = "pending";
-      if (current != null && current > partialThreshold) state = "armed";
-      points.push({
-        label: "Take 1/3",
-        value: oneThirdShares > 0
-          ? `${oneThirdShares} sh above ${fmt$(partialThreshold)}`
-          : `Above ${fmt$(partialThreshold)}`,
-        state,
-      });
-      if (state === "armed" && current != null && oneThirdShares > 0) {
+      if (currentStrengthDays > 0) state = "armed";
+      else if (current != null && current > partialThreshold) state = "armed";
+      const valueText = oneThirdShares > 0
+        ? currentStrengthDays > 0
+          ? `${oneThirdShares} sh · ${currentStrengthDays}/3 strength days`
+          : `${oneThirdShares} sh above ${fmt$(partialThreshold)}`
+        : `Above ${fmt$(partialThreshold)}`;
+      points.push({ label: "Take 1/3", value: valueText, state });
+      // Only fire the action alert when the 3rd strength day completes AND
+      // the partial hasn't already been taken. currentStrengthDays === 0 with
+      // partialDone === false means we're still building toward the 3-day
+      // count or just had a non-strength day — informational only, no button.
+      if (currentStrengthDays >= 3 && current != null && oneThirdShares > 0) {
         const profitPerShare = current - entry;
         const lockedIn = oneThirdShares * profitPerShare;
         alerts.push({
@@ -245,20 +270,31 @@ const HTF_MANIFEST: StrategyManifest = {
           action: "take-partial",
           actionShares: oneThirdShares,
           actionLabel: `Sell ${oneThirdShares}`,
-          message: `Sell ${oneThirdShares} shares now to lock in ${fmt$0(lockedIn)} profit (1/3 of position). Remaining ${twoThirdsShares} trail under 20-MA.`,
+          message: `3rd close-strength day completed. Sell ${oneThirdShares} shares to lock in ${fmt$0(lockedIn)} profit (1/3 of position). Remaining ${twoThirdsShares} trail under 20-MA.`,
         });
       }
     } else {
-      points.push({ label: "Took 1/3", value: "✓", state: "past" });
+      // Partial fired — show the date + price it locked in.
+      const lockedAt = partialPriceLive != null ? ` @ ${fmt$(partialPriceLive)}` : "";
+      const onDate = partialDateLive ? ` on ${partialDateLive}` : "";
+      points.push({
+        label: "Took 1/3",
+        value: `✓${lockedAt}${onDate}`,
+        state: "past",
+      });
     }
 
-    // Trail 20-MA after partial — strategy rule: close-below-20MA exits the rest
+    // Trail 20-MA — only active AFTER the partial fires (per Givens' rule).
+    // currentMa20 comes from the live lifecycle (real 20-bar SMA on the
+    // latest bar). If we don't have ma20 yet, fall back to checking if the
+    // partial just fired and the data hasn't propagated.
     if (partialDone) {
       let state: DisplayPoint["state"] = "pending";
       if (ma20 != null && current != null && current < ma20) state = "triggered";
+      else if (ma20 != null && current != null && current < ma20 * 1.02) state = "armed";
       points.push({
         label: "Trail 20-MA",
-        value: ma20 != null ? `Below ${fmt$(ma20)}` : "20-MA not loaded",
+        value: ma20 != null ? `Exit below ${fmt$(ma20)}` : "computing…",
         state,
       });
       if (state === "triggered" && current != null) {
@@ -269,8 +305,15 @@ const HTF_MANIFEST: StrategyManifest = {
           actionShares: twoThirdsShares > 0 ? twoThirdsShares : null,
           actionLabel: twoThirdsShares > 0 ? `Close ${twoThirdsShares}` : "Close",
           message: remainingProfit != null
-            ? `EXIT REMAINING. Close below 20-MA — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
+            ? `EXIT REMAINING. Close ${fmt$(current)} below 20-MA ${fmt$(ma20!)} — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
             : `Close below 20-MA — exit remaining 2/3`,
+        });
+      } else if (state === "armed") {
+        alerts.push({
+          severity: "warn",
+          action: "hold",
+          actionShares: null,
+          message: `Within 2% of 20-MA (${fmt$(ma20!)}) — ready to exit remaining ${twoThirdsShares} on close below.`,
         });
       }
     }

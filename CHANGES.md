@@ -9,6 +9,62 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF lifecycle is now live — partial / 20-MA / stop / target update from bars every day
+
+**Why:** Chris: *"We have to have the stops and the exits, etc the WHOLE TRADE CYCLE not for one day that is absoluteoy stupid."* Snapshotting strategyData at entry locked in the static fields (stop / target / pole / flag) but left the *dynamic* parts — has the partial fired? what's the 20-MA today? has the stop been hit? — frozen at the moment the row was first observed. A row entered three weeks ago still said "Take 1/3 — above $X" even if the partial had already fired two weeks ago. Foundation-broken.
+
+**Why the strength-day count also had to be fixed:** initial draft counted any close above entry × 1.05 as a "strength day." Chris: *"the take profit has to be on a 3d STRONG move. NOT just because it is 3 days and it automatically triggers a sell and the price is up."* Selling into chop / dojis / wide-range bars closing on lows is not what the rule is trying to do.
+
+**The fix is a pure-function lifecycle simulator** that walks bars from entry to today on every `/api/trades` GET. Snapshot data still lives on `strategyData` (locked at entry). DYNAMIC data lives on a new `lifecycleState` field the server computes per request. Manifests prefer `lifecycleState` and fall back to `strategyData` only when it's missing.
+
+**What:**
+
+### Server: lifecycle simulator
+- **`server/compartments/htf-scanner/lifecycle.ts`** (new) — `computeHtfLifecycle(bars, entryDate, entryPrice, flagHigh, flagLow, targetPrice)`. Walks every bar from entry index to the latest bar and returns:
+  - `daysHeld`, `barsHeld`
+  - `peakSinceEntry`, `troughSinceEntry`, `maxGainPct`, `maxDrawdownPct`
+  - `hasStopped` + `stoppedDate` (intraday low ≤ flagLow × 0.99)
+  - `hasTargeted` + `targetedDate` (intraday high ≥ targetPrice)
+  - `hadFailedBreakout` (close back below flag_high within first 3 bars — informational; auto-exit experiment failed 2026-05-20)
+  - `partialDone`, `partialDate`, `partialPrice`
+  - `currentStrengthDays` — cumulative counter, resets on any non-qualifying close
+  - `currentMa20` — real 20-bar SMA on closes at the latest bar (with full bar warm-up window)
+  - `currentPct` — total trade-level % change to the latest close
+
+### Strength-day definition tightened (Chris's correction)
+A "strong" close-day must satisfy **all** of:
+1. **Up day**: close > previous close
+2. **Closing strength**: close ≥ midpoint of the bar's range (buyers in control at the close, not selling into weakness)
+3. **Profit zone**: close > entry × 1.05
+4. **Bullish body**: close > open (real up-bar, not a doji printing above prior close)
+
+Any day that fails resets the counter to 0 — strength must be consecutive, not cumulative across red days. So the 3rd day that fires the partial really is the third *strong* close in a row.
+
+### Server: /api/trades enrichment
+- **`server/routes.ts`** — open HTF trades get `lifecycleState` attached via a `Promise.all` loop calling `getHtfBars(symbol)` + `computeHtfLifecycle(...)`. Closed trades skip (`closeDate !== null`). Errors swallow per-trade so one bad symbol doesn't blank the response.
+
+### Shared: registry contract
+- **`shared/strategies/registry.ts`**:
+  - `StrategyTradeView` gains optional `lifecycleState?: Record<string, any> | null`.
+  - HTF `evaluate()` reads `currentMa20`, `partialDone`, `partialDate`, `partialPrice`, `currentStrengthDays` from `lifecycleState` first; falls back to `strategyData.ma20` / `data.partialDone` for backward compat.
+  - **Take 1/3 row** now shows live counter — e.g. `"15 sh · 2/3 strength days"` — instead of a static "above $X" string. Fires the action alert only when `currentStrengthDays ≥ 3`, not on threshold-crossing.
+  - **Took 1/3 row** shows the actual fire date + price — e.g. `"✓ @ $12.40 on 2026-05-14"`.
+  - **Trail 20-MA row** uses the live `currentMa20` value; armed at within 2% of the MA, triggered on close below.
+
+### Client: passthrough
+- **`client/src/pages/trade-tracker.tsx`** — `Trade` interface gains `lifecycleState?`; per-strategy table passes `g.lots[0].lifecycleState` through `evalLot`.
+
+### Result
+- Every load of `/tracker` walks fresh bars for each open HTF position. Stops, targets, partials, the 20-MA exit — all of it updates on every page load throughout the life of the trade, not just at entry.
+- Partial-1/3 trigger is now an actual 3-day strong-move detector. False fires from threshold-grazing days are eliminated.
+
+### Files
+- new: `server/compartments/htf-scanner/lifecycle.ts`
+- mod: `server/routes.ts` (enriches /api/trades open HTF trades)
+- mod: `shared/strategies/registry.ts` (StrategyTradeView field; HTF evaluate reads lifecycle)
+- mod: `client/src/pages/trade-tracker.tsx` (Trade interface field; passes through to evalLot)
+
+---
 ## 2026-05-21 — Persist HTF strategyData on first observation — symbols out of live scan now fill in too
 
 **Why:** The 2026-05-21 client-side backfill from the live HTF scan only helped symbols that the 1-day live scanner still sees. Trades whose breakouts fired >1 day ago dropped to all-"—" cells with no way to recover. Chris: *"3. If a row still shows all '—', the symbol fell out of the live scan window…"* — explicit request to close that gap.

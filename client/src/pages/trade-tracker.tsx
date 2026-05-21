@@ -75,6 +75,10 @@ interface Trade {
   strategy: string;
   strategyReason: string | null;
   strategyData: Record<string, any> | null;
+  // Live lifecycle state computed server-side by walking bars from entry
+  // to today. Attached on /api/trades for open HTF trades. Drives the
+  // manifest's dynamic decisions (partial fired?, current 20-MA, etc.).
+  lifecycleState?: Record<string, any> | null;
   createdAt: string;
 }
 
@@ -1390,6 +1394,11 @@ export default function TradeTracker() {
                         strategyReason: g.lots[0].strategyReason,
                         strategyData: effectiveStrategyData,
                         contractsShares: g.totalQty,
+                        // Pass through the server-computed lifecycle. Manifest
+                        // prefers this for dynamic fields (partial fired?
+                        // current 20-MA?). Snapshot data in strategyData is
+                        // entry-time only — stale by definition mid-trade.
+                        lifecycleState: g.lots[0].lifecycleState,
                       };
                       const evalResult = manifest.evaluate(evalLot);
                       const pointByLabel = new Map(evalResult.displayPoints.map(p => [p.label, p]));

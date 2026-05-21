@@ -6152,7 +6152,38 @@ export async function registerRoutes(
   app.get("/api/trades", async (req, res) => {
     try {
       const allTrades = await storage.getAllTrades(req.user!.id);
-      res.json(allTrades);
+      // Enrich OPEN HTF trades with live lifecycle state (walks bars from
+      // entry → today: partialDone, currentMa20, hasStopped, hasTargeted,
+      // hadFailedBreakout, strength-day counter, peak/trough). The
+      // Current Positions page consumes `lifecycleState` so each row
+      // reflects the WHOLE trade cycle, not just a 1-day snapshot.
+      const { getHtfBars } = await import("./data/htf-ohlcv-cache");
+      const { computeHtfLifecycle } = await import("./compartments/htf-scanner/lifecycle");
+      const enriched = await Promise.all(
+        allTrades.map(async (t: any) => {
+          if (t.strategy !== "htf" || t.closeDate !== null) return t;
+          try {
+            const bars = await getHtfBars(t.symbol);
+            if (bars.length === 0) return t;
+            const data = (t.strategyData ?? {}) as any;
+            const entryPrice = Math.abs(t.openPrice);
+            const lifecycleState = computeHtfLifecycle(
+              bars,
+              t.tradeDate,
+              entryPrice,
+              typeof data.flagHigh === "number" ? data.flagHigh : null,
+              typeof data.flagLow === "number" ? data.flagLow : null,
+              typeof data.targetPrice === "number" ? data.targetPrice : (t.target ?? null),
+            );
+            return { ...t, lifecycleState };
+          } catch {
+            // Best-effort enrichment — if a single ticker's bars fail to load,
+            // the trade still renders, just without lifecycle state.
+            return t;
+          }
+        }),
+      );
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get trades" });
     }
