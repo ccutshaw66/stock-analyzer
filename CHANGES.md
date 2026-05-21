@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF time-stop — FINAL: 21-bar exit fails badly, experiment closed
+
+**A/B result (timeStopBars=21 vs locked baseline)**
+
+| | Baseline | Time-stop 21 |
+|---|---|---|
+| Total P&L | $698,088 | **$541,963** |
+| Δ vs baseline | — | **−$156,125 (−22.4%)** |
+| Closed trades | 10,888 | 10,908 |
+| Win rate | 64.8% | 54.1% |
+
+**Verdict**: 21-bar time-stop loses 22% vs baseline. Win rate drops 10pp because the time-stop converts what would have been eventual winners into early "no new high" exits — Bulkowski's "50% reach ultimate high in ~21 bars" stat is about *when peaks happen on average*, not "exit if no new high in 21 bars." Different question. Many of our biggest winners (QUBT, MARA, SOUN, SMCI) pull back deeply mid-trade then rip to new highs well past the 21-bar mark; the time-stop kills them right before the re-rally.
+
+**What ships**: harness stays in code (gated behind `?timeStopBars=N`, default 0 = disabled = baseline). Default behavior unchanged. Closing this experiment.
+
+**Why no 30/40-bar retest**: the existing trail (close < 20MA after partial) already covers the "dead trade" case the time-stop tries to handle. Longer time-stops would recover some of the loss but are unlikely to BEAT baseline. Top-3 #3 (Wyckoff Spring / Pipe Bottom / Rounding Bottom as new strategies) is the higher-leverage next move.
+
+---
 ## 2026-05-21 — HTF time-stop harness (gated behind timeStopBars query param)
 
 **Why:** Bulkowski's stat: 50% of HTFs reach their ultimate high in ~3 weeks (~21 trading days); holders past that point are mostly losing money or drifting sideways. Standard "time stop" technique exits stalled trades to free up capital and capture mean-reversion before it turns into a loss.
