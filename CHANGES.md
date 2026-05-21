@@ -9,6 +9,60 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF baseline: $570K on the real universe at $1,750/trade
+
+**Why:** Lock in the apples-to-apples HTF baseline so every future strategy tweak (R/R threshold, score floor, partial-exit rule, universe filter, etc.) can be re-run against the same basket + position size, and the diff is the honest test. Mirrors the "BBTC+VER $419K" anchor from 2026-05-08 — without a fixed baseline, comparisons drift and "did this change help?" becomes unanswerable.
+
+**The run that defines the baseline:**
+
+```
+GET /api/diag/strategy-htf-pnl?universe=htf&limit=500&days=3650&positionSize=1750&minScore=70
+```
+
+- Universe: 491 tickers, top-N by volume from `getHtfUniverse()` (FMP screener: $5–$75, vol ≥750K, mkt cap ≥$200M, NYSE/NASDAQ/AMEX, no ETFs/funds, no IPOs <6mo)
+- Window: ~10 years (Sep 2015 → May 2026)
+- Position size: $1,750/trade (25% max-position cap on a $7K account)
+- minScore: 70 (production threshold)
+- Run date: 2026-05-20
+
+**Result (the baseline):**
+
+| Metric | Value |
+|---|---|
+| Total $ P&L | **+$569,892** |
+| Closed trades | 8,955 |
+| Win rate | 65.4% (5,859W / 3,096L) |
+| Avg $ per trade | $63.64 |
+| Avg $ per ticker | $1,161 |
+| Profitable tickers | 271 / 491 (55%) |
+| Unprofitable tickers | 205 / 491 (42%) |
+| Flat tickers | 15 / 491 |
+| SPY benchmark (same $1,750) | +$4,730 (270% B&H) |
+
+**Top contributors (real R-multiples on the actual target universe):**
+QUBT +$43.9K (R 7.13), BBBY +$36.7K (R 4.01)*, SOUN +$19.0K (R 3.55), RIOT +$18.0K (R 1.59), LWLG +$17.6K (R 1.66), ERAS +$16.9K (R 4.23), MARA +$15.5K (R 2.26), GME +$14.9K (R 4.48), CVNA +$14.2K (R 1.58), CELH +$13.4K
+\* BBBY went bankrupt — strategy captured dead-cat bounces and exited before final collapse. Plausible but leans on clean live exits.
+
+**Bottom contributors (all bounded ~$2–3K):**
+NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −$2.9K, ARRY −$2.7K, RAMP −$2.6K, QXO −$2.6K, BANC −$2.5K
+
+**Caveats baked in for future-comparison honesty:**
+- **Survivorship bias** — universe pulled at run date; delisted-since-2015 names not included. Real 10y losses would be somewhat higher.
+- **No portfolio cap applied in the eval** — the harness fires every detected setup; live `/htf` enforces max 5 concurrent + 30% open-risk + 40% sector cap, which reduces realized trade count (not per-trade economics).
+- **No commissions/slippage** — real-world ~$5–$15 round trip on $1,750 trades + 0.05–0.1% slippage; ballpark $570K → ~$520K–$540K net.
+- **Realistic account-scale read** — 8,955 trades / 10y across 491 tickers, capped at 5 concurrent → roughly 50–100 trades/year per user → $3K–$8K realized P&L/year on a $7K account, scaling with capital.
+
+**How to use this baseline for future changes:**
+1. Run the exact URL above. Capture totalPnLDollar.
+2. Apply the candidate change (new R/R rule, score change, exit tweak, universe filter shift, etc.).
+3. Re-run the exact URL. Capture totalPnLDollar.
+4. Δ$ P&L = candidate − baseline. Positive Δ on the same basket + same window + same position size = real improvement. Negative = regression, don't ship.
+
+**Don't compare against a different basket, window, or position size** — that's noise, not signal. Bump positionSize or symbols list only when the account grows enough to justify it, then re-baseline.
+
+**Files:** CHANGES.md (this entry).
+
+---
 ## 2026-05-20 — HTF basket P&L: `universe=htf` mode + realistic position-size default
 
 **Why:** First HTF basket run used the 15-ticker ALWAYS_WARM list at $10K/trade and reported +$131K over 10y. Two problems: (1) ALWAYS_WARM is mega-caps + indexes — the HTF universe filter explicitly targets $5–$75 small/mid-caps because that's what the $7K account can afford to trade. Mega-cap result is theatre. (2) $10K/trade isn't reachable; on a $7K account the max position is $1,750 (25% cap). The numbers are off by a factor of ~5.7×.
