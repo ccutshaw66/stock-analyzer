@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring detector (step 1 of Top-3 #3)
+
+**Why:** Spec called for the detector first, then hand-verification, then backtest harness, then registry plug-in (only if positive-EV gate clears). This ships step 1 — the detection logic.
+
+**What:** New file `server/signals/strategies/wyckoff-spring.ts` parallel to `htf.ts`. Exports `scanWyckoffSpring()` returning `WyckoffSpringHit[]` sorted newest first. Each hit captures the four pattern phases (TR → spring → optional test → SOS) and writes the same shape downstream consumers (backtest harness, future manifest, /htf chart route) need: `breakoutDate`, `breakoutPrice`, `targetPrice`, `stopPrice`, `qualityScore`, plus `extras` with TR boundaries, spring metrics, and the info-only overhead-resistance check (mirrors HTF piece 3).
+
+**Detection summary** (constants exported for tuning):
+- TR: 20–120 days, width ≤25%, ≥2 high touches + ≥2 low touches within 2% bands
+- Spring: pierce ≥0.5% below TR_low intraday, close within 1% of TR_low, vol ≥1.0× range avg
+- Test (optional): low within 2% of spring low, vol ≤70% of spring vol, within 10 bars
+- SOS: close above (TR_high+TR_low)/2 within 15 bars of spring, vol ≥1.2× range avg
+- Stop: spring_low × 0.98 · Target: SOS_close + (TR_high − TR_low)
+- Quality: base 50 + up to 50 bonus across pierce depth, spring vol, test presence, SOS vol, range tightness, range duration. ≥70 = production fire.
+
+**Files**
+- new: `server/signals/strategies/wyckoff-spring.ts` (319 lines)
+
+**TypeScript:** new file compiles clean (zero errors in `wyckoff-spring.ts`). Pre-existing repo-wide type warnings unchanged.
+
+**Behaviorally inert:** detector is exported but not yet wired into any route, scanner, or registry. Production traffic unaffected.
+
+**Next:** Hand-verify against AAPL 2016, AMZN 2018, NVDA 2022 on the existing `/htf/:symbol` chart route (drop in a debug helper that calls `scanWyckoffSpring()` on the bars feeding the chart, log hits to console). Once visual sanity-checked, build the backtest harness at `server/diag/strategy-wyckoff-spring-pnl.ts`.
+
+---
 ## 2026-05-21 — Wyckoff Spring strategy SPEC (Top-3 #3)
 
 **Why:** Trading-library findings tagged Wyckoff Spring as the highest-conviction *new strategy* to add to the universe (alongside Pipe Bottom and Rounding Bottom). With time-stop and resistance-as-sizing both closed as failed experiments on the existing HTF, the next pile of EV is adding diversifying strategies rather than further-tuning HTF.
