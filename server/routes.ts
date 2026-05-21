@@ -5354,6 +5354,62 @@ export async function registerRoutes(
     }
   });
 
+  // HTF VALIDATION harness — Walk-Forward Efficiency + Monte Carlo + R-metrics.
+  // Cardoza-style "is this a real edge or an in-sample fit" check. Required
+  // before pushing any HTF parameter change. Wraps the same simulator as
+  // strategy-htf-pnl so trade rules stay single-sourced.
+  //
+  //   GET /api/diag/strategy-htf-validation?universe=htf&days=3650&positionSize=1750&minScore=70&isYears=7&oosYears=3&mcRuns=1000
+  //   GET /api/diag/strategy-htf-validation?symbols=AAPL,MSFT&days=3650
+  //
+  // Defaults: universe-htf via limit=500, days=3650, positionSize=1750,
+  // minScore=70, isYears=7, oosYears=3, mcRuns=1000 (clamped 100..5000).
+  app.get("/api/diag/strategy-htf-validation", async (req, res) => {
+    try {
+      const { runStrategyHtfValidation, resolveHtfUniverseSymbols } = await import(
+        "./diag/strategy-htf-validation"
+      );
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = await resolveHtfUniverseSymbols(limit);
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const isYears = Math.min(Math.max(Number(req.query.isYears) || 7, 1), 20);
+      const oosYears = Math.min(Math.max(Number(req.query.oosYears) || 3, 1), 20);
+      const mcRuns = Math.min(Math.max(Number(req.query.mcRuns) || 1000, 100), 5000);
+      const result = await runStrategyHtfValidation({
+        symbols,
+        days,
+        positionSize,
+        minScore,
+        isYears,
+        oosYears,
+        mcRuns,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-htf-validation failed" });
+    }
+  });
+
   // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
   // exactly what FMP's symbol-positions-summary + extract-analytics/holder
   // endpoints return for a ticker. Used for diagnosing field-name drift on

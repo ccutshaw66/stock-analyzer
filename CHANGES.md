@@ -9,6 +9,41 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF validation harness: WFE + Monte Carlo + R-metrics (`/api/diag/strategy-htf-validation`)
+
+**Why:** Top-3 push priority #1 from the 16-book trading-library read (see `reference_trading_library_findings.md`). Cardoza's "Introduction to Trading System Development" Ch. 4 makes the case bluntly: a $570K backtest is a **single in-sample realization** until proven otherwise. Pushing parameter changes (drop volume gate, failed-breakout exit, resistance check, score rubric v2) against an unvalidated baseline risks optimizing to noise. This harness answers the actual question — "is HTF a real edge?" — before any tuning lands.
+
+**What:**
+- **`server/diag/strategy-htf-validation.ts`** (NEW, ~430 lines) — wraps `runStrategyHtfPnL` so trade simulation stays single-sourced, then layers three diagnostics on top of the per-trade records:
+
+  **1. Walk-Forward Efficiency (WFE)** — splits the window by date into in-sample (default 7y) and out-of-sample (default 3y) segments. Reports per-segment $-P&L, $/year, win rate, expectancy R-multiple, and the ratio `WFE = OOS-$/year ÷ IS-$/year`. Cardoza-anchored verdict buckets: ≥1.0 strong-edge, ≥0.5 real-edge (degraded but real), ≥0.25 marginal, <0.25 curve-fit risk.
+
+  **2. Monte Carlo trade-order resampling** — shuffles the closed-trade order N times (default 1000, clamped 100–5000) with a seeded Mulberry32 PRNG (reproducible). For each shuffle, builds the sequential equity curve and captures max peak-to-trough drawdown. Reports the 50th / 95th / 99th percentile drawdowns. **MC95 is the practical risk anchor** — historical max-DD is a single realization; MC95 is what to size for.
+
+  **3. R-multiple metrics (Cardoza §4.3)** — expectancy (mean R), R-stdev, **System Quality Number (SQN) = expectancy × √N / σ(R)** with the canonical bucket label ("below-average / near-average / average / good / excellent / superb / holy-grail"), profit factor (Σwins / |Σlosses|), trades-per-year, and expectunity (expectancy × trades/year). Skips Sharpe/Sortino/MAR per Cardoza — R-based metrics dominate for discrete-trade systems.
+
+- **`server/routes.ts`** — new endpoint:
+  ```
+  GET /api/diag/strategy-htf-validation?universe=htf&days=3650&positionSize=1750&minScore=70&isYears=7&oosYears=3&mcRuns=1000
+  GET /api/diag/strategy-htf-validation?symbols=AAPL,MSFT&days=3650
+  ```
+  Same `universe=htf` ergonomics as `/api/diag/strategy-htf-pnl`. Defaults: 500-ticker universe / 10y / $1,750 per trade / minScore 70 / 7y IS / 3y OOS / 1000 MC shuffles.
+
+**How to read the result:**
+- `walkForward.verdict`: if "strong-edge" or "real-edge", parameter changes are safe to ship. If "marginal", investigate the OOS regime before declaring curve-fit. If "curve-fit-risk", **do not push parameter changes** — rules need re-derivation.
+- `monteCarlo.mc95MaxDrawdownPct`: size such that this drawdown is tolerable. If >300% of one position, verify the max-concurrent-positions cap covers the path.
+- `metrics.sqn`: target ≥2.0 (Cardoza "good"). HTF baseline should clear easily given 8,955 trades.
+- `metrics.sampleSizeOk`: must be true. <30 trades = don't trust any of these numbers.
+
+**Foundation note:** this harness is the gate for top-3 push priorities #2 (HTF throwback fix — drop volume gate + failed-breakout exit + resistance check) and #3 (Wyckoff Spring + Pipe Bottom weekly + Rounding Bottom as new strategies). Each parameter change gets re-run through this harness and compared to baseline; ship only if WFE stays ≥0.5 and MC95 doesn't blow out.
+
+**Strictly additive.** New file + new route; no existing code touched. Trade simulation reuses `runStrategyHtfPnL` so the underlying numbers stay consistent with the 2026-05-20 baseline.
+
+**Files:** `server/diag/strategy-htf-validation.ts` (new), `server/routes.ts`.
+
+Rollback tag will follow this entry.
+
+---
 ## 2026-05-20 — Strategy-tagged trades + Current Positions grouped by strategy with lifecycle alerts
 
 **Why:** Two compounding issues surfaced today:
