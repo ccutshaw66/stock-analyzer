@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — Piece 1 too aggressive: split into 1a (gate only) — REVERTED score change
+
+**Why:** Piece 1 (gate drop 1.3→1.0 + remove volume score bonus) ran $429,302 vs baseline $569,892 — −24.7%, below the 0.9× ship-keep floor. **Diagnosis:** I bundled two effects.
+- Gate drop = additive (light-vol breakouts now qualify) → should ADD trades
+- Score bonus removal = subtractive (heavy-vol setups lose +15 score → drop below `minScore=70`) → REMOVED 22% of trades
+
+Per-trade economics actually IMPROVED on piece 1 (expectancy 0.175 → 0.185, MC95 $12,858 → $11,565, win rate preserved). Just fewer trades. But raw $-total failed the floor.
+
+**What:** keep the gate threshold change (1.3 → 1.0), restore the volume score bonus. Test again as piece 1a. Score bonus removal becomes a SEPARATE piece (1b) tested only after 1a is validated.
+
+**Files:** `server/signals/strategies/htf.ts` (one constant changed + score rubric restored).
+
+**Validation gate:** same `/api/diag/strategy-htf-validation` call. Expected outcome on piece 1a: trade count increases (light-vol setups added back, no score-driven removal), total $ ≥ baseline, WFE preserved.
+
+---
 ## 2026-05-20 — HTF throwback fix piece 1/3: drop volume gate (re-ship after bundle revert)
 
 **Why:** First of three calibrated pieces re-shipped after the bundle revert. Drops only the volume gate — should be neutral-to-positive in isolation since Bulkowski's HTF stats show light-vol breakouts outperform heavy 79% vs 63%. Each piece will be validated independently before the next ships.
