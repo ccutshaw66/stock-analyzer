@@ -345,6 +345,17 @@ function TradeForm({ mode, initial, settings, onClose }: {
   // 'manual' (or whatever was saved). 'other' reveals the reason text input.
   const [strategy, setStrategy] = useState<string>(initial?.strategy || "manual");
   const [strategyReason, setStrategyReason] = useState<string>(initial?.strategyReason || "");
+  // Per-trade stop + target. Stored on strategyData so the form lets the user
+  // record real risk levels without a schema change. The HTF Portfolio reads
+  // these via strategyData.stopPrice / strategyData.targetPrice.
+  const [stopPrice, setStopPrice] = useState<string>(() => {
+    const v = (initial?.strategyData as any)?.stopPrice;
+    return typeof v === "number" ? String(v) : "";
+  });
+  const [targetPrice, setTargetPrice] = useState<string>(() => {
+    const v = (initial?.strategyData as any)?.targetPrice;
+    return typeof v === "number" ? String(v) : "";
+  });
 
   // CTV dual-vertical fields
   const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
@@ -425,9 +436,19 @@ function TradeForm({ mode, initial, settings, onClose }: {
       behaviorTag: behaviorTag || null,
       strategy,
       strategyReason: strategy === "other" ? (strategyReason.trim() || null) : null,
-      // Preserve any existing strategyData on edit (HTF/BBTC/etc. snapshots
-      // captured at trade open); manual edits to other fields don't wipe it.
-      strategyData: initial?.strategyData ?? null,
+      // Merge stop + target into strategyData. Preserves any existing snapshot
+      // fields (pole/flag/breakout for HTF) so edits don't wipe them.
+      strategyData: (() => {
+        const existing = (initial?.strategyData ?? {}) as Record<string, any>;
+        const merged: Record<string, any> = { ...existing };
+        const stopNum = parseFloat(stopPrice);
+        const targetNum = parseFloat(targetPrice);
+        if (Number.isFinite(stopNum) && stopNum > 0) merged.stopPrice = stopNum;
+        else delete merged.stopPrice;
+        if (Number.isFinite(targetNum) && targetNum > 0) merged.targetPrice = targetNum;
+        else delete merged.targetPrice;
+        return Object.keys(merged).length > 0 ? merged : null;
+      })(),
     };
 
     // Historical: include close data
@@ -500,6 +521,46 @@ function TradeForm({ mode, initial, settings, onClose }: {
                 required={getStrategyManifest(strategy).requiresReason}
               />
             )}
+          </div>
+
+          {/* Stop + Target — feed risk + lifecycle on Current Positions */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Stop Loss <span className="text-muted-foreground/60">($)</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                value={stopPrice}
+                onChange={e => setStopPrice(e.target.value)}
+                placeholder="e.g. 5.43"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
+                data-testid="input-stop-price"
+              />
+              <div className="text-2xs text-muted-foreground mt-1">
+                Where you'll exit if it goes against you. Drives "At risk" + DUMP alert.
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                Target <span className="text-muted-foreground/60">($)</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                value={targetPrice}
+                onChange={e => setTargetPrice(e.target.value)}
+                placeholder="e.g. 9.86"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
+                data-testid="input-target-price"
+              />
+              <div className="text-2xs text-muted-foreground mt-1">
+                Where you'll take profit. Drives "TAKE 1/3" alert.
+              </div>
+            </div>
           </div>
 
           {/* Type + Pilot/Add */}

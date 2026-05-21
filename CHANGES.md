@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Add/Edit Trade form: Stop + Target inputs that feed risk math
+
+**Why:** The HTF Portfolio fix earlier this session made the table honest — but every existing trade showed "—" for Stop / Target / At risk because no UI had ever recorded those values. Honest-but-useless. Add Stop + Target inputs to the trade form so the user can write real risk levels.
+
+**What:**
+- **`client/src/pages/trade-tracker.tsx`** — two new numeric inputs on the Add/Edit Trade modal (placed right after the Strategy dropdown, before Type/Pilot-Add):
+  - **Stop Loss ($)** — placeholder example, hint "Where you'll exit if it goes against you. Drives 'At risk' + DUMP alert."
+  - **Target ($)** — hint "Where you'll take profit. Drives 'TAKE 1/3' alert."
+- Values save into `strategyData.stopPrice` and `strategyData.targetPrice` so the HTF Portfolio loader picks them up via the same path it reads HTF setup snapshots.
+- On Edit, fields pre-populate from existing `strategyData`. Edits preserve any other snapshot fields (pole/flag/breakout) — merge, don't overwrite.
+- Empty values delete the field from `strategyData` rather than storing 0 — null = no stop recorded, distinct from "stop is $0".
+
+**Net behaviour:** edit PURR / NVTS / ONDS → enter your real stop and target → save → HTF Portfolio table populates Stop / Target / At risk / DUMP NOW alerts. Same for any new trade.
+
+**Files:** `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — HTF Portfolio tab: real Stop/Target/Current/P&L, clickable rows, fixed entry sign
 
 **Why:** Tab was showing misleading data:
