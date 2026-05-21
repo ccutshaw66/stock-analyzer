@@ -9,6 +9,40 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — REVERT: HTF throwback fix bundle (failed validation criteria)
+
+**Why:** The throwback fix shipped earlier today (commit `5ac7299`) cut total $-P&L from $569,892 → $105,524 (−81.5%) — well below the 0.9× ship-keep threshold. Reverted via `git revert 5ac7299`.
+
+**What the validation showed:**
+
+| Metric | Baseline | After fix | Δ |
+|---|---|---|---|
+| Total $ P&L | $569,892 | $105,524 | **−81.5%** ❌ |
+| Closed trades | 8,955 | 4,422 | −50.6% |
+| Win rate | 65.4% | 45.5% | −19.9 pp |
+| Avg win | +24.2% | +13.1% | smaller |
+| Avg loss | **−20.5%** | **−8.6%** | **−58% (real risk improvement)** |
+| WFE | 1.98 | 1.244 | still strong-edge |
+| SQN | 10.75 | 4.57 | still "superb" |
+| MC95 drawdown | $12,858 | $12,341 | ~same |
+
+**Diagnosis:** the three changes acted too aggressively in combination.
+- The **overhead-resistance penalty** (−10/−5 score) disqualified ~50% of setups via the minScore≥70 gate. Per-ticker trade count halved.
+- The **failed-breakout exit** (close back below `flag_high` within 3 bars) cut some genuine winners short at small losses — explains the 20pp win-rate drop and the smaller avg win.
+- The **volume gate drop** was probably neutral; not the cause.
+
+The fix delivered real risk improvement (avg loss −58%) but at too steep a profit cost.
+
+**Plan:** re-ship each piece independently in calibrated form, validate each against baseline, keep only the survivors.
+1. Volume gate drop alone (additive, expected neutral-to-positive).
+2. Failed-breakout exit RELAXED — require 2 consecutive closes below `flag_high`, window extended to 5 bars (was 3).
+3. Overhead resistance as a FLAG only — keep `detectOverheadResistance()` + `hasOverheadResistance` field, drop the score penalty. Reserve for future sizing logic.
+
+**Files restored:** `server/signals/strategies/htf.ts`, `server/diag/strategy-htf-pnl.ts`, `server/compartments/htf-scanner/backtest.ts` — all back to the post-validation-harness state.
+
+Rollback tag for THIS revert: `safe/20260520-225120` (state right after the throwback fix landed — useful only if we change our mind and want the bundle back).
+
+---
 ## 2026-05-20 — Dynamic position-size suggester (HTF Phase 1/2/3)
 
 **Why:** Cardoza Monte Carlo on the locked baseline showed MC95 max drawdown ~$12,858 at $1,750/trade — that's 1.85× a $7K account. The strategy is validated (WFE 1.98 / SQN 10.75 / strong-edge), so the fix isn't to change the rules; it's to scale position size to *cumulative HTF realized P&L*, so drawdowns are always paid out of profits already earned, never out of starting capital. Three phases anchored to the MC95 stat scaled linearly:
@@ -60,10 +94,6 @@ during the prior Perplexity/Claude session).
 - New MC95 not blown out.
 
 If either criterion fails, revert via the safe tag.
-
-**Files:** `server/signals/strategies/htf.ts`, `server/diag/strategy-htf-pnl.ts`, `server/compartments/htf-scanner/backtest.ts`.
-
-Rollback tag will follow.
 
 ---
 ## 2026-05-20 — HTF validation harness: WFE + Monte Carlo + R-metrics (`/api/diag/strategy-htf-validation`)
