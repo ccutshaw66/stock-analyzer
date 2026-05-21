@@ -373,6 +373,202 @@ const HTF_MANIFEST: StrategyManifest = {
 };
 
 /**
+ * Wyckoff Spring — Accumulation-phase false breakdown reversal.
+ * Lifecycle: Entry @ next open after SOS bar → Stop @ spring_low × 0.98 →
+ * Take 1/3 after 2 consecutive daily closes above entry × 1.10 → Trail
+ * remaining 2/3 below 20-day MA after partial fires.
+ *
+ * Test bar REQUIRED at detection (validated 2026-05-21 — tested cohort
+ * earns $44.10/trade vs $24.81/trade untested across 491-ticker / 10y
+ * basket; full strategy clears acceptance gate at 58.7% WR / $10,362
+ * basket P&L / 235 trades).
+ */
+const WYCKOFF_SPRING_MANIFEST: StrategyManifest = {
+  id: "wyckoff-spring",
+  name: "Wyckoff Spring",
+  shortName: "Spring",
+  description: "False breakdown at trading-range bottom → SOS reversal (Wyckoff accumulation)",
+  color: "bull",
+  requiresReason: false,
+  columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "TR range", "Spring"],
+  evaluate(trade) {
+    const data = trade.strategyData ?? {};
+    const live = trade.lifecycleState ?? {};
+    const entry = Math.abs(trade.openPrice);
+    const current = trade.currentPrice;
+    const shares = trade.contractsShares ?? 0;
+    const stop = typeof data.stopPrice === "number" ? data.stopPrice : null;
+    const target = (typeof data.targetPrice === "number" ? data.targetPrice : null)
+      ?? (trade.target != null && trade.target > entry ? trade.target : null);
+    const partialThreshold = entry * 1.10; // 2 consecutive closes above this
+    const ma20 = typeof live.currentMa20 === "number" ? live.currentMa20
+      : typeof data.ma20 === "number" ? data.ma20
+      : null;
+    const partialDone = live.partialDone === true || data.partialDone === true;
+    const partialPriceLive = typeof live.partialPrice === "number" ? live.partialPrice : null;
+    const partialDateLive = typeof live.partialDate === "string" ? live.partialDate : null;
+    const currentGainDays = typeof live.currentGainDays === "number" ? live.currentGainDays : 0;
+
+    const oneThirdShares = Math.max(0, Math.floor(shares / 3));
+    const twoThirdsShares = Math.max(0, shares - oneThirdShares);
+
+    const points: DisplayPoint[] = [];
+    const alerts: LifecycleAlert[] = [];
+
+    points.push({
+      label: "Entry",
+      value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past",
+    });
+
+    if (stop != null) {
+      const dollarsAtRisk = shares > 0 ? Math.max(0, shares * (entry - stop)) : null;
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current <= stop) state = "triggered";
+      else if (current != null && current <= stop * 1.03) state = "armed";
+      points.push({
+        label: "Stop",
+        value: dollarsAtRisk != null ? `${fmt$(stop)} (risk ${fmt$0(dollarsAtRisk)})` : fmt$(stop),
+        state,
+      });
+      if (state === "triggered") {
+        const dollarLoss = current != null && shares > 0 ? shares * (entry - current) : null;
+        alerts.push({
+          severity: "critical",
+          action: "dump",
+          actionShares: shares > 0 ? shares : null,
+          actionLabel: shares > 0 ? `DUMP ${shares}` : "DUMP",
+          message: shares > 0 && dollarLoss != null
+            ? `STOP HIT. Exit all ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
+            : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
+        });
+      } else if (state === "armed") {
+        alerts.push({
+          severity: "warn",
+          action: "hold",
+          actionShares: null,
+          message: `Within 3% of stop ${fmt$(stop)} — be ready to exit ${shares} shares`,
+        });
+      }
+    }
+
+    // Take 1/3 — 2 consecutive daily closes above entry × 1.10. Tracked by
+    // the server's lifecycle walker (currentGainDays); falls back to a
+    // threshold-only "armed when above the line" display if missing.
+    if (!partialDone) {
+      let state: DisplayPoint["state"] = "pending";
+      if (currentGainDays > 0) state = "armed";
+      else if (current != null && current > partialThreshold) state = "armed";
+      const valueText = oneThirdShares > 0
+        ? currentGainDays > 0
+          ? `${oneThirdShares} sh · ${currentGainDays}/2 +10% days`
+          : `${oneThirdShares} sh above ${fmt$(partialThreshold)}`
+        : `Above ${fmt$(partialThreshold)}`;
+      points.push({ label: "Take 1/3", value: valueText, state });
+      if (currentGainDays >= 2 && current != null && oneThirdShares > 0) {
+        const profitPerShare = current - entry;
+        const lockedIn = oneThirdShares * profitPerShare;
+        alerts.push({
+          severity: "watch",
+          action: "take-partial",
+          actionShares: oneThirdShares,
+          actionLabel: `Sell ${oneThirdShares}`,
+          message: `2nd +10% close completed. Sell ${oneThirdShares} shares to lock in ${fmt$0(lockedIn)} profit (1/3 of position). Remaining ${twoThirdsShares} trail under 20-MA.`,
+        });
+      }
+    } else {
+      const lockedAt = partialPriceLive != null ? ` @ ${fmt$(partialPriceLive)}` : "";
+      const onDate = partialDateLive ? ` on ${partialDateLive}` : "";
+      points.push({
+        label: "Took 1/3",
+        value: `✓${lockedAt}${onDate}`,
+        state: "past",
+      });
+    }
+
+    // Trail 20-MA — alerts fire only post-partial (identical to HTF).
+    {
+      let state: DisplayPoint["state"] = "pending";
+      if (ma20 != null && current != null) {
+        if (current < ma20) state = partialDone ? "triggered" : "armed";
+        else if (current < ma20 * 1.02) state = "armed";
+      }
+      const valueText = ma20 != null
+        ? partialDone
+          ? `Exit below ${fmt$(ma20)}`
+          : `20-MA ${fmt$(ma20)}`
+        : "computing…";
+      points.push({ label: "Trail 20-MA", value: valueText, state });
+
+      if (partialDone && ma20 != null && current != null && current < ma20) {
+        const remainingProfit = twoThirdsShares > 0 ? twoThirdsShares * (current - entry) : null;
+        alerts.push({
+          severity: "critical",
+          action: "exit",
+          actionShares: twoThirdsShares > 0 ? twoThirdsShares : null,
+          actionLabel: twoThirdsShares > 0 ? `Close ${twoThirdsShares}` : "Close",
+          message: remainingProfit != null
+            ? `EXIT REMAINING. Close ${fmt$(current)} below 20-MA ${fmt$(ma20)} — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
+            : `Close below 20-MA — exit remaining 2/3`,
+        });
+      } else if (partialDone && ma20 != null && current != null && current < ma20 * 1.02) {
+        alerts.push({
+          severity: "warn",
+          action: "hold",
+          actionShares: null,
+          message: `Within 2% of 20-MA (${fmt$(ma20)}) — ready to exit remaining ${twoThirdsShares} on close below.`,
+        });
+      }
+    }
+
+    if (target != null) {
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current >= target) state = "triggered";
+      points.push({ label: "Target", value: fmt$(target), state });
+      if (state === "triggered" && current != null && shares > 0) {
+        const profit = shares * (current - entry);
+        alerts.push({
+          severity: "watch",
+          action: "take-partial",
+          actionShares: shares,
+          actionLabel: `Take profit (${shares})`,
+          message: `Target ${fmt$(target)} hit. Position up ${fmt$0(profit)} — take profit on all ${shares}, or trail under 20-MA.`,
+        });
+      }
+    }
+
+    // TR range + Spring context (informational; locked at entry).
+    if (typeof data.trHigh === "number" && typeof data.trLow === "number") {
+      points.push({
+        label: "TR range",
+        value: `${fmt$(data.trLow)} – ${fmt$(data.trHigh)}`,
+        state: "past",
+      });
+    }
+    if (typeof data.springLow === "number") {
+      const testStr = data.hasTest === true ? " ✓ tested" : "";
+      points.push({
+        label: "Spring",
+        value: `${fmt$(data.springLow)}${testStr}`,
+        state: "past",
+      });
+    }
+
+    const pctFromEntry = pctChange(entry, current);
+    if (pctFromEntry != null) {
+      const unrealized = current != null && shares > 0 ? shares * (current - entry) : null;
+      points.push({
+        label: "vs entry",
+        value: unrealized != null ? `${fmtPct(pctFromEntry)} (${fmt$0(unrealized)})` : fmtPct(pctFromEntry),
+        state: pctFromEntry >= 0 ? "past" : "pending",
+      });
+    }
+
+    return { displayPoints: points, alerts };
+  },
+};
+
+/**
  * BBTC + VER — Bull/Bear Trend Continuation + Velocity-Extremes Reversal.
  * Long-only since 2026-05-08 short demote. Trade closes on STOP_HIT or SELL.
  */
@@ -655,6 +851,7 @@ const OTHER_MANIFEST: StrategyManifest = {
 
 export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
   htf: HTF_MANIFEST,
+  "wyckoff-spring": WYCKOFF_SPRING_MANIFEST,
   "bbtc-ver": BBTC_VER_MANIFEST,
   "tft-40w": TFT_40W_MANIFEST,
   "tft-60w": TFT_60W_MANIFEST,

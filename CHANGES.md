@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring: registered in STRATEGY_REGISTRY (live in dropdown)
+
+**Why:** Backtest cleared all acceptance criteria — $10,362 basket P&L / 235 trades / $44.10 per trade / 58.7% win rate / 100% tested cohort. Strategy is ready to ship to the Add-Trade dropdown alongside HTF.
+
+**What:** Added `WYCKOFF_SPRING_MANIFEST` to `shared/strategies/registry.ts` and registered it under id `wyckoff-spring`. Manifest mirrors HTF's lifecycle UI (Entry → Stop → Take 1/3 → Trail 20-MA → Target) with two Spring-specific tweaks:
+- **Partial rule swap**: 2 consecutive daily closes above entry × 1.10 (vs HTF's 3 cumulative close-strength days above entry × 1.05). Wyckoff Springs expand into the empty range faster, so the partial fires sooner.
+- **Pattern context cells**: "TR range" shows `low – high`, "Spring" shows the spring low with a ✓ tested marker when `data.hasTest === true`.
+
+Lifecycle state field name parity with HTF (`partialDone`, `partialPrice`, `partialDate`, `currentMa20`) — server-side walker for HTF works as-is; the new `currentGainDays` counter (replaces HTF's `currentStrengthDays`) gets wired when Spring trades actually start flowing through the lifecycle walker. Until then the manifest falls back to threshold-only display.
+
+**Where it shows up:**
+- Add Trade / Edit Trade dropdown — "Wyckoff Spring" now an option alongside HTF
+- Current Positions page — Spring trades get their own grouping header + the columns listed in `columnOrder`
+- Strategy filter on /htf portfolio gate — works automatically (registry-driven)
+
+**Files**
+- mod: `shared/strategies/registry.ts` — added `WYCKOFF_SPRING_MANIFEST` (160 lines) + registered under `wyckoff-spring` id
+
+**TypeScript:** clean.
+
+**Sanity check:** open Trade Tracker page after deploy lands → click Add Trade → confirm "Wyckoff Spring" appears in the strategy dropdown between HTF and BBTC+VER. If yes, manifest is live.
+
+**Deferred (not blocking this ship):**
+- Server-side lifecycle walker for Spring trades — populates `currentGainDays`, `currentMa20`, `partialDone/Price/Date` from bars walked from entry → today. HTF has this; Spring will share most of the code but needs `currentGainDays` instead of `currentStrengthDays`. Add when first real Spring trade lands.
+- Spring-specific detection on the live scanner + a Live/Watch tab UI on the /htf-style page. Defer until Spring trade volume justifies the UI surface.
+- Pipe Bottom (weekly) + Rounding Bottom — the other two Top-3 #3 strategies. Same plug-in pattern, can ship later.
+
+---
 ## 2026-05-21 — Wyckoff Spring: test bar promoted from optional to required
 
 **Why:** First basket backtest cleared the acceptance gate but cohort split surfaced a real edge — tested Springs earned **$45.06/trade** vs untested **$24.81/trade** (81% more $ per trade). Promoting the test bar from "optional quality bonus" to "required entry gate" filters to high-conviction setups only. Foundation-first move: quality over quantity, every fire is a real Wyckoff Spring rather than a coin flip.
