@@ -345,17 +345,6 @@ function TradeForm({ mode, initial, settings, onClose }: {
   // 'manual' (or whatever was saved). 'other' reveals the reason text input.
   const [strategy, setStrategy] = useState<string>(initial?.strategy || "manual");
   const [strategyReason, setStrategyReason] = useState<string>(initial?.strategyReason || "");
-  // Per-trade stop + target. Stored on strategyData so the form lets the user
-  // record real risk levels without a schema change. The HTF Portfolio reads
-  // these via strategyData.stopPrice / strategyData.targetPrice.
-  const [stopPrice, setStopPrice] = useState<string>(() => {
-    const v = (initial?.strategyData as any)?.stopPrice;
-    return typeof v === "number" ? String(v) : "";
-  });
-  const [targetPrice, setTargetPrice] = useState<string>(() => {
-    const v = (initial?.strategyData as any)?.targetPrice;
-    return typeof v === "number" ? String(v) : "";
-  });
 
   // CTV dual-vertical fields
   const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
@@ -426,7 +415,20 @@ function TradeForm({ mode, initial, settings, onClose }: {
     }
 
     const targetROI = typeDef?.targetROI || 0;
-    const target = targetROI > 0 ? rawPrice * (targetROI / 100) : null;
+    // Target math:
+    //   - Stocks: targetROI is "% gain target", so price target = entry × (1 + ROI/100).
+    //     Old code computed entry × (ROI/100) = 25% OF entry, producing $0.89
+    //     target on a $3.55 stock (75% drawdown). Bug.
+    //   - Options: targetROI is "% of premium" target (e.g. 100% = double the
+    //     premium). The legacy `rawPrice × ROI/100` works for that case because
+    //     premium starts small.
+    // For stocks where strategyData provides a real target (HTF auto-fill from
+    // Live setup), we DON'T compute one here — initial?.strategyData wins on
+    // the read side. This computation only feeds the trades.target column for
+    // legacy non-strategy display.
+    const target = targetROI > 0
+      ? (category === "Stock" ? rawPrice * (1 + targetROI / 100) : rawPrice * (targetROI / 100))
+      : null;
 
     const tradeData: any = {
       pilotOrAdd,
@@ -448,19 +450,13 @@ function TradeForm({ mode, initial, settings, onClose }: {
       behaviorTag: behaviorTag || null,
       strategy,
       strategyReason: strategy === "other" ? (strategyReason.trim() || null) : null,
-      // Merge stop + target into strategyData. Preserves any existing snapshot
-      // fields (pole/flag/breakout for HTF) so edits don't wipe them.
-      strategyData: (() => {
-        const existing = (initial?.strategyData ?? {}) as Record<string, any>;
-        const merged: Record<string, any> = { ...existing };
-        const stopNum = parseFloat(stopPrice);
-        const targetNum = parseFloat(targetPrice);
-        if (Number.isFinite(stopNum) && stopNum > 0) merged.stopPrice = stopNum;
-        else delete merged.stopPrice;
-        if (Number.isFinite(targetNum) && targetNum > 0) merged.targetPrice = targetNum;
-        else delete merged.targetPrice;
-        return Object.keys(merged).length > 0 ? merged : null;
-      })(),
+      // strategyData is purely from the strategy source (e.g. /htf Live row
+      // auto-fill populates pole/flag/stop/target). Manual edits don't touch
+      // it here — if the user needs a stop where the strategy didn't supply
+      // one, the right fix is to (a) create the trade from the strategy's
+      // entry surface (/htf Live + button) which carries the full snapshot,
+      // or (b) wire that strategy's entry flow if it doesn't have one yet.
+      strategyData: initial?.strategyData ?? null,
     };
 
     // Historical: include close data
@@ -533,46 +529,6 @@ function TradeForm({ mode, initial, settings, onClose }: {
                 required={getStrategyManifest(strategy).requiresReason}
               />
             )}
-          </div>
-
-          {/* Stop + Target — feed risk + lifecycle on Current Positions */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Stop Loss <span className="text-muted-foreground/60">($)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                value={stopPrice}
-                onChange={e => setStopPrice(e.target.value)}
-                placeholder="e.g. 5.43"
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
-                data-testid="input-stop-price"
-              />
-              <div className="text-2xs text-muted-foreground mt-1">
-                Where you'll exit if it goes against you. Drives "At risk" + DUMP alert.
-              </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Target <span className="text-muted-foreground/60">($)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                value={targetPrice}
-                onChange={e => setTargetPrice(e.target.value)}
-                placeholder="e.g. 9.86"
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
-                data-testid="input-target-price"
-              />
-              <div className="text-2xs text-muted-foreground mt-1">
-                Where you'll take profit. Drives "TAKE 1/3" alert.
-              </div>
-            </div>
           </div>
 
           {/* Type + Pilot/Add */}
@@ -1262,6 +1218,10 @@ export default function TradeTracker() {
                     strategy: g.strategy,
                     strategyReason: g.lots[0].strategyReason,
                     strategyData: g.lots[0].strategyData,
+                    // Share count drives the manifest's real-dollar alert math.
+                    // Use the group total (sum across lots) so "Sell 1/3" maps
+                    // to actual shares the user holds.
+                    contractsShares: g.totalQty,
                   };
                   const evalResult = getStrategyManifest(g.strategy).evaluate(evalLot);
                   // Pick most-severe alert. Order: critical > warn > watch > info.
@@ -1324,8 +1284,22 @@ export default function TradeTracker() {
                         ) : (<span className="text-muted-foreground">—</span>)}
                       </td>
                       <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center" title={topAlert?.message ?? "No action required"}>
-                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
+                      <td className="py-2 px-3 text-center">
+                        <div className="flex flex-col items-center gap-0.5 min-w-[180px]">
+                          <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
+                          {topAlert && (
+                            <span
+                              className={`text-2xs leading-tight ${
+                                topAlert.severity === "critical" ? "text-bear-light font-semibold"
+                                : topAlert.severity === "warn"   ? "text-bear-light"
+                                : topAlert.severity === "watch"  ? "text-watch-light"
+                                :                                  "text-muted-foreground"
+                              }`}
+                            >
+                              {topAlert.message}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">

@@ -35,6 +35,13 @@ export interface PageEntry {
   readonly requiresTier?: "starter" | "premium";
   /** Pseudo-routes for sidebar-only actions (modals); not real pages. Skipped by PageHeader auto-match. */
   readonly action?: true;
+  /**
+   * Hide from the sidebar nav, but keep the metadata so PageHeader still
+   * auto-resolves the title when the route is reached via click-through
+   * (e.g. /htf/:symbol pattern chart — only useful as a target from the
+   * /htf Setups + buttons, not as a top-level destination).
+   */
+  readonly hideFromNav?: true;
 }
 
 export type NavGroup =
@@ -71,7 +78,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Investment Opportunities ──────────────────────────────────────────
   { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "Confluence-based explosion detector across the universe." },
   { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Investment Opportunities", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
-  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Investment Opportunities", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail." },
+  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Investment Opportunities", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", hideFromNav: true },
   { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "Investment Opportunities", subtitle: "Sector strength at a glance." },
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings with expected moves." },
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks." },
@@ -126,6 +133,7 @@ export function getNavGroups(userTier: "free" | "starter" | "premium" = "free"):
     label: group,
     items: PAGE_REGISTRY.filter((p) => {
       if (p.group !== group) return false;
+      if (p.hideFromNav) return false;
       if (!p.requiresTier) return true;
       return tierOrder[userTier] >= tierOrder[p.requiresTier];
     }),

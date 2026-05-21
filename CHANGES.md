@@ -9,6 +9,49 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Strategy alerts speak real dollars + shares; remove manual stop/target; hide HTF chart from nav; fix target ROI math
+
+**Why:** Chris pushed back on multiple foundation gaps in one message:
+1. `/htf/:symbol` chart page is only a click-through destination from `/htf` Setups but was cluttering the main nav.
+2. The Add/Edit Trade form was still asking users to enter Stop Loss / Target manually — exactly the patch Chris rejected the night before. Strategy should derive these automatically; manual entry is the anti-pattern.
+3. Strategy "TAKE 1/3" / "DUMP NOW" tooltips were abstract — "Price above +5%. Sell 1/3 after 3 cumulative strength days." User has to do mental math from a hover tooltip to figure out what action to take.
+4. The HIVE target showed `$0.89` for a low-priced stock — `target = rawPrice × (targetROI/100)` computes 25% **of** entry, not entry × 1.25.
+
+**What:**
+
+### 1. Hide `/htf/:symbol` from main nav
+- `client/src/lib/page-registry.ts` — new `hideFromNav?: true` flag. Sidebar-builder (`getNavGroups`) skips entries with it; `lookupPageByPath` still resolves the title so PageHeader works when the route is reached by click-through.
+- HTF Pattern entry now carries `hideFromNav: true`.
+
+### 2. Remove manual Stop Loss / Target inputs from trade form
+- `client/src/pages/trade-tracker.tsx` — deleted the two numeric inputs added in `safe/20260521-003835` and the state hooks that backed them. Reverts the patch Chris rejected.
+- `strategyData` on save now comes purely from `initial?.strategyData` (i.e., what the strategy supplied via auto-fill from the /htf Live `+` button). No path now exists for the user to type these in.
+
+### 3. Fix target math for stocks
+- `client/src/pages/trade-tracker.tsx` — stock `target` is now `rawPrice × (1 + targetROI/100)` (proper "+25% from entry"). Options still use `rawPrice × (targetROI/100)` since their ROI is measured against premium. Comment in source flags the asymmetry.
+
+### 4. Alerts speak shares + real dollars, surfaced inline
+- `shared/strategies/registry.ts`:
+  - `StrategyTradeView` gains `contractsShares?: number`. Manifests use it to compute "Sell N shares to lock in $X profit" instead of abstract "take 1/3" rules.
+  - **HTF manifest** rewritten: every alert now contains real share count + real dollar amount.
+    - `Take 1/3` armed → "Sell **3 shares** now to lock in **$11** profit (1/3 of position). Remaining 7 trail under 20-MA."
+    - `Stop hit` → "STOP HIT. Exit all **10 shares** now — locks **$42 loss**."
+    - `Trail 20-MA` triggered → "EXIT REMAINING. Close below 20-MA — sell final **7 shares** ($83 profit on this lot)."
+    - `Target` hit → "Target $9.86 hit. Position up **$210** — review: take profit on all 10 shares, or trail under 20-MA?"
+    - Entry / Stop / vs-entry display points now include the share count + the dollar amount (e.g. "10 @ $7.79", "Stop $5.43 (risk $24)", "+8% ($63)").
+  - **BBTC + VER**, **TFT 40W/60W/cat**, **Manual** manifests all upgraded with the same share/$ language so the format is consistent across strategy groups.
+- `client/src/pages/trade-tracker.tsx`:
+  - The group-row `evalLot` now passes `contractsShares: g.totalQty` so manifests have the input.
+  - Status cell now renders the alert message **inline** below the status badge (not just on hover). Color-coded by severity. Wider min-width to fit the message.
+
+**Files:** `client/src/lib/page-registry.ts`, `client/src/pages/trade-tracker.tsx`, `shared/strategies/registry.ts`.
+
+**Still queued** (not in this push):
+- Per-strategy column layouts for each group (HTF group renders pole/flag/breakout columns; BBTC group renders different columns; manual group renders a minimal layout). Today every group still uses the same table columns; only the inline alert text differentiates them.
+- Inline "Exit position" / "Close 1/3" action buttons that fire the close flow with the strategy's recommended share count pre-filled.
+- Re-link existing pre-auto-fill HTF trades (PURR/NVTS/ONDS) to current scanner data so their `strategyData` populates without delete+re-add.
+
+---
 ## 2026-05-21 — Live row → Add Trade auto-fill + HTF cache invalidation on trade save
 
 **Why:** Chris's exact words: *"It has all the information in the scanner put it in automatically… is the rule for features and new content being followed because you seem to stray off that a lot."* The Stop/Target manual inputs added earlier this session were a patch over a foundation gap — the scanner already knows the stop (`flag_low × 0.99`), target (measure rule), pole/flag stats, sector, recommended share size, R/R, etc. for every Live setup. The user should never have to retype any of it.

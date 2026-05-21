@@ -36,6 +36,14 @@ export interface StrategyTradeView {
   strategy: string;
   strategyReason: string | null;
   strategyData: Record<string, any> | null;
+  /**
+   * Open share count. Required for alerts to compute real-dollar take-partial
+   * and exit instructions ("Sell 3 shares to lock in $11.40 profit") instead
+   * of abstract "take 1/3" rules the user would have to math out by hand.
+   * Optional only because legacy callers may not pass it yet; manifests
+   * fall back to share-fraction language when missing.
+   */
+  contractsShares?: number;
 }
 
 // ─── What each strategy declares ──────────────────────────────────────────
@@ -101,6 +109,10 @@ function fmt$(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return "—";
   return `$${n.toFixed(2)}`;
 }
+function fmt$0(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
 function fmtPct(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return "—";
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
@@ -127,53 +139,78 @@ const HTF_MANIFEST: StrategyManifest = {
   requiresReason: false,
   evaluate(trade) {
     const data = trade.strategyData ?? {};
-    const entry = trade.openPrice;
+    const entry = Math.abs(trade.openPrice);   // openPrice is signed; risk math wants absolute
     const current = trade.currentPrice;
+    const shares = trade.contractsShares ?? 0;
     const stop = typeof data.stopPrice === "number" ? data.stopPrice : null;
-    const target = trade.target ?? (typeof data.targetPrice === "number" ? data.targetPrice : null);
+    const target = (typeof data.targetPrice === "number" ? data.targetPrice : null)
+      ?? (trade.target != null && trade.target > entry ? trade.target : null);
     const partialThreshold = entry * 1.05; // close >5% above entry
-    const flagHigh = typeof data.flagHigh === "number" ? data.flagHigh : null;
-    const flagLow = typeof data.flagLow === "number" ? data.flagLow : null;
-    const ma20 = typeof data.ma20 === "number" ? data.ma20 : null; // optional — set by background monitor when wired
+    const ma20 = typeof data.ma20 === "number" ? data.ma20 : null;
     const partialDone = data.partialDone === true;
+
+    // Pre-computed share splits — every alert below uses these so the
+    // trader sees real numbers, not abstract "1/3" arithmetic.
+    const oneThirdShares = Math.max(0, Math.floor(shares / 3));
+    const twoThirdsShares = Math.max(0, shares - oneThirdShares);
 
     const points: DisplayPoint[] = [];
     const alerts: LifecycleAlert[] = [];
 
-    // Entry — always past once trade is open
-    points.push({ label: "Entry", value: fmt$(entry), state: "past" });
+    // Entry / share count — always past once trade is open
+    points.push({
+      label: "Entry",
+      value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past",
+    });
 
-    // Stop
+    // Stop — with $-at-risk computed from shares
     if (stop != null) {
+      const dollarsAtRisk = shares > 0 ? Math.max(0, shares * (entry - stop)) : null;
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current <= stop) state = "triggered";
       else if (current != null && current <= stop * 1.03) state = "armed";
-      points.push({ label: "Stop", value: fmt$(stop), state });
+      points.push({
+        label: "Stop",
+        value: dollarsAtRisk != null ? `${fmt$(stop)} (risk ${fmt$0(dollarsAtRisk)})` : fmt$(stop),
+        state,
+      });
       if (state === "triggered") {
+        const dollarLoss = current != null && shares > 0 ? shares * (entry - current) : null;
         alerts.push({
           severity: "critical",
           action: "dump",
-          message: `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
+          message: shares > 0 && dollarLoss != null
+            ? `STOP HIT. Exit all ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
+            : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
         });
       } else if (state === "armed") {
         alerts.push({
           severity: "warn",
           action: "hold",
-          message: `Approaching stop — within 3% of ${fmt$(stop)}`,
+          message: `Within 3% of stop ${fmt$(stop)} — be ready to exit ${shares} shares`,
         });
       }
     }
 
-    // Take 1/3 after 3 consecutive strength days
+    // Take 1/3 — surface real $-amount + share count
     if (!partialDone) {
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current > partialThreshold) state = "armed";
-      points.push({ label: "Take 1/3", value: `Above ${fmt$(partialThreshold)}`, state });
-      if (state === "armed") {
+      points.push({
+        label: "Take 1/3",
+        value: oneThirdShares > 0
+          ? `${oneThirdShares} sh above ${fmt$(partialThreshold)}`
+          : `Above ${fmt$(partialThreshold)}`,
+        state,
+      });
+      if (state === "armed" && current != null && oneThirdShares > 0) {
+        const profitPerShare = current - entry;
+        const lockedIn = oneThirdShares * profitPerShare;
         alerts.push({
           severity: "watch",
           action: "take-partial",
-          message: `Price above +5%. Sell 1/3 after 3 cumulative strength days.`,
+          message: `Sell ${oneThirdShares} shares now to lock in ${fmt$0(lockedIn)} profit (1/3 of position). Remaining ${twoThirdsShares} trail under 20-MA.`,
         });
       }
     } else {
@@ -189,30 +226,34 @@ const HTF_MANIFEST: StrategyManifest = {
         value: ma20 != null ? `Below ${fmt$(ma20)}` : "20-MA not loaded",
         state,
       });
-      if (state === "triggered") {
+      if (state === "triggered" && current != null) {
+        const remainingProfit = twoThirdsShares > 0 ? twoThirdsShares * (current - entry) : null;
         alerts.push({
           severity: "critical",
           action: "exit",
-          message: `Close below 20-MA — exit remaining 2/3`,
+          message: remainingProfit != null
+            ? `EXIT REMAINING. Close below 20-MA — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
+            : `Close below 20-MA — exit remaining 2/3`,
         });
       }
     }
 
-    // Target
+    // Target — measure-rule level. Hitting it is a take-profit decision point.
     if (target != null) {
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current >= target) state = "triggered";
       points.push({ label: "Target", value: fmt$(target), state });
-      if (state === "triggered") {
+      if (state === "triggered" && current != null && shares > 0) {
+        const profit = shares * (current - entry);
         alerts.push({
           severity: "watch",
           action: "take-partial",
-          message: `Target ${fmt$(target)} hit — review whether to exit or trail`,
+          message: `Target ${fmt$(target)} hit. Position up ${fmt$0(profit)} — review: take profit on all ${shares} shares, or trail under 20-MA?`,
         });
       }
     }
 
-    // Pole + flag context (informational, no alerts)
+    // Pole + flag context (informational)
     if (typeof data.poleGainPct === "number" && typeof data.poleDays === "number") {
       points.push({
         label: "Pole",
@@ -228,12 +269,13 @@ const HTF_MANIFEST: StrategyManifest = {
       });
     }
 
-    // Current %-from-entry
+    // Current %-from-entry + $ unrealized
     const pctFromEntry = pctChange(entry, current);
     if (pctFromEntry != null) {
+      const unrealized = current != null && shares > 0 ? shares * (current - entry) : null;
       points.push({
         label: "vs entry",
-        value: fmtPct(pctFromEntry),
+        value: unrealized != null ? `${fmtPct(pctFromEntry)} (${fmt$0(unrealized)})` : fmtPct(pctFromEntry),
         state: pctFromEntry >= 0 ? "past" : "pending",
       });
     }
@@ -255,33 +297,47 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   requiresReason: false,
   evaluate(trade) {
     const data = trade.strategyData ?? {};
-    const entry = trade.openPrice;
+    const entry = Math.abs(trade.openPrice);
     const current = trade.currentPrice;
+    const shares = trade.contractsShares ?? 0;
     const stop = typeof data.stopPrice === "number" ? data.stopPrice : null;
-    const target = trade.target ?? (typeof data.targetPrice === "number" ? data.targetPrice : null);
+    const target = (typeof data.targetPrice === "number" ? data.targetPrice : null)
+      ?? (trade.target != null && trade.target > entry ? trade.target : null);
     const exitTrigger = typeof data.exitTrigger === "number" ? data.exitTrigger : null;
 
     const points: DisplayPoint[] = [];
     const alerts: LifecycleAlert[] = [];
 
-    points.push({ label: "Entry", value: fmt$(entry), state: "past" });
+    points.push({
+      label: "Entry",
+      value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past",
+    });
 
     if (stop != null) {
+      const dollarsAtRisk = shares > 0 ? Math.max(0, shares * (entry - stop)) : null;
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current <= stop) state = "triggered";
       else if (current != null && current <= stop * 1.03) state = "armed";
-      points.push({ label: "Stop (EXIT)", value: fmt$(stop), state });
+      points.push({
+        label: "Stop (EXIT)",
+        value: dollarsAtRisk != null ? `${fmt$(stop)} (risk ${fmt$0(dollarsAtRisk)})` : fmt$(stop),
+        state,
+      });
       if (state === "triggered") {
+        const dollarLoss = current != null && shares > 0 ? shares * (entry - current) : null;
         alerts.push({
           severity: "critical",
           action: "exit",
-          message: `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
+          message: shares > 0 && dollarLoss != null
+            ? `STOP HIT. Exit ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
+            : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
         });
       } else if (state === "armed") {
         alerts.push({
           severity: "warn",
           action: "hold",
-          message: `Approaching stop — within 3% of ${fmt$(stop)}`,
+          message: `Within 3% of stop ${fmt$(stop)} — ready to exit ${shares} shares`,
         });
       }
     }
@@ -294,7 +350,9 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "exit",
-          message: `Exit-trigger price hit — close the position`,
+          message: shares > 0
+            ? `Exit-trigger hit. Close ${shares} shares.`
+            : `Exit-trigger price hit — close the position`,
         });
       }
     }
@@ -303,20 +361,22 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current >= target) state = "triggered";
       points.push({ label: "Target", value: fmt$(target), state });
-      if (state === "triggered") {
+      if (state === "triggered" && current != null && shares > 0) {
+        const profit = shares * (current - entry);
         alerts.push({
           severity: "watch",
           action: "take-partial",
-          message: `Target ${fmt$(target)} hit — review whether to exit or trail`,
+          message: `Target ${fmt$(target)} hit. Up ${fmt$0(profit)} on ${shares} shares — exit or trail.`,
         });
       }
     }
 
     const pctFromEntry = pctChange(entry, current);
     if (pctFromEntry != null) {
+      const unrealized = current != null && shares > 0 ? shares * (current - entry) : null;
       points.push({
         label: "vs entry",
-        value: fmtPct(pctFromEntry),
+        value: unrealized != null ? `${fmtPct(pctFromEntry)} (${fmt$0(unrealized)})` : fmtPct(pctFromEntry),
         state: pctFromEntry >= 0 ? "past" : "pending",
       });
     }
@@ -338,17 +398,21 @@ const TFT_40W_MANIFEST: StrategyManifest = {
   requiresReason: false,
   evaluate(trade) {
     const data = trade.strategyData ?? {};
-    const entry = trade.openPrice;
+    const entry = Math.abs(trade.openPrice);
     const current = trade.currentPrice;
+    const shares = trade.contractsShares ?? 0;
     const sma40w = typeof data.sma40w === "number" ? data.sma40w : null;
     const catastrophicStop = entry * 0.85; // -15% from entry
 
     const points: DisplayPoint[] = [];
     const alerts: LifecycleAlert[] = [];
 
-    points.push({ label: "Entry", value: fmt$(entry), state: "past" });
+    points.push({
+      label: "Entry",
+      value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past",
+    });
 
-    // 40W SMA exit
     if (sma40w != null) {
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current < sma40w) state = "triggered";
@@ -357,29 +421,39 @@ const TFT_40W_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "exit",
-          message: `Weekly close below 40W — exit core position`,
+          message: shares > 0
+            ? `Weekly close below 40W — exit ${shares}-share core position`
+            : `Weekly close below 40W — exit core position`,
         });
       }
     }
 
-    // Catastrophic stop (-15%)
+    const dollarsAtRisk = shares > 0 ? shares * (entry - catastrophicStop) : null;
     let catState: DisplayPoint["state"] = "pending";
     if (current != null && current <= catastrophicStop) catState = "triggered";
     else if (current != null && current <= catastrophicStop * 1.03) catState = "armed";
-    points.push({ label: "−15% stop", value: fmt$(catastrophicStop), state: catState });
+    points.push({
+      label: "−15% stop",
+      value: dollarsAtRisk != null ? `${fmt$(catastrophicStop)} (risk ${fmt$0(dollarsAtRisk)})` : fmt$(catastrophicStop),
+      state: catState,
+    });
     if (catState === "triggered") {
+      const dollarLoss = current != null && shares > 0 ? shares * (entry - current) : null;
       alerts.push({
         severity: "critical",
         action: "dump",
-        message: `Catastrophic stop hit (−15% from entry) — dump now`,
+        message: shares > 0 && dollarLoss != null
+          ? `CATASTROPHIC STOP (−15%). Exit ${shares} shares — locks ${fmt$0(-dollarLoss)} loss`
+          : `Catastrophic stop hit (−15% from entry) — dump now`,
       });
     }
 
     const pctFromEntry = pctChange(entry, current);
     if (pctFromEntry != null) {
+      const unrealized = current != null && shares > 0 ? shares * (current - entry) : null;
       points.push({
         label: "vs entry",
-        value: fmtPct(pctFromEntry),
+        value: unrealized != null ? `${fmtPct(pctFromEntry)} (${fmt$0(unrealized)})` : fmtPct(pctFromEntry),
         state: pctFromEntry >= 0 ? "past" : "pending",
       });
     }
@@ -432,17 +506,26 @@ const MANUAL_MANIFEST: StrategyManifest = {
   requiresReason: false,
   evaluate(trade) {
     const points: DisplayPoint[] = [];
-    points.push({ label: "Entry", value: fmt$(trade.openPrice), state: "past" });
-    if (trade.target != null) {
+    const entry = Math.abs(trade.openPrice);
+    const shares = trade.contractsShares ?? 0;
+    points.push({
+      label: "Entry",
+      value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past",
+    });
+    if (trade.target != null && trade.target > entry) {
       let state: DisplayPoint["state"] = "pending";
       if (trade.currentPrice != null && trade.currentPrice >= trade.target) state = "triggered";
       points.push({ label: "Target", value: fmt$(trade.target), state });
     }
-    const pct = pctChange(trade.openPrice, trade.currentPrice);
+    const pct = pctChange(entry, trade.currentPrice);
     if (pct != null) {
+      const unrealized = trade.currentPrice != null && shares > 0
+        ? shares * (trade.currentPrice - entry)
+        : null;
       points.push({
         label: "vs entry",
-        value: fmtPct(pct),
+        value: unrealized != null ? `${fmtPct(pct)} (${fmt$0(unrealized)})` : fmtPct(pct),
         state: pct >= 0 ? "past" : "pending",
       });
     }
