@@ -24,7 +24,13 @@ export const FLAG_MIN_DAYS = 3;
 export const FLAG_MAX_DAYS = 30;
 export const FLAG_MAX_PULLBACK = 0.25;
 export const BREAKOUT_PAD = 0.001;      // 0.1% above flag high
-export const MIN_BREAKOUT_VOL_RATIO = 1.3;
+// 2026-05-20 throwback fix (piece 1 of 3 — re-shipped after bundle revert):
+// dropped from 1.3 to 1.0 (≥average vol) so light-volume HTFs aren't filtered.
+// Bulkowski's HTF data shows light-volume breakouts outperform heavy by
+// 79% vs 63% average rise in bull markets — the 1.3× requirement was filtering
+// out the alpha cohort. Floor at 1.0 keeps a sanity check that real volume
+// is present without rejecting normal-vol breakouts.
+export const MIN_BREAKOUT_VOL_RATIO = 1.0;
 export const HTF_VOL_AVG_WINDOW = 30;   // Givens uses 30-bar avg
 
 export interface HtfExtras {
@@ -180,7 +186,13 @@ export function scanHtf(
     const target = closes[i] + 0.5 * (bestFlagHigh - poleLow);
     const stop = bestFlagLow * 0.98;
 
-    // Scoring rubric — verbatim from htf_givens.py
+    // Scoring rubric — based on htf_givens.py minus the volume-ratio bonus.
+    // 2026-05-20 throwback fix (piece 1): removed the +5/+10/+15 bonus for
+    // higher vol ratios. Bulkowski's HTF data: light-volume breakouts
+    // outperform heavy 79% vs 63% — we were rewarding the underperforming
+    // cohort. Volume now affects nothing beyond the MIN_BREAKOUT_VOL_RATIO
+    // floor (=1.0). Validate this isolated change against the locked baseline
+    // before considering the other two pieces of the throwback bundle.
     let score = 50;
     if (poleGain >= 1.0) score += 15;
     else if (poleGain >= 0.6) score += 10;
@@ -190,9 +202,6 @@ export function scanHtf(
     const pullbackPct = (bestFlagHigh - bestFlagLow) / bestFlagHigh;
     if (pullbackPct <= 0.1) score += 10;
     else if (pullbackPct <= 0.15) score += 5;
-    if (volRatio >= 2.0) score += 15;
-    else if (volRatio >= 1.5) score += 10;
-    else if (volRatio >= 1.3) score += 5;
 
     const finalScore = clampScore(score);
     if (finalScore < minScore) continue;

@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF throwback fix piece 1/3: drop volume gate (re-ship after bundle revert)
+
+**Why:** First of three calibrated pieces re-shipped after the bundle revert. Drops only the volume gate — should be neutral-to-positive in isolation since Bulkowski's HTF stats show light-vol breakouts outperform heavy 79% vs 63%. Each piece will be validated independently before the next ships.
+
+**What:**
+- `MIN_BREAKOUT_VOL_RATIO`: 1.3 → 1.0 (≥average volume still required, but light-vol HTFs no longer filtered out).
+- Removed the +5/+10/+15 score bonus for higher volume ratios — was rewarding the underperforming heavy-vol cohort per Bulkowski's data.
+
+**Files:** `server/signals/strategies/htf.ts`.
+
+**Validation gate:** re-run `/api/diag/strategy-htf-validation?universe=htf&days=3650&positionSize=1750&minScore=70` and compare against $569,892 / WFE 1.98 / SQN 10.75 baseline. Ship-keep criteria:
+- New totalPnLDollar ≥ 0.9× baseline ($513K).
+- New WFE ≥ 1.0 (preserve strong-edge).
+- New MC95 not blown out.
+
+If criteria pass, piece 2 (failed-breakout exit relaxed: 2 consecutive closes within 5-bar window) ships next.
+
+---
 ## 2026-05-20 — REVERT: HTF throwback fix bundle (failed validation criteria)
 
 **Why:** The throwback fix shipped earlier today (commit `5ac7299`) cut total $-P&L from $569,892 → $105,524 (−81.5%) — well below the 0.9× ship-keep threshold. Reverted via `git revert 5ac7299`.
