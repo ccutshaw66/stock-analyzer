@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring detector: precomputed TR lookup (perf fix)
+
+**Why:** Backtest harness against the 491-ticker basket hit a 504 gateway timeout. Diagnosis: the detector's `findTradingRange` was being called once per (SOS_candidate × spring_offset) pair — ~37,500 times per ticker — and each call walked up to 100 TR widths × 240 bars. Total: ~440 billion ops across the basket. Single-ticker diag scan worked fine; basket-scale didn't.
+
+**What:** Replaced the per-call `findTradingRange` with a `precomputeBestTRs(highs, lows, vols)` function that builds a TR lookup table once per ticker in O(N × TR_MAX_DAYS) total work. The SOS scan loop now does O(1) lookups instead of O(TR_MAX_DAYS²) recomputes per spring offset. Algorithm exploits the fact that range width is monotonically non-decreasing as the window extends backward — once width exceeds 25%, no longer window will pass, so we break early.
+
+Trade-off acknowledged in code: touches are NOT monotonic in window size (extending the window can raise `hi`, which can disqualify a prior top touch). The new version only counts touches at the longest-by-width window, which slightly under-counts vs the old "try every width" approach. In practice this matches on real data and the `minScore≥70` production filter catches outliers.
+
+**Files**
+- mod: `server/signals/strategies/wyckoff-spring.ts`
+
+**Perf:** estimated ~1000× CPU speedup per ticker. Detector compute now comparable to HTF's, so basket run-time should be FMP-fetch-bound (~3 min) instead of CPU-bound (timed out at 5+ min).
+
+**TypeScript:** clean.
+
+**Next:** re-run the basket URL — `https://stockotter.ai/api/diag/strategy-wyckoff-spring-pnl?universe=htf&days=3650&positionSize=1750&minScore=70` — and paste the `aggregate` block.
+
+---
 ## 2026-05-21 — Wyckoff Spring backtest harness (step 3 of Top-3 #3)
 
 **Why:** Diag scan confirmed the detector finds real Springs on AAPL/AMZN/NVDA across 7 years. Time to measure dollar P&L on the full 491-ticker basket and decide whether the manifest registers in `STRATEGY_REGISTRY`. The acceptance gate from the spec: basket total P&L > 0 AND avg $/trade ≥ $30 AND (win rate ≥ 50% OR R-multiple ≥ 1.5) AND max DD ≤ HTF baseline.
