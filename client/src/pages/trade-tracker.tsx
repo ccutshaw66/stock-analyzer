@@ -1,9 +1,9 @@
-import { useState, useMemo, memo, useEffect } from "react";
+import React, { useState, useMemo, memo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
 import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
-import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView } from "@shared/strategies/registry";
+import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView, type DisplayPoint } from "@shared/strategies/registry";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
@@ -1153,317 +1153,354 @@ export default function TradeTracker() {
         ))}
       </div>
 
-      {/* Trades Table */}
-      <div className="bg-card border border-card-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs" data-testid="trades-table">
-            <thead><tr className="bg-muted/30 border-b border-card-border">
-              <th className="text-left py-2.5 px-3"><SortBtn field="tradeDate" label="Date" /></th>
-              <th className="text-left py-2.5 px-3"><SortBtn field="symbol" label="Symbol" /></th>
-              <th className="text-left py-2.5 px-3"><SortBtn field="tradeType" label="Type" /></th>
-              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">P/A</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Qty</th>
-              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Strikes</th>
-              <th className="text-right py-2.5 px-3"><SortBtn field="openPrice" label="Open" /></th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Close</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Price</th>
-              <th className="text-right py-2.5 px-3"><SortBtn field="profit" label="P/L" /></th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Total</th>
-              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Exp</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Days</th>
-              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Status</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Actions</th>
-            </tr></thead>
-            <tbody>
-              {totalRowsInView === 0 ? (
-                <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
-              ) : (() => {
-                let runningTotal = 0;
-                let lastStrategy: string | null = null;
-                const rendered: React.ReactNode[] = [];
+      {/* Open positions — one table PER STRATEGY. Each strategy's manifest
+          owns its column set (manifest.columnOrder) so HTF surfaces Stop /
+          Take 1/3 / Trail 20-MA / Target as REAL columns; BBTC surfaces
+          Stop (EXIT) / Exit Trigger / Target; etc. No more one-size-fits-all
+          table. The Total column is gone — running cumulative P&L on a
+          per-row basis was confusing and doesn't recompute. */}
+      {(() => {
+        // Tailwind class set per manifest color (visual stripe + header tint).
+        const strategyHeaderClass = (color: StrategyManifest["color"]): string => {
+          switch (color) {
+            case "bull":    return "bg-bull/10 border-bull text-bull-light";
+            case "watch":   return "bg-watch/10 border-watch text-watch-light";
+            case "bear":    return "bg-bear/10 border-bear text-bear-light";
+            case "info":    return "bg-primary/10 border-primary text-primary";
+            case "neutral": return "bg-muted/30 border-muted-foreground/40 text-muted-foreground";
+            default:        return "bg-muted/30 border-muted-foreground/40 text-muted-foreground";
+          }
+        };
+        // Color the strategy-specific cell value based on the manifest's
+        // assessment of that lifecycle point's state.
+        const pointStateClass = (state: DisplayPoint["state"]): string => {
+          switch (state) {
+            case "triggered": return "text-bear-light font-bold";
+            case "armed":     return "text-watch-light font-semibold";
+            case "past":      return "text-muted-foreground";
+            case "pending":   return "text-foreground";
+            default:          return "text-foreground";
+          }
+        };
 
-                // Maps the manifest's `color` field to a Tailwind class set for
-                // the strategy header row. Centralised here so the registry
-                // file stays presentation-agnostic.
-                const strategyColorClass = (color: StrategyManifest["color"]): string => {
-                  switch (color) {
-                    case "bull":    return "bg-bull/10 border-l-4 border-bull text-bull-light";
-                    case "watch":   return "bg-watch/10 border-l-4 border-watch text-watch-light";
-                    case "bear":    return "bg-bear/10 border-l-4 border-bear text-bear-light";
-                    case "info":    return "bg-primary/10 border-l-4 border-primary text-primary";
-                    case "neutral": return "bg-muted/30 border-l-4 border-muted-foreground/40 text-muted-foreground";
-                    default:        return "bg-muted/30 border-l-4 border-muted-foreground/40 text-muted-foreground";
-                  }
-                };
+        const sevOrder = { critical: 4, warn: 3, watch: 2, info: 1 } as const;
 
-                // ─── Open positions (grouped, with strategy headers) ────────
-                for (const g of openGroups) {
-                  // Insert a strategy header row when the strategy changes
-                  // between adjacent groups. Header spans the full table width.
-                  if (g.strategy !== lastStrategy) {
-                    const manifest = getStrategyManifest(g.strategy);
-                    const countInStrategy = openGroups.filter(x => x.strategy === g.strategy).length;
-                    rendered.push(
-                      <tr key={`strat-${g.strategy}`} className={strategyColorClass(manifest.color)}>
-                        <td colSpan={15} className="py-2 px-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold tracking-tight">{manifest.name}</span>
-                              <span className="text-2xs opacity-70">· {countInStrategy} position{countInStrategy !== 1 ? "s" : ""}</span>
-                            </div>
-                            <span className="text-2xs opacity-60 italic">{manifest.description}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                    lastStrategy = g.strategy;
-                  }
-                  runningTotal += g.totalOpenPL;
-                  const isSingleLot = g.lots.length === 1;
-                  const isExpanded = expandedGroups.has(g.key) || isSingleLot;
-                  const daysToExp = g.expiration ? Math.ceil((new Date(g.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                  const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
-                  const isWin = g.totalOpenPL >= 0;
-                  const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
+        // Bucket open groups by strategy in the same order they were sorted.
+        const groupsByStrategy = new Map<string, OpenPosition[]>();
+        for (const g of openGroups) {
+          const arr = groupsByStrategy.get(g.strategy) ?? [];
+          arr.push(g);
+          groupsByStrategy.set(g.strategy, arr);
+        }
 
-                  // Evaluate the strategy manifest against the first lot to get
-                  // lifecycle alerts. The most-severe alert drives the Status
-                  // cell color + label. No alert = green "OK".
-                  const evalLot: StrategyTradeView = {
-                    symbol: g.symbol,
-                    openPrice: g.avgOpenPrice,
-                    currentPrice: g.currentPrice,
-                    target: g.lots[0].target,
-                    closeDate: null,
-                    tradeDate: g.firstTradeDate,
-                    strategy: g.strategy,
-                    strategyReason: g.lots[0].strategyReason,
-                    strategyData: g.lots[0].strategyData,
-                    // Share count drives the manifest's real-dollar alert math.
-                    // Use the group total (sum across lots) so "Sell 1/3" maps
-                    // to actual shares the user holds.
-                    contractsShares: g.totalQty,
-                  };
-                  const evalResult = getStrategyManifest(g.strategy).evaluate(evalLot);
-                  // Pick most-severe alert. Order: critical > warn > watch > info.
-                  const sevOrder = { critical: 4, warn: 3, watch: 2, info: 1 } as const;
-                  const topAlert = evalResult.alerts
-                    .slice()
-                    .sort((a, b) => sevOrder[b.severity] - sevOrder[a.severity])[0];
-                  const statusClass = topAlert
-                    ? topAlert.severity === "critical" ? "bg-bear text-bear-foreground animate-pulse"
-                    : topAlert.severity === "warn"     ? "bg-bear/40 text-bear-light"
-                    : topAlert.severity === "watch"    ? "bg-watch/30 text-watch-light"
-                    :                                    "bg-primary/20 text-primary"
-                    : "bg-watch/15 text-watch-light";
-                  const statusLabel = topAlert
-                    ? topAlert.action === "dump"          ? "DUMP NOW"
-                    : topAlert.action === "exit"          ? "EXIT"
-                    : topAlert.action === "take-partial"  ? "TAKE 1/3"
-                    :                                       "WATCH"
-                    : "OPEN";
-                  rendered.push(
-                    <tr key={`grp-${g.key}`}
-                      className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
-                      onClick={isSingleLot ? undefined : () => toggleGroup(g.key)}
-                      data-testid={`position-row-${g.key}`}>
-                      <td className="py-2 px-3 text-foreground tabular-nums">
-                        <div className="flex items-center gap-1.5">
-                          {!isSingleLot && (isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground rotate-180" />)}
-                          <span>{g.firstTradeDate}</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">
-                        {g.symbol}
-                        <ScannerPip ticker={g.symbol} />
-                        {!isSingleLot && <span className="ml-1.5 text-mini font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
-                      </td>
-                      <td className="py-2 px-3"><span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>{g.tradeType}</span></td>
-                      <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
-                      <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {Math.abs(g.avgOpenPrice).toFixed(2)}
-                        {!isSingleLot && <span className="block text-mini opacity-60">avg</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">{g.currentPrice ? `$${g.currentPrice.toFixed(2)}` : "—"}</td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
-                        {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
-                        {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                        {g.tradeCategory === "Option" && g.totalOpenPL !== 0 && <span className="text-mini ml-0.5 opacity-50">est</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-bull-light/70" : "text-bear-light/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {g.expiration ? (
-                          <span className={`text-micro font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-watch-light font-bold" : daysToExp !== null && daysToExp < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
-                            {g.expiration.substring(5)}
-                            {daysToExp !== null && (<span className="text-tiny block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>)}
-                          </span>
-                        ) : (<span className="text-muted-foreground">—</span>)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex flex-col items-center gap-1 min-w-[200px]">
-                          {/* Strategy-driven action button. The manifest decides
-                              whether to render one (actionShares > 0) and what
-                              it says (actionLabel). UI is dumb here — clicking
-                              opens the Close modal with qty pre-filled to the
-                              manifest's recommended shares. */}
-                          {topAlert && topAlert.actionShares != null && topAlert.actionShares > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => isSingleLot && openClose(g.lots[0], topAlert.actionShares!)}
-                              disabled={!isSingleLot}
-                              title={isSingleLot ? topAlert.message : "Expand the group and act on a single lot"}
-                              data-testid={`act-${topAlert.action}-${g.symbol}`}
-                              className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                                topAlert.action === "dump"          ? "bg-bear text-bear-foreground hover:brightness-110 animate-pulse"
-                                : topAlert.action === "exit"        ? "bg-bear/80 text-bear-foreground hover:bg-bear"
-                                : topAlert.action === "take-partial" ? "bg-watch text-background hover:brightness-110"
-                                :                                     "bg-primary text-primary-foreground hover:brightness-110"
-                              }`}
-                            >
-                              {topAlert.actionLabel ?? statusLabel}
-                            </button>
-                          ) : (
-                            <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
-                          )}
-                          {topAlert && (
-                            <span
-                              className={`text-2xs leading-tight ${
-                                topAlert.severity === "critical" ? "text-bear-light font-semibold"
-                                : topAlert.severity === "warn"   ? "text-bear-light"
-                                : topAlert.severity === "watch"  ? "text-watch-light"
-                                :                                  "text-muted-foreground"
-                              }`}
-                            >
-                              {topAlert.message}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              setAddSeed({ symbol: g.symbol, tradeType: g.tradeType, tradeCategory: g.tradeCategory, strikes: g.strikes, expiration: g.expiration, creditDebit: g.creditDebit, pilotOrAdd: "Add" });
-                              setShowAddModal(true);
-                            }}
-                            className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
-                            title="Add to this position">
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-                          {isSingleLot && (<>
-                            <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setClosingTrade(g.lots[0])} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close trade"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </>)}
-                        </div>
-                      </td>
+        if (openGroups.length === 0 && closedFlat.length === 0) {
+          return (
+            <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                No trades yet. Click "Add Trade" or pull a setup from /htf to get started.
+              </div>
+            </div>
+          );
+        }
+
+        const sections: React.ReactNode[] = [];
+
+        // ─── One table per strategy ──────────────────────────────────────
+        // `Array.from(...)` avoids the downlevel-iteration TS gripe; we want
+        // the same insertion-ordered list of [stratId, groups] either way.
+        for (const [stratId, groups] of Array.from(groupsByStrategy.entries())) {
+          const manifest = getStrategyManifest(stratId);
+          const columnLabels = manifest.columnOrder;
+
+          sections.push(
+            <div
+              key={`section-${stratId}`}
+              className={`rounded-lg border-l-4 ${strategyHeaderClass(manifest.color)} bg-card border-y border-r border-card-border overflow-hidden`}
+            >
+              {/* Strategy header bar */}
+              <div className="px-3 py-2 flex items-center justify-between gap-3 flex-wrap border-b border-card-border/40">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tracking-tight">{manifest.name}</span>
+                  <span className="text-2xs opacity-70">· {groups.length} position{groups.length !== 1 ? "s" : ""}</span>
+                </div>
+                <span className="text-2xs opacity-70 italic">{manifest.description}</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" data-testid={`trades-table-${stratId}`}>
+                  <thead>
+                    <tr className="bg-muted/30 border-b border-card-border">
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Date</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Symbol</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Pos</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Current</th>
+                      {columnLabels.map(label => (
+                        <th key={label} className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">{label}</th>
+                      ))}
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">P/L</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Days</th>
+                      <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Action</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Edit</th>
                     </tr>
-                  );
-                  if (!isSingleLot && isExpanded) {
-                    for (const t of g.lots) {
-                      const profit = t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t);
-                      const lotDays = daysInTrade(t);
-                      const lotPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                      rendered.push(
-                        <tr key={`lot-${t.id}`} className="border-b border-card-border/20 bg-background/40 text-muted-foreground" data-testid={`lot-row-${t.id}`}>
-                          <td className="py-1.5 px-3 pl-10 tabular-nums text-2xs">└ {t.tradeDate}</td>
-                          <td className="py-1.5 px-3 text-2xs opacity-60">—</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"><span className={`text-mini font-semibold px-1 py-0.5 rounded ${t.pilotOrAdd === "Pilot" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>{t.pilotOrAdd === "Pilot" ? "P" : "A"}</span></td>
-                          <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3 text-right tabular-nums font-mono">{Math.abs(t.openPrice).toFixed(2)}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums text-2xs ${profit >= 0 ? "text-bull-light/80" : "text-bear-light/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-mini ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3 text-right tabular-nums text-2xs">{lotDays}d</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3 text-right">
+                  </thead>
+                  <tbody>
+                    {groups.map((g: OpenPosition) => {
+                      const isSingleLot = g.lots.length === 1;
+                      const isExpanded = expandedGroups.has(g.key) || isSingleLot;
+                      const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
+                      const isWin = g.totalOpenPL >= 0;
+                      const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
+
+                      const evalLot: StrategyTradeView = {
+                        symbol: g.symbol,
+                        openPrice: g.avgOpenPrice,
+                        currentPrice: g.currentPrice,
+                        target: g.lots[0].target,
+                        closeDate: null,
+                        tradeDate: g.firstTradeDate,
+                        strategy: g.strategy,
+                        strategyReason: g.lots[0].strategyReason,
+                        strategyData: g.lots[0].strategyData,
+                        contractsShares: g.totalQty,
+                      };
+                      const evalResult = manifest.evaluate(evalLot);
+                      const pointByLabel = new Map(evalResult.displayPoints.map(p => [p.label, p]));
+                      const topAlert = evalResult.alerts.slice().sort((a, b) => sevOrder[b.severity] - sevOrder[a.severity])[0];
+
+                      const statusBadge = (
+                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${
+                          topAlert
+                            ? topAlert.severity === "critical" ? "bg-bear text-bear-foreground"
+                            : topAlert.severity === "warn"     ? "bg-bear/40 text-bear-light"
+                            : topAlert.severity === "watch"    ? "bg-watch/30 text-watch-light"
+                            :                                    "bg-primary/20 text-primary"
+                            : "bg-bull/15 text-bull-light"
+                        }`}>
+                          {topAlert ? (
+                            topAlert.action === "dump"          ? "DUMP NOW"
+                            : topAlert.action === "exit"        ? "EXIT"
+                            : topAlert.action === "take-partial" ? "TAKE PARTIAL"
+                            :                                     "WATCH"
+                          ) : "HOLD"}
+                        </span>
+                      );
+
+                      const mainRow = (
+                        <tr
+                          key={`grp-${g.key}`}
+                          className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
+                          onClick={isSingleLot ? undefined : () => toggleGroup(g.key)}
+                          data-testid={`position-row-${g.key}`}
+                        >
+                          <td className="py-2 px-3 text-foreground tabular-nums">
+                            <div className="flex items-center gap-1.5">
+                              {!isSingleLot && (isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground rotate-180" />)}
+                              <span>{g.firstTradeDate}</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 font-mono font-bold text-foreground">
+                            {g.symbol}
+                            <ScannerPip ticker={g.symbol} />
+                            {!isSingleLot && <span className="ml-1.5 text-mini font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            <span className="font-semibold">{g.totalQty}</span>
+                            <span className="text-muted-foreground"> @ ${Math.abs(g.avgOpenPrice).toFixed(2)}</span>
+                            {!isSingleLot && <span className="block text-mini opacity-60">avg</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {g.currentPrice != null ? `$${g.currentPrice.toFixed(2)}` : "—"}
+                          </td>
+                          {columnLabels.map(label => {
+                            const p = pointByLabel.get(label);
+                            return (
+                              <td key={label} className={`py-2 px-3 text-right tabular-nums font-mono ${p ? pointStateClass(p.state) : "text-muted-foreground"}`}>
+                                {p?.value ?? "—"}
+                              </td>
+                            );
+                          })}
+                          <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
+                            {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
+                            {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}d</td>
+                          <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col items-center gap-1 min-w-[140px]">
+                              {topAlert && topAlert.actionShares != null && topAlert.actionShares > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => isSingleLot && openClose(g.lots[0], topAlert.actionShares!)}
+                                  disabled={!isSingleLot}
+                                  title={isSingleLot ? topAlert.message : "Expand the group and act on a single lot"}
+                                  data-testid={`act-${topAlert.action}-${g.symbol}`}
+                                  className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                    topAlert.action === "dump"          ? "bg-bear text-bear-foreground hover:brightness-110 animate-pulse"
+                                    : topAlert.action === "exit"        ? "bg-bear/80 text-bear-foreground hover:bg-bear"
+                                    : topAlert.action === "take-partial" ? "bg-watch text-background hover:brightness-110"
+                                    :                                     "bg-primary text-primary-foreground hover:brightness-110"
+                                  }`}
+                                >
+                                  {topAlert.actionLabel}
+                                </button>
+                              ) : (
+                                statusBadge
+                              )}
+                              {topAlert && (
+                                <span
+                                  className={`text-2xs leading-tight max-w-[200px] ${
+                                    topAlert.severity === "critical" ? "text-bear-light font-semibold"
+                                    : topAlert.severity === "warn"   ? "text-bear-light"
+                                    : topAlert.severity === "watch"  ? "text-watch-light"
+                                    :                                  "text-muted-foreground"
+                                  }`}
+                                >
+                                  {topAlert.message}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
-                              <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
-                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                              <button
+                                onClick={() => {
+                                  setAddSeed({ symbol: g.symbol, tradeType: g.tradeType, tradeCategory: g.tradeCategory, strikes: g.strikes, expiration: g.expiration, creditDebit: g.creditDebit, pilotOrAdd: "Add" });
+                                  setShowAddModal(true);
+                                }}
+                                className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                                title="Add to this position"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                              {isSingleLot && (
+                                <>
+                                  <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => openClose(g.lots[0])} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close full position"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
                       );
-                    }
-                  }
-                }
 
-                // ─── Closed trades (flat) ───────────────────────────────────────
-                for (const t of closedFlat) {
-                  const profit = computeTradeProfit(t);
-                  runningTotal += profit;
-                  const days = daysInTrade(t);
-                  const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                  const isWin = profit >= 0;
-                  rendered.push(
-                    <tr key={`t-${t.id}`} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
-                      <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
-                      <td className="py-2 px-3">
-                        <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${
-                          t.creditDebit === "CREDIT" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"
-                        }`}>{t.tradeType}</span>
-                      </td>
-                      <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
-                      <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {Math.abs(t.openPrice).toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
-                        {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
-                      </td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
-                        {profit !== 0 ? formatCurrency(profit) : "—"}
-                        {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-2xs ${runningTotal >= 0 ? "text-bull-light/70" : "text-bear-light/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {t.expiration ? (
-                          <span className="text-micro font-mono tabular-nums text-muted-foreground">{t.expiration.substring(5)}</span>
-                        ) : (<span className="text-muted-foreground">—</span>)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center">
-                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${isWin ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
-                          {isWin ? "WIN" : "LOSS"}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      const lotRows = !isSingleLot && isExpanded
+                        ? g.lots.map(t => {
+                            const profit = t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t);
+                            const lotDays = daysInTrade(t);
+                            const lotPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                            return (
+                              <tr key={`lot-${t.id}`} className="border-b border-card-border/20 bg-background/40 text-muted-foreground" data-testid={`lot-row-${t.id}`}>
+                                <td className="py-1.5 px-3 pl-10 tabular-nums text-2xs">└ {t.tradeDate}</td>
+                                <td className="py-1.5 px-3 text-2xs opacity-60">—</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares} @ ${Math.abs(t.openPrice).toFixed(2)}</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{t.currentPrice != null ? `$${t.currentPrice.toFixed(2)}` : "—"}</td>
+                                {columnLabels.map(label => <td key={label} className="py-1.5 px-3"></td>)}
+                                <td className={`py-1.5 px-3 text-right tabular-nums text-2xs ${profit >= 0 ? "text-bull-light/80" : "text-bear-light/80"}`}>
+                                  {profit !== 0 ? formatCurrency(profit) : "—"}
+                                  {lotPct !== 0 && <span className="text-mini ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}
+                                </td>
+                                <td className="py-1.5 px-3 text-right tabular-nums text-2xs">{lotDays}d</td>
+                                <td className="py-1.5 px-3"></td>
+                                <td className="py-1.5 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
+                                    <button onClick={() => openClose(t)} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
+                                    <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        : [];
+
+                      return (
+                        <React.Fragment key={`row-frag-${g.key}`}>
+                          {mainRow}
+                          {lotRows}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        // ─── Closed trades — separate flat table at the bottom ──────────
+        if (closedFlat.length > 0) {
+          sections.push(
+            <div key="closed-section" className="bg-card border border-card-border rounded-lg overflow-hidden">
+              <div className="px-3 py-2 border-b border-card-border/40 flex items-center justify-between">
+                <span className="text-sm font-bold text-muted-foreground tracking-tight">Closed Trades</span>
+                <span className="text-2xs opacity-60 italic">{closedFlat.length} closed · realized P/L visible per row</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" data-testid="trades-table-closed">
+                  <thead>
+                    <tr className="bg-muted/30 border-b border-card-border">
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Date</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Symbol</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Strategy</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Qty @ Open</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Close</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">P/L</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Days</th>
+                      <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Status</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Edit</th>
                     </tr>
-                  );
-                }
-                return rendered;
-              })()}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  </thead>
+                  <tbody>
+                    {closedFlat.map((t: Trade) => {
+                      const profit = computeTradeProfit(t);
+                      const days = daysInTrade(t);
+                      const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                      const isWin = profit >= 0;
+                      const manifest = getStrategyManifest(t.strategy);
+                      return (
+                        <tr key={`closed-${t.id}`} className="border-b border-card-border/30 hover:bg-muted/20" data-testid={`closed-row-${t.id}`}>
+                          <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
+                          <td className="py-2 px-3 text-2xs text-muted-foreground">{manifest.shortName}</td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {t.contractsShares} @ ${Math.abs(t.openPrice).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {t.closePrice != null ? `$${Math.abs(t.closePrice).toFixed(2)}` : "—"}
+                            <span className="block text-mini opacity-60">{t.closeDate}</span>
+                          </td>
+                          <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
+                            {profit !== 0 ? formatCurrency(profit) : "—"}
+                            {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}d</td>
+                          <td className="py-2 px-3 text-center">
+                            <span className={`text-micro font-semibold px-2 py-0.5 rounded ${isWin ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
+                              {isWin ? "WIN" : "LOSS"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        return <div className="space-y-4">{sections}</div>;
+      })()}
 
       {/* Behavior */}
       {summary && Object.keys(summary.behaviorCounts).length > 0 && (

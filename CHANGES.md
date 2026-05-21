@@ -9,6 +9,45 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Current Positions: one table PER STRATEGY with manifest-driven columns; killed Total column
+
+**Why:** Chris (correctly) called out two foundation violations on the Current Positions page:
+1. **Total column was useless** — running cumulative P&L per row that didn't recompute, just stacked from top to bottom. Confusing, not actionable, gone.
+2. **All groups looked the same** — strategy header rows separated groups visually but every row used the same generic columns (Date/Symbol/Type/P/A/Qty/Strikes/Open/Close/Price/P-L/Total/Exp/Days/Status). HTF's Stop / Take 1/3 / Trail 20-MA / Target columns weren't there. BBTC's Exit Trigger column wasn't there. Every strategy's actual rules were buried in the hover-tooltip on the Status column.
+
+Chris's exact words: *"ALL groups need to reflect the strategy rules in the columns. HOW CAN I EXPLAIN THIS TO YOU? Have separate tables if you need to."* He authorized the structural answer; I'd been patching around it.
+
+**What:**
+
+### Each strategy gets its own table
+- **`shared/strategies/registry.ts`** — `StrategyManifest` gains `columnOrder: string[]`. Each manifest declares the ordered list of `DisplayPoint.label`s it wants rendered as columns:
+  - **HTF**: `Stop`, `Take 1/3`, `Took 1/3`, `Trail 20-MA`, `Target`, `Pole`, `Flag`
+  - **BBTC+VER / AMC**: `Stop (EXIT)`, `Exit trigger`, `Target`
+  - **TFT (40W / 60W / catastrophic)**: `40W SMA`, `−15% stop`
+  - **Manual / Other**: `Target`
+- **`client/src/pages/trade-tracker.tsx`** — replaced the single mega-table with **one table per strategy group**. Each section is its own card with:
+  - Color-coded left stripe + header bar (strategy name + position count + description)
+  - A table whose **column header row reflects the strategy's `columnOrder`**
+  - Common cells at the start (Date / Symbol / Pos = `Qty @ Entry$` / Current) and end (P/L / Days / Action / Edit)
+  - Strategy-specific columns in the middle, each colored by lifecycle state (`triggered` = red bold, `armed` = yellow, `past` = muted, `pending` = default)
+  - Strategy-driven action button as before — but now it sits in a dedicated Action column, not crammed into Status
+
+### Closed Trades = separate flat table at the bottom
+- Own card with header "Closed Trades · N closed"
+- Compact columns: Date / Symbol / Strategy short-name / Qty @ Open / Close (price + date) / P/L / Days / Status / Edit
+- No more confusing "running total" cell
+
+### Removed
+- `Total` column (cumulative running P/L) — entirely gone, top and bottom.
+- The `runningTotal` accumulator local variable.
+- `Type`, `P/A`, `Strikes`, `Close`, `Price`, `Exp` columns from the open-positions tables. (`Type` is implied by the strategy section; `Close` / `Exp` only matter for closed trades or options — closed trades have their own table now.)
+
+### Foundation result
+Adding a new strategy now means: write its manifest with a `columnOrder` list of label names + an `evaluate()` that returns matching `displayPoints`. The Current Positions page picks up its own table with its own columns. UI is still dumb; the manifest is the source of truth.
+
+**Files:** `shared/strategies/registry.ts`, `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Strategy-driven action BUTTONS (Sell N / Close N / DUMP N) instead of text-only alerts
 
 **Why:** *"Not hover — I want real indicators, enter, hold, sell partial, close etc. — all based on the determined principles of the strategy."* The previous push made alerts informative but still required the user to interpret text and navigate to the Close Trade modal manually. Now the manifest decides the action, the share count, and the button label — UI renders whatever the strategy declared.

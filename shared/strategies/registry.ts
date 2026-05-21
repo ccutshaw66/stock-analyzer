@@ -111,6 +111,18 @@ export interface StrategyManifest {
   /** If true, the trade form should show + require strategyReason text. */
   requiresReason: boolean;
   /**
+   * Ordered list of `DisplayPoint.label`s the Current Positions table renders
+   * as **its own columns** for this strategy. Each strategy gets its own
+   * table so the columns reflect its rules (HTF: Stop / Take 1/3 / Trail
+   * 20-MA / Target; BBTC: Stop / Exit Trigger / Target; etc.). Labels that
+   * don't appear in a particular row's `evaluate()` output render "—".
+   *
+   * Excludes "Entry" + "vs entry" since those are common to every strategy
+   * and rendered in fixed columns by the page; manifest only owns the
+   * STRATEGY-SPECIFIC slots between them.
+   */
+  columnOrder: string[];
+  /**
    * Evaluate the trade against its strategy rules and return the lifecycle
    * data the Positions page renders. Pure function — no side effects, no
    * I/O. If price/bar data is needed to evaluate a trigger, the caller
@@ -154,6 +166,7 @@ const HTF_MANIFEST: StrategyManifest = {
   description: "Givens HTF setup: 30%+ pole, tight flag, breakout on volume",
   color: "bull",
   requiresReason: false,
+  columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "Pole", "Flag"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
     const entry = Math.abs(trade.openPrice);   // openPrice is signed; risk math wants absolute
@@ -321,6 +334,7 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   description: "Trend continuation + oversold reversal (Ready/Set/Go chain)",
   color: "info",
   requiresReason: false,
+  columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
     const entry = Math.abs(trade.openPrice);
@@ -429,6 +443,7 @@ const TFT_40W_MANIFEST: StrategyManifest = {
   description: "Two-layer trend follower — exits on weekly close below 40W SMA",
   color: "bull",
   requiresReason: false,
+  columnOrder: ["40W SMA", "−15% stop"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
     const entry = Math.abs(trade.openPrice);
@@ -525,6 +540,7 @@ const AMC_MANIFEST: StrategyManifest = {
   description: "5-condition momentum confluence — middle leg of Ready/Set/Go",
   color: "watch",
   requiresReason: false,
+  columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
   evaluate(trade) {
     return BBTC_VER_MANIFEST.evaluate(trade); // same lifecycle as BBTC+VER
   },
@@ -541,6 +557,7 @@ const MANUAL_MANIFEST: StrategyManifest = {
   description: "Discretionary trade — no strategy-driven lifecycle",
   color: "neutral",
   requiresReason: false,
+  columnOrder: ["Target"],
   evaluate(trade) {
     const points: DisplayPoint[] = [];
     const entry = Math.abs(trade.openPrice);
@@ -581,6 +598,7 @@ const OTHER_MANIFEST: StrategyManifest = {
   description: "Non-strategy reason (e.g. recommendation, news, hunch)",
   color: "neutral",
   requiresReason: true,
+  columnOrder: ["Target"],
   evaluate: MANUAL_MANIFEST.evaluate,
 };
 
