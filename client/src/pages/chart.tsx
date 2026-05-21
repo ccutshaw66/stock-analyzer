@@ -39,6 +39,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
 import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
 import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { STRATEGY_REGISTRY } from "@shared/strategies/registry";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -53,7 +54,13 @@ import {
 
 // ─── Types matching server/diag/chart-data.ts response ────────────────────
 
-type ChartStrategy = "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-catastrophic";
+/**
+ * String id that the /api/chart endpoint accepts. The set of valid ids is
+ * derived from `STRATEGY_REGISTRY` (manifests with a `chartBacktest` field);
+ * we use `string` here so future strategies plug in without editing this file.
+ * The server validates and falls back to "bbtc-ver" on unknown ids.
+ */
+type ChartStrategy = string;
 
 interface ChartBar {
   date: string;
@@ -133,14 +140,20 @@ interface ChartDataResponse {
 }
 
 // ─── Strategy + timeframe option metadata ─────────────────────────────────
+// Derived from STRATEGY_REGISTRY: any manifest with `chartBacktest` set
+// surfaces here automatically, in registry order. Adding a new comparable
+// strategy = add the manifest field + register the server adapter, no edit
+// to this file. Strategies with their own dedicated pages (HTF, Wyckoff
+// Spring) deliberately omit `chartBacktest` and don't appear here.
 
-const STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string }[] = [
-  { value: "bbtc-ver", label: "BBTC + VER", description: "Current website Ready/Set/Go strategy" },
-  { value: "amc", label: "AMC only", description: "Adaptive Momentum Confluence (the 'Set' indicator alone)" },
-  { value: "tft-40w", label: "TFT 40W", description: "Two-Layer Trend Continuation, weekly 40W SMA stop" },
-  { value: "tft-60w", label: "TFT 60W", description: "TFT with slower 60W stop" },
-  { value: "tft-catastrophic", label: "TFT Catastrophic", description: "TFT, core only exits on -15% catastrophic. Maximum moonshot capture" },
-];
+const STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string }[] =
+  Object.entries(STRATEGY_REGISTRY)
+    .filter(([, m]) => m.chartBacktest != null)
+    .map(([id, m]) => ({
+      value: id,
+      label: m.chartBacktest!.label,
+      description: m.chartBacktest!.description,
+    }));
 
 const TIMEFRAME_OPTIONS: { value: number; label: string }[] = [
   { value: 365, label: "1Y" },
@@ -676,7 +689,7 @@ export default function ChartPage() {
               The basket result is OUR test methodology, not a user-experience
               guarantee. */}
           <div className="mt-2 text-2xs text-muted-foreground bg-muted/30 border border-card-border rounded p-2 leading-relaxed">
-            <strong className="text-foreground">Backtest methodology:</strong> All five strategies were backtested over 10 years (2015–2026) on an 80-ticker basket spanning all 11 sectors plus SPY/QQQ/DIA/IWM benchmarks. Results vary widely by ticker — this page shows you exactly how each strategy traded the active ticker, not basket averages. Past results don&apos;t guarantee future performance.
+            <strong className="text-foreground">Backtest methodology:</strong> All {STRATEGY_OPTIONS.length} strategies were backtested over 10 years (2015–2026) on an 80-ticker basket spanning all 11 sectors plus SPY/QQQ/DIA/IWM benchmarks. Results vary widely by ticker — this page shows you exactly how each strategy traded the active ticker, not basket averages. Past results don&apos;t guarantee future performance.
           </div>
         </CardContent>
       </Card>

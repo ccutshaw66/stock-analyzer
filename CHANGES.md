@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — /chart page: derive strategy toggle from STRATEGY_REGISTRY (kill drift)
+
+**Why:** Site-wide audit caught two drift bugs on the /chart comparison page:
+1. The page hardcoded its own `STRATEGY_OPTIONS` array instead of reading from `STRATEGY_REGISTRY` — adding a new comparable strategy required editing the page (violates the universal structure / always-evolving rules).
+2. The TFT "catastrophic-only" variant had **two different ids** in two places — `tft-catastrophic` in `server/diag/chart-data.ts` + `client/src/pages/chart.tsx`, but `tft-cat` in `STRATEGY_REGISTRY` and the trade-tracker grouping. Either id worked in isolation but a deep-link like `/chart?strategy=tft-cat` (the registry-canonical id) silently fell through to the BBTC+VER default.
+
+**What:**
+- Added `chartBacktest?: { label, description }` to the `StrategyManifest` interface. Manifests opt-in by setting this; the /chart page filters the registry by its presence. Strategies with their own dedicated pages (HTF, Wyckoff Spring) deliberately omit it.
+- Set `chartBacktest` on BBTC+VER, AMC, TFT-40W, TFT-60W, and TFT-CAT manifests.
+- Unified the TFT-catastrophic id on `tft-cat` (registry-canonical) across server endpoint, route handler, and client. Route handler still accepts the legacy aliases `tft-catastrophic` and `tft-catastrophic-only` and normalizes them to `tft-cat`, so any cached query URLs or bookmarks still work.
+- `/chart` page now derives `STRATEGY_OPTIONS` from `STRATEGY_REGISTRY` at module load. Adding the next comparable strategy = set `chartBacktest` on its manifest + add the server adapter case in `chart-data.ts`. No edit to `chart.tsx` needed.
+
+**Files**
+- mod: `shared/strategies/registry.ts` — added `chartBacktest` field + populated on 5 manifests
+- mod: `server/diag/chart-data.ts` — `ChartStrategy` type renamed `tft-catastrophic` → `tft-cat`; updated `tftCoreStopFromStrategy` and docblock
+- mod: `server/routes.ts` — `/api/chart/:ticker` normalizes legacy aliases to `tft-cat`
+- mod: `client/src/pages/chart.tsx` — removed hardcoded `STRATEGY_OPTIONS`, imports + filters `STRATEGY_REGISTRY`; backtest-count in methodology blurb now reads the derived count
+
+**TypeScript:** clean. **Build:** clean.
+
+**Sanity check:** open `/chart` after deploy → confirm 5 toggle buttons appear in registry order (BBTC+VER, TFT 40W, TFT 60W, TFT Catastrophic, AMC) → click each and confirm the chart updates (state path: button → setStrategy → URL `?strategy=<id>` → server). Then deep-link `/chart?strategy=tft-catastrophic` (legacy alias) and confirm it loads the TFT-CAT data.
+
+---
 ## 2026-05-21 — Wyckoff Spring: registered in STRATEGY_REGISTRY (live in dropdown)
 
 **Why:** Backtest cleared all acceptance criteria — $10,362 basket P&L / 235 trades / $44.10 per trade / 58.7% win rate / 100% tested cohort. Strategy is ready to ship to the Add-Trade dropdown alongside HTF.

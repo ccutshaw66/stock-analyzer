@@ -5,12 +5,14 @@
  * for one strategy on one ticker. Designed so the frontend can switch
  * strategies via a dropdown without changing endpoint shape.
  *
- * Strategies supported:
- *   - "bbtc-ver"          — current website strategy (BBTC + VER, paired per-strategy)
- *   - "amc"               — AMC-only entries (ENTER → SELL pairing)
- *   - "tft-40w"           — TFT with 40W core stop (default TFT)
- *   - "tft-60w"           — TFT with 60W core stop
- *   - "tft-catastrophic"  — TFT with catastrophic-only core (the $5.28M winner)
+ * Strategies supported (IDs match `STRATEGY_REGISTRY` in shared/strategies):
+ *   - "bbtc-ver"  — current website strategy (BBTC + VER, paired per-strategy)
+ *   - "amc"       — AMC-only entries (ENTER → SELL pairing)
+ *   - "tft-40w"   — TFT with 40W core stop (default TFT)
+ *   - "tft-60w"   — TFT with 60W core stop
+ *   - "tft-cat"   — TFT with catastrophic-only core (the $5.28M winner)
+ *                   Legacy aliases "tft-catastrophic" / "tft-catastrophic-only"
+ *                   are normalized to "tft-cat" by the route handler.
  *
  * Used by `GET /api/chart/:ticker`.
  */
@@ -29,7 +31,7 @@ import {
   SMA_TREND_PERIOD,
 } from "@shared/indicators/constants";
 
-export type ChartStrategy = "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-catastrophic";
+export type ChartStrategy = "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-cat";
 
 // ─── Indicator helpers (duplicated from strategy-pnl/strategy-tft-pnl) ─────
 
@@ -296,7 +298,7 @@ interface Adapter {
 function tftCoreStopFromStrategy(strategy: ChartStrategy): TFTCoreStopMode | null {
   if (strategy === "tft-40w") return "40w";
   if (strategy === "tft-60w") return "60w";
-  if (strategy === "tft-catastrophic") return "catastrophic-only";
+  if (strategy === "tft-cat") return "catastrophic-only";
   return null;
 }
 

@@ -120,6 +120,19 @@ export interface StrategyManifest {
   /** If true, the trade form should show + require strategyReason text. */
   requiresReason: boolean;
   /**
+   * Opt-in metadata that surfaces this strategy on the /chart comparison page.
+   * Strategies without this field don't appear in the toggle (e.g. HTF and
+   * Wyckoff Spring have their own dedicated pages, not the /chart backtester).
+   * Adding a new comparable strategy = set this + register a server adapter
+   * in `server/diag/chart-data.ts`. The /chart page itself stays untouched.
+   */
+  chartBacktest?: {
+    /** Short label shown on the toggle button. */
+    label: string;
+    /** Tooltip text shown on hover. */
+    description: string;
+  };
+  /**
    * Ordered list of `DisplayPoint.label`s the Current Positions table renders
    * as **its own columns** for this strategy. Each strategy gets its own
    * table so the columns reflect its rules (HTF: Stop / Take 1/3 / Trail
@@ -580,6 +593,10 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   color: "info",
   requiresReason: false,
   columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
+  chartBacktest: {
+    label: "BBTC + VER",
+    description: "Current website Ready/Set/Go strategy",
+  },
   evaluate(trade) {
     const data = trade.strategyData ?? {};
     const entry = Math.abs(trade.openPrice);
@@ -689,6 +706,10 @@ const TFT_40W_MANIFEST: StrategyManifest = {
   color: "bull",
   requiresReason: false,
   columnOrder: ["40W SMA", "−15% stop"],
+  chartBacktest: {
+    label: "TFT 40W",
+    description: "Two-Layer Trend Continuation, weekly 40W SMA stop",
+  },
   evaluate(trade) {
     const data = trade.strategyData ?? {};
     const entry = Math.abs(trade.openPrice);
@@ -765,6 +786,10 @@ const TFT_60W_MANIFEST: StrategyManifest = {
   name: "TFT (60W exit)",
   shortName: "TFT-60W",
   description: "Two-layer trend follower — slower 60W SMA exit for moonshot capture",
+  chartBacktest: {
+    label: "TFT 60W",
+    description: "TFT with slower 60W stop",
+  },
 };
 
 const TFT_CAT_MANIFEST: StrategyManifest = {
@@ -773,6 +798,10 @@ const TFT_CAT_MANIFEST: StrategyManifest = {
   name: "TFT (catastrophic-only)",
   shortName: "TFT-CAT",
   description: "Two-layer trend follower — core exits only on −15% stop",
+  chartBacktest: {
+    label: "TFT Catastrophic",
+    description: "TFT, core only exits on −15% catastrophic. Maximum moonshot capture",
+  },
 };
 
 /**
@@ -786,6 +815,10 @@ const AMC_MANIFEST: StrategyManifest = {
   color: "watch",
   requiresReason: false,
   columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
+  chartBacktest: {
+    label: "AMC only",
+    description: "Adaptive Momentum Confluence (the 'Set' indicator alone)",
+  },
   evaluate(trade) {
     return BBTC_VER_MANIFEST.evaluate(trade); // same lifecycle as BBTC+VER
   },
