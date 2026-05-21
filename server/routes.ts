@@ -5373,6 +5373,54 @@ export async function registerRoutes(
     }
   });
 
+  // Wyckoff Spring P&L EVALUATOR — full backtest harness across a basket.
+  // Same response shape as /api/diag/strategy-htf-pnl so head-to-head
+  // comparison is a URL swap. Acceptance gate before manifest registration:
+  // basket totalPnLDollar > 0 AND avgPnLPerTrade ≥ $30 AND (winRate ≥ 50%
+  // OR rMultiple ≥ 1.5) AND maxDD ≤ HTF baseline DD.
+  //
+  //   GET /api/diag/strategy-wyckoff-spring-pnl?universe=htf&days=3650&positionSize=1750&minScore=70
+  //   GET /api/diag/strategy-wyckoff-spring-pnl?symbols=AAPL,AMZN&days=3650[&detail=1]
+  //
+  app.get("/api/diag/strategy-wyckoff-spring-pnl", async (req, res) => {
+    try {
+      const { runStrategyWyckoffSpringPnL } = await import("./diag/strategy-wyckoff-spring-pnl");
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+        const u = await getHtfUniverse();
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = [...u.tickers]
+          .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+          .slice(0, limit)
+          .map(r => r.symbol.toUpperCase());
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const result = await runStrategyWyckoffSpringPnL(symbols, days, positionSize, detail, minScore);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-wyckoff-spring-pnl failed" });
+    }
+  });
+
   // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
   // we can eyeball detection accuracy on a chart before investing in the
   // full backtest harness.

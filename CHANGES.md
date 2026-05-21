@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring backtest harness (step 3 of Top-3 #3)
+
+**Why:** Diag scan confirmed the detector finds real Springs on AAPL/AMZN/NVDA across 7 years. Time to measure dollar P&L on the full 491-ticker basket and decide whether the manifest registers in `STRATEGY_REGISTRY`. The acceptance gate from the spec: basket total P&L > 0 AND avg $/trade ≥ $30 AND (win rate ≥ 50% OR R-multiple ≥ 1.5) AND max DD ≤ HTF baseline.
+
+**What:** New endpoint `GET /api/diag/strategy-wyckoff-spring-pnl?universe=htf&days=3650&positionSize=1750&minScore=70`. Mirrors the `/api/diag/strategy-htf-pnl` response shape (per-ticker P&L + basket aggregate + SPY benchmark) so direct head-to-head comparison is a URL swap. Lifecycle: entry = next bar's open after SOS, stop = `hit.stopPrice`, partial = sell 1/3 after 2 consecutive daily closes above entry × 1.10, trail remaining 2/3 below 20-day MA after partial. Stop-runs-first ordering matches HTF.
+
+**Springs-specific reporting:** `tradesWithTest` / `tradesWithoutTest` cohort split and `pnlWithTestDollar` / `pnlWithoutTestDollar` in the aggregate — lets us settle the "should we require a test bar?" question with numbers instead of intuition.
+
+**Files**
+- new: `server/diag/strategy-wyckoff-spring-pnl.ts`
+- mod: `server/routes.ts` (route handler, mirrors the HTF P&L route)
+
+**TypeScript:** clean.
+
+**Live URL after deploy:**
+- `https://stockotter.ai/api/diag/strategy-wyckoff-spring-pnl?universe=htf&days=3650&positionSize=1750&minScore=70`
+
+**Next:** Run the URL, paste back the `aggregate` block. If it clears the acceptance gate → add `WYCKOFF_SPRING_MANIFEST` to `shared/strategies/registry.ts` and the Add-Trade dropdown lights up. If it fails → tune detector thresholds (most likely: relax the test-bar window or recalibrate the score rubric using the cohort split) and re-run.
+
+---
 ## 2026-05-21 — Wyckoff Spring diagnostic scan endpoint (step 2 of Top-3 #3)
 
 **Why:** Spec step 2 — hand-verify the detector on real historical data before investing in the backtest harness. Need a small JSON endpoint that runs the detector against one ticker so Chris can spot-check dates / pierce depths / TR boundaries.
