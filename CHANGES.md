@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Close modal no longer gated on settings query — action button now actually opens it
+
+**Why:** Chris reported: *"still no close the trade on button."* Even after enabling the action button for multi-lot positions, clicking "Sell 6" on NVTS did nothing. Root cause: the Close Trade modal render was gated on `closingTrade && settings && <CloseTradeModal .../>`. If the `/api/account/settings` query was momentarily unresolved (slow load, race after refresh, transient empty cache), `setClosingTrade(...)` set state but the JSX condition skipped the modal because `settings` was falsy. Action button looked dead; really it was firing but the modal silently refused to render.
+
+**What:**
+- **`client/src/pages/trade-tracker.tsx`** — removed the `&& settings` guard from the Close Trade modal render. Modal now renders whenever `closingTrade` is set, regardless of settings load state. Passes `settings ?? undefined` through.
+- **`CloseTradeModal`** — `settings` prop is now optional. Commission fallbacks use the schema defaults (`0` for stock, `$0.65` per option contract) via `settings?.commPerSharesTrade ?? 0` and `settings?.commPerOptionContract ?? 0.65`. Trade close math still computes correctly without a populated settings record.
+
+**Foundation note:** any modal that's keyed off user-initiated state (like clicking an action button) should NOT gate on async data loads. The state change IS the user's intent; missing data should fall through to safe defaults, not silently swallow the action.
+
+**Files:** `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Action button now works on multi-lot positions
 
 **Why:** Chris's "Sell 6" button on NVTS did nothing when clicked. Root cause: the button was `disabled={!isSingleLot}` — if a position was opened across multiple buys (NVTS likely 2 lots of 10 shares), the button rendered slightly dimmed and refused to act. Visual feedback was too subtle; user saw a button labelled "Sell 6" and clicked it expecting something to happen.

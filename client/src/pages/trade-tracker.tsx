@@ -732,7 +732,12 @@ function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
   /** Pre-fill qty input. Strategy manifests pass `actionShares` so a "Sell 3 (1/3)" button opens this modal with qty=3 already typed. */
   defaultQty?: number;
   onClose: () => void;
-  settings: AccountSettings;
+  // Settings can be undefined if the query hasn't resolved when the button is
+  // clicked. The modal MUST still open — commission falls back to the schema
+  // defaults (0 for stock, $0.65 per option contract). Previously the page
+  // gated the modal on `settings &&` which made the action button look broken
+  // when the query was momentarily empty (e.g., right after a session refresh).
+  settings?: AccountSettings;
 }) {
   const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
   const [closePrice, setClosePrice] = useState("");
@@ -780,9 +785,9 @@ function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
     const numLegs = typeDef?.legs || 0;
     let commOut = 0;
     if (trade.tradeCategory === "Option") {
-      commOut = qtyNum * numLegs * (settings.commPerOptionContract || 0.65);
+      commOut = qtyNum * numLegs * (settings?.commPerOptionContract ?? 0.65);
     } else {
-      commOut = settings.commPerSharesTrade || 0;
+      commOut = settings?.commPerSharesTrade ?? 0;
     }
     closeMutation.mutate({ closeDate, closePrice: signedClose, commOut, qty: qtyNum });
   };
@@ -1574,12 +1579,12 @@ export default function TradeTracker() {
       {showAddModal && settings && <TradeForm mode="add" initial={addSeed as any} settings={settings} onClose={() => { setShowAddModal(false); setAddSeed(null); }} />}
 
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
-      {closingTrade && settings && (
+      {closingTrade && (
         <CloseTradeModal
           trade={closingTrade}
           defaultQty={closingQty}
           onClose={() => { setClosingTrade(null); setClosingQty(undefined); }}
-          settings={settings}
+          settings={settings ?? undefined}
         />
       )}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
