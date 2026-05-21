@@ -16,7 +16,7 @@ import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
 import type { OHLCV } from "../../data/types";
 
-export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
+export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data" | "failed_breakout";
 
 export interface HtfTrade {
   symbol: string;
@@ -98,11 +98,17 @@ function simulateTrade(bars: OHLCV[], hit: HtfHit): HtfTrade | null {
   const entryPrice = bars[entryI].o;
   const consolLow = hit.extras.flagLow;
   const stopPrice = consolLow * 0.99;
+  const flagHigh = hit.extras.flagHigh;
 
   const closes = bars.map(b => b.c);
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
   const ma20 = rolling20MA(closes);
+
+  // 2026-05-20 throwback fix — failed-breakout exit. Mirrors the diag
+  // simulator in server/diag/strategy-htf-pnl.ts. Close back below
+  // flag_high within first 3 bars after breakout → exit next open.
+  const FAILED_BREAKOUT_WINDOW_BARS = 3;
 
   let partialExitDate: Date | null = null;
   let partialExitPrice: number | null = null;
@@ -151,6 +157,37 @@ function simulateTrade(bars: OHLCV[], hit: HtfHit): HtfTrade | null {
         exitPrice,
         exitReason: "stop",
         holdingDays: j - entryI,
+        blendedReturnPct: ret * 100,
+        maxDrawdownPct: maxDrawdown * 100,
+        ...commonExtras(),
+      };
+    }
+
+    // Failed-breakout exit (2026-05-20 throwback fix). Close back below
+    // flag_high within first 3 bars → exit at next open.
+    const barsAfterBreakout = j - breakoutI;
+    if (
+      barsAfterBreakout >= 1 &&
+      barsAfterBreakout <= FAILED_BREAKOUT_WINDOW_BARS &&
+      closeJ < flagHigh
+    ) {
+      const exitI = j + 1 < bars.length ? j + 1 : j;
+      const exitPrice = j + 1 < bars.length ? bars[exitI].o : closeJ;
+      const ret = partialDone && partialExitPrice !== null
+        ? (partialExitPrice / entryPrice - 1) * (1 / 3) + (exitPrice / entryPrice - 1) * (2 / 3)
+        : exitPrice / entryPrice - 1;
+      return {
+        symbol: hit.symbol,
+        entryDate: ymd(entryDate),
+        entryPrice,
+        consolidationLow: consolLow,
+        stopPrice,
+        partialExitDate: partialExitDate ? ymd(partialExitDate) : null,
+        partialExitPrice,
+        exitDate: ymd(bars[exitI].t),
+        exitPrice,
+        exitReason: "failed_breakout",
+        holdingDays: exitI - entryI,
         blendedReturnPct: ret * 100,
         maxDrawdownPct: maxDrawdown * 100,
         ...commonExtras(),

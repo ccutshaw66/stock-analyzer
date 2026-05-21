@@ -24,8 +24,18 @@ export const FLAG_MIN_DAYS = 3;
 export const FLAG_MAX_DAYS = 30;
 export const FLAG_MAX_PULLBACK = 0.25;
 export const BREAKOUT_PAD = 0.001;      // 0.1% above flag high
-export const MIN_BREAKOUT_VOL_RATIO = 1.3;
+// 2026-05-20 throwback fix (Bulkowski): light-volume HTF breakouts outperform
+// heavy by 79% vs 63% in bull market — opposite of every other pattern. The
+// 1.3× hard gate was filtering out the alpha cohort. Drop to 1.0 (≥average)
+// as a sanity floor; remove the volume bonus from scoring entirely so light
+// volume isn't penalized either.
+export const MIN_BREAKOUT_VOL_RATIO = 1.0;
 export const HTF_VOL_AVG_WINDOW = 30;   // Givens uses 30-bar avg
+// 2026-05-20 throwback fix (Bulkowski): scan backward for prior peaks above
+// the breakout level but within this distance. 54% of HTFs throw back to the
+// breakout, and overhead resistance is the most reliable predictor.
+export const OVERHEAD_RESISTANCE_PCT = 0.10;       // 10% above breakout
+export const OVERHEAD_RESISTANCE_LOOKBACK_BARS = 252; // ~1 year of context
 
 export interface HtfExtras {
   poleStartPrice: number;
@@ -37,6 +47,16 @@ export interface HtfExtras {
   flagLow: number;
   flagPullbackPct: number;
   breakoutVolRatio: number;
+  /**
+   * 2026-05-20 throwback fix (Bulkowski): true if there is a prior peak above
+   * the breakout price but within OVERHEAD_RESISTANCE_PCT (default 10%).
+   * Bulkowski's data: 54% of HTFs throw back, and throwback-affected trades
+   * rise 49% vs 100% — biggest tactical lever available. Used by quality
+   * scoring (penalty) and downstream position sizing.
+   */
+  hasOverheadResistance: boolean;
+  /** Distance from breakout price to nearest overhead peak (% above), or null. */
+  nearestResistancePct: number | null;
 }
 
 export type HtfPattern = "HTF_Givens" | "HTF_Givens_Forming";
@@ -82,6 +102,49 @@ function rollingVolAvg(volumes: number[], window: number): number[] {
 
 function clampScore(s: number): number {
   return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+/**
+ * Scan backward from a candidate breakout bar for prior peaks above the
+ * breakout price but within OVERHEAD_RESISTANCE_PCT. Returns the nearest
+ * peak's distance (as a fraction; 0.05 = 5% above) so quality scoring can
+ * grade by proximity, not just presence/absence.
+ *
+ * Definition of a "peak": a bar whose high is strictly greater than the highs
+ * of the K bars on either side (K=3 here — local 7-bar maximum). This filters
+ * minor jitter while catching real swing highs.
+ *
+ * 2026-05-20 throwback fix (Bulkowski): the highest-leverage tactical lever
+ * available, per his stat that 54% of HTFs throw back and throwback-affected
+ * trades rise 49% vs 100% without.
+ */
+function detectOverheadResistance(
+  highs: number[],
+  fromIdx: number,
+  breakoutPrice: number,
+  lookbackBars = OVERHEAD_RESISTANCE_LOOKBACK_BARS,
+  withinPct = OVERHEAD_RESISTANCE_PCT,
+): { hasResistance: boolean; nearestPct: number | null } {
+  const PEAK_K = 3;
+  const ceiling = breakoutPrice * (1 + withinPct);
+  const startIdx = Math.max(PEAK_K, fromIdx - lookbackBars);
+  let nearestPct: number | null = null;
+  for (let k = startIdx; k < fromIdx - PEAK_K; k++) {
+    const h = highs[k];
+    if (h <= breakoutPrice || h > ceiling) continue;
+    // Local-max check
+    let isPeak = true;
+    for (let j = 1; j <= PEAK_K; j++) {
+      if (highs[k - j] >= h || highs[k + j] >= h) {
+        isPeak = false;
+        break;
+      }
+    }
+    if (!isPeak) continue;
+    const pct = (h - breakoutPrice) / breakoutPrice;
+    if (nearestPct == null || pct < nearestPct) nearestPct = pct;
+  }
+  return { hasResistance: nearestPct != null, nearestPct };
 }
 
 /**
@@ -168,7 +231,10 @@ export function scanHtf(
     const isBreakout = closes[i] > bestFlagHigh * (1 + BREAKOUT_PAD);
     if (!isBreakout && requireBreakout) continue;
 
-    // Volume confirmation
+    // Volume — record only. 2026-05-20 throwback fix: light-volume HTFs
+    // outperform heavy per Bulkowski; the 1.3× hard gate was filtering out
+    // the alpha cohort. MIN_BREAKOUT_VOL_RATIO floor (1.0× = ≥average)
+    // remains as a sanity check that a real bar's volume isn't pathological.
     const va = volAvg[i];
     const volRatio = va && !isNaN(va) ? vols[i] / va : 0;
     if (isBreakout && volRatio < MIN_BREAKOUT_VOL_RATIO && requireBreakout) continue;
@@ -180,7 +246,21 @@ export function scanHtf(
     const target = closes[i] + 0.5 * (bestFlagHigh - poleLow);
     const stop = bestFlagLow * 0.98;
 
-    // Scoring rubric — verbatim from htf_givens.py
+    // Overhead resistance — scan back up to ~1y for prior peaks above the
+    // breakout price but within OVERHEAD_RESISTANCE_PCT (10%). Bulkowski:
+    // throwback-affected HTFs rise 49% vs 100% without. Compute the nearest-
+    // peak distance and flag the hit; quality score penalty applied below.
+    const { hasResistance, nearestPct } = detectOverheadResistance(
+      highs,
+      i,
+      closes[i],
+    );
+
+    // Scoring rubric — 2026-05-20 throwback fix re-anchored to Bulkowski:
+    //   - dropped the volume-ratio bonus (light volume outperforms heavy on
+    //     HTF; we were rewarding the underperforming cohort)
+    //   - added overhead-resistance penalty (biggest single tactical lever
+    //     per Bulkowski's throwback stats)
     let score = 50;
     if (poleGain >= 1.0) score += 15;
     else if (poleGain >= 0.6) score += 10;
@@ -190,9 +270,12 @@ export function scanHtf(
     const pullbackPct = (bestFlagHigh - bestFlagLow) / bestFlagHigh;
     if (pullbackPct <= 0.1) score += 10;
     else if (pullbackPct <= 0.15) score += 5;
-    if (volRatio >= 2.0) score += 15;
-    else if (volRatio >= 1.5) score += 10;
-    else if (volRatio >= 1.3) score += 5;
+    // Overhead-resistance penalty: −10 if a peak sits ≤10% above the
+    // breakout (most punishing for throwbacks); −5 if 10–15%; clear = no
+    // penalty. Calibrated so a clean setup with a prior nearby peak drops
+    // a tier rather than disqualifies.
+    if (hasResistance && nearestPct != null && nearestPct <= 0.10) score -= 10;
+    else if (nearestPct != null && nearestPct <= 0.15) score -= 5;
 
     const finalScore = clampScore(score);
     if (finalScore < minScore) continue;
@@ -218,6 +301,8 @@ export function scanHtf(
         flagLow: bestFlagLow,
         flagPullbackPct: pullbackPct * 100,
         breakoutVolRatio: volRatio,
+        hasOverheadResistance: hasResistance,
+        nearestResistancePct: nearestPct != null ? Number((nearestPct * 100).toFixed(2)) : null,
       },
     });
     lastIdx = i;
@@ -309,7 +394,16 @@ export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
   const lastVa = volAvg[N - 1];
   const lastVolRatio = lastVa && !isNaN(lastVa) ? vols[N - 1] / lastVa : 0;
 
-  // Scoring — same rubric minus the breakout-vol bonus (no fire yet).
+  // Overhead resistance at the hypothetical trigger price (same logic as
+  // scanHtf — 2026-05-20 throwback fix). Watch-list setups already-at-risk
+  // of throwback should drop a tier in ranking.
+  const { hasResistance, nearestPct } = detectOverheadResistance(
+    highs,
+    N - 1,
+    triggerPrice,
+  );
+
+  // Scoring — matches scanHtf rubric (no breakout-vol bonus; resistance penalty).
   let score = 50;
   if (poleGain >= 1.0) score += 15;
   else if (poleGain >= 0.6) score += 10;
@@ -318,6 +412,8 @@ export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
   else if (bestFlagDays >= 5) score += 5;
   if (pullbackPct <= 0.1) score += 10;
   else if (pullbackPct <= 0.15) score += 5;
+  if (hasResistance && nearestPct != null && nearestPct <= 0.10) score -= 10;
+  else if (nearestPct != null && nearestPct <= 0.15) score -= 5;
 
   return {
     symbol,
@@ -340,6 +436,8 @@ export function scanFormingHtf(bars: OHLCV[], symbol = ""): HtfHit | null {
       flagLow: bestFlagLow,
       flagPullbackPct: pullbackPct * 100,
       breakoutVolRatio: lastVolRatio,
+      hasOverheadResistance: hasResistance,
+      nearestResistancePct: nearestPct != null ? Number((nearestPct * 100).toFixed(2)) : null,
     },
   };
 }

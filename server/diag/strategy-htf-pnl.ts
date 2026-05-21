@@ -85,7 +85,7 @@ function barsToOHLCV(b: Bars): OHLCV[] {
 
 // ─── Trade simulation (Givens exits, copied from htf-scanner/backtest.ts) ──
 
-export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
+export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data" | "failed_breakout";
 
 export interface HtfTrade {
   symbol: string;
@@ -142,11 +142,18 @@ function simulateHtfTrade(
   const entryDate = bars[entryI].t;
   const entryPrice = bars[entryI].o;
   const stopPrice = hit.extras.flagLow * 0.99;
+  const flagHigh = hit.extras.flagHigh;
 
   const closes = bars.map(b => b.c);
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
   const ma20 = rolling20MA(closes);
+
+  // 2026-05-20 throwback fix (Bulkowski + Wyckoff Upthrust + Woods Hikkake):
+  // if the close falls back below flag_high within the first 3 bars after
+  // entry, the breakout is failed — exit at next open. Supersedes the slower
+  // bleed down to flag_low × 0.99.
+  const FAILED_BREAKOUT_WINDOW_BARS = 3;
 
   let partialExitDate: Date | null = null;
   let partialExitPrice: number | null = null;
@@ -198,6 +205,23 @@ function simulateHtfTrade(
 
     if (lowJ <= stopPrice) {
       return finish(bars[j].t, stopPrice, "stop", j - entryI, false);
+    }
+
+    // Failed-breakout exit. Window = first 3 bars after the breakout bar
+    // (entry bar D is breakoutI+1, so we check D through D+2 inclusive).
+    // Exit at NEXT open after the failure bar, not the same bar's close,
+    // matching the "next open" entry convention.
+    const barsAfterBreakout = j - breakoutI; // 1 on entry day
+    if (
+      barsAfterBreakout >= 1 &&
+      barsAfterBreakout <= FAILED_BREAKOUT_WINDOW_BARS &&
+      closeJ < flagHigh
+    ) {
+      // Exit at next open if there is one; else use this close as the fill
+      // (end-of-data edge case).
+      const exitI = j + 1 < bars.length ? j + 1 : j;
+      const exitPrice = j + 1 < bars.length ? bars[exitI].o : closeJ;
+      return finish(bars[exitI].t, exitPrice, "failed_breakout", exitI - entryI, false);
     }
 
     if (!partialDone && closeJ > entryPrice * 1.05) {

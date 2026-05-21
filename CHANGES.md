@@ -9,6 +9,37 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF throwback fix: drop volume gate + failed-breakout exit + overhead-resistance penalty
+
+**Why:** Top-3 push priority #2 from the trading-library research, ready to ship now that the validation harness cleared HTF with WFE 1.98 / SQN 10.75 / strong-edge verdict. Three independent sources (Bulkowski's HTF chapter, Wyckoff's Upthrust principle, Galen Woods' Hikkake) converged on the same problem: most HTF breakouts that fail do so within the first 3 bars by closing back inside the pattern, and the 54% throwback rate cuts winners in half (49% rise with throwback vs 100% without). Bundle three convergent changes:
+
+**1. Drop the ≥1.3× breakout-volume hard gate.** Bulkowski's HTF chapter: light-volume HTF breakouts outperform heavy by **79% vs 63% average rise** in bull markets — counter to every other pattern in his book. The 1.3× requirement was filtering out the alpha cohort.
+- `MIN_BREAKOUT_VOL_RATIO`: 1.3 → 1.0 (still requires ≥average volume as a sanity floor).
+- Scoring rubric: removed the volume-ratio bonus (was awarding +5/+10/+15 for higher volume — backwards on HTF).
+
+**2. Failed-breakout exit rule.** Wyckoff Upthrust + Woods Hikkake: a close back inside the pattern within 3 bars of breakout signals trapped longs. Codified:
+- Within the first 3 bars after entry, if close < `flag_high`, exit at next open.
+- Supersedes the slower bleed down to `flag_low × 0.99` stop. New exit reason: `failed_breakout`.
+- Applied to both diag simulator (`server/diag/strategy-htf-pnl.ts`) and live-page backtester (`server/compartments/htf-scanner/backtest.ts`) for parity.
+
+**3. Overhead-resistance pre-entry detection + scoring penalty.** Bulkowski's #1 tactical lever. Codified:
+- `detectOverheadResistance()` helper in `htf.ts`: scans back ~1y for prior local-max peaks (7-bar local maximum) above the breakout price but within 10%. Returns presence flag + nearest-peak distance.
+- New `HtfExtras` fields: `hasOverheadResistance: boolean`, `nearestResistancePct: number | null`.
+- Scoring rubric: −10 points if resistance within 10%; −5 if 10–15%; clear = no penalty. Calibrated to drop a tier rather than disqualify.
+- Applied to both `scanHtf` (fired breakouts) and `scanFormingHtf` (Watch tab).
+
+**Validation gate:** before this ships permanently, re-run `/api/diag/strategy-htf-validation?universe=htf&days=3650&positionSize=1750&minScore=70` and compare totalPnLDollar + WFE + MC95 against the locked baseline ($569,892 / WFE 1.98 / MC95 $12,858). Ship-keep criteria:
+- New totalPnLDollar ≥ 0.9× baseline (small downside tolerated for cleaner risk profile).
+- New WFE ≥ 0.5 (Cardoza real-edge threshold).
+- New MC95 not blown out.
+
+If either criterion fails, revert via the safe tag.
+
+**Files:** `server/signals/strategies/htf.ts`, `server/diag/strategy-htf-pnl.ts`, `server/compartments/htf-scanner/backtest.ts`.
+
+Rollback tag will follow.
+
+---
 ## 2026-05-20 — HTF validation harness: WFE + Monte Carlo + R-metrics (`/api/diag/strategy-htf-validation`)
 
 **Why:** Top-3 push priority #1 from the 16-book trading-library read (see `reference_trading_library_findings.md`). Cardoza's "Introduction to Trading System Development" Ch. 4 makes the case bluntly: a $570K backtest is a **single in-sample realization** until proven otherwise. Pushing parameter changes (drop volume gate, failed-breakout exit, resistance check, score rubric v2) against an unvalidated baseline risks optimizing to noise. This harness answers the actual question — "is HTF a real edge?" — before any tuning lands.
