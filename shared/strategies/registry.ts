@@ -284,20 +284,26 @@ const HTF_MANIFEST: StrategyManifest = {
       });
     }
 
-    // Trail 20-MA — only active AFTER the partial fires (per Givens' rule).
-    // currentMa20 comes from the live lifecycle (real 20-bar SMA on the
-    // latest bar). If we don't have ma20 yet, fall back to checking if the
-    // partial just fired and the data hasn't propagated.
-    if (partialDone) {
+    // Trail 20-MA — visible the WHOLE trade life, not just after partial.
+    // Pre-partial: shown as a context line (live 20-MA value, no alerts).
+    // Post-partial: this is the exit line per Givens' rule — close below
+    // 20-MA fires the close-remaining alert.
+    {
       let state: DisplayPoint["state"] = "pending";
-      if (ma20 != null && current != null && current < ma20) state = "triggered";
-      else if (ma20 != null && current != null && current < ma20 * 1.02) state = "armed";
-      points.push({
-        label: "Trail 20-MA",
-        value: ma20 != null ? `Exit below ${fmt$(ma20)}` : "computing…",
-        state,
-      });
-      if (state === "triggered" && current != null) {
+      if (ma20 != null && current != null) {
+        if (current < ma20) state = partialDone ? "triggered" : "armed";
+        else if (current < ma20 * 1.02) state = "armed";
+      }
+      const valueText = ma20 != null
+        ? partialDone
+          ? `Exit below ${fmt$(ma20)}`
+          : `20-MA ${fmt$(ma20)}`
+        : "computing…";
+      points.push({ label: "Trail 20-MA", value: valueText, state });
+
+      // Alerts fire ONLY after partial has been taken — full-position exit
+      // on a single MA poke would clip trends.
+      if (partialDone && ma20 != null && current != null && current < ma20) {
         const remainingProfit = twoThirdsShares > 0 ? twoThirdsShares * (current - entry) : null;
         alerts.push({
           severity: "critical",
@@ -305,15 +311,15 @@ const HTF_MANIFEST: StrategyManifest = {
           actionShares: twoThirdsShares > 0 ? twoThirdsShares : null,
           actionLabel: twoThirdsShares > 0 ? `Close ${twoThirdsShares}` : "Close",
           message: remainingProfit != null
-            ? `EXIT REMAINING. Close ${fmt$(current)} below 20-MA ${fmt$(ma20!)} — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
+            ? `EXIT REMAINING. Close ${fmt$(current)} below 20-MA ${fmt$(ma20)} — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
             : `Close below 20-MA — exit remaining 2/3`,
         });
-      } else if (state === "armed") {
+      } else if (partialDone && ma20 != null && current != null && current < ma20 * 1.02) {
         alerts.push({
           severity: "warn",
           action: "hold",
           actionShares: null,
-          message: `Within 2% of 20-MA (${fmt$(ma20!)}) — ready to exit remaining ${twoThirdsShares} on close below.`,
+          message: `Within 2% of 20-MA (${fmt$(ma20)}) — ready to exit remaining ${twoThirdsShares} on close below.`,
         });
       }
     }

@@ -9,6 +9,16 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Trail 20-MA visible the entire trade, not just after partial
+
+**Why:** Chris: *"just need the 20d ema to show up now"* → *"or the sma either one is fine"* → *"If we are using the sma then keep it I need it in the position column"*. The lifecycle ship made the live 20-MA available the whole trade, but the manifest only rendered the "Trail 20-MA" column AFTER the partial fired. Open HTF positions before the partial showed "—" for that column, so the value was invisible.
+
+**What:** HTF manifest now pushes the Trail 20-MA point on every render. Pre-partial label = `"20-MA $X.XX"` (informational, no alerts). Post-partial label = `"Exit below $X.XX"` (exit-trigger alerts fire on close-below). Alerts are still gated on `partialDone` — full-position exits on a single MA poke would clip trends.
+
+**Files**
+- mod: `shared/strategies/registry.ts` (Trail 20-MA point pushed always; alert path unchanged)
+
+---
 ## 2026-05-21 — HTF lifecycle is now live — partial / 20-MA / stop / target update from bars every day
 
 **Why:** Chris: *"We have to have the stops and the exits, etc the WHOLE TRADE CYCLE not for one day that is absoluteoy stupid."* Snapshotting strategyData at entry locked in the static fields (stop / target / pole / flag) but left the *dynamic* parts — has the partial fired? what's the 20-MA today? has the stop been hit? — frozen at the moment the row was first observed. A row entered three weeks ago still said "Take 1/3 — above $X" even if the partial had already fired two weeks ago. Foundation-broken.
