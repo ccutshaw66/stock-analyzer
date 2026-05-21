@@ -66,17 +66,34 @@ async function loadAccountConfig(userId: number): Promise<AccountConfig> {
 async function loadPortfolio(userId: number): Promise<PortfolioState> {
   try {
     const all = await storage.getAllTrades(userId);
+    // Filter to HTF-strategy positions only. Other strategies (BBTC+VER,
+    // TFT, manual, etc.) have their own portfolio gates and shouldn't
+    // deplete HTF's slot count. Pre-2026-05-20 trades default to 'manual'
+    // (or the column may be missing — storage layer synthesizes 'manual').
     const open: OpenPosition[] = all
-      .filter(r => r.closeDate === null && STOCK_TRADE_TYPES.has(r.tradeType))
-      .map(r => ({
-        symbol: r.symbol,
-        sector: "Unknown",
-        shares: r.contractsShares,
-        entryPrice: r.openPrice,
-        stopPrice: r.target ?? r.openPrice * 0.9, // best-effort if no stop logged
-        entryDate: r.tradeDate,
-        currentPrice: r.currentPrice ?? undefined,
-      }));
+      .filter(r =>
+        r.closeDate === null &&
+        STOCK_TRADE_TYPES.has(r.tradeType) &&
+        r.strategy === "htf"
+      )
+      .map(r => {
+        const data = (r.strategyData ?? {}) as any;
+        return {
+          symbol: r.symbol,
+          // Sector lives on the HTF strategyData snapshot if present.
+          sector: typeof data.sector === "string" ? data.sector : "Unknown",
+          shares: r.contractsShares,
+          entryPrice: r.openPrice,
+          // Prefer the HTF strategyData stop (snapshot at entry); fall back
+          // to `target` only as a last resort for ancient pre-strategyData rows.
+          stopPrice:
+            typeof data.stopPrice === "number"
+              ? data.stopPrice
+              : (r.target ?? r.openPrice * 0.9),
+          entryDate: r.tradeDate,
+          currentPrice: r.currentPrice ?? undefined,
+        };
+      });
     return new PortfolioState(open);
   } catch {
     return new PortfolioState();

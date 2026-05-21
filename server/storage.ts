@@ -314,27 +314,114 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Trades (userId scoped) ────────────────────────────────────────────────
 
+  // Migration-lag fallback: if `strategy` / `strategy_reason` columns haven't
+  // been pushed to this env yet, Drizzle's typed select() throws. Retry via
+  // SELECT * and synthesize defaults so the app keeps working until db:push
+  // runs. Same pattern as getAccountSettings above.
+  private async selectTradesWithFallback(whereSql: any): Promise<Trade[]> {
+    try {
+      return await db.select().from(trades).where(whereSql).orderBy(desc(trades.tradeDate));
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (!/column .* does not exist/i.test(msg)) throw err;
+      console.warn(`[storage] trades schema mismatch; using SELECT * fallback. Run 'npm run db:push' on this env. (${msg})`);
+      const result: any = await db.execute(sql`SELECT * FROM trades WHERE ${whereSql} ORDER BY trade_date DESC`);
+      const dbRows: any[] = Array.isArray(result?.rows) ? result.rows : Array.isArray(result) ? result : [];
+      return dbRows.map(r => this.mapTradeRow(r));
+    }
+  }
+
+  // Maps a raw SQL trade row to the typed Trade shape, synthesizing defaults
+  // for any column not yet present in the DB.
+  private mapTradeRow(r: any): Trade {
+    return {
+      id: r.id,
+      userId: r.user_id,
+      pilotOrAdd: r.pilot_or_add,
+      tradeDate: r.trade_date,
+      expiration: r.expiration ?? null,
+      contractsShares: r.contracts_shares,
+      symbol: r.symbol,
+      currentPrice: r.current_price ?? null,
+      target: r.target ?? null,
+      tradeType: r.trade_type,
+      tradeCategory: r.trade_category,
+      strikes: r.strikes ?? null,
+      openPrice: r.open_price,
+      commIn: r.comm_in ?? 0,
+      allocation: r.allocation ?? null,
+      maxProfit: r.max_profit ?? null,
+      closeDate: r.close_date ?? null,
+      closePrice: r.close_price ?? null,
+      commOut: r.comm_out ?? 0,
+      spreadWidth: r.spread_width ?? null,
+      creditDebit: r.credit_debit ?? null,
+      tradePlanNotes: r.trade_plan_notes ?? null,
+      behaviorTag: r.behavior_tag ?? null,
+      strategy: r.strategy ?? "manual",
+      strategyReason: r.strategy_reason ?? null,
+      strategyData: r.strategy_data ?? null,
+      createdAt: r.created_at,
+    } as Trade;
+  }
+
   async getAllOpenTradesAllUsers(): Promise<Trade[]> {
-    return db.select().from(trades).where(sql`close_date IS NULL`);
+    try {
+      return await db.select().from(trades).where(sql`close_date IS NULL`);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (!/column .* does not exist/i.test(msg)) throw err;
+      console.warn(`[storage] trades schema mismatch on open-trades query; SELECT * fallback. (${msg})`);
+      const result: any = await db.execute(sql`SELECT * FROM trades WHERE close_date IS NULL`);
+      const dbRows: any[] = Array.isArray(result?.rows) ? result.rows : Array.isArray(result) ? result : [];
+      return dbRows.map(r => this.mapTradeRow(r));
+    }
   }
 
   async getAllTrades(userId: number): Promise<Trade[]> {
-    return db.select().from(trades).where(eq(trades.userId, userId)).orderBy(desc(trades.tradeDate));
+    return this.selectTradesWithFallback(sql`user_id = ${userId}`);
   }
 
   async getTrade(userId: number, id: number): Promise<Trade | undefined> {
-    const rows = await db.select().from(trades).where(and(eq(trades.id, id), eq(trades.userId, userId)));
+    const rows = await this.selectTradesWithFallback(sql`id = ${id} AND user_id = ${userId}`);
     return rows[0];
   }
 
   async createTrade(trade: InsertTrade): Promise<Trade> {
-    const rows = await db.insert(trades).values(trade).returning();
-    return rows[0];
+    try {
+      const rows = await db.insert(trades).values(trade).returning();
+      return rows[0];
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      const m = /column "([^"]+)" of relation "trades" does not exist/i.exec(msg);
+      if (!m) throw err;
+      const missingDbCol = m[1];
+      const camel = missingDbCol.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      const filtered: any = { ...trade };
+      delete filtered[camel];
+      console.warn(`[storage] trades.createTrade: dropped '${camel}' (DB column missing). Run 'npm run db:push'.`);
+      const rows = await db.insert(trades).values(filtered).returning();
+      return rows[0];
+    }
   }
 
   async updateTrade(userId: number, id: number, trade: Partial<InsertTrade>): Promise<Trade | undefined> {
-    await db.update(trades).set(trade).where(and(eq(trades.id, id), eq(trades.userId, userId)));
-    const rows = await db.select().from(trades).where(and(eq(trades.id, id), eq(trades.userId, userId)));
+    try {
+      await db.update(trades).set(trade).where(and(eq(trades.id, id), eq(trades.userId, userId)));
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      const m = /column "([^"]+)" of relation "trades" does not exist/i.exec(msg);
+      if (!m) throw err;
+      const missingDbCol = m[1];
+      const camel = missingDbCol.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      const filtered: any = { ...trade };
+      delete filtered[camel];
+      console.warn(`[storage] trades.updateTrade: dropped '${camel}' (DB column missing). Run 'npm run db:push'.`);
+      if (Object.keys(filtered).length > 0) {
+        await db.update(trades).set(filtered).where(and(eq(trades.id, id), eq(trades.userId, userId)));
+      }
+    }
+    const rows = await this.selectTradesWithFallback(sql`id = ${id} AND user_id = ${userId}`);
     return rows[0];
   }
 

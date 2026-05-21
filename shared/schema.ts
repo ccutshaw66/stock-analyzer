@@ -54,6 +54,19 @@ export const trades = pgTable("trades", {
   creditDebit: text("credit_debit"),
   tradePlanNotes: text("trade_plan_notes"),
   behaviorTag: text("behavior_tag"),
+  // Which strategy opened this trade — drives Current Positions grouping +
+  // strategy-specific lifecycle alerts. Defaults to 'manual' so existing rows
+  // pre-migration still classify. Values come from STRATEGY_REGISTRY in
+  // shared/strategies/registry.ts (htf | bbtc-ver | tft-40w | tft-60w |
+  // tft-cat | amc | manual | other). When 'other', strategyReason captures
+  // the free-text "why I took this trade" (e.g. "Steve recommended").
+  strategy: text("strategy").default("manual").notNull(),
+  strategyReason: text("strategy_reason"),
+  // Strategy-specific snapshot captured at trade open. Each manifest in
+  // shared/strategies/registry.ts defines its own shape (HTF stores
+  // pole/flag/breakout/stop; BBTC stores entry/stop/exit-trigger; etc.).
+  // jsonb so the schema doesn't need to change when a new strategy is added.
+  strategyData: jsonb("strategy_data"),
   createdAt: text("created_at").notNull(),
 });
 

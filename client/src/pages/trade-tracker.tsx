@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
 import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
+import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView } from "@shared/strategies/registry";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
@@ -67,7 +68,13 @@ interface Trade {
   allocation: number | null; maxProfit: number | null; closeDate: string | null;
   closePrice: number | null; commOut: number | null; spreadWidth: number | null;
   creditDebit: string | null; tradePlanNotes: string | null;
-  behaviorTag: string | null; createdAt: string;
+  behaviorTag: string | null;
+  // Which strategy opened the trade — drives Current Positions grouping +
+  // strategy-specific lifecycle alerts. See shared/strategies/registry.ts.
+  strategy: string;
+  strategyReason: string | null;
+  strategyData: Record<string, any> | null;
+  createdAt: string;
 }
 
 interface Summary {
@@ -91,7 +98,10 @@ type SortField = "tradeDate" | "symbol" | "tradeType" | "openPrice" | "profit";
 
 // ─── Position aggregation ─────────────────────────────────────────────────────
 // An open position groups one or more "lots" (individual trade rows) that share
-// the same symbol + tradeType + strikes + expiration. Closed trades are never
+// the same strategy + symbol + tradeType + strikes + expiration. Strategy is
+// part of the key because the same symbol opened under two strategies (e.g.
+// manual then later HTF) needs to be tracked separately — each strategy has
+// its own lifecycle rules and alert conditions. Closed trades are never
 // grouped — they render as flat rows.
 interface OpenPosition {
   kind: "group";
@@ -110,11 +120,14 @@ interface OpenPosition {
   totalOpenPL: number;        // sum of computeStockPL / computeOptionPL per lot
   currentPrice: number | null;
   totalAllocation: number;
+  /** Strategy id of the first lot — all lots share this since strategy is in the key. */
+  strategy: string;
 }
 
 /**
- * Group open trades by (symbol, tradeType, strikes, expiration). Closed trades
- * pass through as single-lot pseudo-groups so the table renders uniformly.
+ * Group open trades by (strategy, symbol, tradeType, strikes, expiration).
+ * Closed trades pass through as single-lot pseudo-groups so the table
+ * renders uniformly.
  */
 function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
   const openMap = new Map<string, Trade[]>();
@@ -122,6 +135,7 @@ function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
   for (const t of trades) {
     if (t.closeDate) { closedRows.push(t); continue; }
     const key = [
+      t.strategy || "manual",
       t.symbol.toUpperCase(),
       t.tradeType,
       (t.strikes || "").trim(),
@@ -160,6 +174,7 @@ function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
       totalOpenPL,
       currentPrice,
       totalAllocation,
+      strategy: first.strategy || "manual",
     });
   });
   return groups;
@@ -326,6 +341,10 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");
   const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
   const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
+  // Strategy is required on every new trade. Pre-existing rows default to
+  // 'manual' (or whatever was saved). 'other' reveals the reason text input.
+  const [strategy, setStrategy] = useState<string>(initial?.strategy || "manual");
+  const [strategyReason, setStrategyReason] = useState<string>(initial?.strategyReason || "");
 
   // CTV dual-vertical fields
   const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
@@ -404,6 +423,11 @@ function TradeForm({ mode, initial, settings, onClose }: {
       creditDebit: isCredit ? "CREDIT" : "DEBIT",
       tradePlanNotes: notes || null,
       behaviorTag: behaviorTag || null,
+      strategy,
+      strategyReason: strategy === "other" ? (strategyReason.trim() || null) : null,
+      // Preserve any existing strategyData on edit (HTF/BBTC/etc. snapshots
+      // captured at trade open); manual edits to other fields don't wipe it.
+      strategyData: initial?.strategyData ?? null,
     };
 
     // Historical: include close data
@@ -448,6 +472,34 @@ function TradeForm({ mode, initial, settings, onClose }: {
                   category === cat ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}>{cat}</button>
             ))}
+          </div>
+
+          {/* Strategy — REQUIRED. Drives Current Positions grouping + lifecycle alerts. */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              Strategy <span className="text-bear-light">*</span>
+            </label>
+            <select value={strategy} onChange={e => setStrategy(e.target.value)}
+              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
+              data-testid="select-strategy" required>
+              {Object.values(STRATEGY_REGISTRY).map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <div className="text-2xs text-muted-foreground mt-1">
+              {getStrategyManifest(strategy).description}
+            </div>
+            {getStrategyManifest(strategy).requiresReason && (
+              <input
+                type="text"
+                value={strategyReason}
+                onChange={e => setStrategyReason(e.target.value)}
+                placeholder="Why this trade? (e.g. 'Steve recommended', 'FOMO on news')"
+                className="w-full h-9 px-3 mt-2 text-sm bg-background border border-card-border rounded-md text-foreground"
+                data-testid="input-strategy-reason"
+                required={getStrategyManifest(strategy).requiresReason}
+              />
+            )}
           </div>
 
           {/* Type + Pilot/Add */}
@@ -833,7 +885,16 @@ export default function TradeTracker() {
     const closedOnly = list.filter(t => !!t.closeDate);
 
     const groups = aggregateOpenPositions(openOnly);
+    // Sort by strategy priority FIRST so same-strategy positions render together
+    // under one header, then by the user's chosen sort within each strategy.
+    // Strategies the user actively trades go on top; manual/other sink to bottom.
+    const strategyOrder: Record<string, number> = {
+      htf: 1, "bbtc-ver": 2, amc: 3, "tft-40w": 4, "tft-60w": 5, "tft-cat": 6, manual: 7, other: 8,
+    };
     groups.sort((a, b) => {
+      const sa = strategyOrder[a.strategy] ?? 99;
+      const sb = strategyOrder[b.strategy] ?? 99;
+      if (sa !== sb) return sa - sb;
       let cmp = 0;
       if (sortField === "tradeDate") cmp = a.firstTradeDate.localeCompare(b.firstTradeDate);
       else if (sortField === "symbol") cmp = a.symbol.localeCompare(b.symbol);
@@ -1025,10 +1086,45 @@ export default function TradeTracker() {
                 <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
               ) : (() => {
                 let runningTotal = 0;
+                let lastStrategy: string | null = null;
                 const rendered: React.ReactNode[] = [];
 
-                // ─── Open positions (grouped) ───────────────────────────────
+                // Maps the manifest's `color` field to a Tailwind class set for
+                // the strategy header row. Centralised here so the registry
+                // file stays presentation-agnostic.
+                const strategyColorClass = (color: StrategyManifest["color"]): string => {
+                  switch (color) {
+                    case "bull":    return "bg-bull/10 border-l-4 border-bull text-bull-light";
+                    case "watch":   return "bg-watch/10 border-l-4 border-watch text-watch-light";
+                    case "bear":    return "bg-bear/10 border-l-4 border-bear text-bear-light";
+                    case "info":    return "bg-primary/10 border-l-4 border-primary text-primary";
+                    case "neutral": return "bg-muted/30 border-l-4 border-muted-foreground/40 text-muted-foreground";
+                    default:        return "bg-muted/30 border-l-4 border-muted-foreground/40 text-muted-foreground";
+                  }
+                };
+
+                // ─── Open positions (grouped, with strategy headers) ────────
                 for (const g of openGroups) {
+                  // Insert a strategy header row when the strategy changes
+                  // between adjacent groups. Header spans the full table width.
+                  if (g.strategy !== lastStrategy) {
+                    const manifest = getStrategyManifest(g.strategy);
+                    const countInStrategy = openGroups.filter(x => x.strategy === g.strategy).length;
+                    rendered.push(
+                      <tr key={`strat-${g.strategy}`} className={strategyColorClass(manifest.color)}>
+                        <td colSpan={15} className="py-2 px-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold tracking-tight">{manifest.name}</span>
+                              <span className="text-2xs opacity-70">· {countInStrategy} position{countInStrategy !== 1 ? "s" : ""}</span>
+                            </div>
+                            <span className="text-2xs opacity-60 italic">{manifest.description}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    lastStrategy = g.strategy;
+                  }
                   runningTotal += g.totalOpenPL;
                   const isSingleLot = g.lots.length === 1;
                   const isExpanded = expandedGroups.has(g.key) || isSingleLot;
@@ -1036,6 +1132,39 @@ export default function TradeTracker() {
                   const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
                   const isWin = g.totalOpenPL >= 0;
                   const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
+
+                  // Evaluate the strategy manifest against the first lot to get
+                  // lifecycle alerts. The most-severe alert drives the Status
+                  // cell color + label. No alert = green "OK".
+                  const evalLot: StrategyTradeView = {
+                    symbol: g.symbol,
+                    openPrice: g.avgOpenPrice,
+                    currentPrice: g.currentPrice,
+                    target: g.lots[0].target,
+                    closeDate: null,
+                    tradeDate: g.firstTradeDate,
+                    strategy: g.strategy,
+                    strategyReason: g.lots[0].strategyReason,
+                    strategyData: g.lots[0].strategyData,
+                  };
+                  const evalResult = getStrategyManifest(g.strategy).evaluate(evalLot);
+                  // Pick most-severe alert. Order: critical > warn > watch > info.
+                  const sevOrder = { critical: 4, warn: 3, watch: 2, info: 1 } as const;
+                  const topAlert = evalResult.alerts
+                    .slice()
+                    .sort((a, b) => sevOrder[b.severity] - sevOrder[a.severity])[0];
+                  const statusClass = topAlert
+                    ? topAlert.severity === "critical" ? "bg-bear text-bear-foreground animate-pulse"
+                    : topAlert.severity === "warn"     ? "bg-bear/40 text-bear-light"
+                    : topAlert.severity === "watch"    ? "bg-watch/30 text-watch-light"
+                    :                                    "bg-primary/20 text-primary"
+                    : "bg-watch/15 text-watch-light";
+                  const statusLabel = topAlert
+                    ? topAlert.action === "dump"          ? "DUMP NOW"
+                    : topAlert.action === "exit"          ? "EXIT"
+                    : topAlert.action === "take-partial"  ? "TAKE 1/3"
+                    :                                       "WATCH"
+                    : "OPEN";
                   rendered.push(
                     <tr key={`grp-${g.key}`}
                       className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
@@ -1079,7 +1208,9 @@ export default function TradeTracker() {
                         ) : (<span className="text-muted-foreground">—</span>)}
                       </td>
                       <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center"><span className="text-micro font-semibold px-2 py-0.5 rounded bg-watch/15 text-watch-light">OPEN</span></td>
+                      <td className="py-2 px-3 text-center" title={topAlert?.message ?? "No action required"}>
+                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
+                      </td>
                       <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <button

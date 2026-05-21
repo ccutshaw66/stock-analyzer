@@ -9,6 +9,74 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — Strategy-tagged trades + Current Positions grouped by strategy with lifecycle alerts
+
+**Why:** Two compounding issues surfaced today:
+1. HTF Live tab showed zero actionable rows for 24 hours straight. Root cause: the HTF portfolio gate (`routes.ts:73`) was counting *every* open stock trade in the Trade Tracker against HTF's 5-position max — not just HTF-tagged ones. Chris's 22 open positions (from Scanner, BBTC+VER, manual entries, etc.) all collided into HTF's bucket and blocked every new setup with `"at max positions (22/5)"`.
+2. The Current Positions page treated every trade as undifferentiated. No way to see, per trade, which strategy opened it, what lifecycle stage it's at, or what action (if any) the strategy says to take right now.
+
+Fix-the-bug-at-the-root principle: instead of bumping HTF's cap (which would just defer the same collision next strategy), tag every trade with the strategy that opened it. Each strategy's portfolio gate filters to its own tag. Surfaces become strategy-aware automatically.
+
+**What:**
+
+### Schema (additive — no breaking changes)
+- **`shared/schema.ts`** — `trades` table gains three columns:
+  - `strategy` text NOT NULL DEFAULT 'manual' — which strategy opened the trade (`htf` | `bbtc-ver` | `tft-40w` | `tft-60w` | `tft-cat` | `amc` | `manual` | `other`).
+  - `strategyReason` text NULLABLE — free-text "why this trade" when `strategy='other'` (e.g. "Steve recommended", "FOMO on news").
+  - `strategyData` jsonb NULLABLE — per-strategy snapshot at trade open. HTF stores pole/flag/breakout/stop; BBTC stores entry/stop/exit-trigger; etc. jsonb so each strategy can evolve its shape without future migrations.
+- **`server/storage.ts`** — `getAllTrades` / `getAllOpenTradesAllUsers` / `getTrade` / `createTrade` / `updateTrade` all gain the same migration-lag fallback pattern used by `getAccountSettings`. If the new columns haven't been pushed to a deployed env yet, queries fall back to `SELECT *` and synthesize defaults so the app keeps working until `db:push` runs.
+
+### Strategy registry (foundation-first plug-in)
+- **`shared/strategies/registry.ts`** (NEW) — Single source of truth for what strategies exist and how they render. Each strategy declares a manifest:
+  ```ts
+  { id, name, shortName, description, color, requiresReason, evaluate(trade) → { displayPoints, alerts } }
+  ```
+  - `evaluate` is a pure function that inspects the trade's `openPrice` / `currentPrice` / `strategyData` and returns the lifecycle cells (entry, stop, take-partial, target, etc.) plus any triggered alerts. Pure JS so it runs the same on server and client.
+  - Adding a new strategy = add a manifest. Dropdown, grouping, and alert column pick it up for free. Closes the "this only ever helps HTF" trap.
+- Initial manifests: `htf`, `bbtc-ver`, `tft-40w`, `tft-60w`, `tft-cat`, `amc`, `manual`, `other`. HTF + BBTC carry full lifecycle logic; TFT variants share the 40W weekly-close exit pattern; AMC reuses BBTC's lifecycle since they're the same Ready/Set/Go chain.
+
+### HTF portfolio gate fix
+- **`server/compartments/htf-scanner/routes.ts:73`** — `loadPortfolio` now filters open trades to `strategy='htf'` before computing the slot count. Chris's 22 open positions across other strategies no longer collide. Also pulls the per-position stopPrice + sector from `strategyData` instead of the best-effort `target ?? openPrice * 0.9` heuristic (which overstated risk ~10× on positions without a logged stop).
+
+### Add/Edit Trade form
+- **`client/src/pages/trade-tracker.tsx`** — New required `Strategy` dropdown at the top of the Add/Edit Trade modal, right after the Stock/Option category toggle. Options come from the registry; the manifest's `description` shows under the dropdown for context. When `strategy='other'` is selected, a free-text reason input appears and is required. The submitted `tradeData` carries `strategy`, `strategyReason`, and preserves any existing `strategyData` on edit.
+
+### Current Positions: grouped by strategy + lifecycle alerts
+- **`client/src/pages/trade-tracker.tsx`** — `aggregateOpenPositions` now includes `strategy` in the group key, so the same symbol opened under two strategies tracks as two separate positions. Groups sort by strategy priority first (HTF → BBTC+VER → AMC → TFT → manual → other), then by the user's chosen sort within each strategy.
+- A color-coded **strategy header row** is inserted between groups whenever the strategy changes. Header spans the full table width, shows strategy name + position count + one-line description.
+- The **Status** column per position now reflects the strategy's most-severe triggered alert:
+  - `DUMP NOW` (red, pulsing) — critical action, e.g. HTF stop hit
+  - `EXIT` — strategy says close the position
+  - `TAKE 1/3` — HTF partial-exit threshold reached
+  - `WATCH` — approaching a trigger but not yet
+  - `OPEN` (default) — no action required
+  - Hovering shows the full alert message (e.g. "Stop hit $12.40 ≤ $12.50 — exit now").
+
+### What's deferred (TODOs)
+Per Chris's "visual only for now" + "manual refresh for now" decisions today:
+- **Background monitor** — alerts fire even when the page isn't open. Needs live price feed during market hours.
+- **Browser push notifications** — visual alerts pushed outside the app via the Notification API.
+- **Email / SMS for critical actions** — stop-hit / dump-now / take-partial events fire an outbound notification. Likely Twilio for SMS, existing SMTP for email.
+- **Existing 22 trades** — currently default to `strategy='manual'`. No force-prompt; Chris can retag via the existing Edit Trade flow whenever convenient.
+
+### Files
+- `shared/schema.ts` (schema additions)
+- `shared/strategies/registry.ts` (new — registry + manifests)
+- `server/storage.ts` (migration-lag fallback for trades)
+- `server/compartments/htf-scanner/routes.ts` (portfolio gate filter + strategyData read)
+- `client/src/pages/trade-tracker.tsx` (form + grouped UI + alerts)
+- `CHANGES.md` (this entry)
+
+### Migration
+- Run `npm run db:push` on prod after deploy to apply the schema columns. The storage layer tolerates the lag (queries don't 500 if the columns don't exist yet).
+- Existing 22 trades default to `strategy='manual'` automatically via the column default.
+
+### Verification path
+1. `/tracker` → click Add Trade. Strategy dropdown is required. Pick 'other', reason text input appears and is required.
+2. `/tracker` → Current Positions table now shows color-coded strategy header rows. Each position's Status reflects strategy lifecycle.
+3. `/htf` → Live tab populates. The 22-of-5 portfolio collision is gone.
+
+---
 ## 2026-05-20 — HTF baseline: $570K on the real universe at $1,750/trade
 
 **Why:** Lock in the apples-to-apples HTF baseline so every future strategy tweak (R/R threshold, score floor, partial-exit rule, universe filter, etc.) can be re-run against the same basket + position size, and the diff is the honest test. Mirrors the "BBTC+VER $419K" anchor from 2026-05-08 — without a fixed baseline, comparisons drift and "did this change help?" becomes unanswerable.
