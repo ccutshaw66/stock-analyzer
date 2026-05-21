@@ -87,6 +87,18 @@ function barsToOHLCV(b: Bars): OHLCV[] {
 
 export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
 
+/**
+ * Resistance-aware sizing mode.
+ *   - "fixed":      every detected hit gets full positionSize (legacy baseline).
+ *   - "resistance": Bulkowski throwback-aware tiering. Hits with overhead
+ *                   resistance within 5% are skipped; 5–10% are half-sized;
+ *                   no resistance within 10% gets full size.
+ */
+export type HtfSizingMode = "fixed" | "resistance";
+
+/** Per-trade sizing-tier tag — surfaced in aggregate for visibility. */
+export type HtfSizingTier = "full" | "half";
+
 export interface HtfTrade {
   symbol: string;
   entryDate: string;
@@ -101,8 +113,14 @@ export interface HtfTrade {
   blendedReturnPct: number;
   maxDrawdownPct: number;
   qualityScore: number;
-  /** Dollar P&L = blendedReturnPct/100 × positionSize. */
+  /** Dollar P&L = blendedReturnPct/100 × *actual* deployed size. */
   pnlDollar: number;
+  /** Actual capital deployed (positionSize × sizing-tier multiplier). */
+  positionSizeDollar: number;
+  /** Sizing tier this trade landed in. "full" under "fixed" mode. */
+  sizingTier: HtfSizingTier;
+  /** nearestResistancePct captured at scan time (null when no resistance). */
+  nearestResistancePct: number | null;
   /** Whether the trade is still open at end of window (true → excluded from $ aggregates). */
   isOpen: boolean;
 }
@@ -122,11 +140,35 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Outcome of attempting to simulate a single HTF hit.
+ *   - HtfTrade:           the trade was opened (full or half sized).
+ *   - { skipped: ... }:   the resistance tier said "skip" — no trade taken.
+ *   - null:               structural reject (no entry bar / bad data).
+ */
+type HtfSimResult = HtfTrade | { skipped: "resistance" } | null;
+
 function simulateHtfTrade(
   bars: OHLCV[],
   hit: HtfHit,
   positionSize: number,
-): HtfTrade | null {
+  sizingMode: HtfSizingMode = "fixed",
+): HtfSimResult {
+  // Resistance-aware sizing gate. nearestResistancePct is in percent (e.g.
+  // 7.2 means resistance sits 7.2% above the breakout). Under 5% → skip,
+  // 5–10% → half-size. Anything wider, or no resistance flag, → full.
+  let sizingTier: HtfSizingTier = "full";
+  let actualSize = positionSize;
+  const nearestPct = hit.extras.nearestResistancePct;
+  if (sizingMode === "resistance" && hit.extras.hasOverheadResistance && nearestPct != null) {
+    if (nearestPct < 5) {
+      return { skipped: "resistance" };
+    } else if (nearestPct < 10) {
+      sizingTier = "half";
+      actualSize = positionSize * 0.5;
+    }
+  }
+
   let breakoutI = -1;
   const breakoutTs = hit.breakoutDate.getTime();
   for (let i = 0; i < bars.length; i++) {
@@ -182,7 +224,10 @@ function simulateHtfTrade(
       blendedReturnPct: Number(pct.toFixed(4)),
       maxDrawdownPct: Number((maxDrawdown * 100).toFixed(4)),
       qualityScore: hit.qualityScore,
-      pnlDollar: Number((ret * positionSize).toFixed(2)),
+      pnlDollar: Number((ret * actualSize).toFixed(2)),
+      positionSizeDollar: Number(actualSize.toFixed(2)),
+      sizingTier,
+      nearestResistancePct: nearestPct,
       isOpen,
     };
   }
@@ -252,6 +297,10 @@ export interface HtfTickerPnL {
   worstTradePct: number | null;
   avgHoldDays: number | null;
   maxDrawdownPct: number;
+  /** Resistance-aware sizing mix. Zero when sizingMode='fixed'. */
+  tradesFullSized: number;
+  tradesHalfSized: number;
+  tradesSkippedResistance: number;
 }
 
 function summarizeTicker(
@@ -259,6 +308,7 @@ function summarizeTicker(
   bars: Bars,
   trades: HtfTrade[],
   positionSize: number,
+  skippedResistance: number,
 ): HtfTickerPnL {
   const closed = trades.filter(t => !t.isOpen);
   const open = trades.filter(t => t.isOpen);
@@ -327,6 +377,9 @@ function summarizeTicker(
     worstTradePct: worstTradePct != null ? Number(worstTradePct.toFixed(2)) : null,
     avgHoldDays: avgHoldDays != null ? Number(avgHoldDays.toFixed(1)) : null,
     maxDrawdownPct: Number((maxDD * 100).toFixed(2)),
+    tradesFullSized: trades.filter(t => t.sizingTier === "full").length,
+    tradesHalfSized: trades.filter(t => t.sizingTier === "half").length,
+    tradesSkippedResistance: skippedResistance,
   };
 }
 
@@ -335,6 +388,7 @@ async function evalTickerPnL(
   days: number,
   positionSize: number,
   minScore: number,
+  sizingMode: HtfSizingMode,
 ): Promise<HtfTickerPnL | null> {
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
@@ -343,12 +397,18 @@ async function evalTickerPnL(
   // hits inside the window are detected.
   const hits = scanHtf(ohlcv, symbol, { lookbackDays: ohlcv.length, minScore });
   const trades: HtfTrade[] = [];
+  let skipped = 0;
   for (const h of hits) {
-    const t = simulateHtfTrade(ohlcv, h, positionSize);
-    if (t) trades.push(t);
+    const r = simulateHtfTrade(ohlcv, h, positionSize, sizingMode);
+    if (r == null) continue;
+    if ("skipped" in r) {
+      skipped++;
+      continue;
+    }
+    trades.push(r);
   }
   trades.sort((a, b) => a.entryDate.localeCompare(b.entryDate));
-  return summarizeTicker(symbol, bars, trades, positionSize);
+  return summarizeTicker(symbol, bars, trades, positionSize, skipped);
 }
 
 // ─── Basket aggregate (matches strategy-pnl.ts shape) ──────────────────────
@@ -368,6 +428,10 @@ export interface HtfBasketAgg {
   profitableTickers: number;
   unprofitableTickers: number;
   flatTickers: number;
+  /** Resistance-aware sizing mix — basket totals. */
+  totalTradesFullSized: number;
+  totalTradesHalfSized: number;
+  totalTradesSkippedResistance: number;
   topPerformers: Array<{
     symbol: string;
     pnlDollar: number;
@@ -440,6 +504,9 @@ function aggregateBasket(
     profitableTickers: profitable,
     unprofitableTickers: unprofitable,
     flatTickers: flat,
+    totalTradesFullSized: perTicker.reduce((a, t) => a + t.tradesFullSized, 0),
+    totalTradesHalfSized: perTicker.reduce((a, t) => a + t.tradesHalfSized, 0),
+    totalTradesSkippedResistance: perTicker.reduce((a, t) => a + t.tradesSkippedResistance, 0),
     topPerformers: top,
     bottomPerformers: bottom,
     spyBuyAndHoldReturnPct: spyTicker ? spyTicker.buyAndHoldReturnPct : null,
@@ -450,7 +517,13 @@ function aggregateBasket(
 // ─── Top-level ─────────────────────────────────────────────────────────────
 
 export interface StrategyHtfPnLResult {
-  basket: { symbols: string[]; days: number; positionSize: number; minScore: number };
+  basket: {
+    symbols: string[];
+    days: number;
+    positionSize: number;
+    minScore: number;
+    sizingMode: HtfSizingMode;
+  };
   generatedAt: string;
   perTicker: HtfTickerPnL[];
   aggregate: HtfBasketAgg;
@@ -463,13 +536,14 @@ export async function runStrategyHtfPnL(
   positionSize: number,
   includeTradeDetail: boolean,
   minScore: number,
+  sizingMode: HtfSizingMode = "fixed",
 ): Promise<StrategyHtfPnLResult> {
   const BATCH = 12;
   const tickerResults: HtfTickerPnL[] = [];
   for (let i = 0; i < symbols.length; i += BATCH) {
     const slice = symbols.slice(i, i + BATCH);
     const results = await Promise.allSettled(
-      slice.map(s => evalTickerPnL(s, days, positionSize, minScore)),
+      slice.map(s => evalTickerPnL(s, days, positionSize, minScore, sizingMode)),
     );
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) tickerResults.push(r.value);
@@ -477,25 +551,26 @@ export async function runStrategyHtfPnL(
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
-  const spy = await evalTickerPnL("SPY", days, positionSize, minScore).catch(() => null);
+  const spy = await evalTickerPnL("SPY", days, positionSize, minScore, sizingMode).catch(() => null);
 
   const perTicker = includeTradeDetail
     ? tickerResults
     : tickerResults.map(t => ({ ...t, trades: [] }));
 
   return {
-    basket: { symbols, days, positionSize, minScore },
+    basket: { symbols, days, positionSize, minScore, sizingMode },
     generatedAt: new Date().toISOString(),
     perTicker,
     aggregate: aggregateBasket(tickerResults, spy),
     notes: [
       `HTF (High Tight Flag, Givens variant) evaluator. minScore=${minScore} — set to 70 to match production threshold; 0 includes every detected pattern.`,
+      `sizingMode=${sizingMode}. "fixed" deploys full positionSize per trade (legacy baseline). "resistance" applies Bulkowski throwback-aware tiering: nearestResistancePct <5% → skip, 5–10% → half-size, otherwise full.`,
       "Entry = next day's open after a detected breakout. Stop = flag_low × 0.99 (hard stop, intraday). Partial = sell 1/3 after 3 cumulative close-strength days (close >5% above entry). Trail = exit remaining 2/3 on close < 20-day MA after partial fires.",
       "blendedReturnPct accounts for the 1/3 partial split: (partial − entry)/entry × 1/3 + (final − entry)/entry × 2/3.",
-      "positionSize is dollars deployed per trade; pnlDollar = blendedReturnPct/100 × positionSize. One trade per detected setup; no portfolio cap applied here (the live /htf page applies per-trade and portfolio caps separately).",
+      "pnlDollar = blendedReturnPct/100 × actual deployed size (positionSize × tier multiplier). One trade per detected setup; no portfolio cap applied here (the live /htf page applies per-trade and portfolio caps separately).",
       "Open trades at end of window are excluded from $ aggregates but counted in trade-count metrics.",
       "No commissions or slippage. Real-world P&L would be lower by ~$1–5 per round trip plus 0.05–0.1% slippage.",
-      "Add ?detail=1 to include per-trade records (entryDate, entryPrice, exitDate, exitPrice, blendedReturnPct, etc.) for each ticker.",
+      "Add ?detail=1 to include per-trade records (entryDate, entryPrice, exitDate, exitPrice, blendedReturnPct, sizingTier, etc.) for each ticker.",
       "Comparable to /api/diag/strategy-pnl (BBTC+VER) at the same symbols + days + positionSize — same shape, same SPY benchmark.",
     ],
   };

@@ -5347,7 +5347,10 @@ export async function registerRoutes(
       const minScore = Number.isFinite(minScoreRaw)
         ? Math.min(Math.max(minScoreRaw, 0), 100)
         : 70;
-      const result = await runStrategyHtfPnL(symbols, days, positionSize, detail, minScore);
+      const sizingModeRaw = String(req.query.sizingMode || "").toLowerCase();
+      const sizingMode: "fixed" | "resistance" =
+        sizingModeRaw === "resistance" ? "resistance" : "fixed";
+      const result = await runStrategyHtfPnL(symbols, days, positionSize, detail, minScore, sizingMode);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-htf-pnl failed" });

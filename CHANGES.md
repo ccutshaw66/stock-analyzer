@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF resistance-aware sizing harness (gated behind sizingMode=resistance)
+
+**Why:** Top backlog item #1. Detection layer already computes `hasOverheadResistance` + `nearestResistancePct` on every HTF hit (point-in-time at the breakout bar, 252-bar lookback, 10% ceiling). Today the data is detection-only. Bulkowski's throwback stat: 54% throwback rate overall, throwback-affected trades rise ~49% vs ~100% for the no-throwback cohort. Closer resistance → higher throwback odds → worse expected return → smaller position.
+
+**Tiering** (Bulkowski-anchored):
+
+| nearestResistancePct | Tier | Action |
+|---|---|---|
+| no resistance within 10% | Full | deploy full positionSize |
+| 5% to 10% | Half | deploy positionSize × 0.5 |
+| under 5% | Skip | no trade taken |
+
+**Gating:** `/api/diag/strategy-htf-pnl?sizingMode=fixed` keeps the current behavior (every detected hit at full size = locked $668,570 baseline). `?sizingMode=resistance` applies the tiering. Default is `fixed` so prod baseline behavior is unchanged.
+
+**Files**
+- mod: `server/diag/strategy-htf-pnl.ts` — `HtfSizingMode` type, `HtfSizingTier` per-trade tag, `simulateHtfTrade` skips/halves under resistance mode, aggregate adds `totalTradesFullSized` / `totalTradesHalfSized` / `totalTradesSkippedResistance`.
+- mod: `server/routes.ts` — reads `?sizingMode=fixed|resistance` query param.
+
+**Next:** run baseline vs resistance variant on the 491-ticker / 10y / $1,750-per-trade basket. If resistance variant beats baseline on totalPnLDollar, promote to live `/htf` page (sizing hint in Add Trade flow). If it loses, refine bands or revert.
+
+---
 ## 2026-05-21 — Trail 20-MA visible the entire trade, not just after partial
 
 **Why:** Chris: *"just need the 20d ema to show up now"* → *"or the sma either one is fine"* → *"If we are using the sma then keep it I need it in the position column"*. The lifecycle ship made the live 20-MA available the whole trade, but the manifest only rendered the "Trail 20-MA" column AFTER the partial fired. Open HTF positions before the partial showed "—" for that column, so the value was invisible.
