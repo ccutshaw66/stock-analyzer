@@ -726,10 +726,22 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
 // ─── Close Trade Modal ────────────────────────────────────────────────────────
 
-function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: () => void; settings: AccountSettings }) {
+function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
+  trade: Trade;
+  /** Pre-fill qty input. Strategy manifests pass `actionShares` so a "Sell 3 (1/3)" button opens this modal with qty=3 already typed. */
+  defaultQty?: number;
+  onClose: () => void;
+  settings: AccountSettings;
+}) {
   const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
   const [closePrice, setClosePrice] = useState("");
-  const [qty, setQty] = useState(String(trade.contractsShares));
+  const initialQty = (() => {
+    if (defaultQty != null && defaultQty > 0 && defaultQty <= trade.contractsShares) {
+      return String(defaultQty);
+    }
+    return String(trade.contractsShares);
+  })();
+  const [qty, setQty] = useState(initialQty);
   const typeDef = TRADE_TYPES[trade.tradeType as TradeTypeCode];
   const isCredit = typeDef?.isCredit ?? trade.creditDebit === "CREDIT";
   const qtyNum = Math.max(1, Math.min(trade.contractsShares, parseInt(qty) || 0));
@@ -890,7 +902,16 @@ export default function TradeTracker() {
   }, []);
 
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
+  // When the user clicks an action button driven by a strategy alert
+  // (e.g. "Sell 3"), we want the Close Trade modal to open with qty
+  // pre-filled to that action's recommended shares. closingQty carries
+  // that hint until consumed.
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
+  const [closingQty, setClosingQty] = useState<number | undefined>(undefined);
+  const openClose = (trade: Trade, qty?: number) => {
+    setClosingTrade(trade);
+    setClosingQty(qty);
+  };
   const [showSettings, setShowSettings] = useState(false);
   const [filterTab, setFilterTab] = useState<FilterTab>("open");
   const [sortField, setSortField] = useState<SortField>("tradeDate");
@@ -1284,9 +1305,32 @@ export default function TradeTracker() {
                         ) : (<span className="text-muted-foreground">—</span>)}
                       </td>
                       <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center">
-                        <div className="flex flex-col items-center gap-0.5 min-w-[180px]">
-                          <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
+                      <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-col items-center gap-1 min-w-[200px]">
+                          {/* Strategy-driven action button. The manifest decides
+                              whether to render one (actionShares > 0) and what
+                              it says (actionLabel). UI is dumb here — clicking
+                              opens the Close modal with qty pre-filled to the
+                              manifest's recommended shares. */}
+                          {topAlert && topAlert.actionShares != null && topAlert.actionShares > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => isSingleLot && openClose(g.lots[0], topAlert.actionShares!)}
+                              disabled={!isSingleLot}
+                              title={isSingleLot ? topAlert.message : "Expand the group and act on a single lot"}
+                              data-testid={`act-${topAlert.action}-${g.symbol}`}
+                              className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                topAlert.action === "dump"          ? "bg-bear text-bear-foreground hover:brightness-110 animate-pulse"
+                                : topAlert.action === "exit"        ? "bg-bear/80 text-bear-foreground hover:bg-bear"
+                                : topAlert.action === "take-partial" ? "bg-watch text-background hover:brightness-110"
+                                :                                     "bg-primary text-primary-foreground hover:brightness-110"
+                              }`}
+                            >
+                              {topAlert.actionLabel ?? statusLabel}
+                            </button>
+                          ) : (
+                            <span className={`text-micro font-semibold px-2 py-0.5 rounded ${statusClass}`}>{statusLabel}</span>
+                          )}
                           {topAlert && (
                             <span
                               className={`text-2xs leading-tight ${
@@ -1440,7 +1484,14 @@ export default function TradeTracker() {
       {showAddModal && settings && <TradeForm mode="add" initial={addSeed as any} settings={settings} onClose={() => { setShowAddModal(false); setAddSeed(null); }} />}
 
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
-      {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
+      {closingTrade && settings && (
+        <CloseTradeModal
+          trade={closingTrade}
+          defaultQty={closingQty}
+          onClose={() => { setClosingTrade(null); setClosingQty(undefined); }}
+          settings={settings}
+        />
+      )}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
     </div>
   );

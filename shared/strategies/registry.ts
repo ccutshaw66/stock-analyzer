@@ -72,6 +72,23 @@ export interface LifecycleAlert {
   message: string;
   /** Recommended action — drives badge color + icon. */
   action: LifecycleAction;
+  /**
+   * Number of shares the action targets. The UI uses this to render an
+   * action button ("Sell 3" / "Close 10" / "DUMP 10") and to pre-fill the
+   * Close Trade modal's qty. Manifests own this number per their strategy
+   * rules — HTF "take-partial" populates floor(shares/3); HTF "dump"
+   * populates full shares; BBTC "exit" populates full shares; etc.
+   *
+   * null = informational alert with no executable action (e.g. "hold",
+   * "watch"). UI renders no button.
+   */
+  actionShares?: number | null;
+  /**
+   * Short button label the UI renders. Lets each strategy phrase its own
+   * action ("Sell 3" / "Take partial" / "Dump 10"). Falls back to
+   * action-name capitalization if absent.
+   */
+  actionLabel?: string;
 }
 
 export interface StrategyEvaluation {
@@ -180,6 +197,8 @@ const HTF_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "critical",
           action: "dump",
+          actionShares: shares > 0 ? shares : null,
+          actionLabel: shares > 0 ? `DUMP ${shares}` : "DUMP",
           message: shares > 0 && dollarLoss != null
             ? `STOP HIT. Exit all ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
             : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
@@ -188,12 +207,13 @@ const HTF_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "hold",
+          actionShares: null,                               // informational, no button
           message: `Within 3% of stop ${fmt$(stop)} — be ready to exit ${shares} shares`,
         });
       }
     }
 
-    // Take 1/3 — surface real $-amount + share count
+    // Take 1/3 — strategy rule: at +5% close-strength, sell 1/3 of position
     if (!partialDone) {
       let state: DisplayPoint["state"] = "pending";
       if (current != null && current > partialThreshold) state = "armed";
@@ -210,6 +230,8 @@ const HTF_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "watch",
           action: "take-partial",
+          actionShares: oneThirdShares,
+          actionLabel: `Sell ${oneThirdShares}`,
           message: `Sell ${oneThirdShares} shares now to lock in ${fmt$0(lockedIn)} profit (1/3 of position). Remaining ${twoThirdsShares} trail under 20-MA.`,
         });
       }
@@ -217,7 +239,7 @@ const HTF_MANIFEST: StrategyManifest = {
       points.push({ label: "Took 1/3", value: "✓", state: "past" });
     }
 
-    // Trail 20-MA after partial
+    // Trail 20-MA after partial — strategy rule: close-below-20MA exits the rest
     if (partialDone) {
       let state: DisplayPoint["state"] = "pending";
       if (ma20 != null && current != null && current < ma20) state = "triggered";
@@ -231,6 +253,8 @@ const HTF_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "critical",
           action: "exit",
+          actionShares: twoThirdsShares > 0 ? twoThirdsShares : null,
+          actionLabel: twoThirdsShares > 0 ? `Close ${twoThirdsShares}` : "Close",
           message: remainingProfit != null
             ? `EXIT REMAINING. Close below 20-MA — sell final ${twoThirdsShares} shares (${fmt$0(remainingProfit)} profit on this lot).`
             : `Close below 20-MA — exit remaining 2/3`,
@@ -248,7 +272,9 @@ const HTF_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "watch",
           action: "take-partial",
-          message: `Target ${fmt$(target)} hit. Position up ${fmt$0(profit)} — review: take profit on all ${shares} shares, or trail under 20-MA?`,
+          actionShares: shares,
+          actionLabel: `Take profit (${shares})`,
+          message: `Target ${fmt$(target)} hit. Position up ${fmt$0(profit)} — take profit on all ${shares} shares, or trail under 20-MA.`,
         });
       }
     }
@@ -329,6 +355,8 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "critical",
           action: "exit",
+          actionShares: shares > 0 ? shares : null,
+          actionLabel: shares > 0 ? `Close ${shares}` : "Close",
           message: shares > 0 && dollarLoss != null
             ? `STOP HIT. Exit ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
             : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
@@ -337,6 +365,7 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "hold",
+          actionShares: null,
           message: `Within 3% of stop ${fmt$(stop)} — ready to exit ${shares} shares`,
         });
       }
@@ -350,6 +379,8 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "exit",
+          actionShares: shares > 0 ? shares : null,
+          actionLabel: shares > 0 ? `Close ${shares}` : "Close",
           message: shares > 0
             ? `Exit-trigger hit. Close ${shares} shares.`
             : `Exit-trigger price hit — close the position`,
@@ -366,6 +397,8 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "watch",
           action: "take-partial",
+          actionShares: shares,
+          actionLabel: `Take profit (${shares})`,
           message: `Target ${fmt$(target)} hit. Up ${fmt$0(profit)} on ${shares} shares — exit or trail.`,
         });
       }
@@ -421,6 +454,8 @@ const TFT_40W_MANIFEST: StrategyManifest = {
         alerts.push({
           severity: "warn",
           action: "exit",
+          actionShares: shares > 0 ? shares : null,
+          actionLabel: shares > 0 ? `Close ${shares}` : "Close core",
           message: shares > 0
             ? `Weekly close below 40W — exit ${shares}-share core position`
             : `Weekly close below 40W — exit core position`,
@@ -442,6 +477,8 @@ const TFT_40W_MANIFEST: StrategyManifest = {
       alerts.push({
         severity: "critical",
         action: "dump",
+        actionShares: shares > 0 ? shares : null,
+        actionLabel: shares > 0 ? `DUMP ${shares}` : "DUMP",
         message: shares > 0 && dollarLoss != null
           ? `CATASTROPHIC STOP (−15%). Exit ${shares} shares — locks ${fmt$0(-dollarLoss)} loss`
           : `Catastrophic stop hit (−15% from entry) — dump now`,

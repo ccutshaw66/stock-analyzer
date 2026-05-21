@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Strategy-driven action BUTTONS (Sell N / Close N / DUMP N) instead of text-only alerts
+
+**Why:** *"Not hover — I want real indicators, enter, hold, sell partial, close etc. — all based on the determined principles of the strategy."* The previous push made alerts informative but still required the user to interpret text and navigate to the Close Trade modal manually. Now the manifest decides the action, the share count, and the button label — UI renders whatever the strategy declared.
+
+**What:**
+
+### Manifest declares the action shape
+- **`shared/strategies/registry.ts`** — `LifecycleAlert` gains two fields:
+  - `actionShares?: number | null` — how many shares the action targets. `null` = informational alert (no button). HTF "take-partial" populates `floor(shares/3)`; HTF "dump" / "exit remaining" populate the relevant slice. BBTC + TFT manifests do the same per their own rules.
+  - `actionLabel?: string` — short button text the strategy chooses ("Sell 3", "DUMP 10", "Close 7", "Take profit (10)"). Falls back to action-name capitalization if absent.
+
+### UI renders the manifest's decision
+- **`client/src/pages/trade-tracker.tsx`** — Status cell now renders a **clickable action button** when `topAlert.actionShares > 0`. Color + animation driven by action type:
+  - `dump` → red pulsing button
+  - `exit` → red solid
+  - `take-partial` → yellow/watch
+  - `hold` / no alert → text-only badge (no button)
+- Button click calls `openClose(trade, alert.actionShares)` which opens the Close Trade modal with qty **pre-filled** to the manifest's recommended share count. No more "navigate to close modal, type qty manually."
+- `CloseTradeModal` extended with optional `defaultQty?: number` prop. If present and valid (`0 < qty ≤ trade.contractsShares`), the modal's qty input starts pre-populated.
+- Action button only enabled on single-lot positions (otherwise the user needs to expand the group and pick a specific lot to act on). Multi-lot groups show the button disabled with a hover hint.
+- Stop propagation on the action-cell `onClick` so clicking inside it doesn't toggle group expansion.
+
+### Foundation rule held
+The UI does NOT know what "1/3" or "−15% stop" means. Those are strategy concepts. The HTF manifest computes the right share count (1/3), labels the button ("Sell 3"), and the UI just renders it. Adding a new strategy = add a manifest with its own rules; the button column picks it up for free.
+
+### Where this leaves the still-queued list
+- Per-strategy COLUMN layouts (HTF group shows pole/flag/breakout; BBTC shows different columns) — not yet. Today all groups share the same columns; the action button + inline message differentiate them.
+- "Add more shares" pyramid-up action button — not yet. Today buttons only handle close-side actions.
+- Re-link pre-auto-fill HTF trades (PURR/NVTS/ONDS) to current scanner data — still queued.
+
+**Files:** `shared/strategies/registry.ts`, `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Strategy alerts speak real dollars + shares; remove manual stop/target; hide HTF chart from nav; fix target ROI math
 
 **Why:** Chris pushed back on multiple foundation gaps in one message:
