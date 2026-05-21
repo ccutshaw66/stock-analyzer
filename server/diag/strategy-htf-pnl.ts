@@ -85,7 +85,7 @@ function barsToOHLCV(b: Bars): OHLCV[] {
 
 // ─── Trade simulation (Givens exits, copied from htf-scanner/backtest.ts) ──
 
-export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data" | "failed_breakout";
+export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
 
 export interface HtfTrade {
   symbol: string;
@@ -142,22 +142,12 @@ function simulateHtfTrade(
   const entryDate = bars[entryI].t;
   const entryPrice = bars[entryI].o;
   const stopPrice = hit.extras.flagLow * 0.99;
-  const flagHigh = hit.extras.flagHigh;
 
   const closes = bars.map(b => b.c);
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
   const ma20 = rolling20MA(closes);
 
-  // 2026-05-20 throwback fix piece 2 (relaxed) — failed-breakout exit.
-  // Original piece 2 (1 close below flag_high in 3 bars) was too aggressive
-  // and killed normal test bars. Relaxed version requires TWO CONSECUTIVE
-  // closes below flag_high within a 5-bar window. Catches sustained breakout
-  // failures (Wyckoff Upthrust / Woods Hikkake) without cutting normal
-  // pullback tests short.
-  const FAILED_BREAKOUT_WINDOW_BARS = 5;
-  const FAILED_BREAKOUT_CONSECUTIVE = 2;
-  let consecClosesBelow = 0;
   let partialExitDate: Date | null = null;
   let partialExitPrice: number | null = null;
   let strengthDays = 0;
@@ -208,25 +198,6 @@ function simulateHtfTrade(
 
     if (lowJ <= stopPrice) {
       return finish(bars[j].t, stopPrice, "stop", j - entryI, false);
-    }
-
-    // Failed-breakout exit (relaxed): require TWO consecutive closes below
-    // flag_high within the first 5 bars after breakout. Exit at next open.
-    const barsAfterBreakout = j - breakoutI; // 1 on entry day
-    if (
-      barsAfterBreakout >= 1 &&
-      barsAfterBreakout <= FAILED_BREAKOUT_WINDOW_BARS
-    ) {
-      if (closeJ < flagHigh) {
-        consecClosesBelow++;
-        if (consecClosesBelow >= FAILED_BREAKOUT_CONSECUTIVE) {
-          const exitI = j + 1 < bars.length ? j + 1 : j;
-          const exitPrice = j + 1 < bars.length ? bars[exitI].o : closeJ;
-          return finish(bars[exitI].t, exitPrice, "failed_breakout", exitI - entryI, false);
-        }
-      } else {
-        consecClosesBelow = 0;
-      }
     }
 
     if (!partialDone && closeJ > entryPrice * 1.05) {

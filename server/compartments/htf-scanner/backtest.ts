@@ -16,7 +16,7 @@ import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, type HtfHit } from "../../signals/strategies/htf";
 import type { OHLCV } from "../../data/types";
 
-export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data" | "failed_breakout";
+export type HtfExitReason = "stop" | "trail_20ma" | "end_of_data";
 
 export interface HtfTrade {
   symbol: string;
@@ -98,18 +98,11 @@ function simulateTrade(bars: OHLCV[], hit: HtfHit): HtfTrade | null {
   const entryPrice = bars[entryI].o;
   const consolLow = hit.extras.flagLow;
   const stopPrice = consolLow * 0.99;
-  const flagHigh = hit.extras.flagHigh;
 
   const closes = bars.map(b => b.c);
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
   const ma20 = rolling20MA(closes);
-
-  // Failed-breakout exit (piece 2 relaxed) — mirrors strategy-htf-pnl.ts.
-  // Two consecutive closes below flag_high within 5 bars → exit next open.
-  const FAILED_BREAKOUT_WINDOW_BARS = 5;
-  const FAILED_BREAKOUT_CONSECUTIVE = 2;
-  let consecClosesBelow = 0;
 
   let partialExitDate: Date | null = null;
   let partialExitPrice: number | null = null;
@@ -162,43 +155,6 @@ function simulateTrade(bars: OHLCV[], hit: HtfHit): HtfTrade | null {
         maxDrawdownPct: maxDrawdown * 100,
         ...commonExtras(),
       };
-    }
-
-    // Failed-breakout exit (piece 2 relaxed): 2 consecutive closes below
-    // flag_high in 5-bar window → exit next open.
-    const barsAfterBreakout = j - breakoutI;
-    if (
-      barsAfterBreakout >= 1 &&
-      barsAfterBreakout <= FAILED_BREAKOUT_WINDOW_BARS
-    ) {
-      if (closeJ < flagHigh) {
-        consecClosesBelow++;
-        if (consecClosesBelow >= FAILED_BREAKOUT_CONSECUTIVE) {
-          const exitI = j + 1 < bars.length ? j + 1 : j;
-          const exitPrice = j + 1 < bars.length ? bars[exitI].o : closeJ;
-          const ret = partialDone && partialExitPrice !== null
-            ? (partialExitPrice / entryPrice - 1) * (1 / 3) + (exitPrice / entryPrice - 1) * (2 / 3)
-            : exitPrice / entryPrice - 1;
-          return {
-            symbol: hit.symbol,
-            entryDate: ymd(entryDate),
-            entryPrice,
-            consolidationLow: consolLow,
-            stopPrice,
-            partialExitDate: partialExitDate ? ymd(partialExitDate) : null,
-            partialExitPrice,
-            exitDate: ymd(bars[exitI].t),
-            exitPrice,
-            exitReason: "failed_breakout",
-            holdingDays: exitI - entryI,
-            blendedReturnPct: ret * 100,
-            maxDrawdownPct: maxDrawdown * 100,
-            ...commonExtras(),
-          };
-        }
-      } else {
-        consecClosesBelow = 0;
-      }
     }
 
     // Partial: cumulative strength counter (matches Python — counter resets
