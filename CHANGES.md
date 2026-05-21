@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Live row → Add Trade auto-fill + HTF cache invalidation on trade save
+
+**Why:** Chris's exact words: *"It has all the information in the scanner put it in automatically… is the rule for features and new content being followed because you seem to stray off that a lot."* The Stop/Target manual inputs added earlier this session were a patch over a foundation gap — the scanner already knows the stop (`flag_low × 0.99`), target (measure rule), pole/flag stats, sector, recommended share size, R/R, etc. for every Live setup. The user should never have to retype any of it.
+
+Second related complaint: when manual values WERE entered, they didn't show on the Portfolio tab until a hard refresh — the trade form's `onSuccess` wasn't invalidating `/api/htf/portfolio`. Saved data was on disk, just hidden behind a stale React Query cache.
+
+**What:**
+
+### Foundation fix — one-click "Add as trade" from any Live row
+- **`client/src/pages/htf-setups.tsx`** — new `seedTradeFromHtfRow()` helper builds a full `Partial<Trade>` payload from the scanner row: symbol, tradeType="LONG", tradeCategory="Stock", openPrice=breakoutPrice, contractsShares=recommendedShares, strategy="htf", and full `strategyData` (stopPrice, targetPrice, pole stats, flag stats, vol ratio, sector, qualityScore, rewardRiskRatio). Drops into `sessionStorage` under key `"htf-add-seed"`, navigates to `/tracker`.
+- **`client/src/pages/htf-setups.tsx`** — new `Add` column on Live + Watch tables with a `+` icon button per row. Click → seeds + navigates. Row click still opens the pattern chart (existing UX preserved).
+- **`client/src/pages/trade-tracker.tsx`** — `useEffect` on mount reads `sessionStorage.htf-add-seed`, sets `addSeed`, opens the Add Trade modal, removes the key (so refresh doesn't re-open). The TradeForm's existing `initial` prop and `strategyData` state init were already plumbed to read `stopPrice` / `targetPrice` from `strategyData` — those keep working as the "review and save" surface for the seeded payload.
+
+### Cache invalidation on trade save / close / delete
+- **`client/src/pages/trade-tracker.tsx`** — TradeForm `createMutation`, CloseTradeModal `closeMutation`, and the page-level `deleteMutation` now all invalidate `["/api/htf/portfolio"]`, `["/api/htf/sizing-recommendation"]`, and any `/api/htf/setups*` query keys on success. Saving / closing / deleting a trade now refreshes the HTF Portfolio tab + Live tab portfolio gate + sizing card without a manual page reload.
+
+### Manual Stop/Target inputs from the earlier commit
+Kept as the fallback for trades that don't originate from a Live scanner row (manual entries, BBTC, other strategies). They populate the same `strategyData` shape the auto-fill uses, so manual + auto-fill share one data path. The PROBLEM with that earlier commit wasn't the inputs themselves — it was that auto-fill didn't exist, so users HAD to type. Now manual is optional fallback, auto-fill is primary.
+
+### Rule re-asserted for the project memory
+Saved to `memory/session_2026_05_21_pickup.md`: **patches are for fixing bugs; features must plug into existing data flows.** Before adding a manual UI input for data the user is supposed to enter, check whether the system already has that data elsewhere — if yes, auto-populate from the source of truth instead of surfacing a manual input as a "fix."
+
+**Files:** `client/src/pages/htf-setups.tsx`, `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Add/Edit Trade form: Stop + Target inputs that feed risk math
 
 **Why:** The HTF Portfolio fix earlier this session made the table honest — but every existing trade showed "—" for Stop / Target / At risk because no UI had ever recorded those values. Honest-but-useless. Add Stop + Target inputs to the trade form so the user can write real risk levels.

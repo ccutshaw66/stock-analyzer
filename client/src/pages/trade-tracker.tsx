@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from "react";
+import { useState, useMemo, memo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
@@ -380,6 +380,18 @@ function TradeForm({ mode, initial, settings, onClose }: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF surfaces depend on trade rows too — Portfolio counts HTF-tagged
+      // open positions; the live scanner gates new entries against the same
+      // portfolio. Invalidate both so saved strategyData (stop/target etc.)
+      // reflects immediately on /htf without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === "string" && k.startsWith("/api/htf/setups");
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
       onClose();
     },
   });
@@ -775,6 +787,18 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF surfaces depend on trade rows too — Portfolio counts HTF-tagged
+      // open positions; the live scanner gates new entries against the same
+      // portfolio. Invalidate both so saved strategyData (stop/target etc.)
+      // reflects immediately on /htf without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === "string" && k.startsWith("/api/htf/setups");
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
       onClose();
     },
   });
@@ -890,6 +914,25 @@ export default function TradeTracker() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSeed, setAddSeed] = useState<Partial<Trade> | null>(null);
 
+  // Cross-page handoff from /htf Live row "+" button. The setup row drops a
+  // full Partial<Trade> seed into sessionStorage; we open the Add Trade modal
+  // pre-filled, then clear the storage so a refresh doesn't re-open. This is
+  // the foundation-first answer to "the scanner already has all this data" —
+  // no manual re-entry of stop / target / pole / flag / sector.
+  useEffect(() => {
+    const raw = sessionStorage.getItem("htf-add-seed");
+    if (!raw) return;
+    try {
+      const seed = JSON.parse(raw) as Partial<Trade>;
+      setAddSeed(seed);
+      setShowAddModal(true);
+    } catch {
+      // Bad JSON — silently ignore; not worth alerting the user.
+    } finally {
+      sessionStorage.removeItem("htf-add-seed");
+    }
+  }, []);
+
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -921,12 +964,24 @@ export default function TradeTracker() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => { const r = await apiRequest("POST", "/api/trades/refresh-prices"); return r.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF-tagged trade changes also affect portfolio cap + sizing.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF-tagged trade changes also affect portfolio cap + sizing.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
+    },
     onError: (err: any) => {
       const msg = err.message || "";
       // Extract readable message from "403: {"error":"..."}"

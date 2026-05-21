@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Flag, AlertTriangle, Play, RefreshCw, Activity, Flame, Eye } from "lucide-react";
+import { Flag, AlertTriangle, Play, RefreshCw, Activity, Flame, Eye, Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
@@ -123,10 +123,50 @@ function fmtAgo(isoOrDate: string | Date | null): string {
 }
 
 // ─── Setups table ─────────────────────────────────────────────────────────
+/**
+ * Drop the full HTF scanner row into sessionStorage and navigate to /tracker.
+ * trade-tracker.tsx reads `htf-add-seed` on mount, opens the Add Trade modal
+ * pre-filled with strategy='htf' and full strategyData (stop, target, pole,
+ * flag, vol ratio, sector, etc.) — no manual entry of data the scanner
+ * already knows. This is the foundation-first answer to "you'd have to type
+ * all this in again." The seed is cleared after one consumption so refresh
+ * doesn't re-open the modal.
+ */
+function seedTradeFromHtfRow(r: HtfSetupRow) {
+  const seed = {
+    symbol: r.symbol,
+    tradeType: "LONG",
+    tradeCategory: "Stock",
+    pilotOrAdd: "Pilot",
+    creditDebit: "DEBIT",
+    openPrice: r.breakoutPrice,
+    contractsShares: r.recommendedShares,
+    strategy: "htf",
+    strategyReason: null,
+    strategyData: {
+      stopPrice: r.stopPrice,
+      targetPrice: r.targetPrice,
+      poleGainPct: r.poleGainPct,
+      poleDays: r.poleDays,
+      flagDays: r.flagDays,
+      flagPullbackPct: r.flagPullbackPct,
+      breakoutVolRatio: r.breakoutVolRatio,
+      qualityScore: r.qualityScore,
+      sector: r.sector ?? "Unknown",
+      rewardRiskRatio: r.rewardRiskRatio,
+    },
+  };
+  sessionStorage.setItem("htf-add-seed", JSON.stringify(seed));
+}
+
 function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
   const [, navigate] = useLocation();
   const openChart = (symbol: string) => {
     navigate(`/htf/${symbol}`);
+  };
+  const addAsTrade = (r: HtfSetupRow) => {
+    seedTradeFromHtfRow(r);
+    navigate("/tracker");
   };
   if (rows.length === 0) {
     return (
@@ -160,6 +200,7 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
             <th className="px-3 py-2 text-right">Pole</th>
             <th className="px-3 py-2 text-right">Flag</th>
             <th className="px-3 py-2 text-right">Vol</th>
+            <th className="px-3 py-2 text-center w-12">Add</th>
             {showBlocked && <th className="px-3 py-2 text-left">Why blocked</th>}
           </tr>
         </thead>
@@ -208,6 +249,21 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
               </td>
               <td className="px-3 py-2 text-right text-xs text-muted-foreground">
                 {r.breakoutVolRatio.toFixed(1)}×
+              </td>
+              <td className="px-3 py-2 text-center">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();           // don't open the chart
+                    addAsTrade(r);
+                  }}
+                  title="Add as a tracked trade — pre-fills strategy, stop, target, pole/flag data from this row"
+                  data-testid={`htf-add-trade-${r.symbol}`}
+                  className="p-1 rounded hover:bg-bull/20 text-bull-light hover:text-bull transition-colors"
+                  aria-label={`Add ${r.symbol} as a tracked trade`}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </td>
               {showBlocked && (
                 <td className="px-3 py-2 text-xs text-bear-light">{r.blockedReason ?? "—"}</td>
