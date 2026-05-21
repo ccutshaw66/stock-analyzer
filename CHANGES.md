@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — Dynamic position-size suggester (HTF Phase 1/2/3)
+
+**Why:** Cardoza Monte Carlo on the locked baseline showed MC95 max drawdown ~$12,858 at $1,750/trade — that's 1.85× a $7K account. The strategy is validated (WFE 1.98 / SQN 10.75 / strong-edge), so the fix isn't to change the rules; it's to scale position size to *cumulative HTF realized P&L*, so drawdowns are always paid out of profits already earned, never out of starting capital. Three phases anchored to the MC95 stat scaled linearly:
+
+| Phase | Min HTF realized P&L | Position size | MC95 scales to |
+|---|---|---|---|
+| 1 (Build the buffer) | $0 | $500/trade | ~$3.7K (~50% of $7K) |
+| 2 (Scaling up) | $5,000 | $1,000/trade | ~$7.4K (~60% of $12K) |
+| 3 (Full size) | $13,000 | $1,750/trade | ~$12.9K (~65% of $20K) |
+
+**What:**
+- **`server/compartments/htf-scanner/sizing.ts`** (NEW) — `SIZING_PHASES` constant + pure `computeSizingRecommendation(htfRealizedPnL, startingCapital)` function. Returns current phase, next-phase threshold, $-to-next-phase, progress %, and the `recommendedCapital` + `recommendedMaxPositionPct` config values that produce the phase's positionSize through the existing position-sizing math.
+- **`server/compartments/htf-scanner/routes.ts`** — new endpoint:
+  ```
+  GET /api/htf/sizing-recommendation
+  ```
+  Reads user's open + closed trades, sums `computeClosedTradeProfit` over trades tagged `strategy='htf' AND closeDate IS NOT NULL`. Combined with `startingAccountValue` from account_settings, returns the full recommendation payload.
+- **`client/src/pages/htf-setups.tsx`** — Config tab now shows a **recommendation card** at the top (color-coded primary border). Card displays current phase, realized HTF P&L, recommended position size + reasoning, next-phase target with progress bar, and an **Apply button** that prefills the form with `recommendedCapital` + `recommendedMaxPositionPct`. User reviews and clicks Save to commit.
+
+**Realized P&L counts ONLY closed HTF-tagged trades.** Open positions don't count toward the buffer — paper gains aren't drawdown protection. This is enforced by the storage-layer filter and the strategy-tag column shipped earlier today.
+
+**Strictly additive.** New file + new route + new UI card; no existing config logic touched. Default behavior preserved when sizing endpoint returns nothing (e.g. brand-new user with no HTF trades yet → Phase 1 / $500 recommendation surfaces immediately).
+
+**Files:** `server/compartments/htf-scanner/sizing.ts` (new), `server/compartments/htf-scanner/routes.ts`, `client/src/pages/htf-setups.tsx`.
+
+---
 ## 2026-05-20 — HTF throwback fix: drop volume gate + failed-breakout exit + overhead-resistance penalty
 
 **Why:** Top-3 push priority #2 from the trading-library research, ready to ship now that the validation harness cleared HTF with WFE 1.98 / SQN 10.75 / strong-edge verdict. Three independent sources (Bulkowski's HTF chapter, Wyckoff's Upthrust principle, Galen Woods' Hikkake) converged on the same problem: most HTF breakouts that fail do so within the first 3 bars by closing back inside the pattern, and the 54% throwback rate cuts winners in half (49% rise with throwback vs 100% without). Bundle three convergent changes:

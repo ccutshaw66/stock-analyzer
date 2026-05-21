@@ -30,6 +30,8 @@ import { htfScannerData } from ".";
 import { htfCacheStats, getHtfBars } from "../../data/htf-ohlcv-cache";
 import { runHtfScan } from "./orchestrator";
 import { scanHtf } from "../../signals/strategies/htf";
+import { computeSizingRecommendation, SIZING_PHASES } from "./sizing";
+import { computeClosedTradeProfit } from "@shared/pnl";
 
 // Trade types that represent equity positions (vs option contracts). Filter
 // from the shared TRADE_TYPES registry so this stays in sync with schema.ts
@@ -235,6 +237,38 @@ export function mountRoutes(app: Express): void {
     } catch (err: any) {
       console.error("[htf] POST /scan/run failed:", err?.message || err);
       res.status(500).json({ error: "scan_run_failed", message: String(err?.message || err) });
+    }
+  });
+
+  // ─── Position-size recommendation (Phase 1/2/3) ───────────────────────
+  // Reads the user's cumulative HTF realized P&L from the trades table,
+  // returns the recommended position size + capital + maxPositionPct based
+  // on the Phase 1/2/3 plan. The /htf Config tab shows this as a card and
+  // can apply it with one click. See sizing.ts for the phase rationale.
+  app.get("/api/htf/sizing-recommendation", requireAuth, async (req: Request, res: Response) => {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+    try {
+      const allTrades = await storage.getAllTrades(userId);
+      // HTF realized P&L = sum of closed-trade profit for trades tagged
+      // strategy='htf' AND closed. Open positions don't count toward the
+      // buffer (paper gains aren't drawdown protection).
+      const htfRealized = allTrades
+        .filter(t => t.strategy === "htf" && t.closeDate !== null)
+        .reduce((sum, t) => sum + computeClosedTradeProfit(t), 0);
+      const settings = await storage.getAccountSettings(userId);
+      const recommendation = computeSizingRecommendation(
+        htfRealized,
+        settings.startingAccountValue,
+      );
+      res.json({
+        ...recommendation,
+        startingCapital: settings.startingAccountValue,
+        phases: SIZING_PHASES,
+      });
+    } catch (err: any) {
+      console.error("[htf] GET /sizing-recommendation failed:", err?.message || err);
+      res.status(500).json({ error: "sizing_recommendation_failed" });
     }
   });
 

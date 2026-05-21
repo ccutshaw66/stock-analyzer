@@ -541,11 +541,29 @@ function BacktestTab() {
   );
 }
 
+interface SizingRecommendationDto {
+  htfRealizedPnL: number;
+  currentPhase: { phase: 1 | 2 | 3; positionSize: number; label: string; reasoning: string };
+  nextPhase: { phase: 1 | 2 | 3; positionSize: number; minRealizedPnL: number; label: string } | null;
+  dollarsToNextPhase: number | null;
+  phaseProgressPct: number;
+  recommendedCapital: number;
+  recommendedMaxPositionPct: number;
+  startingCapital: number;
+}
+
 function ConfigTab() {
   const qc = useQueryClient();
   const q = useQuery<AccountConfig>({
     queryKey: ["/api/htf/config"],
     queryFn: async () => (await apiRequest("GET", "/api/htf/config")).json(),
+  });
+  // Sizing recommendation runs in parallel — read once, surface as a card
+  // above the form. Invalidated when config saves so it picks up any change
+  // to startingCapital downstream.
+  const sizing = useQuery<SizingRecommendationDto>({
+    queryKey: ["/api/htf/sizing-recommendation"],
+    queryFn: async () => (await apiRequest("GET", "/api/htf/sizing-recommendation")).json(),
   });
   const [draft, setDraft] = useState<AccountConfig | null>(null);
   const m = useMutation({
@@ -559,8 +577,18 @@ function ConfigTab() {
       qc.invalidateQueries({ queryKey: ["/api/htf/setups"] });
       qc.invalidateQueries({ queryKey: ["/api/htf/setups/filtered"] });
       qc.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      qc.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
     },
   });
+
+  const applyRecommended = () => {
+    if (!sizing.data || !q.data) return;
+    setDraft({
+      ...q.data,
+      capital: sizing.data.recommendedCapital,
+      maxPositionPct: sizing.data.recommendedMaxPositionPct,
+    });
+  };
 
   if (q.isLoading) return <BrandedLoader message="Loading config…" />;
   if (q.isError || !q.data) {
@@ -609,6 +637,52 @@ function ConfigTab() {
 
   return (
     <div className="space-y-4 max-w-2xl">
+      {sizing.data && (
+        <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-bold text-foreground">{sizing.data.currentPhase.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                HTF realized P&L: <span className="font-semibold text-foreground">${sizing.data.htfRealizedPnL.toFixed(0)}</span>
+                {" · "}Recommended position size: <span className="font-semibold text-bull-light">${sizing.data.currentPhase.positionSize}</span>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={applyRecommended}
+              disabled={
+                cfg.capital === sizing.data.recommendedCapital &&
+                Math.abs(cfg.maxPositionPct - sizing.data.recommendedMaxPositionPct) < 0.0001
+              }
+              data-testid="btn-apply-sizing"
+            >
+              Apply
+            </Button>
+          </div>
+          <div className="text-xs text-muted-foreground italic">{sizing.data.currentPhase.reasoning}</div>
+          {sizing.data.nextPhase && sizing.data.dollarsToNextPhase != null && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Next: <span className="font-semibold text-foreground">{sizing.data.nextPhase.label}</span> at ${sizing.data.nextPhase.minRealizedPnL.toLocaleString()} realized
+                </span>
+                <span className="text-foreground font-semibold">${sizing.data.dollarsToNextPhase.toFixed(0)} to go</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${sizing.data.phaseProgressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {!sizing.data.nextPhase && (
+            <div className="text-xs text-bull-light font-semibold">
+              ✓ At full size — running the locked baseline configuration.
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {fields.map(f => (
           <div key={f.key} className="rounded-md border border-border p-3 bg-card">
