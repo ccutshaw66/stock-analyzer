@@ -295,6 +295,64 @@ export function mountRoutes(app: Express): void {
     res.json(htfCacheStats());
   });
 
+  // ─── Derive HTF snapshot from history ─────────────────────────────────
+  // Solves the "row shows all —" problem on Current Positions: if an HTF
+  // trade's strategyData is empty AND the symbol is no longer in the live
+  // (1-day) scan, we can still re-derive the original setup by running
+  // scanHtf on the full ~1-year cached bar history. The detector is
+  // deterministic; if the breakout happened in the last year, it's found.
+  //
+  // Returns the NEWEST detected HTF setup's snapshot fields, or {hit:null}.
+  // Callers persist this to the trade row via PATCH /api/trades/:id so the
+  // backfill is one-time per trade.
+  app.get("/api/htf/derive/:symbol", requireAuth, async (req: Request, res: Response) => {
+    if (!getUserId(req, res)) return;
+    try {
+      const symbol = String(req.params.symbol || "").toUpperCase();
+      if (!symbol) {
+        res.status(400).json({ error: "symbol_required" });
+        return;
+      }
+      const bars = await getHtfBars(symbol);
+      if (bars.length === 0) {
+        res.json({ symbol, hit: null, reason: "no_bars" });
+        return;
+      }
+      const hits = scanHtf(bars, symbol);
+      const newest = hits[0] ?? null;
+      if (!newest) {
+        res.json({ symbol, hit: null, reason: "no_htf_detection" });
+        return;
+      }
+      // Mirror the shape the client already merges into strategyData.
+      res.json({
+        symbol,
+        hit: {
+          stopPrice: newest.stopPrice,
+          targetPrice: newest.targetPrice,
+          breakoutPrice: newest.breakoutPrice,
+          breakoutDate: newest.breakoutDate.toISOString().slice(0, 10),
+          qualityScore: newest.qualityScore,
+          poleGainPct: newest.extras.poleGainPct,
+          poleDays: newest.extras.poleDays,
+          flagDays: newest.extras.flagDays,
+          flagPullbackPct: newest.extras.flagPullbackPct,
+          flagHigh: newest.extras.flagHigh,
+          flagLow: newest.extras.flagLow,
+          breakoutVolRatio: newest.extras.breakoutVolRatio,
+          hasOverheadResistance: newest.extras.hasOverheadResistance,
+          nearestResistancePct: newest.extras.nearestResistancePct,
+          // Sector isn't computed by scanHtf — it lives in the universe row
+          // and isn't carried into HtfHit. Leave undefined; trade row keeps
+          // existing sector if any, else "Unknown".
+        },
+      });
+    } catch (err: any) {
+      console.error("[htf] GET /derive/:symbol failed:", err?.message || err);
+      res.status(500).json({ error: "derive_failed", message: String(err?.message || err) });
+    }
+  });
+
   // ─── Pattern chart data ───────────────────────────────────────────────
   // Returns the last ~120 bars + the newest HTF hit's full annotation so
   // the frontend can draw pole/flag windows, breakout level, target/stop

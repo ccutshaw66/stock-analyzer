@@ -9,6 +9,42 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Persist HTF strategyData on first observation — symbols out of live scan now fill in too
+
+**Why:** The 2026-05-21 client-side backfill from the live HTF scan only helped symbols that the 1-day live scanner still sees. Trades whose breakouts fired >1 day ago dropped to all-"—" cells with no way to recover. Chris: *"3. If a row still shows all '—', the symbol fell out of the live scan window…"* — explicit request to close that gap.
+
+**The foundation answer is snapshot-at-first-observation**, not a historical scan store: re-run `scanHtf` on the symbol's cached ~1y bar history, find the breakout, and **persist** the derived snapshot to the trade row. After persistence, the row carries its own data and never depends on the scan again.
+
+**What:**
+
+### Server: derive endpoint
+- **`server/compartments/htf-scanner/routes.ts`** — new endpoint:
+  ```
+  GET /api/htf/derive/:symbol
+  ```
+  Fetches the symbol's cached HTF bars, runs `scanHtf`, returns the **newest** detected HTF setup's snapshot (stopPrice, targetPrice, breakoutPrice, breakoutDate, qualityScore, poleGainPct, poleDays, flagDays, flagPullbackPct, flagHigh, flagLow, breakoutVolRatio, hasOverheadResistance, nearestResistancePct). Returns `{hit:null, reason}` if no detection exists in the bar history. `scanHtf` is deterministic on bars, so this works for any past breakout the cache contains.
+
+### Client: auto-persist on first observation
+- **`client/src/pages/trade-tracker.tsx`** — new `useEffect` that scans every load:
+  1. Find open HTF trades with empty `strategyData` that haven't been attempted yet this session.
+  2. For each, **prefer** the live scan map (no network round-trip). If the symbol is in the 1-day scan, use that.
+  3. **Fall back** to `GET /api/htf/derive/:symbol` for symbols out of the live window.
+  4. With a snapshot in hand, `PATCH /api/trades/:id` to persist `strategyData`.
+  5. Once persisted, the trade row carries its own data — no further derives needed.
+- Concurrency-capped at 4 parallel derives so we don't hammer the bar cache on a large basket.
+- Deduped per session via a stable `Set<number>` of trade IDs we've already attempted (whether successful or not). Failures don't loop infinitely — they retry on next page load.
+- After all persistence calls complete, invalidates `/api/trades` + `/api/htf/portfolio` so the page reflects the new data without a manual refresh.
+
+### Result
+- Symbols in the live scan: backfill from live data, persist. Same as before but now LOCKED IN.
+- Symbols out of the live scan (older breakouts): falls back to derive endpoint. If `scanHtf` still finds a setup in the bar history, persists that. PURR/NVTS/ONDS/etc. all populate as long as their breakout is within the 1-year bar cache.
+- Symbols with no HTF setup detectable in their bar history: row stays dashed (no detection = nothing to fill in). The `hit:null` response is logged + the trade is marked attempted so we don't retry it endlessly.
+
+**Foundation note:** snapshot-at-first-observation is the standard pattern for "derive-once, persist forever" data. It's the right answer when the derived value is canonical (driven by deterministic logic on stable inputs) and the source of that input (bar history) may drift over time. Treating the trade's `strategyData` as the locked record of what the strategy saw at the moment of inspection is the contract; the derive endpoint is the bootstrap.
+
+**Files:** `server/compartments/htf-scanner/routes.ts`, `client/src/pages/trade-tracker.tsx`.
+
+---
 ## 2026-05-21 — Form field accessibility: id + name + htmlFor on every input/label pair
 
 **Why:** Chris pasted browser DevTools warnings: *"A form field element should have an id or name attribute"* / *"No label associated with a form field"*. These break browser autofill, screen-reader semantics, and keyboard navigation through form labels. Plus they show up as ongoing warnings in the console, hiding real bugs.

@@ -991,6 +991,83 @@ export default function TradeTracker() {
     return map;
   }, [htfScan.data]);
 
+  // Auto-persist strategyData on open HTF trades that are missing it. Pre-
+  // 2026-05-21 HTF trades (PURR/NVTS/ONDS etc.) were tagged HTF before the
+  // auto-fill flow shipped, so their strategyData column is empty. Without
+  // this backfill, the per-strategy columns show "—" forever even though
+  // we CAN derive the snapshot from the symbol's bar history.
+  //
+  // Flow: for each open HTF trade with no strategyData, prefer the live
+  // scan map (instant), else fall back to GET /api/htf/derive/:symbol
+  // (re-runs scanHtf on cached bars). Once we have a snapshot, PATCH the
+  // trade row so the data is locked in — one-time backfill per trade.
+  //
+  // Deduped + concurrency-limited: each trade only gets backfilled once
+  // per session, and at most 4 derive requests fly at once.
+  const persistedAttempts = useMemo(() => new Set<number>(), []);
+  useEffect(() => {
+    const candidates = trades.filter(t =>
+      !t.closeDate &&
+      t.strategy === "htf" &&
+      (!t.strategyData || Object.keys(t.strategyData).length === 0) &&
+      !persistedAttempts.has(t.id),
+    );
+    if (candidates.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const PARALLEL = 4;
+      for (let i = 0; i < candidates.length; i += PARALLEL) {
+        if (cancelled) return;
+        const slice = candidates.slice(i, i + PARALLEL);
+        await Promise.allSettled(slice.map(async (t) => {
+          persistedAttempts.add(t.id);
+          // Try the live scan map first — no network round-trip.
+          const sym = t.symbol.toUpperCase();
+          let snapshot: Record<string, any> | null = null;
+          const live = htfScanBySymbol.get(sym);
+          if (live) {
+            snapshot = {
+              stopPrice: live.stopPrice,
+              targetPrice: live.targetPrice,
+              poleGainPct: live.poleGainPct,
+              poleDays: live.poleDays,
+              flagDays: live.flagDays,
+              flagPullbackPct: live.flagPullbackPct,
+              breakoutVolRatio: live.breakoutVolRatio,
+              qualityScore: live.qualityScore,
+              sector: live.sector ?? "Unknown",
+            };
+          } else {
+            // Fall back to deriving from history.
+            try {
+              const r = await apiRequest("GET", `/api/htf/derive/${sym}`);
+              const data = await r.json();
+              if (data?.hit) snapshot = { ...data.hit };
+            } catch {
+              // Server error — leave row with dashes; will try again next page load.
+            }
+          }
+          if (!snapshot || cancelled) return;
+          try {
+            await apiRequest("PATCH", `/api/trades/${t.id}`, {
+              strategyData: snapshot,
+            });
+          } catch {
+            // PATCH error — don't crash; just leave the row dashed.
+          }
+        }));
+      }
+      if (!cancelled) {
+        queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      }
+    })();
+    return () => { cancelled = true; };
+    // Deliberately exclude persistedAttempts from deps — Set mutation
+    // doesn't change reference; if we depended on it we'd re-fire forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, htfScanBySymbol]);
+
   // Filter first, then split open vs closed so we can aggregate open.
   const { openGroups, closedFlat } = useMemo(() => {
     let list = [...trades];
