@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-20 — HTF basket P&L: `universe=htf` mode + realistic position-size default
+
+**Why:** First HTF basket run used the 15-ticker ALWAYS_WARM list at $10K/trade and reported +$131K over 10y. Two problems: (1) ALWAYS_WARM is mega-caps + indexes — the HTF universe filter explicitly targets $5–$75 small/mid-caps because that's what the $7K account can afford to trade. Mega-cap result is theatre. (2) $10K/trade isn't reachable; on a $7K account the max position is $1,750 (25% cap). The numbers are off by a factor of ~5.7×.
+
+**What:**
+- `server/routes.ts` — `/api/diag/strategy-htf-pnl` gains `universe=htf` mode that pulls the production HTF universe from `getHtfUniverse()` (FMP screener: $5–$75, vol ≥750K, mkt cap ≥$200M, no ETFs/funds/recent IPOs), sorts by volume, takes the top `limit=N` (default 500, max 2000). Bumped explicit `symbols=` cap to 2000 (was 100).
+- `server/routes.ts` — default `positionSize` lowered from 10000 → **1750** to match a $7K account's max-position-cap. Apples-to-apples runs vs `/api/diag/strategy-pnl` can still override with `&positionSize=10000`.
+
+**Net behaviour:** `?universe=htf&days=3650` answers the honest question: "did HTF make money on the universe it actually scans, at the position size I can actually afford?"
+
+**Strictly additive.** No existing query patterns broken; new optional params with sane defaults.
+
+**Files:** `server/routes.ts`.
+
+---
 ## 2026-05-20 — HTF basket-level $ P&L evaluator (`/api/diag/strategy-htf-pnl`)
 
 **Why:** HTF shipped end-to-end on 2026-05-19 with a per-ticker backtest tab, but had never been measured at the basket level the way every other production strategy has been (BBTC+VER → `/api/diag/strategy-pnl`, TFT variants → `/api/diag/strategy-tft-pnl`). Per the project rule "nothing gets re-enabled until per-trade dollar P&L is positive on backtest", HTF needs the same apples-to-apples treatment before the Live recommendations are trusted as profitable.

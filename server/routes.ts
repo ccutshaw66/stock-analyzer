@@ -5300,23 +5300,48 @@ export async function registerRoutes(
   // Same response shape as /api/diag/strategy-pnl so direct apples-to-apples
   // comparison against BBTC+VER and TFT is just a URL swap.
   //
-  //   GET /api/diag/strategy-htf-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&minScore=70]
+  //   GET /api/diag/strategy-htf-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=1750][&detail=1][&minScore=70]
+  //   GET /api/diag/strategy-htf-pnl?universe=htf&limit=500&days=3650[&positionSize=1750]
   //
+  // - symbols: explicit ticker list (cap 2000). Ignored if universe=htf.
+  // - universe: "htf" → pulls the production HTF universe (FMP screener:
+  //   price $5–$75, vol ≥750K, mkt cap ≥$200M, NYSE/NASDAQ/AMEX, no
+  //   ETFs/funds, no IPOs <6mo). The basket the live /htf page actually
+  //   scans. Use this for "did HTF make money on what it actually trades?"
+  // - limit: when universe=htf, top-N by volume (default 500, max 2000).
   // - days: 30..3650 (default 3650 = ~10y). HTF needs ~200 bars warmup.
-  // - positionSize: dollars per trade (default 10000, min 100, max 1000000).
+  // - positionSize: dollars per trade (default 1750, min 100, max 1000000).
+  //   Default matches a $7K account at 25% max-position-cap. Override for
+  //   apples-to-apples vs strategy-pnl ($10K).
   // - detail=1 to include per-trade records.
-  // - minScore: 0..100 (default 70 = production threshold). Set to 0 to include all detected patterns.
+  // - minScore: 0..100 (default 70 = production threshold).
   app.get("/api/diag/strategy-htf-pnl", async (req, res) => {
     try {
       const { runStrategyHtfPnL } = await import("./diag/strategy-htf-pnl");
-      const symbols = String(req.query.symbols || "")
-        .split(",")
-        .map(s => s.trim().toUpperCase())
-        .filter(Boolean)
-        .slice(0, 100);
-      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+        const u = await getHtfUniverse();
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = [...u.tickers]
+          .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+          .slice(0, limit)
+          .map(r => r.symbol.toUpperCase());
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
       const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
-      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
       const detail = String(req.query.detail || "") === "1";
       const minScoreRaw = Number(req.query.minScore);
       const minScore = Number.isFinite(minScoreRaw)
