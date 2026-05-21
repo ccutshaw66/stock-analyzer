@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring strategy SPEC (Top-3 #3)
+
+**Why:** Trading-library findings tagged Wyckoff Spring as the highest-conviction *new strategy* to add to the universe (alongside Pipe Bottom and Rounding Bottom). With time-stop and resistance-as-sizing both closed as failed experiments on the existing HTF, the next pile of EV is adding diversifying strategies rather than further-tuning HTF.
+
+**What:** Spec doc only — no code shipped. Defines detection thresholds, entry/stop/target/exit lifecycle, strategy-registry plug-in shape, acceptance criteria (must be positive-EV on the same 491/10y/$1,750/minScore=70 basket Chris uses for HTF), and the implementation order Chris (cut-and-paste path) can follow file-by-file.
+
+Strategy id: `wyckoff-spring`. Color: bull. Plugs into `STRATEGY_REGISTRY`.
+
+**Files**
+- new: `docs/strategies/wyckoff-spring-SPEC.md`
+
+**Next:** Implement `server/signals/strategies/wyckoff-spring.ts` detector. Hand-verify against 3–5 known historical Springs (AAPL 2016, AMZN 2018, NVDA 2022) on the existing `/htf/:symbol` chart route before building the backtest harness.
+
+---
 ## 2026-05-21 — HTF time-stop — FINAL: 21-bar exit fails badly, experiment closed
 
 **A/B result (timeStopBars=21 vs locked baseline)**
