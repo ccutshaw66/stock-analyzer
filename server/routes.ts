@@ -5350,7 +5350,17 @@ export async function registerRoutes(
       const sizingModeRaw = String(req.query.sizingMode || "").toLowerCase();
       const sizingMode: "fixed" | "resistance" =
         sizingModeRaw === "resistance" ? "resistance" : "fixed";
-      const result = await runStrategyHtfPnL(symbols, days, positionSize, detail, minScore, sizingMode);
+      // Tunable resistance bands. Default 5/10 = original Bulkowski reading.
+      // Common narrow-band experiment: skipBelow=3 & halfBelow=7.
+      const skipBelowRaw = Number(req.query.skipBelow);
+      const halfBelowRaw = Number(req.query.halfBelow);
+      const skipBelowPct = Number.isFinite(skipBelowRaw)
+        ? Math.min(Math.max(skipBelowRaw, 0), 50) : 5;
+      const halfBelowPct = Number.isFinite(halfBelowRaw)
+        ? Math.min(Math.max(halfBelowRaw, skipBelowPct), 50) : 10;
+      const result = await runStrategyHtfPnL(
+        symbols, days, positionSize, detail, minScore, sizingMode, skipBelowPct, halfBelowPct,
+      );
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "strategy-htf-pnl failed" });

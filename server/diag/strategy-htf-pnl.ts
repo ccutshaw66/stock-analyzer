@@ -153,17 +153,20 @@ function simulateHtfTrade(
   hit: HtfHit,
   positionSize: number,
   sizingMode: HtfSizingMode = "fixed",
+  skipBelowPct: number = 5,
+  halfBelowPct: number = 10,
 ): HtfSimResult {
   // Resistance-aware sizing gate. nearestResistancePct is in percent (e.g.
-  // 7.2 means resistance sits 7.2% above the breakout). Under 5% → skip,
-  // 5–10% → half-size. Anything wider, or no resistance flag, → full.
+  // 7.2 means resistance sits 7.2% above the breakout). Bands are parameterised
+  // so we can A/B different aggressiveness levels (default 5/10 = original
+  // Bulkowski reading; narrow band 3/7 = less aggressive throwback skip).
   let sizingTier: HtfSizingTier = "full";
   let actualSize = positionSize;
   const nearestPct = hit.extras.nearestResistancePct;
   if (sizingMode === "resistance" && hit.extras.hasOverheadResistance && nearestPct != null) {
-    if (nearestPct < 5) {
+    if (nearestPct < skipBelowPct) {
       return { skipped: "resistance" };
-    } else if (nearestPct < 10) {
+    } else if (nearestPct < halfBelowPct) {
       sizingTier = "half";
       actualSize = positionSize * 0.5;
     }
@@ -389,6 +392,8 @@ async function evalTickerPnL(
   positionSize: number,
   minScore: number,
   sizingMode: HtfSizingMode,
+  skipBelowPct: number,
+  halfBelowPct: number,
 ): Promise<HtfTickerPnL | null> {
   const bars = await fetchBars(symbol, days);
   if (!bars) return null;
@@ -399,7 +404,7 @@ async function evalTickerPnL(
   const trades: HtfTrade[] = [];
   let skipped = 0;
   for (const h of hits) {
-    const r = simulateHtfTrade(ohlcv, h, positionSize, sizingMode);
+    const r = simulateHtfTrade(ohlcv, h, positionSize, sizingMode, skipBelowPct, halfBelowPct);
     if (r == null) continue;
     if ("skipped" in r) {
       skipped++;
@@ -523,6 +528,8 @@ export interface StrategyHtfPnLResult {
     positionSize: number;
     minScore: number;
     sizingMode: HtfSizingMode;
+    skipBelowPct: number;
+    halfBelowPct: number;
   };
   generatedAt: string;
   perTicker: HtfTickerPnL[];
@@ -537,13 +544,15 @@ export async function runStrategyHtfPnL(
   includeTradeDetail: boolean,
   minScore: number,
   sizingMode: HtfSizingMode = "fixed",
+  skipBelowPct: number = 5,
+  halfBelowPct: number = 10,
 ): Promise<StrategyHtfPnLResult> {
   const BATCH = 12;
   const tickerResults: HtfTickerPnL[] = [];
   for (let i = 0; i < symbols.length; i += BATCH) {
     const slice = symbols.slice(i, i + BATCH);
     const results = await Promise.allSettled(
-      slice.map(s => evalTickerPnL(s, days, positionSize, minScore, sizingMode)),
+      slice.map(s => evalTickerPnL(s, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct)),
     );
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) tickerResults.push(r.value);
@@ -551,20 +560,20 @@ export async function runStrategyHtfPnL(
     if (i + BATCH < symbols.length) await new Promise(r => setTimeout(r, 150));
   }
 
-  const spy = await evalTickerPnL("SPY", days, positionSize, minScore, sizingMode).catch(() => null);
+  const spy = await evalTickerPnL("SPY", days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct).catch(() => null);
 
   const perTicker = includeTradeDetail
     ? tickerResults
     : tickerResults.map(t => ({ ...t, trades: [] }));
 
   return {
-    basket: { symbols, days, positionSize, minScore, sizingMode },
+    basket: { symbols, days, positionSize, minScore, sizingMode, skipBelowPct, halfBelowPct },
     generatedAt: new Date().toISOString(),
     perTicker,
     aggregate: aggregateBasket(tickerResults, spy),
     notes: [
       `HTF (High Tight Flag, Givens variant) evaluator. minScore=${minScore} — set to 70 to match production threshold; 0 includes every detected pattern.`,
-      `sizingMode=${sizingMode}. "fixed" deploys full positionSize per trade (legacy baseline). "resistance" applies Bulkowski throwback-aware tiering: nearestResistancePct <5% → skip, 5–10% → half-size, otherwise full.`,
+      `sizingMode=${sizingMode}. "fixed" deploys full positionSize per trade. "resistance" applies tiering: nearestResistancePct <${skipBelowPct}% → skip, ${skipBelowPct}–${halfBelowPct}% → half-size, otherwise full. Bands tunable via skipBelow + halfBelow query params.`,
       "Entry = next day's open after a detected breakout. Stop = flag_low × 0.99 (hard stop, intraday). Partial = sell 1/3 after 3 cumulative close-strength days (close >5% above entry). Trail = exit remaining 2/3 on close < 20-day MA after partial fires.",
       "blendedReturnPct accounts for the 1/3 partial split: (partial − entry)/entry × 1/3 + (final − entry)/entry × 2/3.",
       "pnlDollar = blendedReturnPct/100 × actual deployed size (positionSize × tier multiplier). One trade per detected setup; no portfolio cap applied here (the live /htf page applies per-trade and portfolio caps separately).",

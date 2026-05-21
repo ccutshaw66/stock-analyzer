@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF resistance-aware sizing — tunable bands + first A/B result
+
+**A/B test 1 (5/10 bands)**: Bulkowski's textbook reading — `<5% → skip, 5–10% → half-size, ≥10% → full`. Ran against the 491-ticker / 10y / $1,750/trade basket at minScore=70.
+
+| | Baseline | Resistance (5/10) | Δ |
+|---|---|---|---|
+| Total P&L | $698,088 | $392,840 | **−$305,248 (−43.7%)** |
+| Closed trades | 10,888 | 6,932 | −3,956 (37% skipped, 10% half-sized) |
+| Win rate | 64.8% | 65.1% | +0.3pp (≈unchanged) |
+| $/trade | $64.12 | $56.67 | −$7.45 |
+
+**Verdict**: filter LOSES money on our universe. Win rate barely moves, meaning the filter doesn't select winners better — it just trades less and prunes some of the biggest winners (QUBT −$35K, MARA −$6.7K, SOUN −$9.2K, SMCI −$4.4K). Bulkowski's population-average stat doesn't transfer to our small/mid-cap basket where throwback-then-rally is exactly the trade we want.
+
+**This ship**: parameterize the bands so we can keep A/B-ing without code changes. Endpoint now accepts `?skipBelow=N&halfBelow=M`. Default unchanged (`5/10`). Next test queued: `3/7` narrow band.
+
+**Files**
+- mod: `server/diag/strategy-htf-pnl.ts` — `skipBelowPct` + `halfBelowPct` parameters on `simulateHtfTrade`, `evalTickerPnL`, `runStrategyHtfPnL`. Echoed back in `basket` for traceability.
+- mod: `server/routes.ts` — reads `?skipBelow` + `?halfBelow` (clamped 0–50, halfBelow ≥ skipBelow).
+
+---
 ## 2026-05-21 — HTF resistance-aware sizing harness (gated behind sizingMode=resistance)
 
 **Why:** Top backlog item #1. Detection layer already computes `hasOverheadResistance` + `nearestResistancePct` on every HTF hit (point-in-time at the breakout bar, 252-bar lookback, 10% ceiling). Today the data is detection-only. Bulkowski's throwback stat: 54% throwback rate overall, throwback-affected trades rise ~49% vs ~100% for the no-throwback cohort. Closer resistance → higher throwback odds → worse expected return → smaller position.
