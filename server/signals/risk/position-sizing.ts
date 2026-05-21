@@ -184,7 +184,14 @@ export interface OpenPosition {
   sector: string;
   shares: number;
   entryPrice: number;
-  stopPrice: number;
+  /**
+   * Stop price. `null` = no real stop was recorded at trade-open time, so
+   * downstream risk math (`positionAtRisk`) reports 0 instead of fabricating
+   * a number from `target`. The Portfolio tab UI shows "—" for null stops.
+   */
+  stopPrice: number | null;
+  /** Profit target — surfaced on the Portfolio tab. null when not recorded. */
+  targetPrice?: number | null;
   entryDate: string;          // YYYY-MM-DD
   currentPrice?: number;
 }
@@ -195,7 +202,10 @@ export function positionValue(p: OpenPosition): number {
 }
 
 export function positionAtRisk(p: OpenPosition): number {
-  // Conservative: use entry-vs-stop, ignores trailing-stop adjustments
+  // Conservative: use entry-vs-stop, ignores trailing-stop adjustments.
+  // If no real stop was recorded, at-risk is undefined → report 0 rather
+  // than computing nonsense from a missing field.
+  if (p.stopPrice == null) return 0;
   return Math.max(0, p.shares * (p.entryPrice - p.stopPrice));
 }
 
@@ -282,15 +292,31 @@ export class PortfolioState {
         ? round1((this.totalOpenRisk / maxTotalOpenRisk(config)) * 100)
         : 0,
       cashRemainingEstimate: round2(config.capital - this.totalValue),
-      positions: this.positions.map(p => ({
-        symbol: p.symbol,
-        sector: p.sector,
-        shares: p.shares,
-        entry: p.entryPrice,
-        stop: p.stopPrice,
-        value: round2(positionValue(p)),
-        atRisk: round2(positionAtRisk(p)),
-      })),
+      positions: this.positions.map(p => {
+        const currentPrice = p.currentPrice ?? null;
+        const unrealizedPL = currentPrice != null
+          ? round2(p.shares * (currentPrice - p.entryPrice))
+          : null;
+        const daysHeld = (() => {
+          if (!p.entryDate) return null;
+          const ms = Date.now() - new Date(p.entryDate).getTime();
+          return Math.max(0, Math.floor(ms / 86400000));
+        })();
+        return {
+          symbol: p.symbol,
+          sector: p.sector,
+          shares: p.shares,
+          entry: round2(p.entryPrice),
+          stop: p.stopPrice,                          // null when not recorded — UI shows "—"
+          target: p.targetPrice ?? null,
+          currentPrice,
+          unrealizedPL,
+          value: round2(positionValue(p)),
+          atRisk: round2(positionAtRisk(p)),
+          entryDate: p.entryDate,
+          daysHeld,
+        };
+      }),
     };
   }
 }

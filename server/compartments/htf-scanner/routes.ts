@@ -83,18 +83,30 @@ async function loadPortfolio(userId: number): Promise<PortfolioState> {
       )
       .map(r => {
         const data = (r.strategyData ?? {}) as any;
+        // openPrice is stored signed (negative for debit/buy). Display +
+        // risk math wants the absolute fill price. The sign carries no
+        // info we need here.
+        const entryPrice = Math.abs(r.openPrice);
+        // Real stop only — from the HTF strategyData snapshot. NEVER fall
+        // back to `r.target`: that field is `rawPrice × 0.25` for stocks
+        // (a profit-target ROI, not a stop) and using it produced the
+        // bogus "$1.95 stop on a $7.79 entry" UX. null = no recorded stop,
+        // UI shows "—" and risk math reports $0 instead of fabricating.
+        const stopPrice = typeof data.stopPrice === "number" ? data.stopPrice : null;
+        // Real target from strategyData if present, else the trade's stored
+        // target (only meaningful when not the bogus ROI fallback — keep for
+        // forward compat when HTF entries fully populate strategyData).
+        const targetPrice =
+          typeof data.targetPrice === "number"
+            ? data.targetPrice
+            : (r.target != null && r.target > entryPrice ? r.target : null);
         return {
           symbol: r.symbol,
-          // Sector lives on the HTF strategyData snapshot if present.
           sector: typeof data.sector === "string" ? data.sector : "Unknown",
           shares: r.contractsShares,
-          entryPrice: r.openPrice,
-          // Prefer the HTF strategyData stop (snapshot at entry); fall back
-          // to `target` only as a last resort for ancient pre-strategyData rows.
-          stopPrice:
-            typeof data.stopPrice === "number"
-              ? data.stopPrice
-              : (r.target ?? r.openPrice * 0.9),
+          entryPrice,
+          stopPrice,
+          targetPrice,
           entryDate: r.tradeDate,
           currentPrice: r.currentPrice ?? undefined,
         };

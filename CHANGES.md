@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — HTF Portfolio tab: real Stop/Target/Current/P&L, clickable rows, fixed entry sign
+
+**Why:** Tab was showing misleading data:
+- "Entry" was the signed openPrice (e.g. `$-7.79` for a debit buy) — should be the absolute fill price.
+- "Stop" was using `r.target` as a fallback when no real stop was recorded. `r.target` is `rawPrice × 0.25` for stocks (a profit-target ROI computation), so the table claimed PURR's stop was $1.95 on a $7.79 entry — a 75% drawdown, not a stop loss.
+- Missing columns: current price, unrealized P/L, target, days held.
+- Rows weren't clickable.
+
+**What:**
+- **`server/signals/risk/position-sizing.ts`**:
+  - `OpenPosition.stopPrice` is now `number | null` (null = no recorded stop).
+  - New `targetPrice?: number | null` field.
+  - `positionAtRisk()` returns 0 when stop is null instead of computing from a fabricated number.
+  - `statusSummary()` now surfaces `currentPrice`, `unrealizedPL`, `target`, `entryDate`, `daysHeld` per position.
+- **`server/compartments/htf-scanner/routes.ts` `loadPortfolio`**:
+  - Entry price is now `Math.abs(r.openPrice)` (drop the debit/buy sign).
+  - Stop is `strategyData.stopPrice` only — null otherwise. **Never falls back to `r.target`** (the source of the bogus 75%-drawdown display).
+  - Target is `strategyData.targetPrice` or `r.target` only when it's above entry (defensive — prevents the same ROI quirk from leaking into the target column).
+- **`client/src/pages/htf-setups.tsx` Portfolio table**:
+  - Added Current, P/L (with % below entry), Target, Days columns.
+  - Removed Sector column (always "Unknown" — restore once sector lookup from FMP is wired).
+  - Rows clickable → navigates to `/htf/:symbol` pattern chart (matches Live tab UX).
+  - Stop / At-risk show "—" with hover tooltip when no stop was recorded.
+  - Footer note explains how to add a stop (edit trade or recreate from Live setup).
+
+**TODOs flagged in code:**
+- Per-vehicle risk math (option contracts × shares isn't the same as $-risk; current code treats them the same).
+- Sector lookup at trade creation (cache FMP `/profile` sector on `strategyData.sector`).
+- For pre-strategyData HTF trades, the user can edit the trade and add a stop manually — but there's no UI for that yet. Either expose a Stop field on the Add/Edit Trade form, or auto-populate `strategyData` when a trade is created from a Live setup row.
+
+**Files:** `server/signals/risk/position-sizing.ts`, `server/compartments/htf-scanner/routes.ts`, `client/src/pages/htf-setups.tsx`.
+
+---
 ## 2026-05-21 — HTF portfolio counter: drop STOCK_TRADE_TYPES filter
 
 **Why:** Chris tagged PURR/NVTS as HTF on `/tracker`, the strategy headers grouped them correctly, but `/htf` → Portfolio tab still showed 0 HTF positions. Root cause: `loadPortfolio` in `htf-scanner/routes.ts` had a leftover `STOCK_TRADE_TYPES` filter that only counted Stock-category trades. HTF-tagged option positions (calls, spreads) on HTF setups got silently excluded.

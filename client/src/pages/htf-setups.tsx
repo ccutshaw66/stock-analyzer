@@ -40,9 +40,14 @@ interface PortfolioPosition {
   sector: string;
   shares: number;
   entry: number;
-  stop: number;
+  stop: number | null;
+  target: number | null;
+  currentPrice: number | null;
+  unrealizedPL: number | null;
   value: number;
   atRisk: number;
+  entryDate: string;
+  daysHeld: number | null;
 }
 
 interface PortfolioResponse {
@@ -339,6 +344,7 @@ function WatchTab() {
 }
 
 function PortfolioTab() {
+  const [, navigate] = useLocation();
   const q = useQuery<PortfolioResponse>({
     queryKey: ["/api/htf/portfolio"],
     queryFn: async () => (await apiRequest("GET", "/api/htf/portfolio")).json(),
@@ -383,28 +389,71 @@ function PortfolioTab() {
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left">Symbol</th>
-                <th className="px-3 py-2 text-left">Sector</th>
                 <th className="px-3 py-2 text-right">Shares</th>
                 <th className="px-3 py-2 text-right">Entry</th>
+                <th className="px-3 py-2 text-right">Current</th>
+                <th className="px-3 py-2 text-right">P/L</th>
                 <th className="px-3 py-2 text-right">Stop</th>
+                <th className="px-3 py-2 text-right">Target</th>
                 <th className="px-3 py-2 text-right">Value</th>
                 <th className="px-3 py-2 text-right">At risk</th>
+                <th className="px-3 py-2 text-right">Days</th>
               </tr>
             </thead>
             <tbody>
-              {p.positions.map(pos => (
-                <tr key={pos.symbol} className="border-t border-border">
-                  <td className="px-3 py-2 font-bold">{pos.symbol}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{pos.sector}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{pos.shares.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt$(pos.entry)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmt$(pos.stop)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt$0(pos.value)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt$0(pos.atRisk)}</td>
-                </tr>
-              ))}
+              {p.positions.map(pos => {
+                const plPct = pos.unrealizedPL != null && pos.entry > 0 && pos.shares > 0
+                  ? (pos.unrealizedPL / (pos.entry * pos.shares)) * 100
+                  : null;
+                return (
+                  <tr
+                    key={pos.symbol}
+                    onClick={() => navigate(`/htf/${pos.symbol}`)}
+                    className="border-t border-border cursor-pointer hover:bg-muted/30 transition-colors"
+                    title="Open HTF pattern chart"
+                    data-testid={`htf-portfolio-${pos.symbol}`}
+                  >
+                    <td className="px-3 py-2 font-bold text-foreground underline decoration-dotted underline-offset-2">{pos.symbol}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{pos.shares.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt$(pos.entry)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{pos.currentPrice != null ? fmt$(pos.currentPrice) : "—"}</td>
+                    <td
+                      className={`px-3 py-2 text-right tabular-nums font-semibold ${
+                        pos.unrealizedPL == null
+                          ? "text-muted-foreground"
+                          : pos.unrealizedPL >= 0
+                            ? "text-bull-light"
+                            : "text-bear-light"
+                      }`}
+                    >
+                      {pos.unrealizedPL != null ? fmt$0(pos.unrealizedPL) : "—"}
+                      {plPct != null && (
+                        <span className="text-2xs ml-1 opacity-70">
+                          ({plPct >= 0 ? "+" : ""}{plPct.toFixed(1)}%)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-bear-light">
+                      {pos.stop != null ? fmt$(pos.stop) : <span className="text-muted-foreground" title="No stop recorded on this trade">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-bull-light">
+                      {pos.target != null ? fmt$(pos.target) : <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt$0(pos.value)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {pos.stop != null ? fmt$0(pos.atRisk) : <span className="text-muted-foreground" title="Cannot compute risk without a stop">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {pos.daysHeld != null ? `${pos.daysHeld}d` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <div className="px-3 py-2 text-2xs text-muted-foreground italic border-t border-border">
+            "—" in Stop or At risk means no stop was recorded when the trade was opened. Edit the trade in /tracker and set a stop, or recreate it from a /htf Live setup so the strategyData captures the flag-low stop automatically.
+          </div>
         </div>
       )}
     </div>
