@@ -5373,6 +5373,31 @@ export async function registerRoutes(
     }
   });
 
+  // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
+  // we can eyeball detection accuracy on a chart before investing in the
+  // full backtest harness.
+  //
+  //   GET /api/diag/wyckoff-spring-scan?symbol=AAPL&days=2500[&minScore=0]
+  //
+  app.get("/api/diag/wyckoff-spring-scan", async (req, res) => {
+    try {
+      const { runWyckoffSpringScan } = await import("./diag/wyckoff-spring-scan");
+      const symbol = String(req.query.symbol || "").trim().toUpperCase();
+      if (!symbol) {
+        return res.status(400).json({ error: "Provide ?symbol=AAPL" });
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 2500, 200), 3650);
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 0;
+      const result = await runWyckoffSpringScan(symbol, days, minScore);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "wyckoff-spring-scan failed" });
+    }
+  });
+
   // HTF VALIDATION harness — Walk-Forward Efficiency + Monte Carlo + R-metrics.
   // Cardoza-style "is this a real edge or an in-sample fit" check. Required
   // before pushing any HTF parameter change. Wraps the same simulator as

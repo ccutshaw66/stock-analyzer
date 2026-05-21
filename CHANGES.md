@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Wyckoff Spring diagnostic scan endpoint (step 2 of Top-3 #3)
+
+**Why:** Spec step 2 — hand-verify the detector on real historical data before investing in the backtest harness. Need a small JSON endpoint that runs the detector against one ticker so Chris can spot-check dates / pierce depths / TR boundaries.
+
+**What:** New endpoint `GET /api/diag/wyckoff-spring-scan?symbol=AAPL&days=2500[&minScore=0]`. Fetches 10y of bars from FMP, runs `scanWyckoffSpring`, returns hits with all `extras` serialized as date strings + numeric fields rounded for readability. minScore defaults to 0 so the first pass returns every detected hit (Chris filters by eye on the chart).
+
+**Files**
+- new: `server/diag/wyckoff-spring-scan.ts`
+- mod: `server/routes.ts` (route handler next to `/api/diag/strategy-htf-pnl`)
+
+**TypeScript:** clean.
+
+**Sanity URLs to try after deploy:**
+- `https://stockotter.ai/api/diag/wyckoff-spring-scan?symbol=AAPL&days=2500`
+- `https://stockotter.ai/api/diag/wyckoff-spring-scan?symbol=AMZN&days=2500`
+- `https://stockotter.ai/api/diag/wyckoff-spring-scan?symbol=NVDA&days=2500`
+
+**Next:** Eyeball the hit dates on the existing `/htf/:symbol` chart. If detection looks reasonable across the 3 known Springs, build the backtest harness at `server/diag/strategy-wyckoff-spring-pnl.ts`. If detection misses obvious Springs or fires on noise, tune thresholds in `wyckoff-spring.ts` first.
+
+---
 ## 2026-05-21 — Wyckoff Spring detector (step 1 of Top-3 #3)
 
 **Why:** Spec called for the detector first, then hand-verification, then backtest harness, then registry plug-in (only if positive-EV gate clears). This ships step 1 — the detection logic.
