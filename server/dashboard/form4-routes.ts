@@ -52,6 +52,25 @@ export interface Form4LatestResponse {
   windowDays: number;
 }
 
+/**
+ * Auth gate for diag endpoints. Accepts EITHER a logged-in session (browser
+ * usage) OR a matching `x-admin-token` header against the
+ * `STOCKOTTER_ADMIN_TOKEN` env var (server-box curl usage). The token path
+ * exists so Chris can hit repair / sweep endpoints from the prod box via
+ * curl without needing browser auth.
+ *
+ * If the env var isn't set, the token path is disabled and only session
+ * auth works — safe default.
+ */
+function requireAuthOrAdminToken(req: Request, res: Response, next: () => void) {
+  const token = process.env.STOCKOTTER_ADMIN_TOKEN;
+  const headerToken = req.headers["x-admin-token"];
+  if (token && typeof headerToken === "string" && headerToken === token) {
+    return next();
+  }
+  return requireAuth(req, res, next);
+}
+
 export function registerForm4Routes(app: Express): void {
   // GET /api/dashboard/form4/latest — recent insider transactions.
   app.get(
@@ -113,7 +132,7 @@ export function registerForm4Routes(app: Express): void {
   // sweep stats inline so you can see what was fetched/inserted.
   app.post(
     "/api/diag/form4/sweep",
-    requireAuth,
+    requireAuthOrAdminToken,
     async (_req: Request, res: Response) => {
       try {
         const { runForm4Sweep } = await import("../data/providers/edgar-form4-sweep");
@@ -133,7 +152,7 @@ export function registerForm4Routes(app: Express): void {
   // never touched.
   app.post(
     "/api/diag/form4/repair-adrs",
-    requireAuth,
+    requireAuthOrAdminToken,
     async (_req: Request, res: Response) => {
       try {
         const { detectAdrRatio } = await import("../data/providers/edgar-form4");

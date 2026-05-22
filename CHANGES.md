@@ -1180,6 +1180,27 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — Form 4 diag endpoints: admin-token bypass for server-box curl
+
+**Why:** Chrome's "allow pasting" anti-self-XSS guard makes the browser-console workflow friction-heavy. Chris tried curl from the prod box but the diag endpoints require browser session auth, so it returned `{"error":"Not authenticated"}`. Adding an env-gated admin-token bypass so curl from the prod box works without browser involvement.
+
+**What:**
+- `server/dashboard/form4-routes.ts` — new `requireAuthOrAdminToken` middleware. Accepts either a logged-in session OR a matching `x-admin-token` header against the `STOCKOTTER_ADMIN_TOKEN` env var. If the env var isn't set, the token path is disabled and only session auth works — safe default.
+- Applied to `POST /api/diag/form4/sweep` and `POST /api/diag/form4/repair-adrs`.
+
+**Usage on prod:**
+```bash
+# 1. Generate a token and write to .env
+echo "STOCKOTTER_ADMIN_TOKEN=$(openssl rand -hex 32)" >> /opt/stock-analyzer/.env
+
+# 2. Restart pm2 so the new env var loads
+pm2 restart stockotter
+
+# 3. Curl with the token (replace TOKEN with what you put in .env)
+curl -X POST -H "x-admin-token: TOKEN" https://stockotter.ai/api/diag/form4/repair-adrs
+```
+
+---
 ## 2026-05-22 — Form 4 repair endpoint: fix pre-fix ADR rows in place
 
 **Why:** The ADR parser fix shipped earlier today only applies to FUTURE Form 4 sweeps. Existing DB rows for tickers like SVRE still hold the inflated pre-fix values ($6B fake). The sweep won't touch them because it dedupes by accession number. Chris confirmed `/insiders` is still showing $6B on SVRE.
