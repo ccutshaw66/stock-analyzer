@@ -1180,6 +1180,22 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — ADR detector: cover the bare "American Depositary Share" phrasing + test suite
+
+**Why:** Caught a regex hole while testing the ADR fix against realistic footnote samples. My original regex required the parenthetical "(ADS)" after "American Depositary Share" — but the actual SVRE filing says just "Each American Depositary Share represents 43,200 ordinary shares" with no parenthetical. So the bug fix didn't actually fix the SVRE case until now.
+
+**What:**
+- `server/data/providers/edgar-form4.ts` — split `detectAdrRatio` patterns into 4 explicit regexes covering the common phrasings:
+  1. `Each ADS [(...)] represents N ordinary shares` (with optional parenthetical of any content)
+  2. `Each American Depositary Share [(ADS)] represents N ordinary shares` (the previously-broken case)
+  3. `One ADS = N ordinary shares` / `One ADR represents N ordinary shares`
+  4. `1 ADS : N ordinary shares`
+- `scripts/edgar-adr-ratio-test.ts` (new) — 17-case test battery: 8 ADR positive cases (SVRE actual bug, BABA, JD, BIDU, etc.) + 9 false-positive controls (US common stocks, generic share mentions, empty footnotes). All pass.
+- `package.json` — `npm run edgar:adr` exposes the test.
+
+**Verified:** SVRE 25,000 ADS × $4 now correctly computes to $100K (was $4.32B). BABA 10K ADS × $80 at 8:1 ratio → $800K (was $6.4M). MRP / AAPL / generic footnotes stay at ratio 1.
+
+---
 ## 2026-05-22 — Form 4 parser: normalize ADR ordinary-share counts to ADS units
 
 **Why:** SVRE (SaverOne, Israeli ADR — 43,200 ordinary shares per ADS) was showing a fake **$6 billion** insider buy on the /insiders page. SEC Form 4 reports the *ordinary* share count, but `pricePerShare` is per-ADS USD. Multiplying inflates by the ADR ratio. Real transaction value was ~$167K (a few thousand ADSs at $3-$4). Affects every foreign issuer with ADR ratios > 1.

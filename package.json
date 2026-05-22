@@ -23,7 +23,8 @@
     "earnings:smoke": "tsx scripts/earnings-smoke.ts",
     "htf:smoke": "tsx scripts/htf-smoke.ts",
     "htf:parity": "tsx scripts/htf-sizing-parity.ts",
-    "htf:backtest": "tsx scripts/htf-backtest.ts"
+    "htf:backtest": "tsx scripts/htf-backtest.ts",
+    "edgar:adr": "tsx scripts/edgar-adr-ratio-test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

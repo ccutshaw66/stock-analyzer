@@ -192,8 +192,13 @@ export function detectAdrRatio(footnotesText: string): number {
   //   "Each ADR represents 5 ordinary shares"
   //   "One ADS = 100 ordinary shares"
   const patterns: RegExp[] = [
-    /each\s+(?:american\s+depositary\s+(?:share|receipt)s?\s*\(?(?:ads|adr)\)?|ads|adr)\s+(?:represents?|equals?|=)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    // "Each ADS represents N ordinary shares" / "Each ADR represents..."
+    /each\s+(?:ads|adr)(?:\s*\([^)]*\))?\s+(?:represents?|equals?|=)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    // "Each American Depositary Share [(ADS)] represents N ordinary shares"
+    /each\s+american\s+depositary\s+(?:share|receipt)s?(?:\s*\([^)]*\))?\s+(?:represents?|equals?|=)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    // "One ADS = N ordinary shares" / "One ADR represents N ordinary shares"
     /one\s+(?:ads|adr)\s+(?:=|represents?|equals?)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    // "1 ADS : N ordinary shares"
     /1\s+(?:ads|adr)\s*[=:]\s*([\d,]+)\s+ordinary\s+shares?/i,
   ];
   for (const re of patterns) {
