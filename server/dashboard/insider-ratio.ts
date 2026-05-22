@@ -23,6 +23,9 @@
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../auth";
 import { fmpGet } from "../data/providers/fmp.client";
+import { db } from "../storage";
+import { insiderForm4 } from "@shared/schema";
+import { gte, eq, and } from "drizzle-orm";
 
 const WINDOW_DAYS = 30;
 const PAGES_PER_WINDOW = 25;        // ~30d at ~1K rows/page; raise if FMP density grows
@@ -39,6 +42,14 @@ export interface PerSymbolRatio {
   sellShare: number;
   /** buy$ / sell$ ratio. >1 = buying skew, <1 = selling skew, Infinity if no sells. */
   buySellRatio: number;
+  /**
+   * Form 4-derived planned-sale dollar amount (10b5-1 trading plans). Subtract
+   * from sellDollar to get discretionary selling. Null = no Form 4 coverage
+   * for this ticker yet (sweep hasn't picked it up).
+   */
+  planned10b5_1Dollar: number | null;
+  /** discretionarySellDollar / buyDollar. Null if no Form 4 coverage. */
+  discretionaryRatio: number | null;
 }
 
 export interface MarketRatio {
@@ -53,6 +64,16 @@ export interface MarketRatio {
   buySellRatio: number;
   /** sell$ / (buy$ + sell$). 0..1, easier to color-tone. */
   sellShare: number;
+  /**
+   * Form 4-derived 10b5-1 planned-sale dollar amount across the window.
+   * Subtract from sellDollar to get discretionary selling. Null if Form 4
+   * data is unavailable (sweep hasn't run or table empty).
+   */
+  planned10b5_1Dollar: number | null;
+  /** buy$ / discretionarySell$. Null if Form 4 unavailable. */
+  discretionaryRatio: number | null;
+  /** Count of Form 4 transactions flagged 10b5-1 in the window. */
+  planned10b5_1Count: number;
 }
 
 export interface InsiderRatioResponse {
@@ -135,7 +156,12 @@ async function fetchRawTxns(): Promise<RawTxn[]> {
   return out;
 }
 
-function aggregateWindow(txns: RawTxn[], startMs: number, endMs: number): MarketRatio {
+function aggregateWindow(
+  txns: RawTxn[],
+  startMs: number,
+  endMs: number,
+  planned: { totalDollar: number; count: number } | null,
+): MarketRatio {
   let buyDollar = 0;
   let sellDollar = 0;
   const buyInsiders = new Set<string>();
@@ -151,6 +177,17 @@ function aggregateWindow(txns: RawTxn[], startMs: number, endMs: number): Market
     }
   }
   const total = buyDollar + sellDollar;
+
+  const plannedDollar = planned?.totalDollar ?? null;
+  // Cap subtraction at 0 so a noisy Form 4 dataset doesn't produce negative
+  // discretionary sells.
+  const discretionarySell = plannedDollar != null
+    ? Math.max(0, sellDollar - plannedDollar)
+    : null;
+  const discretionaryRatio = discretionarySell != null
+    ? (discretionarySell > 0 ? buyDollar / discretionarySell : (buyDollar > 0 ? Infinity : 0))
+    : null;
+
   return {
     windowDays: WINDOW_DAYS,
     windowStart: isoDate(startMs),
@@ -161,10 +198,19 @@ function aggregateWindow(txns: RawTxn[], startMs: number, endMs: number): Market
     sellCount: sellInsiders.size,
     buySellRatio: sellDollar > 0 ? buyDollar / sellDollar : (buyDollar > 0 ? Infinity : 0),
     sellShare: total > 0 ? sellDollar / total : 0,
+    planned10b5_1Dollar: plannedDollar != null ? Math.round(plannedDollar) : null,
+    discretionaryRatio: discretionaryRatio != null && isFinite(discretionaryRatio)
+      ? Number(discretionaryRatio.toFixed(2)) : discretionaryRatio,
+    planned10b5_1Count: planned?.count ?? 0,
   };
 }
 
-function aggregatePerSymbol(txns: RawTxn[], startMs: number, endMs: number): PerSymbolRatio[] {
+function aggregatePerSymbol(
+  txns: RawTxn[],
+  startMs: number,
+  endMs: number,
+  plannedBySymbol: Map<string, number>,
+): PerSymbolRatio[] {
   const map = new Map<string, {
     buyDollar: number; sellDollar: number;
     buyInsiders: Set<string>; sellInsiders: Set<string>;
@@ -187,6 +233,11 @@ function aggregatePerSymbol(txns: RawTxn[], startMs: number, endMs: number): Per
   const out: PerSymbolRatio[] = [];
   map.forEach((v, symbol) => {
     const total = v.buyDollar + v.sellDollar;
+    const planned = plannedBySymbol.get(symbol) ?? null;
+    const discretionarySell = planned != null ? Math.max(0, v.sellDollar - planned) : null;
+    const discretionaryRatio = discretionarySell != null
+      ? (discretionarySell > 0 ? v.buyDollar / discretionarySell : (v.buyDollar > 0 ? Infinity : 0))
+      : null;
     out.push({
       symbol,
       buyDollar: Math.round(v.buyDollar),
@@ -195,11 +246,51 @@ function aggregatePerSymbol(txns: RawTxn[], startMs: number, endMs: number): Per
       sellCount: v.sellInsiders.size,
       sellShare: total > 0 ? v.sellDollar / total : 0,
       buySellRatio: v.sellDollar > 0 ? v.buyDollar / v.sellDollar : (v.buyDollar > 0 ? Infinity : 0),
+      planned10b5_1Dollar: planned != null ? Math.round(planned) : null,
+      discretionaryRatio: discretionaryRatio != null && isFinite(discretionaryRatio)
+        ? Number(discretionaryRatio.toFixed(2)) : discretionaryRatio,
     });
   });
   // Sort by total activity desc — most-noisy tickers first.
   out.sort((a, b) => (b.buyDollar + b.sellDollar) - (a.buyDollar + a.sellDollar));
   return out;
+}
+
+/**
+ * Pull 10b5-1 planned-sale totals per ticker + the window aggregate from the
+ * Form 4 cache. Returns empty data if the sweep hasn't populated yet — callers
+ * fall back to the raw FMP-based ratio.
+ */
+async function getPlannedSalesByTicker(
+  windowStartIso: string,
+): Promise<{ bySymbol: Map<string, number>; total: number; count: number }> {
+  try {
+    const rows = await db
+      .select({
+        ticker: insiderForm4.ticker,
+        totalValue: insiderForm4.totalValue,
+      })
+      .from(insiderForm4)
+      .where(
+        and(
+          eq(insiderForm4.rule10b5_1, true),
+          eq(insiderForm4.direction, "sell"),
+          gte(insiderForm4.transactionDate, windowStartIso),
+        ),
+      );
+    const bySymbol = new Map<string, number>();
+    let total = 0;
+    for (const r of rows) {
+      const v = Number(r.totalValue) || 0;
+      if (v <= 0) continue;
+      bySymbol.set(r.ticker, (bySymbol.get(r.ticker) ?? 0) + v);
+      total += v;
+    }
+    return { bySymbol, total, count: rows.length };
+  } catch {
+    // Form 4 table may not exist yet — return empty so caller falls back.
+    return { bySymbol: new Map(), total: 0, count: 0 };
+  }
 }
 
 async function buildRatio(): Promise<InsiderRatioResponse> {
@@ -209,11 +300,25 @@ async function buildRatio(): Promise<InsiderRatioResponse> {
   const priorStart = now - 2 * oneWindow;
   const priorEnd = currentStart;
 
-  const txns = await fetchRawTxns();
+  const [txns, plannedCurrent, plannedPrior] = await Promise.all([
+    fetchRawTxns(),
+    getPlannedSalesByTicker(isoDate(currentStart)),
+    getPlannedSalesByTicker(isoDate(priorStart)),
+  ]);
 
-  const current = aggregateWindow(txns, currentStart, now);
-  const prior = aggregateWindow(txns, priorStart, priorEnd);
-  const perSymbol = aggregatePerSymbol(txns, currentStart, now);
+  // For the prior-window aggregate we subtract (plannedPrior - plannedCurrent)
+  // total since plannedPrior includes the current window too.
+  const priorWindowPlanned = {
+    totalDollar: Math.max(0, plannedPrior.total - plannedCurrent.total),
+    count: Math.max(0, plannedPrior.count - plannedCurrent.count),
+  };
+
+  const current = aggregateWindow(txns, currentStart, now, {
+    totalDollar: plannedCurrent.total,
+    count: plannedCurrent.count,
+  });
+  const prior = aggregateWindow(txns, priorStart, priorEnd, priorWindowPlanned);
+  const perSymbol = aggregatePerSymbol(txns, currentStart, now, plannedCurrent.bySymbol);
 
   // momDelta caps at +/-10 so an Infinity ratio doesn't dominate.
   const currentR = Number.isFinite(current.buySellRatio) ? current.buySellRatio : 10;
