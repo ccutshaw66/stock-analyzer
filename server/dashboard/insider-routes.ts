@@ -48,9 +48,12 @@ async function getPositionInsiderActivity(
   tickers: string[],
   lookbackDays: number,
   limit: number,
+  filters: { minDollar?: number; direction?: "buy" | "sell" } = {},
 ): Promise<InsiderTxn[]> {
   if (tickers.length === 0) return [];
   const cutoff = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+  const minDollar = filters.minDollar ?? 0;
+  const direction = filters.direction ?? null;
 
   const perTicker = await Promise.all(
     tickers.map(async (t): Promise<InsiderTxn[]> => {
@@ -65,12 +68,16 @@ async function getPositionInsiderActivity(
           const shares = Number(r.shares) || 0;
           const value = Number(r.value) || 0;
           const pricePer = shares > 0 ? value / shares : 0;
+          const dir: "buy" | "sell" | "other" =
+            r.direction === "buy" || r.direction === "sell" ? r.direction : "other";
+          if (direction && dir !== direction) continue;
+          if (value < minDollar) continue;
           out.push({
             symbol: t.toUpperCase(),
             date: r.date,
             insider: r.insider || "Unknown",
             relation: r.relation || "",
-            direction: (r.direction === "buy" || r.direction === "sell") ? r.direction : "other",
+            direction: dir,
             shares,
             pricePer,
             value,
@@ -99,11 +106,19 @@ export function registerPositionInsidersRoute(app: Express): void {
       try {
         const lookbackDays = Math.min(Math.max(Number(req.query.lookbackDays) || 30, 1), 180);
         const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+        const minDollar = Math.max(0, Number(req.query.minDollar) || 0);
+        const direction =
+          req.query.direction === "buy" || req.query.direction === "sell"
+            ? req.query.direction
+            : undefined;
         const trades = (await storage.getAllTrades(userId)) as Trade[];
         const heldTickers = Array.from(
           new Set(trades.filter(t => !t.closeDate).map(t => String(t.symbol).toUpperCase())),
         );
-        const items = await getPositionInsiderActivity(heldTickers, lookbackDays, limit);
+        const items = await getPositionInsiderActivity(heldTickers, lookbackDays, limit, {
+          minDollar,
+          direction,
+        });
         res.json({
           items,
           heldTickers,
