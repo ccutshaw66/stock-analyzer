@@ -1197,6 +1197,18 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Note:** to force the cache to refresh immediately rather than wait 1h, `pm2 restart stockotter` after deploy. Next load of `/insiders` triggers a fresh aggregation.
 
 ---
+## 2026-05-22 — Add Trade dropdown: new "Insider Trigger" strategy
+
+**Why:** Now that `/insiders` surfaces real conviction clusters (MRP, FCN, AMRZ-style), Chris wants those trades tagged distinctly when he enters them on Trade Tracker — separate from BBTC+VER or HTF — so future P&L attribution can isolate "insider-driven trades" vs other strategies.
+
+**What:**
+- `shared/strategies/registry.ts` — new `INSIDER_TRIGGER_MANIFEST` (id `insider-trigger`, name "Insider Trigger", short "Insider", color bull, requiresReason=true so the user captures which insider/filing-date triggered it). Exit logic reuses `BBTC_VER_MANIFEST.evaluate` since long-only 8% hard / 10% trail applies identically — no parallel code.
+- Registered in `STRATEGY_REGISTRY` between BBTC+VER and the TFT family.
+- `server/routes.ts` — trade-enrichment loop now walks the BBTC+VER lifecycle for `strategy === "insider-trigger"` too. Trail-stop ratcheting + hard-stop hit detection work the same as BBTC+VER.
+
+**Net behaviour:** open Add Trade → strategy dropdown now includes **Insider Trigger** between BBTC+VER and TFT. Picking it requires a reason note (capture which insider, e.g. "MRP — CEO Richman $6.4M May 11") and renders Stop (hard) / Trail (10%) / Active stop / Target columns on the Current Positions page exactly like BBTC+VER trades.
+
+---
 ## 2026-05-22 — Form 4 diag endpoints: admin-token bypass for server-box curl
 
 **Why:** Chrome's "allow pasting" anti-self-XSS guard makes the browser-console workflow friction-heavy. Chris tried curl from the prod box but the diag endpoints require browser session auth, so it returned `{"error":"Not authenticated"}`. Adding an env-gated admin-token bypass so curl from the prod box works without browser involvement.

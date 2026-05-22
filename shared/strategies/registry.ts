@@ -987,12 +987,37 @@ const MARKOV_V2_MANIFEST: StrategyManifest = {
   },
 };
 
+/**
+ * Insider Trigger — CEO / cluster insider-buying conviction trade.
+ *
+ * Entry rule: a real buy showed up on /insiders (MRP-style organic cluster,
+ * not BXDC-style IPO sponsor flood — the conviction-score filter handles
+ * that). Buy the day after the Form 4 filing fires. The `reason` field
+ * captures WHICH insider(s) + filing date so the trade history is auditable
+ * later.
+ *
+ * Exit logic is identical to BBTC+VER (long-only trend with a hard stop +
+ * 10% trail), so we reuse the same evaluate() and the same lifecycle
+ * walker — no parallel code path.
+ */
+const INSIDER_TRIGGER_MANIFEST: StrategyManifest = {
+  id: "insider-trigger",
+  name: "Insider Trigger",
+  shortName: "Insider",
+  description: "CEO / cluster insider buying conviction (MRP-style). Long the day after the Form 4 prints.",
+  color: "bull",
+  requiresReason: true,    // capture which insider(s) + filing date
+  columnOrder: ["Stop (hard)", "Trail (10%)", "Active stop", "Target"],
+  evaluate: BBTC_VER_MANIFEST.evaluate,
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────
 
 export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
   htf: HTF_MANIFEST,
   "wyckoff-spring": WYCKOFF_SPRING_MANIFEST,
   "bbtc-ver": BBTC_VER_MANIFEST,
+  "insider-trigger": INSIDER_TRIGGER_MANIFEST,
   "tft-40w": TFT_40W_MANIFEST,
   "tft-60w": TFT_60W_MANIFEST,
   "tft-cat": TFT_CAT_MANIFEST,

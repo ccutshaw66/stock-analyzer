@@ -6277,9 +6277,14 @@ export async function registerRoutes(
               );
               return { ...t, lifecycleState };
             }
-            if (t.strategy === "bbtc-ver" || t.strategy === "amc") {
-              // AMC routes through the same manifest evaluator as BBTC+VER
-              // (see registry.ts) so it gets the same 8% hard / 10% trail.
+            if (
+              t.strategy === "bbtc-ver" ||
+              t.strategy === "amc" ||
+              t.strategy === "insider-trigger"
+            ) {
+              // AMC + Insider Trigger route through the same manifest
+              // evaluator as BBTC+VER (see registry.ts) — same long-only
+              // 8% hard / 10% trail rule, so one walker covers all three.
               const bars = await getHtfBars(t.symbol);
               if (bars.length === 0) return t;
               const entryPrice = Math.abs(t.openPrice);
