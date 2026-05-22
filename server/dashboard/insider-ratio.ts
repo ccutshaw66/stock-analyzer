@@ -108,6 +108,71 @@ function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/**
+ * Known ADR ratios (1 ADS = N ordinary shares). FMP's `/insider-trading/latest`
+ * feed reports the ordinary-share count for ADRs but the `price` field is per
+ * ADS in USD — multiplying gives a fake billion-dollar value (SVRE bug).
+ *
+ * Lookup map for the common foreign issuers traded on US exchanges. Any
+ * symbol present here is normalized at aggregation time: shares /= ratio.
+ * Unknown ADRs fall through to the universal sanity cap below.
+ */
+const ADR_RATIOS: Record<string, number> = {
+  // Israeli
+  SVRE: 43200,
+  // Chinese
+  BABA: 8,
+  JD: 2,
+  BIDU: 8,
+  NTES: 25,
+  PDD: 4,
+  YMM: 20,
+  TME: 2,
+  LX: 2,
+  // Japanese
+  TM: 2,         // Toyota
+  HMC: 1,        // Honda
+  // Korean
+  KB: 1,         // KB Financial
+  // UK / Europe (most 1:1)
+  // Add more as ADR artifacts surface — see /api/diag/insiders/skipped-large.
+};
+
+/**
+ * Per-transaction dollar cap. No legitimate individual-insider Form 4 buy
+ * exceeds this (the largest CEO buys are in the $10–50M range; $100M+ are
+ * always either sponsor stakes, parent-affiliate funding, or ADR artifacts
+ * we missed). Skipping rather than carrying these into the aggregates keeps
+ * the /insiders totals honest even when the ADR_RATIOS table is incomplete.
+ */
+const SANITY_CAP_DOLLAR = 100_000_000;
+
+/**
+ * Adjust a raw FMP insider row for ADR mechanics + sanity. Returns the
+ * corrected dollar value, or null if the row should be dropped entirely.
+ */
+export function normalizeInsiderRow(
+  sym: string,
+  shares: number,
+  price: number,
+): { shares: number; dollar: number } | null {
+  if (shares <= 0 || price <= 0) return null;
+  // Apply known ADR ratio if present.
+  const ratio = ADR_RATIOS[sym];
+  const effectiveShares = ratio && ratio > 1 ? shares / ratio : shares;
+  const dollar = effectiveShares * price;
+  if (dollar > SANITY_CAP_DOLLAR) {
+    // Either a sponsor stake (RIVN×VW, BXDC×Blackstone Treasury) or an
+    // unknown ADR artifact. Either way, doesn't belong in personal-insider
+    // aggregates. Log once per occurrence so we can extend ADR_RATIOS later.
+    console.warn(
+      `[insider-ratio] dropped suspicious row: ${sym} shares=${shares.toLocaleString()} price=$${price} → $${dollar.toLocaleString()} (cap $${SANITY_CAP_DOLLAR.toLocaleString()})`,
+    );
+    return null;
+  }
+  return { shares: effectiveShares, dollar };
+}
+
 async function fetchRawTxns(): Promise<RawTxn[]> {
   const now = Date.now();
   const cutoff = now - 2 * WINDOW_DAYS * 24 * 60 * 60 * 1000; // 60-day window total
@@ -136,18 +201,18 @@ async function fetchRawTxns(): Promise<RawTxn[]> {
       if (!sym) continue;
       const insiderKey = String(r?.reportingCik || r?.reportingName || "");
       const insiderName = String(r?.reportingName || "Unknown");
-      const shares = Number(r?.securitiesTransacted) || 0;
+      const rawShares = Number(r?.securitiesTransacted) || 0;
       const price = Number(r?.price) || 0;
-      const dollar = shares * price;
-      if (dollar <= 0) continue;
+      const normalized = normalizeInsiderRow(sym, rawShares, price);
+      if (!normalized) continue;
 
       out.push({
         symbol: sym,
         insiderKey,
         insiderName,
         dir,
-        shares,
-        dollar,
+        shares: normalized.shares,
+        dollar: normalized.dollar,
         timestamp: t,
       });
     }

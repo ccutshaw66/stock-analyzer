@@ -21,6 +21,7 @@ import { storage } from "../storage";
 import type { Trade } from "@shared/schema";
 import { fmpGet } from "../data/providers/fmp.client";
 import { getInsiderActivitySnapshot } from "../snapshot/insiders";
+import { normalizeInsiderRow } from "./insider-ratio";
 
 // ─── Shared types ────────────────────────────────────────────────────────
 
@@ -213,14 +214,18 @@ async function scanInsiderClusters(): Promise<InsiderCluster[]> {
         entry = { buys: new Map(), sells: new Map() };
         bySymbol.set(sym, entry);
       }
-      const shares = Number(r?.securitiesTransacted) || 0;
+      const rawShares = Number(r?.securitiesTransacted) || 0;
       const price = Number(r?.price) || 0;
+      const norm = normalizeInsiderRow(sym, rawShares, price);
+      if (!norm) continue;
+      const shares = norm.shares;
+      const value = norm.dollar;
       const existing = entry[dir].get(insiderKey);
       if (existing) {
         existing.shares += shares;
-        existing.value += shares * price;
+        existing.value += value;
       } else {
-        entry[dir].set(insiderKey, { name: insiderName, shares, value: shares * price });
+        entry[dir].set(insiderKey, { name: insiderName, shares, value });
       }
     }
 

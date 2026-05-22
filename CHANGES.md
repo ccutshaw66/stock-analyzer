@@ -1180,6 +1180,23 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — FMP insider feed: ADR ratio map + $100M sanity cap (the real SVRE $6B fix)
+
+**Why:** Repair endpoint reported `{"normalized":0}` — the `insider_form4` EDGAR table was empty all along. The $6B SVRE display on `/insiders` was actually coming from the FMP `/insider-trading/latest` feed (the primary source for the page; EDGAR Form 4 is the deep-scan Pass-2 add per the page header comment). FMP also reports ADR ordinary-share counts but its JSON has no footnote so the EDGAR-style regex parser doesn't apply.
+
+**What:**
+- `server/dashboard/insider-ratio.ts` — new `normalizeInsiderRow(sym, shares, price)` (exported). Two-layer defence:
+  1. **Static ADR ratio table** for known foreign issuers: SVRE 43200, BABA 8, JD 2, BIDU 8, NTES 25, PDD 4, YMM 20, TME 2, LX 2, TM 2, HMC 1, KB 1. Symbols on the list get `shares /= ratio` before the dollar multiply.
+  2. **Sanity cap at $100M per transaction** — no legitimate individual-insider Form 4 buy exceeds this. Anything bigger is either a sponsor stake (Blackstone-affiliate buying BXDC's IPO, VW buying RIVN) or an unknown ADR artifact. Dropped from aggregates, logged to console so we can extend the ratio table.
+- `server/dashboard/insider-routes.ts` — cluster scanner imports `normalizeInsiderRow` and applies the same correction. SVRE, RIVN×VW, BXDC×Blackstone Treasury no longer poison the cluster aggregates either.
+
+**Net behaviour:** `/insiders` page recomputes its 30-day ratios on the next cache cycle (1h TTL) or immediate restart. SVRE drops to its real ~$167K transaction value. The Conviction Buy Clusters section stops surfacing IPO-sponsor floods at all (they exceed the $100M cap per transaction).
+
+**Bonus:** anything we drop logs to console — `[insider-ratio] dropped suspicious row: TICKER shares=N price=$X`. After the deploy, scan `pm2 logs stockotter` and add any recurring symbols to the `ADR_RATIOS` table so they show up correctly instead of being dropped entirely.
+
+**Note:** to force the cache to refresh immediately rather than wait 1h, `pm2 restart stockotter` after deploy. Next load of `/insiders` triggers a fresh aggregation.
+
+---
 ## 2026-05-22 — Form 4 diag endpoints: admin-token bypass for server-box curl
 
 **Why:** Chrome's "allow pasting" anti-self-XSS guard makes the browser-console workflow friction-heavy. Chris tried curl from the prod box but the diag endpoints require browser session auth, so it returned `{"error":"Not authenticated"}`. Adding an env-gated admin-token bypass so curl from the prod box works without browser involvement.
