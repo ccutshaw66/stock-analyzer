@@ -1180,6 +1180,31 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — BBTC+VER: populate the standard 8% hard / 10% trail stops on Current Positions
+
+**Why:** Defined the standard BBTC+VER stop rule today (8% hard / 10% trail / active = max of both). Now wiring it onto the Current Positions table so the user doesn't have to recompute by hand every day — the trail ratchets up daily based on bars walked since entry, mirroring how the HTF lifecycle simulator already works.
+
+**What:**
+
+### Server-side lifecycle walker
+- `server/compartments/bbtc-ver/lifecycle.ts` (new) — `computeBbtcVerLifecycle(bars, entryDate, entryPrice)`. Walks bars from entry to today: tracks highestCloseSinceEntry, peak, trough, max gain/DD, hard-stop hits (intraday low ≤ entry × 0.92), trail-stop hits (close ≤ active stop). Returns `{ hardStop, trailStop, activeStop, trailActive, ... }`. Standard 8% / 10% constants. Pure function, mirrors `computeHtfLifecycle` shape.
+
+### Trade enrichment
+- `server/routes.ts` — `/api/trades` enrichment loop now branches by strategy. `htf` → existing HTF walker; `bbtc-ver` or `amc` → new BBTC+VER walker (AMC routes through the same manifest evaluator per registry.ts). Open trades only; closed trades skip enrichment.
+
+### Manifest — Current Positions columns
+- `shared/strategies/registry.ts` — `BBTC_VER_MANIFEST.evaluate` rewritten:
+  - Reads `hardStop` / `trailStop` from `lifecycleState` (live) with fallback to `strategyData` (user override) or computed from entry × 0.92 / 0.90 (default).
+  - Three new columns: **Stop (hard)** · **Trail (10%)** · **Active stop**. The Active stop row says "(trail)" or "(hard)" so you know which is the live broker level.
+  - Alerts trigger off `activeStop` (not raw stopPrice) — critical alert when price ≤ active stop, warn alert when within 3%.
+  - The legacy "Exit trigger" column hides automatically when it equals the trail (no clutter); only shows if the user set a custom one that diverges from the standard rule.
+- `columnOrder` updated: `["Stop (hard)", "Trail (10%)", "Active stop", "Target"]`.
+
+**Net behaviour:** open Trade Tracker → any BBTC+VER position shows the locked **Stop (hard)** at entry × 0.92, the **Trail (10%)** anchored to the highest close since entry (with "(peak $X)" annotation), and the **Active stop** = whichever is higher with a "(trail)" or "(hard)" suffix. Numbers update every day automatically as new bars print and new highs raise the trail.
+
+**Files touched:** `server/compartments/bbtc-ver/lifecycle.ts` (new), `server/routes.ts`, `shared/strategies/registry.ts`, `CHANGES.md`.
+
+---
 ## 2026-05-22 — ADR detector: cover the bare "American Depositary Share" phrasing + test suite
 
 **Why:** Caught a regex hole while testing the ADR fix against realistic footnote samples. My original regex required the parenthetical "(ADS)" after "American Depositary Share" — but the actual SVRE filing says just "Each American Depositary Share represents 43,200 ordinary shares" with no parenthetical. So the bug fix didn't actually fix the SVRE case until now.

@@ -600,6 +600,13 @@ const WYCKOFF_SPRING_MANIFEST: StrategyManifest = {
  * BBTC + VER — Bull/Bear Trend Continuation + Velocity-Extremes Reversal.
  * Long-only since 2026-05-08 short demote. Trade closes on STOP_HIT or SELL.
  */
+// Standard BBTC+VER stop rule (see CHANGES 2026-05-22): 8% hard stop locks
+// max loss; 10% trail below highest close since entry ratchets up. Active
+// broker stop = max(hard, trail). Numbers default-populate on the Current
+// Positions table even if strategyData wasn't pre-filled at trade entry.
+const BBTC_VER_HARD_STOP_PCT = 0.08;
+const BBTC_VER_TRAIL_PCT = 0.10;
+
 const BBTC_VER_MANIFEST: StrategyManifest = {
   id: "bbtc-ver",
   name: "BBTC + VER",
@@ -607,20 +614,43 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   description: "Trend continuation + oversold reversal (Ready/Set/Go chain)",
   color: "info",
   requiresReason: false,
-  columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
+  columnOrder: ["Stop (hard)", "Trail (10%)", "Active stop", "Target"],
   chartBacktest: {
     label: "BBTC + VER",
     description: "Current website Ready/Set/Go strategy",
   },
   evaluate(trade) {
     const data = trade.strategyData ?? {};
+    const live = trade.lifecycleState ?? {};
     const entry = Math.abs(trade.openPrice);
     const current = trade.currentPrice;
     const shares = trade.contractsShares ?? 0;
-    const stop = typeof data.stopPrice === "number" ? data.stopPrice : null;
+
+    // Hard stop — locked at entry × 0.92. User override via strategyData wins.
+    const hardStop = typeof data.stopPrice === "number"
+      ? data.stopPrice
+      : typeof live.hardStop === "number"
+        ? live.hardStop
+        : entry * (1 - BBTC_VER_HARD_STOP_PCT);
+
+    // Trail stop — highest close × 0.90 from the live lifecycle walker.
+    // Falls back to entry × 0.90 when no bars have been walked yet.
+    const trailStop = typeof live.trailStop === "number"
+      ? live.trailStop
+      : typeof data.exitTrigger === "number"
+        ? data.exitTrigger
+        : entry * (1 - BBTC_VER_TRAIL_PCT);
+
+    const activeStop = Math.max(hardStop, trailStop);
+    const trailActive = trailStop > hardStop;
+    const highestSinceEntry = typeof live.highestCloseSinceEntry === "number"
+      ? live.highestCloseSinceEntry
+      : null;
+
     const target = (typeof data.targetPrice === "number" ? data.targetPrice : null)
       ?? (trade.target != null && trade.target > entry ? trade.target : null);
-    const exitTrigger = typeof data.exitTrigger === "number" ? data.exitTrigger : null;
+    // Old data may still carry exitTrigger separately; keep it readable.
+    const legacyExitTrigger = typeof data.exitTrigger === "number" ? data.exitTrigger : null;
 
     const points: DisplayPoint[] = [];
     const alerts: LifecycleAlert[] = [];
@@ -631,14 +661,41 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
       state: "past",
     });
 
-    if (stop != null) {
-      const dollarsAtRisk = shares > 0 ? Math.max(0, shares * (entry - stop)) : null;
-      let state: DisplayPoint["state"] = "pending";
-      if (current != null && current <= stop) state = "triggered";
-      else if (current != null && current <= stop * 1.03) state = "armed";
+    // Hard stop — entry × 0.92, locked forever.
+    {
+      const dollarsAtRisk = shares > 0 ? Math.max(0, shares * (entry - hardStop)) : null;
+      const state: DisplayPoint["state"] = trailActive ? "past" : "pending";
       points.push({
-        label: "Stop (EXIT)",
-        value: dollarsAtRisk != null ? `${fmt$(stop)} (risk ${fmt$0(dollarsAtRisk)})` : fmt$(stop),
+        label: "Stop (hard)",
+        value: dollarsAtRisk != null
+          ? `${fmt$(hardStop)} (risk ${fmt$0(dollarsAtRisk)})`
+          : fmt$(hardStop),
+        state,
+      });
+    }
+
+    // Trail stop — ratchets up with highest close.
+    {
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current <= trailStop) state = "armed";
+      const sinceEntry = highestSinceEntry != null && highestSinceEntry > entry
+        ? ` (peak ${fmt$(highestSinceEntry)})`
+        : "";
+      points.push({
+        label: "Trail (10%)",
+        value: `${fmt$(trailStop)}${sinceEntry}`,
+        state: trailActive ? state : "pending",
+      });
+    }
+
+    // Active stop — what to set in the broker. = max(hard, trail).
+    {
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current <= activeStop) state = "triggered";
+      else if (current != null && current <= activeStop * 1.03) state = "armed";
+      points.push({
+        label: "Active stop",
+        value: `${fmt$(activeStop)}${trailActive ? " (trail)" : " (hard)"}`,
         state,
       });
       if (state === "triggered") {
@@ -649,34 +706,25 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
           actionShares: shares > 0 ? shares : null,
           actionLabel: shares > 0 ? `Close ${shares}` : "Close",
           message: shares > 0 && dollarLoss != null
-            ? `STOP HIT. Exit ${shares} shares now — locks ${fmt$0(-dollarLoss)} loss`
-            : `Stop hit ${fmt$(current!)} ≤ ${fmt$(stop)} — exit now`,
+            ? `STOP HIT. Exit ${shares} shares now — ${dollarLoss >= 0 ? `locks ${fmt$0(-dollarLoss)} loss` : `locks ${fmt$0(-dollarLoss)} profit`}`
+            : `Active stop hit ${fmt$(current!)} ≤ ${fmt$(activeStop)} — exit now`,
         });
       } else if (state === "armed") {
         alerts.push({
           severity: "warn",
           action: "hold",
           actionShares: null,
-          message: `Within 3% of stop ${fmt$(stop)} — ready to exit ${shares} shares`,
+          message: `Within 3% of active stop ${fmt$(activeStop)} — ready to exit ${shares > 0 ? `${shares} shares` : ""}`.trim(),
         });
       }
     }
 
-    if (exitTrigger != null) {
-      let state: DisplayPoint["state"] = "pending";
-      if (current != null && current <= exitTrigger) state = "triggered";
-      points.push({ label: "Exit trigger", value: fmt$(exitTrigger), state });
-      if (state === "triggered") {
-        alerts.push({
-          severity: "warn",
-          action: "exit",
-          actionShares: shares > 0 ? shares : null,
-          actionLabel: shares > 0 ? `Close ${shares}` : "Close",
-          message: shares > 0
-            ? `Exit-trigger hit. Close ${shares} shares.`
-            : `Exit-trigger price hit — close the position`,
-        });
-      }
+    // Legacy exit-trigger column (only if the trade was created before the
+    // hard/trail split shipped and explicitly carries a custom exitTrigger).
+    if (legacyExitTrigger != null && Math.abs(legacyExitTrigger - trailStop) > 0.001) {
+      const state: DisplayPoint["state"] =
+        current != null && current <= legacyExitTrigger ? "triggered" : "pending";
+      points.push({ label: "Custom exit", value: fmt$(legacyExitTrigger), state });
     }
 
     if (target != null) {

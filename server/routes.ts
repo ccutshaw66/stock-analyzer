@@ -6254,28 +6254,43 @@ export async function registerRoutes(
       // reflects the WHOLE trade cycle, not just a 1-day snapshot.
       const { getHtfBars } = await import("./data/htf-ohlcv-cache");
       const { computeHtfLifecycle } = await import("./compartments/htf-scanner/lifecycle");
+      const { computeBbtcVerLifecycle } = await import("./compartments/bbtc-ver/lifecycle");
       const enriched = await Promise.all(
         allTrades.map(async (t: any) => {
-          if (t.strategy !== "htf" || t.closeDate !== null) return t;
+          if (t.closeDate !== null) return t;
+          // Per-strategy lifecycle enrichment — each strategy's walker reads
+          // the symbol's bars and computes "where is this trade right now"
+          // state so the Current Positions row shows live trail/stop/etc.
           try {
-            const bars = await getHtfBars(t.symbol);
-            if (bars.length === 0) return t;
-            const data = (t.strategyData ?? {}) as any;
-            const entryPrice = Math.abs(t.openPrice);
-            const lifecycleState = computeHtfLifecycle(
-              bars,
-              t.tradeDate,
-              entryPrice,
-              typeof data.flagHigh === "number" ? data.flagHigh : null,
-              typeof data.flagLow === "number" ? data.flagLow : null,
-              typeof data.targetPrice === "number" ? data.targetPrice : (t.target ?? null),
-            );
-            return { ...t, lifecycleState };
+            if (t.strategy === "htf") {
+              const bars = await getHtfBars(t.symbol);
+              if (bars.length === 0) return t;
+              const data = (t.strategyData ?? {}) as any;
+              const entryPrice = Math.abs(t.openPrice);
+              const lifecycleState = computeHtfLifecycle(
+                bars,
+                t.tradeDate,
+                entryPrice,
+                typeof data.flagHigh === "number" ? data.flagHigh : null,
+                typeof data.flagLow === "number" ? data.flagLow : null,
+                typeof data.targetPrice === "number" ? data.targetPrice : (t.target ?? null),
+              );
+              return { ...t, lifecycleState };
+            }
+            if (t.strategy === "bbtc-ver" || t.strategy === "amc") {
+              // AMC routes through the same manifest evaluator as BBTC+VER
+              // (see registry.ts) so it gets the same 8% hard / 10% trail.
+              const bars = await getHtfBars(t.symbol);
+              if (bars.length === 0) return t;
+              const entryPrice = Math.abs(t.openPrice);
+              const lifecycleState = computeBbtcVerLifecycle(bars, t.tradeDate, entryPrice);
+              return { ...t, lifecycleState };
+            }
           } catch {
             // Best-effort enrichment — if a single ticker's bars fail to load,
             // the trade still renders, just without lifecycle state.
-            return t;
           }
+          return t;
         }),
       );
       res.json(enriched);
