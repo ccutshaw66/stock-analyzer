@@ -14,7 +14,12 @@ interface MorningBriefData {
   };
   attention: { itemCount: number; criticalCount: number };
   freshSetups: { htfCount: number };
-  lossBudget: { dollarsBudgeted: number; dollarsAtRisk: number; pctUsed: number };
+  perTradeRisk: {
+    dollarsBudgeted: number;
+    worstDrawdownDollar: number;
+    worstSymbol: string | null;
+    pctUsed: number;
+  };
 }
 
 function fmtMoney(n: number, signed = false): string {
@@ -122,7 +127,7 @@ export function MorningBriefWidget() {
     );
   }
 
-  const { marketRegime, book, attention, freshSetups, lossBudget } = data;
+  const { marketRegime, book, attention, freshSetups, perTradeRisk } = data;
   const tierLabel = marketRegime.tier ?? "Unknown";
 
   return (
@@ -192,15 +197,22 @@ export function MorningBriefWidget() {
         />
 
         <Stat
-          label="Daily risk used"
-          tone={riskTone(lossBudget.pctUsed)}
+          label="Worst position risk"
+          tone={riskTone(perTradeRisk.pctUsed)}
           value={
-            <>
-              {fmtMoney(lossBudget.dollarsAtRisk)}<span className="text-muted-foreground font-normal"> / {fmtMoney(lossBudget.dollarsBudgeted)}</span>
-              <span className="text-muted-foreground font-normal ml-1">({Math.round(lossBudget.pctUsed * 100)}%)</span>
-            </>
+            perTradeRisk.worstSymbol
+              ? <>
+                  {perTradeRisk.worstSymbol}{" "}
+                  <span className="text-muted-foreground font-normal">·</span>{" "}
+                  {fmtMoney(perTradeRisk.worstDrawdownDollar)}<span className="text-muted-foreground font-normal"> / {fmtMoney(perTradeRisk.dollarsBudgeted)}</span>
+                  <span className="text-muted-foreground font-normal ml-1">({Math.round(perTradeRisk.pctUsed * 100)}%)</span>
+                </>
+              : <>
+                  <span className="text-bull-light">No drawdown</span>
+                  <span className="text-muted-foreground font-normal ml-1">· cap {fmtMoney(perTradeRisk.dollarsBudgeted)}/trade</span>
+                </>
           }
-          tip="Today's risk vs daily cap. Click to open Current Positions."
+          tip="Worst open position's drawdown vs per-trade risk cap. Click to open Current Positions."
           href="/tracker"
           onNavigate={navigate}
         />

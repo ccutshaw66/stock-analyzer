@@ -260,7 +260,7 @@ export default function Dashboard() {
 
           <p className="font-semibold text-foreground mt-2">What each tile shows</p>
           <ul className="list-disc pl-4 space-y-1">
-            <li><strong className="text-foreground">Morning Brief</strong> (top banner): five at-a-glance stats — market regime, count + P&L on open positions, items needing attention, fresh setups overnight, and how much of today's risk cap you've used. Hover any stat for a one-liner.</li>
+            <li><strong className="text-foreground">Morning Brief</strong> (top banner): five clickable stats — market regime, count + P&L on open positions, items needing attention, fresh setups overnight, and the worst open position's drawdown vs your per-trade risk cap. Click any stat to jump to the source page.</li>
             <li><strong className="text-foreground">Action Queue</strong>: every decision you might need to make today, sorted by urgency. If there's nothing to do on a position, it doesn't appear. Empty queue = all clear.</li>
             <li><strong className="text-foreground">Morning Checklist</strong>: pre-market routine + a one-sentence focus note for the day. Two items auto-check from system state (earnings exposure + daily risk); the other four you tick after scrolling the dashboard. Logged daily with a 7-day history and streak counter.</li>
             <li><strong className="text-foreground">Confluence Pulse</strong>: five-spoke radar for the active ticker — smart money, dealer positioning, technicals, fundamentals, market regime. Click a spoke to drill into the source page.</li>
@@ -275,7 +275,7 @@ export default function Dashboard() {
             <li><strong className="text-foreground">Reviewed earnings exposure</strong> (auto) — surfaces any held tickers reporting in the next 14 days. Material for option holders especially.</li>
             <li><strong className="text-foreground">Reviewed Position News</strong> — heads-up on what's happening with what you own, without inviting trade-the-news behaviour.</li>
             <li><strong className="text-foreground">Reviewed dashboard for new overnight triggers</strong> — fresh HTF / Wyckoff / BBTC setups since you last looked.</li>
-            <li><strong className="text-foreground">Within today's loss budget</strong> (auto) — hard daily cap (1% of starting account value) protects you from spiral days.</li>
+            <li><strong className="text-foreground">Worst open position within per-trade risk cap</strong> (auto) — flags any single position whose drawdown exceeds your per-trade risk cap (default 5%, configurable in Trade Tracker → Settings via the `maxRiskPerTradePct` field).</li>
             <li><strong className="text-foreground">Today's focus</strong> — one-sentence intention. Tracks whether you followed your plan, not whether you made money.</li>
           </ul>
 

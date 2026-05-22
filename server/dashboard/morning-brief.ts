@@ -40,16 +40,19 @@ export interface MorningBrief {
   freshSetups: {
     htfCount: number;               // HTF setups within Givens' window
   };
-  lossBudget: {
-    /** Aziz 1%/day rule. Computed from starting account value. */
-    dollarsBudgeted: number;        // 1% of starting account value
-    /** Realized losses today + open-position drawdown from entry. */
-    dollarsAtRisk: number;
-    pctUsed: number;                // dollarsAtRisk / dollarsBudgeted
+  perTradeRisk: {
+    /** Per-trade risk cap in dollars (account value × maxRiskPerTradePct). */
+    dollarsBudgeted: number;
+    /** Worst open position's current drawdown from entry (positive number). */
+    worstDrawdownDollar: number;
+    /** Symbol of the worst-drawdown open position (for the tooltip / drill). */
+    worstSymbol: string | null;
+    /** worstDrawdownDollar / dollarsBudgeted. ≥1 = a single position has blown past its risk cap. */
+    pctUsed: number;
   };
 }
 
-const DAILY_LOSS_PCT = 0.01;          // Aziz Ch. 4
+const DEFAULT_PER_TRADE_RISK_PCT = 0.05;  // 5% per trade default (user can override via htf_config)
 
 function todayIso(): string {
   const d = new Date();
@@ -132,49 +135,57 @@ async function fetchFreshSetups(): Promise<MorningBrief["freshSetups"]> {
   }
 }
 
-async function fetchLossBudget(userId: number): Promise<MorningBrief["lossBudget"]> {
+async function fetchPerTradeRisk(userId: number): Promise<MorningBrief["perTradeRisk"]> {
   try {
     const settings = await storage.getAccountSettings(userId);
-    const starting = settings?.startingAccountValue ?? 10000;
-    const budgeted = starting * DAILY_LOSS_PCT;
+    const accountValue = settings?.startingAccountValue ?? 10000;
+    // Per-trade risk pct: prefer user's htf_config setting, fall back to default
+    // (5%). Field name matches `AccountConfig.maxRiskPerTradePct` so a single
+    // user-config edit on /htf propagates to the dashboard.
+    const cfg = (settings?.htfConfig ?? {}) as { maxRiskPerTradePct?: number };
+    const riskPct = typeof cfg.maxRiskPerTradePct === "number" && cfg.maxRiskPerTradePct > 0
+      ? cfg.maxRiskPerTradePct
+      : DEFAULT_PER_TRADE_RISK_PCT;
+    const budgeted = accountValue * riskPct;
 
-    const today = todayIso();
+    // For each open trade, compute current drawdown (positive number = how much
+    // you're down from entry). Find the worst one — that's the trade most at
+    // risk of blowing through your per-trade cap.
     const allTrades = (await storage.getAllTrades(userId)) as Trade[];
-    const closedToday = allTrades.filter(t => t.closeDate === today);
     const open = allTrades.filter(t => !t.closeDate);
 
-    let realizedLoss = 0;
-    for (const t of closedToday) {
-      if (t.closePrice == null) continue;
-      const dir = t.openPrice < 0 ? -1 : 1;
-      const pnl = (t.closePrice - Math.abs(t.openPrice)) * t.contractsShares * dir;
-      if (pnl < 0) realizedLoss += -pnl;
-    }
-    let openDrawdown = 0;
+    let worstDrawdown = 0;
+    let worstSymbol: string | null = null;
     for (const t of open) {
       if (t.currentPrice == null) continue;
       const dir = t.openPrice < 0 ? -1 : 1;
       const pnl = (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares * dir;
-      if (pnl < 0) openDrawdown += -pnl;
+      if (pnl < 0) {
+        const drawdown = -pnl;
+        if (drawdown > worstDrawdown) {
+          worstDrawdown = drawdown;
+          worstSymbol = t.symbol;
+        }
+      }
     }
-    const atRisk = realizedLoss + openDrawdown;
     return {
       dollarsBudgeted: Number(budgeted.toFixed(2)),
-      dollarsAtRisk: Number(atRisk.toFixed(2)),
-      pctUsed: budgeted > 0 ? Number((atRisk / budgeted).toFixed(3)) : 0,
+      worstDrawdownDollar: Number(worstDrawdown.toFixed(2)),
+      worstSymbol,
+      pctUsed: budgeted > 0 ? Number((worstDrawdown / budgeted).toFixed(3)) : 0,
     };
   } catch {
-    return { dollarsBudgeted: 0, dollarsAtRisk: 0, pctUsed: 0 };
+    return { dollarsBudgeted: 0, worstDrawdownDollar: 0, worstSymbol: null, pctUsed: 0 };
   }
 }
 
 export async function buildMorningBrief(userId: number): Promise<MorningBrief> {
-  const [marketRegime, book, attention, freshSetups, lossBudget] = await Promise.all([
+  const [marketRegime, book, attention, freshSetups, perTradeRisk] = await Promise.all([
     fetchRegime(),
     fetchBook(userId),
     fetchAttention(userId),
     fetchFreshSetups(),
-    fetchLossBudget(userId),
+    fetchPerTradeRisk(userId),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -182,7 +193,7 @@ export async function buildMorningBrief(userId: number): Promise<MorningBrief> {
     book,
     attention,
     freshSetups,
-    lossBudget,
+    perTradeRisk,
   };
 }
 

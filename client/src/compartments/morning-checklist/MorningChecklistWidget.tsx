@@ -17,7 +17,7 @@ const CHECKLIST_ITEMS: ChecklistItem[] = [
   { id: "earnings", label: "Reviewed earnings exposure (next 14 days)", auto: true },
   { id: "news", label: "Reviewed Position News for material developments" },
   { id: "triggers", label: "Reviewed dashboard for new overnight triggers" },
-  { id: "loss-budget", label: "Within today's loss budget", auto: true },
+  { id: "loss-budget", label: "Worst open position within per-trade risk cap", auto: true },
 ];
 
 interface TodayResponse {
