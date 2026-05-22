@@ -20,7 +20,7 @@
  */
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../auth";
-import { db } from "../db";
+import { db } from "../storage";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 

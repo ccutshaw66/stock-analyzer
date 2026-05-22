@@ -12,7 +12,7 @@
  */
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../auth";
-import { db } from "../db";
+import { db } from "../storage";
 import { morningChecklistLog } from "@shared/schema";
 import { and, eq, desc, sql } from "drizzle-orm";
 

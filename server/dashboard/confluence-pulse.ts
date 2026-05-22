@@ -18,7 +18,7 @@
  */
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../auth";
-import { db } from "../db";
+import { db } from "../storage";
 import { compassSnapshots } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 

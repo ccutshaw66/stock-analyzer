@@ -19,7 +19,7 @@
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../auth";
 import { storage } from "../storage";
-import { db } from "../db";
+import { db } from "../storage";
 import { alerts, type Trade } from "@shared/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import {
