@@ -18,14 +18,18 @@ import { positionNewsCompartment } from "./position-news";
 import { morningChecklistCompartment } from "./morning-checklist";
 import { askOtterCompartment } from "./ask-otter";
 import { confluencePulseCompartment } from "./confluence-pulse";
+import { positionInsidersCompartment } from "./position-insiders";
+import { insiderClustersCompartment } from "./insider-clusters";
 
 const clientCompartments: ClientCompartmentEntry[] = [
-  // Dashboard rebuild v1 — the new curated default layout uses these six.
+  // Dashboard rebuild v1 — the new curated default layout uses these eight.
   morningBriefCompartment,
   actionQueueCompartment,
   confluencePulseCompartment,
   morningChecklistCompartment,
   positionNewsCompartment,
+  positionInsidersCompartment,
+  insiderClustersCompartment,
   askOtterCompartment,
   // Legacy widgets — kept registered so existing saved layouts still resolve,
   // but no longer mounted by default. Users can opt-in via "Customize layout".

@@ -265,6 +265,8 @@ export default function Dashboard() {
             <li><strong className="text-foreground">Morning Checklist</strong>: pre-market routine + a one-sentence focus note for the day. Two items auto-check from system state (earnings exposure + daily risk); the other four you tick after scrolling the dashboard. Logged daily with a 7-day history and streak counter.</li>
             <li><strong className="text-foreground">Confluence Pulse</strong>: five-spoke radar for the active ticker — smart money, dealer positioning, technicals, fundamentals, market regime. Click a spoke to drill into the source page.</li>
             <li><strong className="text-foreground">Position News</strong>: headlines + press releases on tickers you hold. Not a discovery scanner — situational awareness only.</li>
+            <li><strong className="text-foreground">Position Insiders</strong>: Form 4 insider buy/sell transactions on tickers you hold (30-day window). Same situational-awareness rule as Position News.</li>
+            <li><strong className="text-foreground">Insider Clusters</strong>: tickers across the market where 3+ insiders have bought (or sold) in the last 14 days. Discovery surface — names you may NOT yet hold. Filter buy / sell / all. 10b5-1 planned-sale filtering pending.</li>
             <li><strong className="text-foreground">Ask Otter</strong>: AI chat for trading questions. Off by default; flip on per-account in Settings to activate (paid feature).</li>
           </ul>
 

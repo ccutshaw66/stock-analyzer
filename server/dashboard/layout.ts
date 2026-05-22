@@ -36,8 +36,11 @@ export function buildDefaultDashboardLayout(): DashboardLayout {
           // Row 3: Confluence Pulse + Ask Otter
           { compartmentId: "confluence-pulse",  visible: true, x: 0, y: 8,  w: 8,  h: 6 },
           { compartmentId: "ask-otter",         visible: true, x: 8, y: 8,  w: 4,  h: 6 },
-          // Row 4: Position News full-width
-          { compartmentId: "position-news",     visible: true, x: 0, y: 14, w: 12, h: 5 },
+          // Row 4: Position News + Position Insiders side by side
+          { compartmentId: "position-news",     visible: true, x: 0, y: 14, w: 6,  h: 6 },
+          { compartmentId: "position-insiders", visible: true, x: 6, y: 14, w: 6,  h: 6 },
+          // Row 5: Insider Clusters (market-wide discovery)
+          { compartmentId: "insider-clusters",  visible: true, x: 0, y: 20, w: 12, h: 6 },
         ],
       },
     ],
