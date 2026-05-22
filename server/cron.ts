@@ -72,6 +72,26 @@ export function initCron(
 
   console.log("[CRON] EDGAR top-filers refresh registered with scheduler (0 8 * * *)");
 
+  // Form 4 insider-transaction sweep — runs hourly at :15 past the hour.
+  // SEC posts new Form 4 filings throughout the day in near real-time, but
+  // bursts hit shortly after each market session close. Hourly cadence
+  // catches new filings within an hour while staying well clear of the
+  // EDGAR 4-req/sec throttle (each tick ~50s worth of work for 100 filings).
+  registerJob({
+    id: "edgar-form4-sweep",
+    description: "Hourly sweep of latest SEC Form 4 filings (insider transactions, 10b5-1 detection)",
+    cron: "15 * * * *",
+    timeoutMs: 5 * 60 * 1000, // 5 min hard cap
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const { runForm4Sweep } = await import("./data/providers/edgar-form4-sweep");
+      await runForm4Sweep();
+    },
+  });
+
+  console.log("[CRON] EDGAR Form 4 sweep registered with scheduler (15 * * * *)");
+
   // Phase 3.7: Long-range chart disk cache warmup. Runs nightly at 3:30am ET
   // (07:30 UTC). Pulls 10y/25y/max bars from Yahoo for open-trade symbols +
   // always-on floor, writes them to disk. User requests read disk cache only;

@@ -319,6 +319,46 @@ export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfoli
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
 
+// ─── SEC Form 4 insider transactions (dashboard insider widgets v2) ─────────
+// One row per non-derivative transaction parsed from a Form 4 filing. The
+// FMP-sourced /insider-trading/latest feed gives us a "good enough" view but
+// can't tag 10b5-1 planned sales because the flag lives in the footnote text
+// of the SEC XML, not in any structured field. This table backs the
+// 10b5-1-aware sentiment view on /insiders.
+//
+// Dedupe: (filingAccessionNo, txIndex) is the natural key (one Form 4 can
+// list multiple transactions; the same filing is fetched only once).
+export const insiderForm4 = pgTable("insider_form4", {
+  id: serial("id").primaryKey(),
+  filingAccessionNo: text("filing_accession_no").notNull(), // SEC accession
+  txIndex: integer("tx_index").notNull(),                   // 0-based row inside the filing
+  filingDate: text("filing_date").notNull(),                // YYYY-MM-DD
+  transactionDate: text("transaction_date").notNull(),      // YYYY-MM-DD
+  ticker: text("ticker").notNull(),                         // issuer trading symbol (UPPER)
+  issuerCik: text("issuer_cik").notNull(),
+  reportingOwnerCik: text("reporting_owner_cik"),
+  reportingOwnerName: text("reporting_owner_name").notNull(),
+  // Relationship to issuer — pipe-joined ("Director|10%Owner|Officer:CEO")
+  reportingOwnerRelation: text("reporting_owner_relation"),
+  transactionCode: text("transaction_code").notNull(),      // P/S/A/F/M/...
+  // "buy" / "sell" / "other" — derived from code + acquiredDisposedCode
+  direction: text("direction").notNull(),
+  shares: doublePrecision("shares").notNull(),
+  pricePerShare: doublePrecision("price_per_share"),        // null if no price (gifts, etc.)
+  totalValue: doublePrecision("total_value"),               // shares × price
+  /** True if any footnote referenced by this txn mentions a 10b5-1 plan. */
+  rule10b5_1: boolean("rule_10b5_1").default(false).notNull(),
+  /** Concatenated footnote text the txn references; surfaced in UI tooltips. */
+  footnotes: text("footnotes"),
+  filingUrl: text("filing_url").notNull(),                  // link to SEC filing index
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (t) => ({
+  byTicker: index("insider_form4_ticker_idx").on(t.ticker, t.filingDate),
+  byFilingDate: index("insider_form4_filing_date_idx").on(t.filingDate),
+  byAccession: index("insider_form4_accession_idx").on(t.filingAccessionNo, t.txIndex),
+}));
+export const insertInsiderForm4Schema = createInsertSchema(insiderForm4).omit({ id: true, fetchedAt: true });
+
 // ─── Morning Checklist log (dashboard rebuild v1) ──────────────────────────
 // One row per user per trading day, capturing which items were checked + the
 // daily focus note. `items` is a jsonb map of itemId → boolean so the
@@ -357,6 +397,8 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type MorningChecklistLog = typeof morningChecklistLog.$inferSelect;
 export type InsertMorningChecklistLog = z.infer<typeof insertMorningChecklistLogSchema>;
+export type InsiderForm4 = typeof insiderForm4.$inferSelect;
+export type InsertInsiderForm4 = z.infer<typeof insertInsiderForm4Schema>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
