@@ -39,7 +39,8 @@ const STRATEGY_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-function fmtMoney(n: number, signed = false): string {
+function fmtMoney(n: number | null | undefined, signed = false): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "$0";
   const abs = Math.abs(n);
   const sign = n < 0 ? "−" : signed && n > 0 ? "+" : "";
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;

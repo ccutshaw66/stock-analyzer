@@ -20,7 +20,8 @@ interface InsiderClustersData {
   windowDays: number;
 }
 
-function fmtMoney(n: number): string {
+function fmtMoney(n: number | null | undefined): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "$0";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;

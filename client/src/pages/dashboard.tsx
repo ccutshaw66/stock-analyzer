@@ -15,6 +15,7 @@ import { useDashboardLayout } from "@/lib/dashboard/useDashboardLayout";
 import { listWidgetCompartments } from "@/compartments/registry";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTemplate } from "@/components/PageTemplate";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { Loader2, X, Plus, LayoutDashboard, Settings2 } from "lucide-react";
 import type { DashboardLayout, TabSpec, WidgetSpec } from "@shared/dashboard/types";
 import "react-grid-layout/css/styles.css";
@@ -322,10 +323,12 @@ export default function Dashboard() {
                   <X className="h-3 w-3" />
                 </button>
               )}
-              <WidgetView
-                config={w.config}
-                onConfigChange={(next) => updateWidgetConfig(w.compartmentId, next)}
-              />
+              <WidgetErrorBoundary widgetName={c.meta.name}>
+                <WidgetView
+                  config={w.config}
+                  onConfigChange={(next) => updateWidgetConfig(w.compartmentId, next)}
+                />
+              </WidgetErrorBoundary>
             </div>
           );
         })}

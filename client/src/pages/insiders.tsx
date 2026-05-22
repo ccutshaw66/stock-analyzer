@@ -46,13 +46,15 @@ interface RatioResponse {
   scannedAt: string;
 }
 
-function fmtRatio(r: number): string {
+function fmtRatio(r: number | null | undefined): string {
+  if (r == null || typeof r !== "number" || Number.isNaN(r)) return "—";
   if (!isFinite(r)) return "∞";
   if (r >= 10) return r.toFixed(1);
   return r.toFixed(2);
 }
 
-function fmtMoney(n: number): string {
+function fmtMoney(n: number | null | undefined): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "$0";
   if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
@@ -280,7 +282,7 @@ function MarketRibbon({ current, prior, momDelta }: { current: MarketRatio; prio
           <div className={`text-base font-semibold ${tone}`}>{ratioLabel(current.buySellRatio)}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums mt-1">
             {trendUp ? <ArrowUpRight className="h-3.5 w-3.5 text-bull-light" /> : <ArrowDownRight className="h-3.5 w-3.5 text-bear-light" />}
-            <span>{momDelta > 0 ? "+" : ""}{momDelta.toFixed(2)} vs prior 30d ({fmtRatio(prior.buySellRatio)})</span>
+            <span>{typeof momDelta === "number" && !Number.isNaN(momDelta) ? `${momDelta > 0 ? "+" : ""}${momDelta.toFixed(2)}` : "—"} vs prior 30d ({fmtRatio(prior.buySellRatio)})</span>
           </div>
 
           {/* Discretionary ratio (10b5-1 stripped) — separate, less noisy view */}

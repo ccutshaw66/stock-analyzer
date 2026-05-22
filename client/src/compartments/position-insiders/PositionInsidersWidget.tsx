@@ -20,16 +20,23 @@ interface PositionInsidersData {
   generatedAt: string;
 }
 
-function fmtMoney(n: number): string {
+function fmtMoney(n: number | null | undefined): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "$0";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
 }
 
-function fmtShares(n: number): string {
+function fmtShares(n: number | null | undefined): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "0";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString();
+}
+
+function fmtPrice(n: number | null | undefined): string {
+  if (n == null || typeof n !== "number" || Number.isNaN(n)) return "—";
+  return n.toFixed(2);
 }
 
 function ageLabel(iso: string): string {
@@ -126,7 +133,7 @@ export function PositionInsidersWidget() {
                 {tx.relation && <span className="text-muted-foreground"> · {tx.relation}</span>}
               </div>
               <div className="text-micro text-muted-foreground tabular-nums">
-                {fmtShares(tx.shares)} shares · {fmtMoney(tx.value)} @ ${tx.pricePer.toFixed(2)}
+                {fmtShares(tx.shares)} shares · {fmtMoney(tx.value)} @ ${fmtPrice(tx.pricePer)}
               </div>
             </li>
           );
