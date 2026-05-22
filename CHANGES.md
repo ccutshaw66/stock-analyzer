@@ -1180,6 +1180,34 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — /insiders: Conviction Buy Clusters with sponsor-pattern detection
+
+**Why:** The dashboard cluster widget already detected 3+ insider buys in 14 days, but ranked BXDC's IPO-day sponsor flood the same as MRP's organic post-selloff cluster. Chris wanted the page to actively surface MRP-like setups — the kind where the cluster is genuinely convergent (5+ different insiders, broadly distributed dollars, market price) rather than mechanical (one parent affiliate + token directors at IPO).
+
+**What:**
+
+### Conviction score on the cluster endpoint
+- `server/dashboard/insider-routes.ts` — `InsiderCluster` gains `convictionScore` (0-100), `concentration` (top buyer's share of total $), and `flags` (short tags surfacing what shaped the score).
+- Scoring rubric:
+  - Base 50
+  - +15 / +10 / +5 for 7+ / 5+ / 4+ unique insiders (breadth = independent signal)
+  - +15 if concentration <40% (`broad-cluster`), +5 if <55%
+  - −30 if concentration >95% (`single-dominant`)
+  - −20 if concentration >80% (`sponsor-pattern`)
+  - −5 if concentration >65% (`top-heavy`)
+  - +10 if total >$25M (`high-dollar`), +5 if >$5M
+  - −10 if total <$250K (`low-dollar`)
+- Cluster sort changed: buys first, then by `convictionScore` desc (was `insiderCount` desc). MRP-style organic clusters now surface above BXDC-style sponsor floods on the same page.
+
+### New section on /insiders
+- `client/src/pages/insiders.tsx` — new `ConvictionClusters` component renders above the Ranked Tickers table. Top 10 buy clusters; columns: Ticker · Score (color-coded) · Insiders · Total $ · Top % (concentration) · Top buyers · Flags. Score badge green ≥75, yellow ≥60, grey below. Flag pills colored by signal direction (`broad-cluster` + `high-dollar` green, `sponsor-pattern` + `single-dominant` red, `top-heavy` + `low-dollar` yellow).
+- Rows clickable → navigates to /institutional?ticker=X with global ticker context set.
+
+**Net behaviour:** open /insiders → first thing you see (below the market headline ribbon) is a ranked list of conviction buy clusters from the last 14 days. MRP-pattern clusters (5+ insiders, broad spread, post-selloff buying) score 75+ with green `broad-cluster` / `high-dollar` flags. BXDC-pattern IPO-day floods score ~30 with red `sponsor-pattern` flag. The flags tell you *why* each one scored where it did.
+
+**Files touched:** `server/dashboard/insider-routes.ts`, `client/src/pages/insiders.tsx`, `CHANGES.md`.
+
+---
 ## 2026-05-22 — BBTC+VER: populate the standard 8% hard / 10% trail stops on Current Positions
 
 **Why:** Defined the standard BBTC+VER stop rule today (8% hard / 10% trail / active = max of both). Now wiring it onto the Current Positions table so the user doesn't have to recompute by hand every day — the trail ratchets up daily based on bars walked since entry, mirroring how the HTF lifecycle simulator already works.

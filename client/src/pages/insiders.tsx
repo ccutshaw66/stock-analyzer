@@ -47,6 +47,25 @@ interface RatioResponse {
   scannedAt: string;
 }
 
+interface InsiderCluster {
+  symbol: string;
+  direction: "buy" | "sell";
+  insiderCount: number;
+  totalShares: number;
+  totalDollar: number;
+  topInsiders: string[];
+  windowDays: number;
+  convictionScore: number;
+  concentration: number;
+  flags: string[];
+}
+
+interface ClustersResponse {
+  clusters: InsiderCluster[];
+  scannedAt: string;
+  windowDays: number;
+}
+
 function fmtRatio(r: number | null | undefined): string {
   if (r == null || typeof r !== "number" || Number.isNaN(r)) return "—";
   if (!isFinite(r)) return "∞";
@@ -105,6 +124,17 @@ export default function InsidersPage() {
     placeholderData: (prev) => prev,
   });
 
+  // Conviction buy clusters — 14-day window, 3+ unique insiders, ranked by
+  // conviction score (penalises sponsor-flood pattern like BXDC IPO mechanics).
+  const { data: clusterData } = useQuery<ClustersResponse>({
+    queryKey: ["/api/dashboard/insiders/clusters?direction=buy&limit=15"],
+    queryFn: async () =>
+      (await apiRequest("GET", "/api/dashboard/insiders/clusters?direction=buy&limit=15")).json(),
+    refetchInterval: 60 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+
   const sorted = useMemo(() => {
     if (!data) return [] as PerSymbolRatio[];
     // OR filter: high $ activity OR clustered insider activity. Either one
@@ -155,6 +185,9 @@ export default function InsidersPage() {
         <>
           {/* Market headline ribbon */}
           <MarketRibbon current={data.market.current} prior={data.market.prior} momDelta={data.market.momDelta} />
+
+          {/* Conviction buy clusters — high-signal MRP-style setups */}
+          <ConvictionClusters clusters={clusterData?.clusters ?? []} onDrillTo={drillToTicker} />
 
           {/* Ranked tickers */}
           <div className="bg-card border border-card-border rounded-lg overflow-hidden">
@@ -356,6 +389,111 @@ function SkewBar({ sellShare, tall = false }: { sellShare: number; tall?: boolea
     <div className={`flex w-full rounded overflow-hidden bg-muted ${tall ? "h-3" : "h-1.5"}`}>
       <div className="bg-bull/70 transition-all" style={{ width: `${buyPct}%` }} title={`${buyPct.toFixed(0)}% buy $`} />
       <div className="bg-bear/70 transition-all" style={{ width: `${sellPct}%` }} title={`${sellPct.toFixed(0)}% sell $`} />
+    </div>
+  );
+}
+
+/**
+ * Conviction Clusters — top 10 buy clusters ranked by conviction score.
+ * Surfaces MRP-style organic clusters (5+ insiders, broad spread, market
+ * price) and demotes BXDC-style sponsor floods (one buyer = 90% of volume).
+ */
+function ConvictionClusters({
+  clusters,
+  onDrillTo,
+}: {
+  clusters: InsiderCluster[];
+  onDrillTo: (sym: string) => void;
+}) {
+  if (clusters.length === 0) {
+    return (
+      <div className="bg-card border border-card-border rounded-lg p-4 text-xs text-muted-foreground">
+        🔥 <span className="font-bold text-foreground">Conviction Buy Clusters</span> — no clusters in the last 14 days yet. The scan refreshes hourly.
+      </div>
+    );
+  }
+  const top = clusters.slice(0, 10);
+  return (
+    <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-card-border">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+          🔥 Conviction Buy Clusters
+          <span className="text-xs font-normal text-muted-foreground">(last 14 days · 3+ insiders)</span>
+        </h2>
+        <p className="text-micro text-muted-foreground mt-0.5">
+          Ranked by conviction score — punishes the sponsor-flood pattern (one big buyer + token directors at IPO) where MRP-style organic clusters with multiple roughly-equal insiders score 75+.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/30 text-muted-foreground uppercase tracking-wider">
+            <tr>
+              <th className="text-left px-3 py-2 font-semibold">Ticker</th>
+              <th className="text-right px-3 py-2 font-semibold">Score</th>
+              <th className="text-right px-3 py-2 font-semibold">Insiders</th>
+              <th className="text-right px-3 py-2 font-semibold">Total $</th>
+              <th className="text-right px-3 py-2 font-semibold" title="Top insider's share of total dollar volume">Top %</th>
+              <th className="text-left px-3 py-2 font-semibold">Top buyers</th>
+              <th className="text-left px-3 py-2 font-semibold">Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map(c => (
+              <tr
+                key={c.symbol}
+                onClick={() => onDrillTo(c.symbol)}
+                className="border-t border-card-border hover:bg-muted/30 cursor-pointer transition-colors"
+                data-testid={`conviction-row-${c.symbol}`}
+              >
+                <td className="px-3 py-2 font-bold text-foreground">{c.symbol}</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <span className={`inline-block px-2 py-0.5 rounded font-bold ${
+                    c.convictionScore >= 75 ? "bg-bull/15 text-bull border border-bull/40"
+                      : c.convictionScore >= 60 ? "bg-watch/15 text-watch-light border border-watch/40"
+                      : "bg-muted text-muted-foreground border border-card-border"
+                  }`}>
+                    {c.convictionScore}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.insiderCount}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmtMoney(c.totalDollar)}</td>
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${
+                    c.concentration > 0.8 ? "text-bear-light" : c.concentration > 0.6 ? "text-watch-light" : "text-muted-foreground"
+                  }`}
+                >
+                  {(c.concentration * 100).toFixed(0)}%
+                </td>
+                <td className="px-3 py-2 text-muted-foreground truncate max-w-[260px]" title={c.topInsiders.join(", ")}>
+                  {c.topInsiders.join(", ")}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {c.flags.length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {c.flags.map(f => (
+                        <span
+                          key={f}
+                          className={`px-1.5 py-0.5 rounded text-mini ${
+                            f === "broad-cluster" ? "bg-bull/15 text-bull-light border border-bull/40"
+                              : f === "high-dollar" ? "bg-bull/10 text-bull-light border border-bull/30"
+                              : f === "sponsor-pattern" || f === "single-dominant" ? "bg-bear/15 text-bear-light border border-bear/40"
+                              : f === "top-heavy" || f === "low-dollar" ? "bg-watch/15 text-watch-light border border-watch/40"
+                              : "bg-muted text-muted-foreground border border-card-border"
+                          }`}
+                        >
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

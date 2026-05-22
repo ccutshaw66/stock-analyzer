@@ -142,6 +142,19 @@ export interface InsiderCluster {
   totalDollar: number;
   topInsiders: string[];        // up to 3 names for the row preview
   windowDays: number;
+  /**
+   * 0-100 conviction score. Discounts the "sponsor pattern" where one
+   * dominant buyer (parent affiliate, strategic partner, IPO directed-
+   * share program) inflates the totals — MRP-style organic clusters
+   * with 5+ different insiders all roughly equal weight score 75+; a
+   * BXDC-style IPO-day flood where 90% of the dollars come from one
+   * affiliate scores ~30.
+   */
+  convictionScore: number;
+  /** Top insider's share of total dollar volume, 0–1. */
+  concentration: number;
+  /** Short tags surfacing what shaped the score. */
+  flags: string[];
 }
 
 export interface InsiderClustersResponse {
@@ -221,28 +234,63 @@ async function scanInsiderClusters(): Promise<InsiderCluster[]> {
       if (m.size < CLUSTER_MIN_INSIDERS) continue;
       let shares = 0;
       let value = 0;
-      const names: Array<{ name: string; shares: number }> = [];
+      const perInsider: Array<{ name: string; shares: number; value: number }> = [];
       m.forEach(v => {
         shares += v.shares;
         value += v.value;
-        names.push({ name: v.name, shares: v.shares });
+        perInsider.push({ name: v.name, shares: v.shares, value: v.value });
       });
-      names.sort((a, b) => b.shares - a.shares);
+      perInsider.sort((a, b) => b.value - a.value);
+      const topInsiderValue = perInsider[0]?.value ?? 0;
+      const concentration = value > 0 ? topInsiderValue / value : 0;
+
+      // ─── Conviction score ────────────────────────────────────────────
+      // Penalises the BXDC-style sponsor-flood pattern (one big buyer +
+      // a few small directors at IPO). Rewards the MRP-style organic
+      // cluster (5+ insiders roughly evenly weighted, post-selloff).
+      let score = 50;
+      const flags: string[] = [];
+
+      // Breadth: more insiders = more independent signal.
+      if (m.size >= 7) score += 15;
+      else if (m.size >= 5) score += 10;
+      else if (m.size >= 4) score += 5;
+
+      // Concentration: punish single-dominant buyer.
+      if (concentration < 0.4) { score += 15; flags.push("broad-cluster"); }
+      else if (concentration < 0.55) score += 5;
+      else if (concentration > 0.95) { score -= 30; flags.push("single-dominant"); }
+      else if (concentration > 0.8) { score -= 20; flags.push("sponsor-pattern"); }
+      else if (concentration > 0.65) { score -= 5; flags.push("top-heavy"); }
+
+      // Dollar size: meaningful capital signals more than token buys.
+      if (value >= 25_000_000) { score += 10; flags.push("high-dollar"); }
+      else if (value >= 5_000_000) score += 5;
+      else if (value < 250_000) { score -= 10; flags.push("low-dollar"); }
+
+      const convictionScore = Math.max(0, Math.min(100, Math.round(score)));
+
       out.push({
         symbol: sym,
         direction: dir === "buys" ? "buy" : "sell",
         insiderCount: m.size,
         totalShares: shares,
         totalDollar: value,
-        topInsiders: names.slice(0, 3).map(n => n.name),
+        topInsiders: perInsider.slice(0, 3).map(n => n.name),
         windowDays: CLUSTER_WINDOW_DAYS,
+        convictionScore,
+        concentration,
+        flags,
       });
     }
   });
 
-  // Sort: buys first (rarer + more informative), then by insider count desc.
+  // Sort: buys first (rarer + more informative), then by conviction score desc
+  // so MRP-style clusters surface above sponsor-pattern noise. Insider count
+  // is the tiebreaker.
   out.sort((a, b) => {
     if (a.direction !== b.direction) return a.direction === "buy" ? -1 : 1;
+    if (b.convictionScore !== a.convictionScore) return b.convictionScore - a.convictionScore;
     return b.insiderCount - a.insiderCount;
   });
   return out;
