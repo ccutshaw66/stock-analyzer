@@ -335,10 +335,12 @@ function LiveTab() {
 /** "Watch" tab — patterns still forming. Pole + flag valid, no breakout yet. */
 function WatchTab() {
   const [minScore, setMinScore] = useState(70);
-  // actionableOnly: true applies the R/R + sizing + portfolio caps here too,
-  // so a Watch row with <minRR doesn't slip past the page just because it
-  // hasn't fired yet. "Watch this" only makes sense if it's tradeable.
-  const q = useHtfScanner({ actionableOnly: true, minScore, stage: "forming" });
+  // Watch is a VISIBILITY surface, not a filter surface — per the
+  // foundation-first rule + session_2026_05_21_pickup note. Drop
+  // actionableOnly so forming patterns show even when R/R is below
+  // the user's Min R/R floor; user reads the R/R column and decides
+  // which to alert on. Live tab is where the strict gate lives.
+  const q = useHtfScanner({ minScore, stage: "forming" });
 
   if (q.isLoading) {
     return (

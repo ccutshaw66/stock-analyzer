@@ -75,6 +75,11 @@ function rowToHit(row: HtfLiveSetupRow): HtfHit {
       flagLow: row.stopPrice / 0.98,
       flagPullbackPct: row.flagPullbackPct,
       breakoutVolRatio: row.breakoutVolRatio,
+      // Overhead-resistance fields added in commit e79f3e8 (info-only).
+      // resizeSetup doesn't actually re-detect resistance — these are
+      // safe defaults that don't affect sizing math.
+      hasOverheadResistance: false,
+      nearestResistancePct: 0,
     },
   };
 }

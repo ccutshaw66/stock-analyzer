@@ -1180,6 +1180,17 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — HTF Watch: drop the actionableOnly gate (visibility, not filter)
+
+**Why:** Per the foundation-first memory + the `session_2026_05_21_pickup` note, the Watch tab is a *visibility* surface — the staging ground for the Add-Trade auto-fill flow (you watch a pattern form, set an alert, queue the trade). Earlier commit (`e22e3bb`) added `actionableOnly: true` to Watch which applied the R/R hard block + portfolio caps. With Chris's Min R/R = 5, every 4:1 forming pattern disappeared from Watch even though that's exactly what the Watch surface is for.
+
+**What:**
+- `client/src/pages/htf-setups.tsx` — `WatchTab` no longer passes `actionableOnly: true`. Forming patterns surface regardless of R/R / portfolio caps. The R/R column is visible on every row so the user can read it and decide which to alert on. Live tab keeps the strict gate (per Chris's "Need >5:1" rule there) since Live IS the actionable list.
+- `server/compartments/htf-scanner/index.ts` — `rowToHit` updated to include the `hasOverheadResistance` + `nearestResistancePct` fields that landed in a later HTF piece (`e79f3e8`) so resize-on-read type-checks cleanly. Default values; resize doesn't re-detect resistance, just preserves sizing math.
+
+**Net behaviour:** Watch shows everything forming again, including 4:1 R/R rows. Live still filters by your Min R/R. The R/R column is right there on the Watch row so you can scan it visually.
+
+---
 ## 2026-05-19 — HTF: current price column + R/R hard block + Watch tab uses it too
 
 **Why:** Chris's three asks: (1) "I need to know what the price is now" on every row, (2) "fix the R/R filter, I have it at 1 and see 1.0–1.9:1 rows, need ≥5:1," (3) "even on watch list — don't care if it can't make me less than that."
