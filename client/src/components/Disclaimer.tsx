@@ -19,7 +19,7 @@ export function Disclaimer() {
       className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border border-card-border rounded-lg text-micro text-muted-foreground sm:whitespace-nowrap sm:overflow-hidden sm:text-ellipsis"
       data-testid="disclaimer"
     >
-      <AlertTriangle className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+      <AlertTriangle className="h-3 w-3 shrink-0 text-watch-light" />
       <span>
         <strong className="text-foreground/80">Not financial advice</strong> — educational use only.
         All decisions are yours. Past performance ≠ future results.

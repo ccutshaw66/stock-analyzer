@@ -152,6 +152,21 @@ export interface StrategyManifest {
    * deferred until background monitor lands).
    */
   evaluate: (trade: StrategyTradeView) => StrategyEvaluation;
+  /**
+   * Marks a research-only strategy that has not yet been wired into the
+   * live signal/scanner stack. UI shows an "experimental" badge and skips
+   * the strategy in scanner sweeps. Use when a strategy has been registered
+   * for visibility (e.g. listed under /wheel's Experimental Strategies
+   * section) but isn't yet production-ready.
+   */
+  experimental?: boolean;
+  /**
+   * Optional grouping hint surfaced on host pages (e.g. /wheel lists every
+   * manifest with `pageGroup: "wheel"` under its Experimental Strategies
+   * section). Keeps the strategy registry as the single source of truth
+   * for "what strategies exist + where they surface."
+   */
+  pageGroup?: "wheel" | "trend" | "reversal" | "calculator";
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────
@@ -880,6 +895,50 @@ const OTHER_MANIFEST: StrategyManifest = {
   evaluate: MANUAL_MANIFEST.evaluate,
 };
 
+/**
+ * Markov v2 — research-stage HMM regime model with vol-targeted sizing.
+ *
+ * Reference implementation lives at `backend/patterns/markov_trading_v2.py`
+ * (Python + hmmlearn). Surfaces under /wheel's Experimental Strategies
+ * section so Chris can track it without forcing a premature TypeScript port
+ * of the EM/Baum-Welch math. When ready to promote: port the regime fitter
+ * + transition-matrix-driven position sizing to a server signal under
+ * `server/signals/strategies/markov.ts` and flip `experimental` off.
+ *
+ * Until then `evaluate()` returns a stub so the Add Trade dropdown can
+ * include it for paper-tracking trades the user takes manually.
+ */
+const MARKOV_V2_MANIFEST: StrategyManifest = {
+  id: "markov-v2",
+  name: "Markov Regime v2 (Experimental)",
+  shortName: "MARKOV",
+  description: "HMM regime model + vol-targeted sizing + transaction costs. Research-stage; port from Python reference pending.",
+  color: "info",
+  requiresReason: false,
+  columnOrder: ["Regime", "Target"],
+  experimental: true,
+  pageGroup: "wheel",
+  evaluate(trade) {
+    const entry = Math.abs(trade.openPrice);
+    const points = [{
+      label: "Entry",
+      value: trade.contractsShares != null ? `${trade.contractsShares} @ ${fmt$(entry)}` : fmt$(entry),
+      state: "past" as const,
+    }];
+    if (trade.currentPrice != null) {
+      const pct = pctChange(entry, trade.currentPrice);
+      if (pct != null) {
+        points.push({
+          label: "vs entry",
+          value: fmtPct(pct),
+          state: pct >= 0 ? "past" : "pending",
+        });
+      }
+    }
+    return { displayPoints: points, alerts: [] };
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────
 
 export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
@@ -890,6 +949,7 @@ export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
   "tft-60w": TFT_60W_MANIFEST,
   "tft-cat": TFT_CAT_MANIFEST,
   amc: AMC_MANIFEST,
+  "markov-v2": MARKOV_V2_MANIFEST,
   manual: MANUAL_MANIFEST,
   other: OTHER_MANIFEST,
 };

@@ -15,7 +15,7 @@ import { useDashboardLayout } from "@/lib/dashboard/useDashboardLayout";
 import { listWidgetCompartments } from "@/compartments/registry";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTemplate } from "@/components/PageTemplate";
-import { Loader2, X, Plus, LayoutDashboard } from "lucide-react";
+import { Loader2, X, Plus, LayoutDashboard, Settings2 } from "lucide-react";
 import type { DashboardLayout, TabSpec, WidgetSpec } from "@shared/dashboard/types";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -40,8 +40,19 @@ function withUpdatedTab(layout: DashboardLayout, tabId: string, nextWidgets: Wid
   };
 }
 
+/** localStorage key for the per-user "Customize layout" toggle. Hidden by
+ *  default per Chris's feedback ("5 movable boxes ≠ customization"); flips
+ *  on when the user clicks the toolbar toggle, persists across reloads. */
+const CUSTOMIZE_STORAGE_KEY = "stockotter:dashboard:customize";
+
 export default function Dashboard() {
   const { layout, isLoading, error, save } = useDashboardLayout();
+  const [customize, setCustomize] = useState<boolean>(() => {
+    try { return localStorage.getItem(CUSTOMIZE_STORAGE_KEY) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CUSTOMIZE_STORAGE_KEY, customize ? "1" : "0"); } catch { /* no-op */ }
+  }, [customize]);
   const compartments = useMemo(() => listWidgetCompartments(), []);
   const compartmentMap = useMemo(() => {
     const m = new Map<string, (typeof compartments)[number]>();
@@ -181,7 +192,26 @@ export default function Dashboard() {
     minH: compartmentMap.get(w.compartmentId)?.widgetMinSize?.h ?? 2,
   }));
 
-  const toolbarChips = (hiddenWidgets.length > 0 || availableToAdd.length > 0) ? (
+  // Customize toggle is always visible; hidden-widget + add-widget chips only
+  // appear when customize is ON. This is the "real" customization seam now —
+  // not "drag 5 boxes around the page."
+  const customizeToggle = (
+    <button
+      onClick={() => setCustomize(c => !c)}
+      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+        customize
+          ? "bg-brand-accent/20 text-brand-accent hover:bg-brand-accent/30"
+          : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/70"
+      }`}
+      data-testid="dashboard-customize-toggle"
+      title={customize ? "Lock layout" : "Rearrange + add/hide widgets"}
+    >
+      <Settings2 className="h-3 w-3" />
+      {customize ? "Done" : "Customize"}
+    </button>
+  );
+
+  const widgetChips = customize && (hiddenWidgets.length > 0 || availableToAdd.length > 0) ? (
     <div className="flex items-center gap-1.5 flex-wrap">
       {hiddenWidgets.map((w) => {
         const c = compartmentMap.get(w.compartmentId);
@@ -212,6 +242,13 @@ export default function Dashboard() {
     </div>
   ) : null;
 
+  const toolbarChips = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {widgetChips}
+      {customizeToggle}
+    </div>
+  );
+
   return (
     <PageTemplate
       maxWidth="max-w-full"
@@ -219,9 +256,9 @@ export default function Dashboard() {
       headerRight={toolbarChips}
       howItWorks={
         <>
-          <p>Your customizable Stock Otter view. Drag widgets to rearrange them, click the X in a widget header to hide it, or use the Add buttons in the toolbar to mount new compartments.</p>
-          <p>Layout auto-saves to the server so your view persists across browsers and devices.</p>
-          <p>Hidden widgets show up as chips in the toolbar — click one to restore it. New compartments released by Stock Otter appear there too, so you can opt-in without resetting your existing layout.</p>
+          <p>Your 5-minute morning workspace. Six compartments synthesize data from across Stockotter so you don't have to click through 4 pages to figure out what needs your attention today.</p>
+          <p><strong className="text-foreground">Morning Brief</strong> (top banner): one-sentence summary of market regime + your book P&L + how many items need attention + fresh setups overnight + today's loss budget usage. <strong className="text-foreground">Action Queue</strong>: prioritized list of decisions today — open positions near stops/targets/partials, alerts that fired, fresh HTF setups in Givens' entry window, earnings on your tickers in 2 days. If nothing's actionable, it doesn't show up. <strong className="text-foreground">Morning Checklist</strong>: book-anchored pre-market routine (O'Neil + Aziz + Bennet + Wyckoff) with daily focus note + 7-day history + streak counter. <strong className="text-foreground">Confluence Pulse</strong>: 5-spoke radar (Smart Money + Dealer Positioning + Technical + Fundamental + Market Regime) for the active ticker — the "everything in one page" lens. <strong className="text-foreground">Position News</strong>: headlines + press releases on tickers you actually hold; no scanner-style discovery feed. <strong className="text-foreground">Ask Otter</strong>: Claude-powered Q&A — shell visible in v1, enable per-account in Settings to activate.</p>
+          <p><strong className="text-foreground">Customize</strong> button (top-right) reveals drag-to-rearrange + hide/restore widget controls. Off by default — the curated layout is opinionated for a reason. Hidden widgets show up as toolbar chips when Customize is on.</p>
         </>
       }
     >
@@ -230,8 +267,8 @@ export default function Dashboard() {
         layout={rgLayout}
         cols={GRID_COLS}
         rowHeight={ROW_HEIGHT}
-        isResizable={false}
-        isDraggable={true}
+        isResizable={customize}
+        isDraggable={customize}
         compactType="vertical"
         margin={[12, 12]}
         draggableHandle=".widget-drag-handle"
@@ -248,18 +285,20 @@ export default function Dashboard() {
               className="bg-card border border-border rounded-md shadow-sm overflow-hidden relative"
               data-testid={`widget-${w.compartmentId}`}
             >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  hideWidget(w.compartmentId);
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                className="widget-no-drag absolute top-1 right-1 z-10 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                data-testid={`button-hide-${w.compartmentId}`}
-                aria-label={`Hide ${c.meta.name}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              {customize && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    hideWidget(w.compartmentId);
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="widget-no-drag absolute top-1 right-1 z-10 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  data-testid={`button-hide-${w.compartmentId}`}
+                  aria-label={`Hide ${c.meta.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               <WidgetView
                 config={w.config}
                 onConfigChange={(next) => updateWidgetConfig(w.compartmentId, next)}

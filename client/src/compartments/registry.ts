@@ -11,8 +11,24 @@ import { scannerCompartment } from "./scanner";
 import { tradesCompartment } from "./trades";
 import { confluenceChartCompartment } from "./confluence-chart";
 import { htfScannerCompartment } from "./htf-scanner";
+// Dashboard rebuild v1 — 6 new compartments, each plugs in here.
+import { morningBriefCompartment } from "./morning-brief";
+import { actionQueueCompartment } from "./action-queue";
+import { positionNewsCompartment } from "./position-news";
+import { morningChecklistCompartment } from "./morning-checklist";
+import { askOtterCompartment } from "./ask-otter";
+import { confluencePulseCompartment } from "./confluence-pulse";
 
 const clientCompartments: ClientCompartmentEntry[] = [
+  // Dashboard rebuild v1 — the new curated default layout uses these six.
+  morningBriefCompartment,
+  actionQueueCompartment,
+  confluencePulseCompartment,
+  morningChecklistCompartment,
+  positionNewsCompartment,
+  askOtterCompartment,
+  // Legacy widgets — kept registered so existing saved layouts still resolve,
+  // but no longer mounted by default. Users can opt-in via "Customize layout".
   favoritesCompartment,
   scannerCompartment,
   tradesCompartment,

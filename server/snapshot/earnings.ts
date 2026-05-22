@@ -19,6 +19,48 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Per-position earnings aggregator for the dashboard Action Queue.
+ *
+ * Takes a list of held tickers, fans out to `getEarningsSnapshot` in parallel,
+ * and returns the subset whose next report falls within `withinDays`. Reuses
+ * the per-ticker 6h cache so a 20-ticker fan-out costs ~0 wall time on a
+ * warm cache.
+ *
+ * The Bennet vol-crush rule (memory/reference_trading_library_findings.md
+ * §Bennet) blocks debit option entries within 14 days of earnings; the
+ * Morning Brief surfaces upcoming earnings in the next 2 trading days as
+ * action items. Caller decides the window.
+ */
+export async function getEarningsForPositions(
+  tickers: string[],
+  withinDays: number,
+): Promise<Array<{ symbol: string; nextReportDate: string; daysUntil: number }>> {
+  if (tickers.length === 0) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() + withinDays);
+
+  const results = await Promise.all(
+    tickers.map(async (t) => {
+      try {
+        const snap = await getEarningsSnapshot(t);
+        const dateStr = snap.value?.nextReportDate;
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return null;
+        if (d < today || d > cutoff) return null;
+        const daysUntil = Math.ceil((d.getTime() - today.getTime()) / 86400000);
+        return { symbol: t.toUpperCase(), nextReportDate: dateStr, daysUntil };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return results.filter((r): r is { symbol: string; nextReportDate: string; daysUntil: number } => r !== null);
+}
+
 export async function getEarningsSnapshot(ticker: string): Promise<FieldHealth<CompanyEarnings>> {
   const T = ticker.toUpperCase();
   return tryProviders<CompanyEarnings>(

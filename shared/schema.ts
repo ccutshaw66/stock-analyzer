@@ -14,6 +14,10 @@ export const users = pgTable("users", {
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
   hasSeenTour: boolean("has_seen_tour").default(false),
   lastLoginAt: timestamp("last_login_at"),
+  // Per-account flag for the Ask Otter (Claude API) widget. Default false so
+  // no paid Anthropic calls fire until the user opts in via settings. Server
+  // route returns 503 unless this is true AND ANTHROPIC_API_KEY is set in env.
+  askOtterEnabled: boolean("ask_otter_enabled").default(false),
 });
 
 export const favorites = pgTable("favorites", {
@@ -315,6 +319,24 @@ export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfoli
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
 
+// ─── Morning Checklist log (dashboard rebuild v1) ──────────────────────────
+// One row per user per trading day, capturing which items were checked + the
+// daily focus note. `items` is a jsonb map of itemId → boolean so the
+// checklist's item set can evolve additively without migrating the table.
+// History view reads back the last N days; phase-2 "force lock" gate reads
+// today's row to decide whether to block site access.
+export const morningChecklistLog = pgTable("morning_checklist_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  date: text("date").notNull(),                       // YYYY-MM-DD (user's local trading day)
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  items: jsonb("items").notNull(),                    // Record<itemId, boolean>
+  focusNote: text("focus_note"),                      // one-sentence intention
+}, (table) => ({
+  byUserDate: index("morning_checklist_user_date_idx").on(table.userId, table.date),
+}));
+export const insertMorningChecklistLogSchema = createInsertSchema(morningChecklistLog).omit({ id: true, completedAt: true });
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -333,6 +355,8 @@ export type DividendPortfolioItem = typeof dividendPortfolio.$inferSelect;
 export type InsertDividendPortfolioItem = z.infer<typeof insertDividendPortfolioSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
+export type MorningChecklistLog = typeof morningChecklistLog.$inferSelect;
+export type InsertMorningChecklistLog = z.infer<typeof insertMorningChecklistLogSchema>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;

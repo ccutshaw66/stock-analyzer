@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { SIGNAL_BULL, CHART_RSI, ACCENT_AMBER_DEEP } from "@/lib/design-tokens";
 import {
   RefreshCw, DollarSign, Percent, Calendar,
-  Target, AlertTriangle, TrendingUp, ShieldCheck,
+  Target, AlertTriangle, TrendingUp, ShieldCheck, FlaskConical,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
 import { useTicker } from "@/contexts/TickerContext";
+import { STRATEGY_REGISTRY } from "@shared/strategies/registry";
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -401,7 +402,48 @@ export default function WheelCalculator() {
           ))}
         </ul>
       </div>
+
+      {/* Experimental Strategies — research-stage manifests grouped under wheel.
+          Registry-driven so adding the next one is one manifest entry, not a
+          page edit. (Markov v2 registered 2026-05-22.) */}
+      <ExperimentalStrategiesSection />
     </PageTemplate>
+  );
+}
+
+function ExperimentalStrategiesSection() {
+  const experimental = Object.values(STRATEGY_REGISTRY).filter(
+    m => m.experimental && m.pageGroup === "wheel",
+  );
+  if (experimental.length === 0) return null;
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FlaskConical className="h-4 w-4 text-watch-light" />
+        <h3 className="text-sm font-bold text-foreground">Experimental Strategies</h3>
+        <span className="text-micro text-muted-foreground italic">research-stage</span>
+      </div>
+      <ul className="space-y-2">
+        {experimental.map(m => (
+          <li
+            key={m.id}
+            className="border border-card-border/50 rounded-md px-3 py-2 bg-muted/20"
+            data-testid={`experimental-strategy-${m.id}`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-semibold text-foreground">{m.name}</span>
+              <span className="text-micro font-bold px-1.5 py-0.5 rounded bg-watch/15 text-watch-light border border-watch/30">
+                EXPERIMENTAL
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-snug">{m.description}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="text-micro text-muted-foreground/60 italic mt-3">
+        Experimental strategies are registered in the manifest but not yet wired into the live signal stack. Use for manual paper-tracking; the port to production is tracked separately.
+      </p>
+    </div>
   );
 }
 

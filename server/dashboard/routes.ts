@@ -8,8 +8,24 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../auth";
 import { buildDefaultDashboardLayout } from "./layout";
+import { registerActionQueueRoute } from "./action-queue";
+import { registerMorningBriefRoute } from "./morning-brief";
+import { registerPositionNewsRoute } from "./news-routes";
+import { registerChecklistRoutes } from "./checklist-routes";
+import { registerAskOtterRoutes } from "./ask-otter-routes";
+import { registerConfluencePulseRoute } from "./confluence-pulse";
 
 export function registerDashboardRoutes(app: Express): void {
+  // Dashboard rebuild v1 routes — each compartment gets its own server module
+  // (action-queue / morning-brief / news / checklist / ask-otter / confluence-pulse)
+  // registered here so adding a new compartment is one import + one call.
+  registerActionQueueRoute(app);
+  registerMorningBriefRoute(app);
+  registerPositionNewsRoute(app);
+  registerChecklistRoutes(app);
+  registerAskOtterRoutes(app);
+  registerConfluencePulseRoute(app);
+
   // Get the current user's dashboard layout. Returns the saved layout if
   // one exists, otherwise the server-computed default. Never 404s — the
   // client always has something to render.

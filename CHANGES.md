@@ -9,6 +9,88 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-22 — Dashboard v2 rebuild (5-minute morning workspace) + Markov experimental strategy
+
+**Why:** Chris's verdict on the old `/dashboard`: "stupid, just repeats the pages — and the only 'customization' is moving 5 boxes around, who cares." Confluence widget too big for the info it gave; My Trades too wide. Rebuilt as the 5-minute morning workspace: open at 8:55am, in 5 seconds know if anything needs attention today, see fresh overnight triggers, log the daily routine. Anchored to the project north-star ("unified inputs across all pages → premium everything-in-one-page feature"). Plan: `~/.claude/plans/i-just-found-on-imperative-finch.md`.
+
+**Six new compartments (all plug into the existing client/server registry pattern — no new ceremony):**
+
+1. **Morning Brief** (top banner) — single computed sentence: regime tier + book P&L + attention count + fresh setups + loss-budget used. NOT LLM-generated; uses source-of-truth APIs so numbers are correct. New route `GET /api/dashboard/morning-brief`.
+2. **Action Queue** (centerpiece) — prioritized list of decisions needing attention TODAY, aggregated from: open trades (strategy manifest `evaluate()` alerts), fired cron alerts (last 24h), fresh HTF setups in Givens' entry window, earnings within 2 trading days on held positions. **No-action-no-show**: if a position has nothing actionable, it doesn't render. Empty state = "All clear today." New route `GET /api/dashboard/action-queue`.
+3. **Confluence Pulse** (the north-star feature) — 5-spoke radar for the active ticker: Smart Money + Dealer Positioning + Technical + Fundamental + Market Regime. First four pulled from the latest `compassSnapshots` row (nightly cron already populates these); regime spoke is live. Click any spoke → drills into that page. New route `GET /api/dashboard/confluence-pulse/:ticker`. Note: nightly compass cron currently covers ~100 megacaps; widen the universe if Chris's tickers aren't in it.
+4. **Morning Checklist + log** — book-anchored 6-item pre-market routine (O'Neil "manage what you have first" → Action Queue + Regime + Position News + Triggers → Aziz 1%/day loss budget → Aziz process-over-outcome focus note). Items 3 (earnings) and 6 (loss budget) auto-check from system state. Submission writes to new `morning_checklist_log` table. 7-day history + streak counter inline. Phase-2 hook: optional "force lock" gate (Chris's "virtual lock" idea) reads from same table; not enforced yet, table + UI just exist. New routes `GET/POST /api/dashboard/checklist/*`.
+5. **Position News** — headlines + press releases scoped to user's held tickers ONLY (Chris's rule: situational awareness, NOT a discovery scanner). New adapter `server/data/providers/news.adapter.ts` wraps FMP `/stable/news/stock-latest` + `/stable/news/press-releases-latest`. New route `GET /api/dashboard/news-for-positions`. 30-min cache.
+6. **Ask Otter** (shell only in v1) — Claude-powered Q&A chat UI. v1 ships the SHELL with a placeholder banner: "Ask Otter is a paid feature — open Settings → Ask Otter to enable." Server route returns 503 unless BOTH `ANTHROPIC_API_KEY` is in env AND user has `askOtterEnabled: true` on their account row. Same code path goes live when both gates pass — no rewrite needed. `@anthropic-ai/sdk` installed but dormant. New routes `GET /api/dashboard/ask-otter/status` + `POST /api/dashboard/ask-otter/chat`.
+
+**Layout:** curated default — Morning Brief (full-width banner) / Action Queue + Checklist row / Confluence Pulse + Ask Otter row / Position News (full-width). **Drag-to-rearrange hidden by default** behind a new "Customize" toolbar toggle (top-right of `/dashboard`). Per Chris's feedback ("5 movable boxes ≠ customization"): the toggle reveals drag handles + hide-X + add/restore chips for power users. Default-off because a curated layout is opinionated for a reason. Old widgets (Watchlist / Best Opps / My Trades / HTF Teaser / Confluence Teaser) stay registered as opt-in via the Customize toolbar — no data loss for users with saved custom layouts.
+
+**Daily-routine sources (cited so the checklist items are defensible — Chris said "not married, need research"):**
+- O'Neil — Manage what you have first (CANSLIM); M of CANSLIM (market direction filter)
+- Aziz — Daily drop-dead loss (1%/day, 3%/week); process > outcome journaling
+- Wyckoff — Upthrust auto-flag on open HTF/Wyckoff positions (surfaces in Action Queue)
+- Bennet — Earnings vol-crush (14-day rule); auto-flag in Action Queue
+- Chris — "scan for gappers" step from StockShips article reframed as "check Action Queue + new dashboard triggers" (Stockotter is swing/position, not day-trader)
+
+**Bonus — Markov v2 experimental strategy registered:**
+- `MARKOV_V2_MANIFEST` added to `STRATEGY_REGISTRY` with new `experimental: true` + `pageGroup: "wheel"` fields on the manifest interface.
+- Python reference at `backend/patterns/markov_trading_v2.py` left as-is (HMM + vol-targeted sizing + transaction costs). TypeScript port is a separate ship — the EM/Baum-Welch math is ~400 lines and would need careful porting.
+- `/wheel` page now shows an "Experimental Strategies" section at the bottom that lists every manifest with `experimental: true` + `pageGroup: "wheel"`. Registry-driven: adding the next experimental strategy is one manifest entry, not a page edit.
+- "EXPERIMENTAL" badge + footnote explains the strategy is registered for paper-tracking but not yet wired into live signals.
+
+**Schema changes (`shared/schema.ts`) — require `npm run db:push` before deploy:**
+- New table: `morning_checklist_log` (id, userId, date, completedAt, items jsonb, focusNote text). Indexed on (userId, date).
+- New column on `users`: `askOtterEnabled boolean default false`.
+- Both are additive — existing data unaffected.
+
+**Files**
+- add: `client/src/compartments/morning-brief/` + `MorningBriefWidget.tsx`
+- add: `client/src/compartments/action-queue/` + `ActionQueueWidget.tsx`
+- add: `client/src/compartments/position-news/` + `PositionNewsWidget.tsx`
+- add: `client/src/compartments/morning-checklist/` + `MorningChecklistWidget.tsx`
+- add: `client/src/compartments/ask-otter/` + `AskOtterWidget.tsx`
+- add: `client/src/compartments/confluence-pulse/` + `ConfluencePulseWidget.tsx`
+- add: `server/dashboard/action-queue.ts` (aggregator + route)
+- add: `server/dashboard/morning-brief.ts`
+- add: `server/dashboard/news-routes.ts`
+- add: `server/dashboard/checklist-routes.ts`
+- add: `server/dashboard/ask-otter-routes.ts`
+- add: `server/dashboard/confluence-pulse.ts`
+- add: `server/data/providers/news.adapter.ts` (FMP news wrapper)
+- mod: `shared/schema.ts` — new `morning_checklist_log` table + `askOtterEnabled` column
+- mod: `shared/strategies/registry.ts` — new `experimental` + `pageGroup` manifest fields; MARKOV_V2_MANIFEST registered
+- mod: `server/snapshot/earnings.ts` — added `getEarningsForPositions(tickers, withinDays)` helper
+- mod: `server/dashboard/routes.ts` — mounts the 6 new compartment routes
+- mod: `server/dashboard/layout.ts` — new default layout with 6 compartments in curated positions
+- mod: `client/src/compartments/registry.ts` — 6 new compartment registrations (legacy widgets retained as opt-in)
+- mod: `client/src/pages/dashboard.tsx` — Customize toggle (localStorage-persisted), drag/X hidden by default
+- mod: `client/src/pages/wheel.tsx` — Experimental Strategies section (Markov v2)
+- mod: `package.json` — `@anthropic-ai/sdk` added (dormant)
+
+**TypeScript:** clean. **Build:** clean.
+
+**Pre-deploy gate:** run `npm run db:push` against production before this ship lands. Two additive migrations (one column on users, one new table). Schema is backward-compatible so the old code still works — but the new dashboard widgets will 500 until the migration runs.
+
+**Sanity check (when shipped):**
+1. Open `/dashboard` fresh-load → six compartments render in curated order (Brief banner / Action Queue + Checklist / Confluence Pulse + Ask Otter / Position News). No drag handles, no X buttons.
+2. Click "Customize" toolbar toggle → drag handles + hide-X + add/restore chips appear. Click again → they hide. State persists across page reload (localStorage).
+3. With an open HTF position near 20-MA, Action Queue shows the lifecycle alert. With everything calm, queue collapses to "All clear today" empty state.
+4. Morning Brief sentence reads: regime + book P&L + attention count + fresh-setup count + loss budget. Numbers should match `/market-pulse`, `/tracker`, the queue itself.
+5. Position News shows headlines for your held tickers only — no SPY/random ticker bleed-through. Zero positions = "Add a position to see news" branded empty state.
+6. Morning Checklist: check items + write focus note + submit → toast + streak counter. Re-load → "Logged at HH:MM" badge, can't resubmit today. History link reveals last 7 days inline.
+7. Ask Otter shows "paid feature, enable in Settings" banner. Input is disabled. (When ANTHROPIC_API_KEY + per-account flag are flipped on later, input enables and chat works.)
+8. Confluence Pulse defaults to SPY when no active ticker. Set active ticker via header search → radar swaps. Click a spoke → drills into that page.
+9. `/wheel` page bottom shows Experimental Strategies section with Markov v2 + "EXPERIMENTAL" badge.
+
+**Deferred to Phase 2 (per the plan file):**
+- Ask Otter active (paid) — flip when ready to pay per-conversation
+- Pattern Memory ("last 14 times BBTC fired on AAPL, 11 winners, avg +6.2%") — needs nightly cache cron
+- Daily concept card (education rotating card)
+- Force-lock checklist gate enforcement (table + UI shipped; enforcement not wired)
+- State-driven customization (which positions trigger queue at what change %, etc.)
+- Weekly Review checklist (Sunday-evening cadence for swing/position traders, per book research)
+- Markov v2 TypeScript port (EM/Baum-Welch math from `backend/patterns/markov_trading_v2.py`)
+
+---
 ## 2026-05-21 — PageTemplate compartment + migrate 6 non-compliant pages
 
 **Why:** Site-wide layout audit (using Market Pulse as the gold standard) found 6 pages missing the canonical chrome — Title + Subtitle + Disclaimer + "How it works" HelpBlock + content. Chris's pushback was correct: hand-wiring each page is exactly the kind of thing that drifts. The universal-structure rule says the seam should be a single component, not 27 manual copies.
