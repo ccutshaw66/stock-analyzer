@@ -3,8 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { API_ALERT_RULES, API_ALERTS_EVALUATE_NOW } from "@shared/api/endpoints";
 import { Bell, Plus, Trash2, Zap, TrendingUp, Calendar, Radio } from "lucide-react";
-import { HelpBlock } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 interface AlertRule {
   id: number;
@@ -50,46 +49,44 @@ export default function AlertsPage() {
   });
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-      {/* Title */}
-      <PageHeader
-        icon={Bell}
-        title="Alerts"
-        subtitle="Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above."
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => evaluateNow.mutate()}
-              disabled={evaluateNow.isPending}
-              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-            >
-              {evaluateNow.isPending ? "Evaluating..." : "Evaluate now"}
-            </button>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New Alert
-            </button>
-          </div>
-        }
-      />
-
-      {/* How It Works */}
-      <HelpBlock title="How Alerts work">
-        <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
-        <p><b className="text-foreground">Rule types:</b></p>
-        <ul className="list-disc pl-4 space-y-1">
-          <li><b className="text-foreground">Scanner verdict change</b> — fires when Scanner 2.0 flips a ticker into verdicts you pick (GO ↑/↓, SET ↑/↓, READY ↑/↓, PULLBACK). Deduped so you only get one alert per change.</li>
-          <li><b className="text-foreground">Price target hit</b> — fires when an open position crosses its target price. Pulled from the trade’s own target field.</li>
-          <li><b className="text-foreground">Price stop hit</b> — fires when price crosses the stop you configured.</li>
-          <li><b className="text-foreground">Earnings within N days</b> — fires when an open position has an earnings report scheduled within your window (default 7 days).</li>
-        </ul>
-        <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
-        <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
-      </HelpBlock>
-
+    <PageTemplate
+      maxWidth="max-w-5xl"
+      icon={Bell}
+      title="Alerts"
+      subtitle="Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above."
+      headerRight={
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => evaluateNow.mutate()}
+            disabled={evaluateNow.isPending}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          >
+            {evaluateNow.isPending ? "Evaluating..." : "Evaluate now"}
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Alert
+          </button>
+        </div>
+      }
+      howItWorks={
+        <>
+          <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
+          <p><b className="text-foreground">Rule types:</b></p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li><b className="text-foreground">Scanner verdict change</b> — fires when Scanner 2.0 flips a ticker into verdicts you pick (GO ↑/↓, SET ↑/↓, READY ↑/↓, PULLBACK). Deduped so you only get one alert per change.</li>
+            <li><b className="text-foreground">Price target hit</b> — fires when an open position crosses its target price. Pulled from the trade’s own target field.</li>
+            <li><b className="text-foreground">Price stop hit</b> — fires when price crosses the stop you configured.</li>
+            <li><b className="text-foreground">Earnings within N days</b> — fires when an open position has an earnings report scheduled within your window (default 7 days).</li>
+          </ul>
+          <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
+          <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
+        </>
+      }
+    >
       {/* Coming-soon channels */}
       <div className="mb-6 p-3 bg-muted/30 border border-card-border rounded-lg">
         <p className="text-xs font-semibold text-foreground mb-1">Delivery channels</p>
@@ -156,7 +153,7 @@ export default function AlertsPage() {
       </div>
 
       {showCreate && <CreateRuleModal onClose={() => setShowCreate(false)} />}
-    </div>
+    </PageTemplate>
   );
 }
 

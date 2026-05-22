@@ -9,6 +9,63 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — PageTemplate compartment + migrate 6 non-compliant pages
+
+**Why:** Site-wide layout audit (using Market Pulse as the gold standard) found 6 pages missing the canonical chrome — Title + Subtitle + Disclaimer + "How it works" HelpBlock + content. Chris's pushback was correct: hand-wiring each page is exactly the kind of thing that drifts. The universal-structure rule says the seam should be a single component, not 27 manual copies.
+
+**What:**
+- New `client/src/components/PageTemplate.tsx` — wraps PageHeader + Disclaimer + HelpBlock + children in the right order. Disclaimer defaults on, "How it works" is a `howItWorks` prop slot (omit to suppress), max-width is a preset prop (`max-w-5xl` / `max-w-6xl` / `max-w-7xl` / `max-w-full`) with a `className` escape hatch for arbitrary widths. Title/subtitle/icon auto-resolve from the page registry when omitted, same as `<PageHeader>` does today.
+- **Dashboard** (`/dashboard`) — migrated to PageTemplate. Added Disclaimer + a "How Dashboard works" block explaining drag-to-rearrange, hide via X, restore via toolbar chips, auto-save. Uses `maxWidth="max-w-full"` so the grid widens when the sidebar collapses.
+- **Current Positions** (`/tracker`) — migrated. Disclaimer added above the existing How-it-works content. Long HelpBlock body preserved verbatim.
+- **Dividend Positions** (`/dividend-portfolio`) — migrated. Disclaimer added.
+- **Confluence Chart** (`/chart/confluence`) — migrated. Both Disclaimer and a new "How Confluence Chart works" block added (was missing both). Empty-state branch also gets the new chrome.
+- **Strategy Chart** (`/chart`) — migrated. Existing Disclaimer preserved; new "How Strategy Chart works" block added.
+- **Alerts** (`/alerts`) — migrated. Disclaimer added.
+- **HTF Setups** (`/htf`) — migrated. Original page had Disclaimer at the BOTTOM of the page (after the Tabs) and no max-width container. Audit had given it a false pass because it checked component PRESENCE but not ORDER. Now in canonical PageHeader → Disclaimer → HelpBlock → Tabs order with `max-w-7xl` shell. (Same fix applies to all future drift — the template enforces the order by construction.)
+- **HTF Pattern** (`/htf/:symbol`) — migrated. Same wrong-order Disclaimer-at-bottom bug. Also added a "How to read this chart" block (was missing entirely) explaining the pole / flag / breakout markers and the entry / target / stop / 20-MA trail lines.
+
+**Foundation move:** new pages from here on out wrap in `<PageTemplate>` and the chrome is structurally guaranteed. You can't forget the Disclaimer because it's the default; you can't forget "How it works" because it's a named prop a reviewer will notice empty.
+
+**Files**
+- add: `client/src/components/PageTemplate.tsx`
+- mod: `client/src/pages/dashboard.tsx`
+- mod: `client/src/pages/trade-tracker.tsx`
+- mod: `client/src/pages/dividend-portfolio.tsx`
+- mod: `client/src/pages/alerts.tsx`
+- mod: `client/src/pages/confluence-chart.tsx`
+- mod: `client/src/pages/chart.tsx`
+
+**TypeScript:** clean. **Build:** clean.
+
+**Sanity check:** open each of the 6 pages after deploy. Each should show, in order: title strip → yellow "Not financial advice" disclaimer bar → collapsible blue "How &lt;Page&gt; works" block → existing content. Click the disclosure on the How-it-works block to confirm it expands. Confirm Dashboard widens to fill the available width when you collapse the sidebar (was hard-capped at `max-w-7xl` style on other pages; Dashboard explicitly uses `max-w-full`).
+
+**Full coverage update:** the original ship migrated only 6 pages. Chris's CRITICAL QUESTION — "if only 8 of 27 use the template, what's the point of having one?" — landed: a template that doesn't cover the whole site is drift waiting to happen the moment the chrome changes. All remaining pages migrated in the same ship: Profile, Trade Analysis, MM Exposure, Market Pulse, Conviction Compass, Long-Term Outlook (Verdict), Institutions, Scanner, Sector Heatmap, Earnings Calendar, Dividend Finder, Track Record, Performance Analytics, Options Calculator, Payoff Diagram, Greeks Calculator, Kelly Criterion, Wheel Strategy, Help/FAQ. Result: **27 of 27 pages now render through `<PageTemplate>`**. Future chrome changes (e.g. new feedback button, breadcrumb slot, banner) propagate to the whole site with a single edit.
+
+**Notable migration deviations** (called out so reviewers know not to re-fix):
+- Pages with multi-branch returns (Market Pulse, Conviction, Verdict, Trade Analytics) consolidated to a single `<PageTemplate>` wrapping conditional content inside. The chrome stays mounted during loading/error transitions; only the inner content swaps.
+- Options Calculator and Track Record have per-section HelpBlocks inside sub-components — they intentionally render WITHOUT a top-level `howItWorks` prop, so the per-section explainers remain where they live. Disclaimer still on (default).
+- Help/FAQ passes `disclaimer={false}` — the Help page itself isn't financial advice.
+- Scanner kept its outer `<div className="min-h-screen bg-background">` wrapper (load-bearing); PageTemplate nests inside it.
+- Verdict has two chrome-free early returns BEFORE the PageTemplate (LimitReached subscription gate, InvalidSymbol) — intentional branded full-page overrides.
+
+---
+## 2026-05-21 — Disclaimer + EUPHORIC tier color refresh
+
+**Why:** Both the global Disclaimer bar and the Market Pulse EUPHORIC tier badge used `watch` (yellow) — they collided visually and Chris flagged the yellow as "puke yellow." The Disclaimer was also wrapping to multiple lines on most viewports, making it look heavier than it should ("fine print" should look like fine print).
+
+**What:**
+- **Disclaimer** restyled: muted-gray bar (`bg-muted/30 border border-card-border text-muted-foreground`) instead of yellow. Copy shortened to one sentence — "**Not financial advice** — educational use only. All decisions are yours. Past performance ≠ future results." Fits on one line at desktop widths (added `sm:whitespace-nowrap` + ellipsis fallback); mobile wraps to two lines, which beats truncating legally-required text.
+- **Market Pulse EUPHORIC tier** switched from `watch` yellow to **fuchsia** (`bg-fuchsia-500/10` ring/text/sub). Keeps the "excess / FOMO peak" semantic — EUPHORIC means "market over-extended, watch for the snap-back" — without colliding with the Disclaimer. Tier scale is now visually distinct top to bottom: bear-red → orange → muted-gray → bull-green → fuchsia.
+
+**Files**
+- mod: `client/src/components/Disclaimer.tsx`
+- mod: `client/src/pages/market-pulse.tsx`
+
+**TypeScript:** clean. **Build:** clean.
+
+**Sanity check:** open any page → confirm Disclaimer is a single-line muted-gray bar, not yellow. Open `/market-pulse` and look at the headline tier badge → if today's regime is EUPHORIC, it should be fuchsia/pink, not yellow.
+
+---
 ## 2026-05-21 — Site audit cleanup: token leakage + cache bypass
 
 **Why:** /verify-work site-wide pass flagged 8 should-fix items across the design-token compartmentalization rule and one cache-layer bypass. None blocked ship in isolation, but they're exactly the kind of drift that turns into "why doesn't the brand color update everywhere" bugs later. Cleaning them in one pass before they multiply.

@@ -8,8 +8,7 @@ import { HelpBlock } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { API_TRADES } from "@shared/api/endpoints";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Import Position Button ──────────────────────────────────────────────────
 
@@ -544,23 +543,18 @@ function LegSection({ label, legs, calcType, addLeg, removeLeg, updateLeg, total
 
 export default function OptionsCalculator() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="options-calculator-page">
-      {/* Title */}
-      <PageHeader
-        icon={Calculator}
-        title="Options Calculator"
-        subtitle="Risk, vertical expectancy, defined risk/reward, and weighted-price math — each section has its own How It Works."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Calculator}
+      title="Options Calculator"
+      subtitle="Risk, vertical expectancy, defined risk/reward, and weighted-price math — each section has its own How It Works."
+    >
       {/* How It Works lives inside each calculator section below — click the blue info bar. */}
       <RiskCalculator />
       <VerticalExpectancy />
       <DefinedRiskReward />
       <WeightedPriceCalculator />
-    </div>
+    </PageTemplate>
   );
 }
 

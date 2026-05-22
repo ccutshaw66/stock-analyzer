@@ -14,10 +14,9 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, Calendar, FlaskConical,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, Cell } from "recharts";
-import { Disclaimer } from "@/components/Disclaimer";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { HelpBlock } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -54,17 +53,12 @@ export default function TrackRecord() {
     s === "STRONG_BUY" || s === "BUY" ? "bg-bull/15" : s === "STRONG_SELL" || s === "SELL" ? "bg-bear/15" : "bg-watch/15";
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1100px] mx-auto" data-testid="track-record-page">
-      {/* Title */}
-      <PageHeader
-        icon={Trophy}
-        title="Track Record"
-        subtitle="Every signal logged. Every outcome tracked. Full transparency."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1100px] mx-auto"
+      icon={Trophy}
+      title="Track Record"
+      subtitle="Every signal logged. Every outcome tracked. Full transparency."
+    >
       {/* Tabs */}
       <div className="flex border-b border-card-border">
         <button
@@ -297,7 +291,7 @@ export default function TrackRecord() {
         </>
       )}
       </>}
-    </div>
+    </PageTemplate>
   );
 }
 

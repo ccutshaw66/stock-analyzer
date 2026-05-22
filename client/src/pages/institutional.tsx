@@ -10,9 +10,8 @@ import {
   Users, Search, Loader2, ChevronDown, ChevronUp, X, Eye, DollarSign,
   BarChart3, Activity, UserCheck, Briefcase, AlertTriangle, Zap, RefreshCw
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -568,54 +567,50 @@ export default function Institutional() {
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="institutional-page">
-      {/* Title */}
-      <PageHeader
-        icon={Building2}
-        title="Institutions"
-        subtitle="Track institutional buying/selling, insider moves, and smart money flow signals."
-      />
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto"
+      icon={Building2}
+      title="Institutions"
+      subtitle="Track institutional buying/selling, insider moves, and smart money flow signals."
+      howItWorksTitle="How Institutional Money Flow Scoring Works"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-bear-light">-100</strong> (all selling) to <strong className="text-bull-light">+100</strong> (all buying).</p>
 
-      {/* Disclaimer */}
-      <Disclaimer />
+          <p className="font-semibold text-foreground mt-2">How it's calculated:</p>
+          <p>1. We look at each institution's <strong className="text-foreground">quarter-over-quarter position change</strong> — how much they increased or decreased their holdings.</p>
+          <p>2. <strong className="text-foreground">Inflow</strong> = dollar value of increased positions. <strong className="text-foreground">Outflow</strong> = dollar value of decreased positions.</p>
+          <p>3. <strong className="text-foreground">Base Flow Score</strong> = ((Inflow − Outflow) / Total Flow) × 100</p>
+          <p>4. We then add an <strong className="text-foreground">Insider Activity Bonus</strong>: each net insider buy adds +10, each net insider sell subtracts -10. This rewards insider confidence.</p>
+          <p>5. The combined score is clamped to -100 to +100.</p>
 
-      {/* How It Works */}
-      <HelpBlock title="How Institutional Money Flow Scoring Works">
-        <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-bear-light">-100</strong> (all selling) to <strong className="text-bull-light">+100</strong> (all buying).</p>
+          <p className="font-semibold text-foreground mt-2">Signal Thresholds:</p>
+          <ScoreRange label="STRONG INFLOW" range="+40 to +100" color="green" description="Heavy institutional buying + insider support. Smart money is aggressively accumulating." />
+          <ScoreRange label="ACCUMULATING" range="+15 to +39" color="green" description="Moderate net buying. Institutions are building positions but not rushing." />
+          <ScoreRange label="NEUTRAL" range="-14 to +14" color="yellow" description="Balanced activity. No clear directional bias from institutions." />
+          <ScoreRange label="DISTRIBUTING" range="-15 to -39" color="red" description="Moderate net selling. Institutions are reducing positions." />
+          <ScoreRange label="STRONG OUTFLOW" range="-40 to -100" color="red" description="Heavy institutional selling + insider dumping. Smart money is exiting." />
 
-        <p className="font-semibold text-foreground mt-2">How it's calculated:</p>
-        <p>1. We look at each institution's <strong className="text-foreground">quarter-over-quarter position change</strong> — how much they increased or decreased their holdings.</p>
-        <p>2. <strong className="text-foreground">Inflow</strong> = dollar value of increased positions. <strong className="text-foreground">Outflow</strong> = dollar value of decreased positions.</p>
-        <p>3. <strong className="text-foreground">Base Flow Score</strong> = ((Inflow − Outflow) / Total Flow) × 100</p>
-        <p>4. We then add an <strong className="text-foreground">Insider Activity Bonus</strong>: each net insider buy adds +10, each net insider sell subtracts -10. This rewards insider confidence.</p>
-        <p>5. The combined score is clamped to -100 to +100.</p>
+          <p className="font-semibold text-foreground mt-2">Real Examples:</p>
+          <Example type="good">
+            <p><strong className="text-bull-light">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
+          </Example>
+          <Example type="neutral">
+            <p><strong className="text-watch-light">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
+          </Example>
+          <Example type="bad">
+            <p><strong className="text-bear-light">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
+          </Example>
 
-        <p className="font-semibold text-foreground mt-2">Signal Thresholds:</p>
-        <ScoreRange label="STRONG INFLOW" range="+40 to +100" color="green" description="Heavy institutional buying + insider support. Smart money is aggressively accumulating." />
-        <ScoreRange label="ACCUMULATING" range="+15 to +39" color="green" description="Moderate net buying. Institutions are building positions but not rushing." />
-        <ScoreRange label="NEUTRAL" range="-14 to +14" color="yellow" description="Balanced activity. No clear directional bias from institutions." />
-        <ScoreRange label="DISTRIBUTING" range="-15 to -39" color="red" description="Moderate net selling. Institutions are reducing positions." />
-        <ScoreRange label="STRONG OUTFLOW" range="-40 to -100" color="red" description="Heavy institutional selling + insider dumping. Smart money is exiting." />
-
-        <p className="font-semibold text-foreground mt-2">Real Examples:</p>
-        <Example type="good">
-          <p><strong className="text-bull-light">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
-        </Example>
-        <Example type="neutral">
-          <p><strong className="text-watch-light">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
-        </Example>
-        <Example type="bad">
-          <p><strong className="text-bear-light">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
-        </Example>
-
-        <p className="font-semibold text-foreground mt-2">Key Metrics Explained:</p>
-        <p><strong className="text-foreground">Institutional %</strong> — Percentage of outstanding shares held by institutions (hedge funds, mutual funds, pension funds). Higher = more institutional interest. Most large-caps are 60-90%.</p>
-        <p><strong className="text-foreground">Insider %</strong> — Percentage held by company insiders (executives, board members). High insider ownership (5%+) means management has skin in the game.</p>
-        <p><strong className="text-foreground">Inst. Increasing / Decreasing</strong> — Count of institutions that grew vs. shrank their positions this quarter. More increasing = bullish signal.</p>
-        <p><strong className="text-foreground">New / Sold Out</strong> — Institutions that initiated brand new positions (&gt;50% change) or completely exited (&gt;90% reduction). New positions = fresh conviction. Sold out = lost faith.</p>
-        <p><strong className="text-foreground">Insider Buys / Sells</strong> — Net insider transaction count over the past 6 months. Insider buying is one of the strongest bullish signals because they know the company best.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Key Metrics Explained:</p>
+          <p><strong className="text-foreground">Institutional %</strong> — Percentage of outstanding shares held by institutions (hedge funds, mutual funds, pension funds). Higher = more institutional interest. Most large-caps are 60-90%.</p>
+          <p><strong className="text-foreground">Insider %</strong> — Percentage held by company insiders (executives, board members). High insider ownership (5%+) means management has skin in the game.</p>
+          <p><strong className="text-foreground">Inst. Increasing / Decreasing</strong> — Count of institutions that grew vs. shrank their positions this quarter. More increasing = bullish signal.</p>
+          <p><strong className="text-foreground">New / Sold Out</strong> — Institutions that initiated brand new positions (&gt;50% change) or completely exited (&gt;90% reduction). New positions = fresh conviction. Sold out = lost faith.</p>
+          <p><strong className="text-foreground">Insider Buys / Sells</strong> — Net insider transaction count over the past 6 months. Insider buying is one of the strongest bullish signals because they know the company best.</p>
+        </>
+      }
+    >
       {/* Active Ticker Detail (if one is selected). Keep showing the previous
           data during a re-fetch (don't gate on !singleFetching) so a manual
           Refresh doesn't blink the whole section out for a second. */}
@@ -747,6 +742,6 @@ export default function Institutional() {
 
       {/* Detail Modal */}
       {selectedData && <DetailModal data={selectedData} onClose={() => setSelectedData(null)} />}
-    </div>
+    </PageTemplate>
   );
 }

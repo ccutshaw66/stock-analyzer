@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { BookOpen, ChevronDown, ChevronUp, ClipboardList, Calculator, BarChart3, Activity, Radar, HelpCircle, RefreshCw } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 function Section({ title, icon: Icon, children }: { title: string; icon: any; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -27,14 +27,13 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 
 export default function Help() {
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-4 max-w-[900px] mx-auto" data-testid="help-page">
-      {/* Title */}
-      <PageHeader
-        icon={BookOpen}
-        title="Help / FAQ"
-        subtitle="Click each section to expand. Everything you need to know about each feature."
-      />
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-4 max-w-[900px] mx-auto"
+      icon={BookOpen}
+      title="Help / FAQ"
+      subtitle="Click each section to expand. Everything you need to know about each feature."
+      disclaimer={false}
+    >
       {/* ─── Getting Started ──────────────────────────────────────────── */}
       <Section title="Getting Started" icon={HelpCircle}>
         <Q q="What is this app?">
@@ -228,6 +227,6 @@ export default function Help() {
           <p>Click "Refresh P/L" on the Trade Tracker page. Prices come from Yahoo Finance and need a manual refresh. Market data is only available during trading hours (9:30 AM - 4:00 PM ET, Mon-Fri).</p>
         </Q>
       </Section>
-    </div>
+    </PageTemplate>
   );
 }

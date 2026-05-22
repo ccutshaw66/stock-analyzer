@@ -14,6 +14,7 @@ import GridLayout, { WidthProvider, type Layout } from "react-grid-layout";
 import { useDashboardLayout } from "@/lib/dashboard/useDashboardLayout";
 import { listWidgetCompartments } from "@/compartments/registry";
 import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import { Loader2, X, Plus, LayoutDashboard } from "lucide-react";
 import type { DashboardLayout, TabSpec, WidgetSpec } from "@shared/dashboard/types";
 import "react-grid-layout/css/styles.css";
@@ -180,42 +181,50 @@ export default function Dashboard() {
     minH: compartmentMap.get(w.compartmentId)?.widgetMinSize?.h ?? 2,
   }));
 
-  return (
-    <div className="p-4 sm:p-6">
-      <div className="flex items-center justify-between mb-4">
-        <PageHeader title="Dashboard" icon={LayoutDashboard} />
-        {(hiddenWidgets.length > 0 || availableToAdd.length > 0) && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {hiddenWidgets.map((w) => {
-              const c = compartmentMap.get(w.compartmentId);
-              if (!c) return null;
-              return (
-                <button
-                  key={`show-${w.compartmentId}`}
-                  onClick={() => showWidget(w.compartmentId)}
-                  className="flex items-center gap-1 px-2 py-1 rounded bg-muted hover:bg-muted/70 text-xs text-foreground"
-                  data-testid={`button-show-${w.compartmentId}`}
-                >
-                  <Plus className="h-3 w-3" />
-                  {c.meta.name}
-                </button>
-              );
-            })}
-            {availableToAdd.map((c) => (
-              <button
-                key={`add-${c.meta.id}`}
-                onClick={() => addWidget(c.meta.id)}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-primary/20 hover:bg-primary/30 text-xs text-primary"
-                data-testid={`button-add-${c.meta.id}`}
-              >
-                <Plus className="h-3 w-3" />
-                {c.meta.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+  const toolbarChips = (hiddenWidgets.length > 0 || availableToAdd.length > 0) ? (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {hiddenWidgets.map((w) => {
+        const c = compartmentMap.get(w.compartmentId);
+        if (!c) return null;
+        return (
+          <button
+            key={`show-${w.compartmentId}`}
+            onClick={() => showWidget(w.compartmentId)}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-muted hover:bg-muted/70 text-xs text-foreground"
+            data-testid={`button-show-${w.compartmentId}`}
+          >
+            <Plus className="h-3 w-3" />
+            {c.meta.name}
+          </button>
+        );
+      })}
+      {availableToAdd.map((c) => (
+        <button
+          key={`add-${c.meta.id}`}
+          onClick={() => addWidget(c.meta.id)}
+          className="flex items-center gap-1 px-2 py-1 rounded bg-primary/20 hover:bg-primary/30 text-xs text-primary"
+          data-testid={`button-add-${c.meta.id}`}
+        >
+          <Plus className="h-3 w-3" />
+          {c.meta.name}
+        </button>
+      ))}
+    </div>
+  ) : null;
 
+  return (
+    <PageTemplate
+      maxWidth="max-w-full"
+      className="p-4 sm:p-6 space-y-4"
+      headerRight={toolbarChips}
+      howItWorks={
+        <>
+          <p>Your customizable Stock Otter view. Drag widgets to rearrange them, click the X in a widget header to hide it, or use the Add buttons in the toolbar to mount new compartments.</p>
+          <p>Layout auto-saves to the server so your view persists across browsers and devices.</p>
+          <p>Hidden widgets show up as chips in the toolbar — click one to restore it. New compartments released by Stock Otter appear there too, so you can opt-in without resetting your existing layout.</p>
+        </>
+      }
+    >
       <ResponsiveGridLayout
         className="layout"
         layout={rgLayout}
@@ -259,6 +268,6 @@ export default function Dashboard() {
           );
         })}
       </ResponsiveGridLayout>
-    </div>
+    </PageTemplate>
   );
 }

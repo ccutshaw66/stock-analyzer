@@ -17,9 +17,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { API_MARKET_PULSE } from "@shared/api/endpoints";
-import { Disclaimer } from "@/components/Disclaimer";
-import { HelpBlock } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import { formatCurrency } from "@/lib/format";
 import {
   Activity, Loader2, ArrowUpRight, ArrowDownRight,
@@ -97,12 +95,17 @@ function pctColor(v: number | null): string {
   return "text-muted-foreground";
 }
 
+// Tier colors: RISK-OFF (bear) → DEFENSIVE (orange) → NEUTRAL (gray) → RISK-ON
+// (bull) → EUPHORIC (fuchsia). EUPHORIC switched from `watch` yellow on
+// 2026-05-21 — it collided visually with the global Disclaimer bar which
+// previously also used watch yellow. Fuchsia keeps the "excess / FOMO peak"
+// semantic (over-extended bull, watch for the snap-back) without the clash.
 const TIER_STYLE: Record<RegimeTier, { ring: string; text: string; bg: string; sub: string }> = {
-  "EUPHORIC":  { ring: "ring-watch/40",  text: "text-watch-light",  bg: "bg-watch/10",  sub: "text-watch/80" },
-  "RISK-ON":   { ring: "ring-bull/40",   text: "text-bull-light",   bg: "bg-bull/10",   sub: "text-bull/80" },
+  "EUPHORIC":  { ring: "ring-fuchsia-400/40", text: "text-fuchsia-300", bg: "bg-fuchsia-500/10", sub: "text-fuchsia-200/80" },
+  "RISK-ON":   { ring: "ring-bull/40",        text: "text-bull-light",  bg: "bg-bull/10",        sub: "text-bull/80" },
   "NEUTRAL":   { ring: "ring-muted/40",       text: "text-foreground",  bg: "bg-muted/10",       sub: "text-muted-foreground" },
   "DEFENSIVE": { ring: "ring-orange-400/40",  text: "text-orange-300",  bg: "bg-orange-500/10",  sub: "text-orange-200/80" },
-  "RISK-OFF":  { ring: "ring-bear/40",     text: "text-bear-light",     bg: "bg-bear/10",     sub: "text-bear/80" },
+  "RISK-OFF":  { ring: "ring-bear/40",        text: "text-bear-light",  bg: "bg-bear/10",        sub: "text-bear/80" },
 };
 
 function timeAgo(ms: number): string {
@@ -127,50 +130,38 @@ export default function MarketPulsePage() {
     staleTime: 30_000,
   });
 
-  if (isLoading) {
-    return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
-        <PageHeader icon={Activity} title="Market Pulse" subtitle="Macro environment at a glance — measured, not narrated." />
+  const tier = data?.regime.tier;
+  const style = tier ? TIER_STYLE[tier] : null;
+
+  return (
+    <PageTemplate
+      maxWidth="max-w-5xl"
+      icon={Activity}
+      title="Market Pulse"
+      subtitle="Macro environment at a glance — measured, not narrated."
+      howItWorksTitle="How Market Pulse works"
+      howItWorks={
+        <>
+          <p>One sentence at the top: <strong>is the environment hostile, neutral, or favorable</strong> for the trade you're about to make. Computed from price/volume only — no news, no headlines.</p>
+          <p><strong className="text-foreground">Volatility</strong> — VIX level, 20-day percentile, and the VIX9D/VIX3M term ratio. Term ratio &gt; 1.0 means the front-month is pricing more fear than the back-month — early stress signal.</p>
+          <p><strong className="text-foreground">Breadth</strong> — what % of the S&amp;P 500 is above its 50-day and 200-day moving averages, plus today's new 52-week highs vs. lows. Tells you if a rally is broad or just the megacaps doing all the work.</p>
+          <p><strong className="text-foreground">Risk appetite</strong> — HYG/LQD (junk bonds vs. investment grade) and SPY/TLT (stocks vs. long bonds). Rising = risk-on rotation.</p>
+          <p><strong className="text-foreground">Major indices</strong> — SPY, QQQ, IWM, DIA with current price, % change, and whether each is above its 50-day and 200-day MA.</p>
+          <p><strong className="text-foreground">Safe haven</strong> — Gold, Silver, and the Gold/Silver Ratio with regime tag (&gt;80 silver looks cheap, &lt;60 gold looks cheap, 60-80 fair).</p>
+          <p>The headline tier — RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC — is a 0–100 score across these signals. Not a trade signal in itself; context for whatever else you're looking at.</p>
+        </>
+      }
+    >
+      {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
-        <PageHeader icon={Activity} title="Market Pulse" subtitle="Macro environment at a glance — measured, not narrated." />
+      ) : error || !data || !style ? (
         <div className="bg-card border border-card-border rounded-xl p-8 text-center">
           <p className="text-sm text-muted-foreground">Market Pulse cache is warming. Refresh in a few seconds.</p>
         </div>
-      </div>
-    );
-  }
-
-  const tier = data.regime.tier;
-  const style = TIER_STYLE[tier];
-
-  return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
-      <PageHeader
-        icon={Activity}
-        title="Market Pulse"
-        subtitle="Macro environment at a glance — measured, not narrated."
-      />
-
-      <Disclaimer />
-
-      <HelpBlock title="How Market Pulse works">
-        <p>One sentence at the top: <strong>is the environment hostile, neutral, or favorable</strong> for the trade you're about to make. Computed from price/volume only — no news, no headlines.</p>
-        <p><strong className="text-foreground">Volatility</strong> — VIX level, 20-day percentile, and the VIX9D/VIX3M term ratio. Term ratio &gt; 1.0 means the front-month is pricing more fear than the back-month — early stress signal.</p>
-        <p><strong className="text-foreground">Breadth</strong> — what % of the S&amp;P 500 is above its 50-day and 200-day moving averages, plus today's new 52-week highs vs. lows. Tells you if a rally is broad or just the megacaps doing all the work.</p>
-        <p><strong className="text-foreground">Risk appetite</strong> — HYG/LQD (junk bonds vs. investment grade) and SPY/TLT (stocks vs. long bonds). Rising = risk-on rotation.</p>
-        <p><strong className="text-foreground">Major indices</strong> — SPY, QQQ, IWM, DIA with current price, % change, and whether each is above its 50-day and 200-day MA.</p>
-        <p><strong className="text-foreground">Safe haven</strong> — Gold, Silver, and the Gold/Silver Ratio with regime tag (&gt;80 silver looks cheap, &lt;60 gold looks cheap, 60-80 fair).</p>
-        <p>The headline tier — RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC — is a 0–100 score across these signals. Not a trade signal in itself; context for whatever else you're looking at.</p>
-      </HelpBlock>
+      ) : (
+        <>
 
       {/* ━━━ HEADLINE TIER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className={`rounded-2xl ${style.bg} ring-1 ${style.ring} p-6 sm:p-8`}>
@@ -370,6 +361,8 @@ export default function MarketPulsePage() {
           Regime tag: &gt;80 silver looks cheap · 60–80 fair · &lt;60 gold looks cheap.
         </div>
       </section>
-    </div>
+        </>
+      )}
+    </PageTemplate>
   );
 }

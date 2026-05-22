@@ -6,11 +6,10 @@ import {
   Activity, AlertTriangle, Search, Loader2, Clock,
   CalendarDays, PiggyBank, Zap,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,37 +122,33 @@ export default function Dividends() {
   }, [tickerDividend?.exDividendDate]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividends-page">
-      {/* Title */}
-      <PageHeader
-        icon={DollarSign}
-        title="Dividend Finder"
-        subtitle="Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
-      {/* How It Works */}
-      <HelpBlock title="Understanding Dividends">
-        <p><strong className="text-foreground">Dividend Yield:</strong> Annual dividend payment divided by the stock price. A 3% yield on a $100 stock means $3/year in dividends per share.</p>
-        <p><strong className="text-foreground">Payout Ratio:</strong> What percentage of earnings the company pays out as dividends. Under 60% is generally sustainable — the company retains enough to reinvest and grow.</p>
-        <p><strong className="text-foreground">Distribution Date:</strong> The date the dividend payment is deposited into your brokerage account. This is when you actually get paid.</p>
-        <p><strong className="text-foreground">Ex-Dividend Date:</strong> The cutoff date — you must own shares BEFORE this date to receive the dividend. If you buy on or after this date, you won't get the next payment.</p>
-        <p><strong className="text-foreground">Settlement:</strong> Typically T+1 (one business day) after purchase for the trade to settle. Plan your purchases accordingly relative to the ex-dividend date.</p>
-        <p><strong className="text-foreground">Distribution Frequency:</strong> How often dividends are paid — Monthly, Quarterly, Semi-Annual, or Annual. Most US stocks pay quarterly.</p>
-        <p><strong className="text-foreground">Dividend Quality Score (0-100):</strong> A composite ranking based on yield level, payout sustainability, yield growth vs 5-year average, payment consistency, and frequency.</p>
-        <Example type="good">
-          <strong className="text-bull-light">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
-        </Example>
-        <Example type="good">
-          <strong className="text-bull-light">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
-        </Example>
-        <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth — top dividend pick" />
-        <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield or payout — may lack growth or consistency" />
-        <ScoreRange label="Weak" range="0-34" color="red" description="Low or no yield, high payout risk, or inconsistent payments" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={DollarSign}
+      title="Dividend Finder"
+      subtitle="Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality."
+      howItWorksTitle="Understanding Dividends"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Dividend Yield:</strong> Annual dividend payment divided by the stock price. A 3% yield on a $100 stock means $3/year in dividends per share.</p>
+          <p><strong className="text-foreground">Payout Ratio:</strong> What percentage of earnings the company pays out as dividends. Under 60% is generally sustainable — the company retains enough to reinvest and grow.</p>
+          <p><strong className="text-foreground">Distribution Date:</strong> The date the dividend payment is deposited into your brokerage account. This is when you actually get paid.</p>
+          <p><strong className="text-foreground">Ex-Dividend Date:</strong> The cutoff date — you must own shares BEFORE this date to receive the dividend. If you buy on or after this date, you won't get the next payment.</p>
+          <p><strong className="text-foreground">Settlement:</strong> Typically T+1 (one business day) after purchase for the trade to settle. Plan your purchases accordingly relative to the ex-dividend date.</p>
+          <p><strong className="text-foreground">Distribution Frequency:</strong> How often dividends are paid — Monthly, Quarterly, Semi-Annual, or Annual. Most US stocks pay quarterly.</p>
+          <p><strong className="text-foreground">Dividend Quality Score (0-100):</strong> A composite ranking based on yield level, payout sustainability, yield growth vs 5-year average, payment consistency, and frequency.</p>
+          <Example type="good">
+            <strong className="text-bull-light">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
+          </Example>
+          <Example type="good">
+            <strong className="text-bull-light">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
+          </Example>
+          <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth — top dividend pick" />
+          <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield or payout — may lack growth or consistency" />
+          <ScoreRange label="Weak" range="0-34" color="red" description="Low or no yield, high payout risk, or inconsistent payments" />
+        </>
+      }
+    >
       {/* Active Ticker Hero Card */}
       {activeTicker && (
         <div className="bg-card border border-card-border rounded-lg p-4" data-testid="dividend-hero-card">
@@ -463,7 +458,7 @@ export default function Dividends() {
 
       {/* Weekly Dividend Strategy (Bowtie Nation) */}
       <WeeklyStrategy setActiveTicker={setActiveTicker} />
-    </div>
+    </PageTemplate>
   );
 }
 

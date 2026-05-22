@@ -13,15 +13,14 @@ import { formatCurrency, formatCompact } from "@/lib/format";
 import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
   Zap, AlertTriangle, DollarSign, Target,
   ArrowUpRight, ArrowDownRight, Minus, Loader2,
   FlaskConical, Building2, UserCheck, LineChart, Scale, Award
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -266,7 +265,7 @@ function ScoreRing({ score, size = 220, strokeWidth = 14 }: { score: number; siz
 
 function VerdictSkeleton() {
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6 animate-pulse">
+    <div className="space-y-6 animate-pulse">
       {/* Hero skeleton */}
       <div className="bg-card border border-card-border rounded-xl p-8">
         <div className="flex flex-col items-center gap-4">
@@ -333,44 +332,9 @@ export default function Verdict() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ─── Empty state ──────────────────────────────────────────────────────────
-  if (!activeTicker) {
-    return (
-      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-        <PageHeader
-          icon={Award}
-          title="Long-Term Outlook"
-          subtitle="Is this a good stock to own? Fundamentals, institutional flow, stress resilience & insider confidence."
-        />
-        <Disclaimer />
-        <div className="text-center py-16 text-muted-foreground">
-          <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
-          <p className="text-micro mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Loading ──────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div data-testid="verdict-page">
-        <div className="max-w-5xl mx-auto px-4 pt-4 pb-2">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm font-medium">
-              Building long-term outlook for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
-            </span>
-          </div>
-        </div>
-        <VerdictSkeleton />
-      </div>
-    );
-  }
-
-  // ─── Error ────────────────────────────────────────────────────────────────
-  // Limit reached — show otter instead of stale data
+  // ─── Limit reached — show otter instead of stale data ───────────────────
+  // This is intentionally chrome-free (no PageHeader/Disclaimer) to keep
+  // the LimitReached upgrade pitch as the only thing on screen.
   if (isAnalysisExhausted && !isLoading) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -379,78 +343,89 @@ export default function Verdict() {
     );
   }
 
-  if (error) {
-    const errMsg = (error as Error).message || "";
-    if (isSymbolNotFound(errMsg)) {
-      return (
-        <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          <InvalidSymbol ticker={activeTicker} />
-        </div>
-      );
-    }
+  // ─── Invalid symbol → branded empty state, also chrome-free ─────────────
+  if (error && isSymbolNotFound((error as Error).message || "")) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="bg-bear/10 border border-bear/20 rounded-lg p-6 text-center">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-bear-light" />
-          <p className="text-bear-light font-medium">{errMsg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
-        </div>
+        <InvalidSymbol ticker={activeTicker!} />
       </div>
     );
   }
 
-  if (!data) return null;
-
-  const sortedFactors = [...data.factors].sort((a, b) => b.weight - a.weight);
+  const sortedFactors = data ? [...data.factors].sort((a, b) => b.weight - a.weight) : [];
+  const subtitle = !activeTicker
+    ? "Is this a good stock to own? Fundamentals, institutional flow, stress resilience & insider confidence."
+    : data
+      ? `${data.ticker} — fundamentals, institutional flow, stress resilience & insider confidence.`
+      : `${activeTicker} — fundamentals, institutional flow, stress resilience & insider confidence.`;
 
   return (
-    <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
+    <PageTemplate
+      className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6"
+      icon={Award}
+      title="Long-Term Outlook"
+      subtitle={subtitle}
+      howItWorksTitle="How the Long-Term Outlook Score Works"
+      howItWorks={
+        <>
+          <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
+          <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
 
-      {/* Title */}
-      <PageHeader
-        icon={Award}
-        title="Long-Term Outlook"
-        subtitle={`${data.ticker} — fundamentals, institutional flow, stress resilience & insider confidence.`}
-      />
+          <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
+          <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
+          <p><strong className="text-foreground">Institutional Flow (25%)</strong> — The flow score from the Institutions page (-100 to +100) converted to 0–100. Measures net smart money direction.</p>
+          <p><strong className="text-foreground">Stress Resilience (15%)</strong> — How well the stock performed vs. the S&P 500 during 7 major historical crises (2000–2025). Score = percentage of events where the stock beat the S&P.</p>
+          <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
 
-      {/* Disclaimer */}
-      <Disclaimer />
+          <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
+          <ScoreRange label="STRONG CONVICTION" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident. Strong long-term hold." />
+          <ScoreRange label="INVESTMENT GRADE" range="55–69" color="green" description="Most factors positive with minor weaknesses. Solid long-term hold with some caveats." />
+          <ScoreRange label="SPECULATIVE" range="41–54" color="yellow" description="Mixed fundamentals. Some strengths, some concerns. Higher risk for long-term commitment." />
+          <ScoreRange label="SPECULATIVE" range="31–40" color="yellow" description="More negatives than positives. High risk for long-term holding." />
+          <ScoreRange label="HIGH RISK" range="0–30" color="red" description="Significant concerns across multiple categories. Not recommended for long-term holding." />
 
-      {/* How It Works */}
-      <HelpBlock title="How the Long-Term Outlook Score Works">
-        <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
-        <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
+          <p className="font-semibold text-foreground mt-2">Examples:</p>
+          <Example type="good">
+            <p><strong className="text-bull-light">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
+          </Example>
+          <Example type="neutral">
+            <p><strong className="text-watch-light">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
+          </Example>
+          <Example type="bad">
+            <p><strong className="text-bear-light">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
+          </Example>
 
-        <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
-        <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
-        <p><strong className="text-foreground">Institutional Flow (25%)</strong> — The flow score from the Institutions page (-100 to +100) converted to 0–100. Measures net smart money direction.</p>
-        <p><strong className="text-foreground">Stress Resilience (15%)</strong> — How well the stock performed vs. the S&P 500 during 7 major historical crises (2000–2025). Score = percentage of events where the stock beat the S&P.</p>
-        <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
+          <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
+          <p>The stress test table compares the stock's performance against S&P 500, Gold, and Silver during: <strong className="text-foreground">Dot-com Crash, 9/11, Great Recession, Flash Crash, China/Oil Crisis, COVID Crash, and 2022 Rate Hikes</strong>. Rows highlighted green mean the stock outperformed the S&P during that crisis. "N/A" means the company wasn't publicly traded during that period.</p>
 
-        <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
-        <ScoreRange label="STRONG CONVICTION" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident. Strong long-term hold." />
-        <ScoreRange label="INVESTMENT GRADE" range="55–69" color="green" description="Most factors positive with minor weaknesses. Solid long-term hold with some caveats." />
-        <ScoreRange label="SPECULATIVE" range="41–54" color="yellow" description="Mixed fundamentals. Some strengths, some concerns. Higher risk for long-term commitment." />
-        <ScoreRange label="SPECULATIVE" range="31–40" color="yellow" description="More negatives than positives. High risk for long-term holding." />
-        <ScoreRange label="HIGH RISK" range="0–30" color="red" description="Significant concerns across multiple categories. Not recommended for long-term holding." />
-
-        <p className="font-semibold text-foreground mt-2">Examples:</p>
-        <Example type="good">
-          <p><strong className="text-bull-light">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
-        </Example>
-        <Example type="neutral">
-          <p><strong className="text-watch-light">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
-        </Example>
-        <Example type="bad">
-          <p><strong className="text-bear-light">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
-        </Example>
-
-        <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
-        <p>The stress test table compares the stock's performance against S&P 500, Gold, and Silver during: <strong className="text-foreground">Dot-com Crash, 9/11, Great Recession, Flash Crash, China/Oil Crisis, COVID Crash, and 2022 Rate Hikes</strong>. Rows highlighted green mean the stock outperformed the S&P during that crisis. "N/A" means the company wasn't publicly traded during that period.</p>
-
-        <p className="font-semibold text-foreground mt-2">Metals Dashboard:</p>
-        <p>Gold and silver are traditional safe-haven assets. The <strong className="text-foreground">Gold/Silver Ratio</strong> (typically 60–90) indicates relative value. A ratio above 80 historically suggests silver is undervalued relative to gold. The S&P 500 (SPY) benchmark lets you compare your stock's context against the broader market.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Metals Dashboard:</p>
+          <p>Gold and silver are traditional safe-haven assets. The <strong className="text-foreground">Gold/Silver Ratio</strong> (typically 60–90) indicates relative value. A ratio above 80 historically suggests silver is undervalued relative to gold. The S&P 500 (SPY) benchmark lets you compare your stock's context against the broader market.</p>
+        </>
+      }
+    >
+      {!activeTicker ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
+          <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
+          <p className="text-micro mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
+        </div>
+      ) : isLoading ? (
+        <>
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm font-medium">
+              Building long-term outlook for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
+            </span>
+          </div>
+          <VerdictSkeleton />
+        </>
+      ) : error ? (
+        <div className="bg-bear/10 border border-bear/20 rounded-lg p-6 text-center">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-bear-light" />
+          <p className="text-bear-light font-medium">{((error as Error).message || "").replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
+        </div>
+      ) : !data ? null : (
+        <>
       {/* ━━━ 1. UNIFIED VERDICT RING (Hero) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="bg-card border border-card-border rounded-xl overflow-hidden">
         {/* Gradient header accent */}
@@ -729,6 +704,8 @@ export default function Verdict() {
           </div>
         </section>
       )}
-    </div>
+        </>
+      )}
+    </PageTemplate>
   );
 }

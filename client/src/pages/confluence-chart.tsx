@@ -12,7 +12,7 @@ import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import { CandlePane, emaOverlays, EmaToggleStrip, type EmaToggleState } from "@/components/chart";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { VerdictStrip } from "@/compartments/confluence-chart/VerdictStrip";
@@ -67,28 +67,39 @@ export default function ConfluenceChartPage() {
       ? "text-bull"
       : "text-bear";
 
+  const confluenceHowItWorks = (
+    <>
+      <p>The Confluence Chart pulls Stock Otter's four primary signal layers onto one screen so you can see when several agree at the same time.</p>
+      <p><strong className="text-foreground">Candle pane</strong> — OHLC with the EMA stack (9/21/50, plus 200 SMA on toggle). The verdict ribbon at the top summarizes the gate state right now.</p>
+      <p><strong className="text-foreground">Signal Pulse</strong> — Stock Otter's proprietary 12-signal oscillator. Green bars above zero mean bullish signals are stacking; red bars below mean bearish.</p>
+      <p><strong className="text-foreground">MACD + RSI</strong> — classic momentum + stretch. MACD histogram flips give early trend-change cues; RSI &gt;70 / &lt;30 mark overbought/oversold.</p>
+      <p>Look for <strong className="text-foreground">stacking</strong> — when EMA trend + MACD direction + RSI position + Signal Pulse direction all line up, that's a high-conviction read. One signal disagreeing is the noise; four agreeing is the signal.</p>
+    </>
+  );
+
   // No ticker yet — show the branded empty state.
   if (!activeTicker) {
     return (
-      <div className="p-3 sm:p-4 md:p-6 max-w-[1400px] mx-auto" data-testid="confluence-chart-page">
-        <PageHeader
-          icon={Layers}
-          title="Confluence Chart"
-          subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
-        />
+      <PageTemplate
+        className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto"
+        icon={Layers}
+        title="Confluence Chart"
+        subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
+        howItWorks={confluenceHowItWorks}
+      >
         <EmptyState />
-      </div>
+      </PageTemplate>
     );
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-[1400px] mx-auto" data-testid="confluence-chart-page">
-      <PageHeader
-        icon={Layers}
-        title="Confluence Chart"
-        subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
-      />
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto"
+      icon={Layers}
+      title="Confluence Chart"
+      subtitle="Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read."
+      howItWorks={confluenceHowItWorks}
+    >
       {/* Ticker context strip — page-specific info (not chrome). */}
       <div className="flex items-baseline gap-3 mb-3 px-1" data-testid="confluence-ticker-strip">
         <span className="font-mono font-bold text-lg text-foreground" data-testid="header-ticker">
@@ -159,6 +170,6 @@ export default function ConfluenceChartPage() {
 
       {/* Sticky verdict strip */}
       <VerdictStrip quick={quick} lastUpdated={lastUpdated} />
-    </div>
+    </PageTemplate>
   );
 }

@@ -11,8 +11,7 @@ import {
   CheckCircle2, Loader2, History, Clock, ClipboardList
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
-import { HelpBlock } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
@@ -1136,60 +1135,59 @@ export default function TradeTracker() {
   if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto" data-testid="trade-tracker-page">
-      {/* Title */}
-      <PageHeader
-        icon={ClipboardList}
-        title="Current Positions"
-        right={
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
-              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
-            </button>
-            <button onClick={() => setShowSettings(true)}
-              className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
-              <Settings className="h-3.5 w-3.5" />Settings
-            </button>
-            <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
-              className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
-              <Plus className="h-3.5 w-3.5" />Add Trade
-            </button>
-          </div>
-        }
-      />
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto"
+      icon={ClipboardList}
+      title="Current Positions"
+      headerRight={
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshMutation.isPending ? "animate-spin" : ""}`} />Refresh P/L
+          </button>
+          <button onClick={() => setShowSettings(true)}
+            className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
+            <Settings className="h-3.5 w-3.5" />Settings
+          </button>
+          <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
+            className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
+            <Plus className="h-3.5 w-3.5" />Add Trade
+          </button>
+        </div>
+      }
+      howItWorksTitle="How the Trade Tracker works"
+      howItWorks={
+        <>
+          <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
 
-      {/* How It Works */}
-      <HelpBlock title="How the Trade Tracker Works">
-        <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
+          <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
+          <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
+          <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-bull-light font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
+          <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
 
-        <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
-        <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
-        <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-bull-light font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
-        <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
+          <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
+          <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
+          <p><strong className="text-foreground">Partial closes</strong> — the close modal has a <strong className="text-foreground">Qty</strong> field with All/½ helpers. Close part of a position and the tracker creates a closed child row with prorated commissions, allocation, and max profit while keeping the rest open at the original cost basis.</p>
+          <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
 
-        <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
-        <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
-        <p><strong className="text-foreground">Partial closes</strong> — the close modal has a <strong className="text-foreground">Qty</strong> field with All/½ helpers. Close part of a position and the tracker creates a closed child row with prorated commissions, allocation, and max profit while keeping the rest open at the original cost basis.</p>
-        <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
+          <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
+          <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-bull-light">GO ↑</span>, <span className="text-bear-light">GO ↓</span>, <span className="text-bull-light">SET ↑</span>, <span className="text-bear-light">SET ↓</span>, <span className="text-bull-light">READY ↑</span>, <span className="text-bear-light">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
 
-        <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
-        <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-bull-light">GO ↑</span>, <span className="text-bear-light">GO ↓</span>, <span className="text-bull-light">SET ↑</span>, <span className="text-bear-light">SET ↓</span>, <span className="text-bull-light">READY ↑</span>, <span className="text-bear-light">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
+          <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
+          <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
+          <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-tracks every trade's open/close cash flow. Doesn't match your broker? Open Settings and type in the current cash value — the system re-anchors and stays in sync from there.</p>
+          <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
+          <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
+          <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
+          <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-bull-light">green 55%+</span>, <span className="text-watch-light">yellow 45–54%</span>, <span className="text-bear-light">red below 45%</span>.</p>
+          <p><strong className="text-foreground">Allocated</strong> — What percentage of your portfolio is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
 
-        <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
-        <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
-        <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-tracks every trade's open/close cash flow. Doesn't match your broker? Open Settings and type in the current cash value — the system re-anchors and stays in sync from there.</p>
-        <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
-        <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
-        <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
-        <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-bull-light">green 55%+</span>, <span className="text-watch-light">yellow 45–54%</span>, <span className="text-bear-light">red below 45%</span>.</p>
-        <p><strong className="text-foreground">Allocated</strong> — What percentage of your portfolio is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
-
-        <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
-        <p>Track your trading psychology by tagging each closed trade:</p>
-        <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
+          <p>Track your trading psychology by tagging each closed trade:</p>
+          <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
+        </>
+      }
+    >
       {/* Summary Cards */}
       {summary && (
         <>
@@ -1681,7 +1679,7 @@ export default function TradeTracker() {
         />
       )}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
-    </div>
+    </PageTemplate>
   );
 }
 

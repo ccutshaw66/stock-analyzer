@@ -4,7 +4,7 @@ import {
   BarChart3, TrendingUp, DollarSign, Target,
   AlertTriangle, Download, Spline,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { API_TRADES } from "@shared/api/endpoints";
@@ -13,8 +13,7 @@ import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from "recharts";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -281,32 +280,28 @@ export default function PayoffDiagram() {
   }, [data]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="payoff-diagram-page">
-      {/* Title */}
-      <PageHeader
-        icon={Spline}
-        title="Payoff Diagram"
-        subtitle="Visualize the profit/loss at expiration for any options strategy."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
-      {/* How It Works */}
-      <HelpBlock title="How to read a payoff diagram">
-        <p>A payoff diagram shows your <strong className="text-foreground">profit or loss at expiration</strong> for every possible stock price.</p>
-        <p><strong className="text-foreground">X-axis:</strong> Stock price at expiration. <strong className="text-foreground">Y-axis:</strong> Your profit or loss in dollars.</p>
-        <p><strong className="text-foreground">The horizontal line at $0</strong> is your breakeven — above it you profit, below you lose money.</p>
-        <Example type="good">
-          <strong className="text-bull-light">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
-        </Example>
-        <Example type="neutral">
-          <strong className="text-watch-light">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
-        </Example>
-        <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
-        <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Spline}
+      title="Payoff Diagram"
+      subtitle="Visualize the profit/loss at expiration for any options strategy."
+      howItWorksTitle="How to read a payoff diagram"
+      howItWorks={
+        <>
+          <p>A payoff diagram shows your <strong className="text-foreground">profit or loss at expiration</strong> for every possible stock price.</p>
+          <p><strong className="text-foreground">X-axis:</strong> Stock price at expiration. <strong className="text-foreground">Y-axis:</strong> Your profit or loss in dollars.</p>
+          <p><strong className="text-foreground">The horizontal line at $0</strong> is your breakeven — above it you profit, below you lose money.</p>
+          <Example type="good">
+            <strong className="text-bull-light">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
+          </Example>
+          <Example type="neutral">
+            <strong className="text-watch-light">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
+          </Example>
+          <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
+          <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
+        </>
+      }
+    >
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <BarChart3 className="h-4 w-4 text-primary" />
@@ -484,7 +479,7 @@ export default function PayoffDiagram() {
           </ResponsiveContainer>
         </div>
       </div>
-    </div>
+    </PageTemplate>
   );
 }
 

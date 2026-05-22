@@ -3,12 +3,11 @@ import {
   Activity, TrendingUp, DollarSign, Percent,
   AlertTriangle, Calculator, Target, Download, Sigma,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { API_TRADES } from "@shared/api/endpoints";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Black-Scholes Math ──────────────────────────────────────────────────────
 
@@ -203,36 +202,32 @@ export default function GreeksCalculator() {
   }, [stockPrice, strikePrice, dte, iv, riskFreeRate, isCall]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="greeks-calculator-page">
-      {/* Title */}
-      <PageHeader
-        icon={Sigma}
-        title="Greeks Calculator"
-        subtitle="Black-Scholes Greeks with plain-English interpretation."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
-      {/* How It Works */}
-      <HelpBlock title="Understanding the Options Greeks">
-        <p>The Greeks measure how an option's price changes when market conditions change. They help you manage risk.</p>
-        <p><strong className="text-foreground">Delta (Δ):</strong> How much the option price moves per $1 stock move. A delta of 0.50 means the option gains ~$50 per contract per $1 stock increase. Calls have positive delta (0 to 1), puts have negative delta (-1 to 0).</p>
-        <Example type="good">
-          <strong className="text-bull-light">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
-        </Example>
-        <p><strong className="text-foreground">Gamma (Γ):</strong> How fast delta changes. High gamma near expiration means delta (and your position) can shift dramatically.</p>
-        <p><strong className="text-foreground">Theta (Θ):</strong> Time decay — how much value the option loses each day. Negative for long options (you lose money each day), positive for short options (you benefit from decay).</p>
-        <Example type="bad">
-          <strong className="text-bear-light">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
-        </Example>
-        <p><strong className="text-foreground">Vega (ν):</strong> Sensitivity to implied volatility. A vega of 0.10 means a 1% IV increase adds $10 per contract. Buy options when you expect IV to rise, sell when you expect it to fall.</p>
-        <p><strong className="text-foreground">Rho (ρ):</strong> Sensitivity to interest rates. Usually the least impactful Greek, but matters for LEAPS and in high-rate environments.</p>
-        <ScoreRange label="High Delta" range="|Δ| > 0.70" color="green" description="Deep ITM — high probability of profit, behaves like stock" />
-        <ScoreRange label="At the Money" range="|Δ| ≈ 0.50" color="yellow" description="Highest gamma and time value — maximum uncertainty" />
-        <ScoreRange label="Low Delta" range="|Δ| < 0.30" color="red" description="OTM — low probability, but cheap. Lottery ticket territory" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Sigma}
+      title="Greeks Calculator"
+      subtitle="Black-Scholes Greeks with plain-English interpretation."
+      howItWorksTitle="Understanding the Options Greeks"
+      howItWorks={
+        <>
+          <p>The Greeks measure how an option's price changes when market conditions change. They help you manage risk.</p>
+          <p><strong className="text-foreground">Delta (Δ):</strong> How much the option price moves per $1 stock move. A delta of 0.50 means the option gains ~$50 per contract per $1 stock increase. Calls have positive delta (0 to 1), puts have negative delta (-1 to 0).</p>
+          <Example type="good">
+            <strong className="text-bull-light">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
+          </Example>
+          <p><strong className="text-foreground">Gamma (Γ):</strong> How fast delta changes. High gamma near expiration means delta (and your position) can shift dramatically.</p>
+          <p><strong className="text-foreground">Theta (Θ):</strong> Time decay — how much value the option loses each day. Negative for long options (you lose money each day), positive for short options (you benefit from decay).</p>
+          <Example type="bad">
+            <strong className="text-bear-light">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
+          </Example>
+          <p><strong className="text-foreground">Vega (ν):</strong> Sensitivity to implied volatility. A vega of 0.10 means a 1% IV increase adds $10 per contract. Buy options when you expect IV to rise, sell when you expect it to fall.</p>
+          <p><strong className="text-foreground">Rho (ρ):</strong> Sensitivity to interest rates. Usually the least impactful Greek, but matters for LEAPS and in high-rate environments.</p>
+          <ScoreRange label="High Delta" range="|Δ| > 0.70" color="green" description="Deep ITM — high probability of profit, behaves like stock" />
+          <ScoreRange label="At the Money" range="|Δ| ≈ 0.50" color="yellow" description="Highest gamma and time value — maximum uncertainty" />
+          <ScoreRange label="Low Delta" range="|Δ| < 0.30" color="red" description="OTM — low probability, but cheap. Lottery ticket territory" />
+        </>
+      }
+    >
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <Activity className="h-4 w-4 text-primary" />
@@ -420,7 +415,7 @@ export default function GreeksCalculator() {
           </div>
         )}
       </div>
-    </div>
+    </PageTemplate>
   );
 }
 

@@ -2,9 +2,8 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { BarChart3, TrendingUp, TrendingDown, Activity, X, Loader2, ArrowRight, Grid3X3 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import { formatCompact } from "@/lib/format";
 import { useTicker } from "@/contexts/TickerContext";
 import { SIGNAL_BULL, SIGNAL_BEAR, hexToRgb } from "@/lib/design-tokens";
@@ -102,35 +101,31 @@ export default function SectorHeatmap() {
   }, [sectors, timeframe]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="sector-heatmap-page">
-      {/* Title */}
-      <PageHeader
-        icon={Grid3X3}
-        title="Sector Heatmap"
-        subtitle="Track money flow across market sectors. Green = outperforming, Red = underperforming."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
-      {/* How It Works */}
-      <HelpBlock title="Understanding sector rotation">
-        <p><strong className="text-foreground">Sector rotation</strong> is the movement of money between different market sectors as economic conditions change.</p>
-        <p>Smart money tends to rotate into sectors that benefit from the current economic cycle:</p>
-        <Example type="good">
-          <strong className="text-bull-light">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
-        </Example>
-        <Example type="neutral">
-          <strong className="text-watch-light">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
-        </Example>
-        <Example type="bad">
-          <strong className="text-bear-light">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
-        </Example>
-        <ScoreRange label="Strong" range="> +3%" color="green" description="Sector is outperforming — money is flowing in" />
-        <ScoreRange label="Neutral" range="±1%" color="yellow" description="Flat performance — sector is in line with the market" />
-        <ScoreRange label="Weak" range="< -3%" color="red" description="Sector is underperforming — money is flowing out" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Grid3X3}
+      title="Sector Heatmap"
+      subtitle="Track money flow across market sectors. Green = outperforming, Red = underperforming."
+      howItWorksTitle="Understanding sector rotation"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Sector rotation</strong> is the movement of money between different market sectors as economic conditions change.</p>
+          <p>Smart money tends to rotate into sectors that benefit from the current economic cycle:</p>
+          <Example type="good">
+            <strong className="text-bull-light">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
+          </Example>
+          <Example type="neutral">
+            <strong className="text-watch-light">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
+          </Example>
+          <Example type="bad">
+            <strong className="text-bear-light">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
+          </Example>
+          <ScoreRange label="Strong" range="> +3%" color="green" description="Sector is outperforming — money is flowing in" />
+          <ScoreRange label="Neutral" range="±1%" color="yellow" description="Flat performance — sector is in line with the market" />
+          <ScoreRange label="Weak" range="< -3%" color="red" description="Sector is underperforming — money is flowing out" />
+        </>
+      }
+    >
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -234,7 +229,7 @@ export default function SectorHeatmap() {
           onClose={() => setDrillSymbol(null)}
         />
       )}
-    </div>
+    </PageTemplate>
   );
 }
 

@@ -9,8 +9,7 @@
 import { Link, useRoute } from "wouter";
 import { ChevronLeft } from "lucide-react";
 import { HtfPatternChart } from "@/components/chart";
-import { PageHeader } from "@/components/PageHeader";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
 import { AlertTriangle } from "lucide-react";
 
@@ -29,22 +28,34 @@ export default function HtfChartPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={`${symbol} — HTF Pattern`}
-        subtitle="Pole / flag / breakout · target · stop · 20-MA trail"
-        right={
-          <Link
-            href="/htf"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back to setups
-          </Link>
-        }
-      />
+    <PageTemplate
+      title={`${symbol} — HTF Pattern`}
+      subtitle="Pole / flag / breakout · target · stop · 20-MA trail"
+      headerRight={
+        <Link
+          href="/htf"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back to setups
+        </Link>
+      }
+      howItWorksTitle="How to read this chart"
+      howItWorks={
+        <>
+          <p>You're looking at the High Tight Flag pattern for {symbol}.</p>
+          <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
+            <li><span className="font-semibold text-foreground">Pole start</span> marker — beginning of the 30%+ run-up</li>
+            <li><span className="font-semibold text-foreground">Flag</span> marker — beginning of the tight consolidation</li>
+            <li><span className="font-semibold text-foreground">Breakout</span> arrow — close that broke the flag high on volume</li>
+            <li>Horizontal price lines for the suggested <span className="font-semibold text-foreground">entry</span>, <span className="font-semibold text-foreground">target</span>, and <span className="font-semibold text-foreground">stop</span></li>
+            <li><span className="font-semibold text-foreground">20-day MA</span> overlay — Givens' suggested trail-stop line for the back 2/3 of the position after the partial</li>
+          </ul>
+          <p>Click <span className="font-semibold text-foreground">Back to setups</span> for the full scanner ruleset, position-sizing rules, and the Live / Watch / Filtered tabs.</p>
+        </>
+      }
+    >
       <HtfPatternChart symbol={symbol} />
-      <Disclaimer />
-    </div>
+    </PageTemplate>
   );
 }

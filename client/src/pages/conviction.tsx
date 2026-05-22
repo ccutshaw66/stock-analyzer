@@ -27,9 +27,8 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { API_DIAG_CONVICTION_BACKTEST } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
-import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 import {
   Compass, TrendingUp, TrendingDown, Minus, Loader2,
   Building2, Activity, LineChart, BarChart3,
@@ -440,15 +439,47 @@ export default function ConvictionPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  if (!activeTicker) {
-    return (
-      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-        <PageHeader
-          icon={Compass}
-          title="Conviction Compass"
-          subtitle="One signal from four independent data streams. High conviction requires agreement."
-        />
-        <Disclaimer />
+  const verdictMeta = compass ? VERDICT_COPY[compass.verdict] : null;
+
+  const subtitle = !activeTicker
+    ? "One signal from four independent data streams. High conviction requires agreement."
+    : isLoading
+      ? `Building reading for ${activeTicker}…`
+      : compass
+        ? `${compass.ticker} — one signal from four independent data streams.`
+        : `${activeTicker} — one signal from four independent data streams.`;
+
+  const headerRight = compass ? (
+    <div className="text-xs text-muted-foreground">
+      Confidence:{" "}
+      <span className={`font-semibold ${
+        compass.confidence === "HIGH" ? "text-bull-light"
+          : compass.confidence === "MODERATE" ? "text-watch-light"
+          : "text-bear-light"
+      }`}>{compass.confidence}</span>
+    </div>
+  ) : undefined;
+
+  return (
+    <PageTemplate
+      className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5"
+      icon={Compass}
+      title="Conviction Compass"
+      subtitle={subtitle}
+      headerRight={headerRight}
+      howItWorksTitle="How the Conviction Compass works"
+      howItWorks={
+        <>
+          <p>The Compass fuses <strong className="text-foreground">four independent signal categories</strong> into a single reading. Because each axis pulls from a different data stream, agreement across axes is much stronger evidence than agreement across, say, four technical indicators that all read the same price.</p>
+          <p><strong className="text-foreground">Smart Money Flow</strong> — institutional buying/selling and insider activity (13F + Form 4).</p>
+          <p><strong className="text-foreground">Dealer Positioning</strong> — gamma exposure and dealer hedging direction (options chain).</p>
+          <p><strong className="text-foreground">Technical Momentum</strong> — trend, RSI, and breakout structure (price/volume).</p>
+          <p><strong className="text-foreground">Fundamental Quality</strong> — earnings, balance sheet, and growth (financial statements).</p>
+          <p className="mt-2"><strong className="text-foreground">Reading the radar:</strong> distance from the center is magnitude; color is direction. When all four extend the same way, conviction is HIGH. When they fight, confidence drops to MODERATE or LOW.</p>
+        </>
+      }
+    >
+      {!activeTicker ? (
         <div className="text-center py-16 text-muted-foreground">
           <Compass className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker for a Conviction Compass reading</p>
@@ -457,162 +488,104 @@ export default function ConvictionPage() {
             into a single signal. Highest conviction = all four agree.
           </p>
         </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-        <PageHeader
-          icon={Compass}
-          title="Conviction Compass"
-          subtitle={`Building reading for ${activeTicker}…`}
-        />
-        <Disclaimer />
+      ) : isLoading ? (
         <div className="flex flex-col items-center gap-3 py-24">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Building Conviction Compass for {activeTicker}…</p>
         </div>
-      </div>
-    );
-  }
-
-  if (error || !compass) {
-    return (
-      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-        <PageHeader
-          icon={Compass}
-          title="Conviction Compass"
-          subtitle={`${activeTicker} — one signal from four independent data streams.`}
-        />
-        <Disclaimer />
+      ) : error || !compass || !verdictMeta ? (
         <div className="bg-card border border-bear/30 rounded-xl p-6 text-center">
           <p className="text-bear-light font-semibold">Could not build Conviction Compass</p>
           <p className="text-xs text-muted-foreground mt-2">{(error as any)?.message || "Try refreshing."}</p>
         </div>
-      </div>
-    );
-  }
-
-  const verdictMeta = VERDICT_COPY[compass.verdict];
-
-  return (
-    <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-      {/* Title */}
-      <PageHeader
-        icon={Compass}
-        title="Conviction Compass"
-        subtitle={`${compass.ticker} — one signal from four independent data streams.`}
-        right={
-          <div className="text-xs text-muted-foreground">
-            Confidence:{" "}
-            <span className={`font-semibold ${
-              compass.confidence === "HIGH" ? "text-bull-light"
-                : compass.confidence === "MODERATE" ? "text-watch-light"
-                : "text-bear-light"
-            }`}>{compass.confidence}</span>
+      ) : (
+        <>
+          {/* Verdict pill */}
+          <div className={`rounded-xl border p-5 ${verdictToneClasses(verdictMeta.tone)}`}>
+            <div className="text-xs uppercase tracking-wider opacity-80">Verdict</div>
+            <div className="text-2xl font-bold mt-1">{verdictMeta.label}</div>
+            <div className="text-sm mt-2 opacity-90">{verdictMeta.sub}</div>
           </div>
-        }
-      />
 
-      {/* Disclaimer */}
-      <Disclaimer />
+          {/* Radar + confluence side-by-side */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <CompassRadar compass={compass} />
+            </div>
+            <div>
+              <ConfluenceGauge confluence={compass.confluence} alignment={compass.alignment} />
+            </div>
+          </div>
 
-      {/* How It Works */}
-      <HelpBlock title="How the Conviction Compass works">
-        <p>The Compass fuses <strong className="text-foreground">four independent signal categories</strong> into a single reading. Because each axis pulls from a different data stream, agreement across axes is much stronger evidence than agreement across, say, four technical indicators that all read the same price.</p>
-        <p><strong className="text-foreground">Smart Money Flow</strong> — institutional buying/selling and insider activity (13F + Form 4).</p>
-        <p><strong className="text-foreground">Dealer Positioning</strong> — gamma exposure and dealer hedging direction (options chain).</p>
-        <p><strong className="text-foreground">Technical Momentum</strong> — trend, RSI, and breakout structure (price/volume).</p>
-        <p><strong className="text-foreground">Fundamental Quality</strong> — earnings, balance sheet, and growth (financial statements).</p>
-        <p className="mt-2"><strong className="text-foreground">Reading the radar:</strong> distance from the center is magnitude; color is direction. When all four extend the same way, conviction is HIGH. When they fight, confidence drops to MODERATE or LOW.</p>
-      </HelpBlock>
+          {/* Axis breakdown */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AxisCard
+              title="Smart Money Flow"
+              axis={compass.smartMoneyFlow}
+              icon={<Building2 className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Dealer Positioning"
+              axis={compass.dealerPositioning}
+              icon={<Activity className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Technical Momentum"
+              axis={compass.technicalMomentum}
+              icon={<LineChart className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Fundamental Quality"
+              axis={compass.fundamentalQuality}
+              icon={<BarChart3 className="h-4 w-4 text-primary" />}
+            />
+          </div>
 
-      {/* Verdict pill */}
-      <div className={`rounded-xl border p-5 ${verdictToneClasses(verdictMeta.tone)}`}>
-        <div className="text-xs uppercase tracking-wider opacity-80">Verdict</div>
-        <div className="text-2xl font-bold mt-1">{verdictMeta.label}</div>
-        <div className="text-sm mt-2 opacity-90">{verdictMeta.sub}</div>
-      </div>
+          {/* Live forward-tracking results */}
+          <BacktestPanel />
 
-      {/* Radar + confluence side-by-side */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2">
-          <CompassRadar compass={compass} />
-        </div>
-        <div>
-          <ConfluenceGauge confluence={compass.confluence} alignment={compass.alignment} />
-        </div>
-      </div>
-
-      {/* Axis breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <AxisCard
-          title="Smart Money Flow"
-          axis={compass.smartMoneyFlow}
-          icon={<Building2 className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Dealer Positioning"
-          axis={compass.dealerPositioning}
-          icon={<Activity className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Technical Momentum"
-          axis={compass.technicalMomentum}
-          icon={<LineChart className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Fundamental Quality"
-          axis={compass.fundamentalQuality}
-          icon={<BarChart3 className="h-4 w-4 text-primary" />}
-        />
-      </div>
-
-      {/* Live forward-tracking results */}
-      <BacktestPanel />
-
-      {/* Methodology */}
-      <HelpBlock title="How the Conviction Compass works">
-        <p>
-          Most "composite" trading indicators stack technical signals on top of each other —
-          MACD + RSI + Bollinger + ATR. That's still one category of signal:
-          price/volume momentum. When all four agree, you've confirmed momentum, but you
-          still don't know whether smart money agrees, whether dealers are positioned for
-          the move, or whether the fundamentals support it.
-        </p>
-        <p className="mt-2">
-          The Conviction Compass uses <strong className="text-foreground">four orthogonal
-          signal categories</strong> instead. When they agree, the signal is much stronger
-          than four correlated indicators agreeing.
-        </p>
-        <ul className="list-disc pl-5 mt-2 space-y-1">
-          <li><strong className="text-foreground">Smart Money Flow</strong> — institutional
-            QoQ position changes (13F-derived) plus insider transaction count (Form 4
-            buys minus sells over the trailing 180 days).</li>
-          <li><strong className="text-foreground">Dealer Positioning</strong> — gamma
-            exposure regime, distance from gamma walls, and put/call open interest skew
-            from the live options chain. Tells you what market makers must do as price moves.</li>
-          <li><strong className="text-foreground">Technical Momentum</strong> — RSI(14),
-            MACD histogram, EMA(9/21/50) stack alignment, and Bollinger %B from a 1-year
-            daily chart.</li>
-          <li><strong className="text-foreground">Fundamental Quality</strong> — the
-            existing 8-factor verdict score remapped from 0–10 to ±100.</li>
-        </ul>
-        <p className="mt-2">
-          Each axis is independently scored from −100 (strongly bearish) to +100 (strongly
-          bullish). The center confluence number is the magnitude-weighted average,
-          penalized when axes disagree in sign — divergent setups score near zero
-          regardless of how extreme any single axis is.
-        </p>
-        <p className="mt-2">
-          <strong className="text-foreground">Why "ALL ALIGNED" is the strongest setup:</strong>
-          {" "}independent data streams agreeing is much harder to fake than correlated TA
-          signals. Smart money can't manipulate analyst consensus, gamma exposure, AND
-          your moving averages simultaneously.
-        </p>
-      </HelpBlock>
-    </div>
+          {/* Methodology */}
+          <HelpBlock title="How the Conviction Compass works">
+            <p>
+              Most "composite" trading indicators stack technical signals on top of each other —
+              MACD + RSI + Bollinger + ATR. That's still one category of signal:
+              price/volume momentum. When all four agree, you've confirmed momentum, but you
+              still don't know whether smart money agrees, whether dealers are positioned for
+              the move, or whether the fundamentals support it.
+            </p>
+            <p className="mt-2">
+              The Conviction Compass uses <strong className="text-foreground">four orthogonal
+              signal categories</strong> instead. When they agree, the signal is much stronger
+              than four correlated indicators agreeing.
+            </p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li><strong className="text-foreground">Smart Money Flow</strong> — institutional
+                QoQ position changes (13F-derived) plus insider transaction count (Form 4
+                buys minus sells over the trailing 180 days).</li>
+              <li><strong className="text-foreground">Dealer Positioning</strong> — gamma
+                exposure regime, distance from gamma walls, and put/call open interest skew
+                from the live options chain. Tells you what market makers must do as price moves.</li>
+              <li><strong className="text-foreground">Technical Momentum</strong> — RSI(14),
+                MACD histogram, EMA(9/21/50) stack alignment, and Bollinger %B from a 1-year
+                daily chart.</li>
+              <li><strong className="text-foreground">Fundamental Quality</strong> — the
+                existing 8-factor verdict score remapped from 0–10 to ±100.</li>
+            </ul>
+            <p className="mt-2">
+              Each axis is independently scored from −100 (strongly bearish) to +100 (strongly
+              bullish). The center confluence number is the magnitude-weighted average,
+              penalized when axes disagree in sign — divergent setups score near zero
+              regardless of how extreme any single axis is.
+            </p>
+            <p className="mt-2">
+              <strong className="text-foreground">Why "ALL ALIGNED" is the strongest setup:</strong>
+              {" "}independent data streams agreeing is much harder to fake than correlated TA
+              signals. Smart money can't manipulate analyst consensus, gamma exposure, AND
+              your moving averages simultaneously.
+            </p>
+          </HelpBlock>
+        </>
+      )}
+    </PageTemplate>
   );
 }

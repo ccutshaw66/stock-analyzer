@@ -35,8 +35,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/PageHeader";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
 import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { STRATEGY_REGISTRY } from "@shared/strategies/registry";
@@ -632,13 +631,21 @@ export default function ChartPage() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
-      <PageHeader
-        icon={FlaskConical}
-        title="Strategy Chart"
-        subtitle="Compare strategies side-by-side. Toggle between BBTC+VER, AMC, and three TFT modes to see how each one trades the same ticker."
-      />
-      <Disclaimer />
+    <PageTemplate
+      icon={FlaskConical}
+      title="Strategy Chart"
+      subtitle="Compare strategies side-by-side. Toggle between BBTC+VER, AMC, and three TFT modes to see how each one trades the same ticker."
+      howItWorks={
+        <>
+          <p>Strategy Chart is the visual backtester. Pick a strategy from the toggle and a lookback window — the chart marks every entry, exit, and regime change the strategy would have made on the active ticker over that window.</p>
+          <p><strong className="text-foreground">Strategies:</strong> BBTC+VER (current Ready/Set/Go), AMC alone, and three TFT variants (40W / 60W / Catastrophic-only) that hold a CORE position through bullish regimes and scale with tactical adds.</p>
+          <p><strong className="text-foreground">Timeframes:</strong> 1Y, 3Y, 5Y (default), or 10Y of historical bars. TFT strategies need the longer windows to show their full regime cycles.</p>
+          <p><strong className="text-foreground">Summary card</strong> aggregates total P/L (realized + unrealized), win rate, R-multiple, captured B&H %, and max drawdown so you can compare strategies side-by-side without leaving the page.</p>
+          <p><strong className="text-foreground">Trade list</strong> below is sortable. Click any row to highlight that trade's dots on the chart; click again to clear.</p>
+          <p>Past results don't guarantee future performance. The basket-level numbers from the methodology blurb come from an 80-ticker backtest; this page shows you exactly how each strategy traded the ONE ticker you're looking at.</p>
+        </>
+      }
+    >
 
       {/* Strategy + timeframe selector */}
       <Card>
@@ -845,6 +852,6 @@ export default function ChartPage() {
           )}
         </>
       )}
-    </div>
+    </PageTemplate>
   );
 }

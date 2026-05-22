@@ -5,8 +5,8 @@ import {
   AlertTriangle, Loader2, Wallet, Clock, BarChart3,
   RefreshCw, PiggyBank, ChevronDown, Landmark, Info,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { PageHeader } from "@/components/PageHeader";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { API_DIVIDEND_PORTFOLIO } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
@@ -166,39 +166,37 @@ export default function DividendPortfolio() {
   const plColor = (v: number) => v >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividend-portfolio-page">
-      {/* Title */}
-      <PageHeader
-        icon={Landmark}
-        title="Dividend Positions"
-        subtitle="Auto-detected from your open stock positions that pay dividends."
-        right={
-          <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: [API_DIVIDEND_PORTFOLIO] })}
-            disabled={isRefetching}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
-            data-testid="button-refresh-dividends"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
-          </button>
-        }
-      />
-
-      {/* How It Works */}
-      <HelpBlock title="How Dividend Positions Work">
-        <p><strong className="text-foreground">Automatic Detection:</strong> This page scans all your open LONG stock positions and checks if they pay dividends. If they do, they show up here automatically — no manual entry needed.</p>
-        <p><strong className="text-foreground">Yield on Cost (YoC):</strong> Your personal dividend yield based on what you actually paid. If a stock's current yield is 3% but you bought it years ago at a lower price, your YoC could be much higher.</p>
-        <p><strong className="text-foreground">Annual Income:</strong> Total dividends expected per year based on shares owned and current dividend rate.</p>
-        <p><strong className="text-foreground">Ex-Dividend Date:</strong> Must own shares BEFORE this date to receive the next payment.</p>
-        <p><strong className="text-foreground">Distribution Date:</strong> When the dividend payment actually hits your account.</p>
-        <Example type="good">
-          <strong className="text-bull-light">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
-        </Example>
-        <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth" />
-        <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield but may lack growth or consistency" />
-        <ScoreRange label="Weak" range="0-34" color="red" description="Low yield, high payout risk, or inconsistent payments" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Landmark}
+      title="Dividend Positions"
+      subtitle="Auto-detected from your open stock positions that pay dividends."
+      headerRight={
+        <button
+          onClick={() => queryClient.invalidateQueries({ queryKey: [API_DIVIDEND_PORTFOLIO] })}
+          disabled={isRefetching}
+          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
+          data-testid="button-refresh-dividends"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
+        </button>
+      }
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Automatic Detection:</strong> This page scans all your open LONG stock positions and checks if they pay dividends. If they do, they show up here automatically — no manual entry needed.</p>
+          <p><strong className="text-foreground">Yield on Cost (YoC):</strong> Your personal dividend yield based on what you actually paid. If a stock's current yield is 3% but you bought it years ago at a lower price, your YoC could be much higher.</p>
+          <p><strong className="text-foreground">Annual Income:</strong> Total dividends expected per year based on shares owned and current dividend rate.</p>
+          <p><strong className="text-foreground">Ex-Dividend Date:</strong> Must own shares BEFORE this date to receive the next payment.</p>
+          <p><strong className="text-foreground">Distribution Date:</strong> When the dividend payment actually hits your account.</p>
+          <Example type="good">
+            <strong className="text-bull-light">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
+          </Example>
+          <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth" />
+          <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield but may lack growth or consistency" />
+          <ScoreRange label="Weak" range="0-34" color="red" description="Low yield, high payout risk, or inconsistent payments" />
+        </>
+      }
+    >
       {/* Portfolio Summary Cards */}
       {positions.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="portfolio-summary">
@@ -332,7 +330,7 @@ export default function DividendPortfolio() {
           <span>Only open LONG stock positions with active dividends appear here. Close a position in Trade Tracker and it leaves this list automatically.</span>
         </div>
       )}
-    </div>
+    </PageTemplate>
   );
 }
 

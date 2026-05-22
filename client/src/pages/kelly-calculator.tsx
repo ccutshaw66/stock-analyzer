@@ -12,8 +12,7 @@ import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PageHeader } from "@/components/PageHeader";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Kelly Criterion Calculator ──────────────────────────────────────────────
 
@@ -99,32 +98,28 @@ export default function KellyCalculator() {
   }, [winRate, avgWin, avgLoss, accountValue, kelly]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="kelly-calculator-page">
-      {/* Title */}
-      <PageHeader
-        icon={Percent}
-        title="Kelly Criterion"
-        subtitle="Optimal position sizing based on your edge."
-      />
-
-      {/* Disclaimer */}
-      <Disclaimer />
-
-      {/* How It Works */}
-      <HelpBlock title="What is the Kelly Criterion?">
-        <p>The Kelly Criterion calculates the <strong className="text-foreground">optimal fraction of your account to risk</strong> on each trade to maximize long-term growth.</p>
-        <p><strong className="text-foreground">Formula:</strong> f* = W − (1−W) / R, where W = win rate, R = avg win / avg loss.</p>
-        <Example type="good">
-          <strong className="text-bull-light">Positive Edge:</strong> Win rate = 55%, Avg Win = $200, Avg Loss = $150. R = 1.33. Kelly = 0.55 − 0.45/1.33 = 21.2%. You should risk about 21% of your account per trade for maximum growth. In practice, Half Kelly (10.6%) is recommended to reduce volatility.
-        </Example>
-        <Example type="bad">
-          <strong className="text-bear-light">No Edge:</strong> Win rate = 40%, Avg Win = $100, Avg Loss = $120. R = 0.83. Kelly = 0.40 − 0.60/0.83 = −32.5%. Negative Kelly means you have no edge — don't trade this strategy.
-        </Example>
-        <ScoreRange label="Full Kelly" range="> 0%" color="green" description="You have an edge — but Full Kelly is aggressive and leads to large drawdowns" />
-        <ScoreRange label="Half Kelly" range="> 0%" color="yellow" description="Recommended for most traders — 75% of growth with much lower risk of ruin" />
-        <ScoreRange label="Negative" range="< 0%" color="red" description="No mathematical edge — this strategy loses money over time" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Percent}
+      title="Kelly Criterion"
+      subtitle="Optimal position sizing based on your edge."
+      howItWorksTitle="What is the Kelly Criterion?"
+      howItWorks={
+        <>
+          <p>The Kelly Criterion calculates the <strong className="text-foreground">optimal fraction of your account to risk</strong> on each trade to maximize long-term growth.</p>
+          <p><strong className="text-foreground">Formula:</strong> f* = W − (1−W) / R, where W = win rate, R = avg win / avg loss.</p>
+          <Example type="good">
+            <strong className="text-bull-light">Positive Edge:</strong> Win rate = 55%, Avg Win = $200, Avg Loss = $150. R = 1.33. Kelly = 0.55 − 0.45/1.33 = 21.2%. You should risk about 21% of your account per trade for maximum growth. In practice, Half Kelly (10.6%) is recommended to reduce volatility.
+          </Example>
+          <Example type="bad">
+            <strong className="text-bear-light">No Edge:</strong> Win rate = 40%, Avg Win = $100, Avg Loss = $120. R = 0.83. Kelly = 0.40 − 0.60/0.83 = −32.5%. Negative Kelly means you have no edge — don't trade this strategy.
+          </Example>
+          <ScoreRange label="Full Kelly" range="> 0%" color="green" description="You have an edge — but Full Kelly is aggressive and leads to large drawdowns" />
+          <ScoreRange label="Half Kelly" range="> 0%" color="yellow" description="Recommended for most traders — 75% of growth with much lower risk of ruin" />
+          <ScoreRange label="Negative" range="< 0%" color="red" description="No mathematical edge — this strategy loses money over time" />
+        </>
+      }
+    >
       {/* Input Section */}
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -264,7 +259,7 @@ export default function KellyCalculator() {
           </ResponsiveContainer>
         </div>
       </div>
-    </div>
+    </PageTemplate>
   );
 }
 
