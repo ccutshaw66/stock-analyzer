@@ -85,6 +85,12 @@ export function useHtfScanner(opts: UseHtfScannerOptions = {}) {
     queryKey: [path],
     queryFn: async () => (await apiRequest("GET", path)).json(),
     staleTime: 60_000,
+    // Auto-poll every 5 min so users don't see stale-and-blank when
+    // returning to /htf. Server caches the scan for 30 min internally
+    // so this is cheap — just keeps the React Query cache warm.
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 }
 

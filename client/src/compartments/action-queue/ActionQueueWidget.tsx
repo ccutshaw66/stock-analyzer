@@ -39,8 +39,12 @@ export function ActionQueueWidget() {
   const { data, isLoading, error } = useQuery<{ items: ActionItem[]; generatedAt: number }>({
     queryKey: ["/api/dashboard/action-queue"],
     queryFn: async () => (await apiRequest("GET", "/api/dashboard/action-queue")).json(),
-    refetchInterval: 2 * 60 * 1000,
+    // 90s background poll. placeholderData = keepPrevious so refetches don't
+    // blank the list mid-look — Chris's "keeps clearing" complaint.
+    refetchInterval: 90 * 1000,
     staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: true,
   });
 
   if (isLoading) {

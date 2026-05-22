@@ -148,9 +148,17 @@ async function tradeAlerts(userId: number): Promise<ActionItem[]> {
   return items;
 }
 
-/** Surface unread + undismissed cron alerts from the last 24 hours. */
+/**
+ * Surface undismissed cron alerts from the last 72 hours.
+ *
+ * Earlier version capped at 24h + filtered out `read` alerts — which made
+ * the queue look like it was "always clearing" because alerts auto-aged out
+ * even when the user hadn't explicitly dismissed them. Now items stay until
+ * the user dismisses them (the existing `/alerts` page dismiss button writes
+ * `dismissed = true`).
+ */
 async function cronAlerts(userId: number): Promise<ActionItem[]> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = new Date(Date.now() - 72 * 60 * 60 * 1000);
   try {
     const rows = await db
       .select()
