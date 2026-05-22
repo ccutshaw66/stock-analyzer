@@ -6,17 +6,18 @@ import { CheckCircle2, Circle, Flame, History, Loader2, X } from "lucide-react";
 interface ChecklistItem {
   id: string;
   label: string;
-  source: string;          // citation (e.g. "O'Neil M" / "Aziz" / "Bennet")
   auto?: boolean;          // auto-checked from system state, no manual click
 }
 
+// Item order + reasoning lives in the dashboard's "How it works" block,
+// not in per-item sub-labels — keeps the checklist UI clean and scannable.
 const CHECKLIST_ITEMS: ChecklistItem[] = [
-  { id: "regime", label: "Reviewed Market Pulse regime", source: "O'Neil M" },
-  { id: "actions", label: "Reviewed Action Queue (open positions needing attention)", source: "O'Neil — manage what you have first" },
-  { id: "earnings", label: "Reviewed earnings exposure (14-day window)", source: "Bennet vol-crush", auto: true },
-  { id: "news", label: "Reviewed Position News for material developments", source: "Aziz situational awareness" },
-  { id: "triggers", label: "Reviewed dashboard for new overnight triggers", source: "Chris" },
-  { id: "loss-budget", label: "Within today's loss budget", source: "Aziz 1%/day", auto: true },
+  { id: "regime", label: "Reviewed Market Pulse regime" },
+  { id: "actions", label: "Reviewed Action Queue (open positions needing attention)" },
+  { id: "earnings", label: "Reviewed earnings exposure (next 14 days)", auto: true },
+  { id: "news", label: "Reviewed Position News for material developments" },
+  { id: "triggers", label: "Reviewed dashboard for new overnight triggers" },
+  { id: "loss-budget", label: "Within today's loss budget", auto: true },
 ];
 
 interface TodayResponse {
@@ -165,9 +166,9 @@ export function MorningChecklistWidget() {
               <div className="flex-1 min-w-0">
                 <div className={`text-xs ${checked ? "text-foreground" : "text-muted-foreground"}`}>
                   {item.label}
-                </div>
-                <div className="text-micro text-muted-foreground/60 italic">
-                  {item.source}{item.auto ? " · auto" : ""}
+                  {item.auto && (
+                    <span className="ml-1.5 text-micro text-muted-foreground/60 italic">auto</span>
+                  )}
                 </div>
               </div>
             </button>
@@ -177,7 +178,7 @@ export function MorningChecklistWidget() {
 
       <div className="px-3 pb-2">
         <label className="block text-micro text-muted-foreground uppercase tracking-wider font-semibold mb-1">
-          Today's focus (Aziz process &gt; outcome)
+          Today's focus
         </label>
         <textarea
           value={focusNote}

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Activity, Loader2 } from "lucide-react";
 
@@ -55,19 +56,49 @@ function riskTone(pct: number): string {
 /**
  * Single labeled stat with a hover tooltip explaining what it means.
  * Plain-English labels — no "Book" / "Loss budget" trader slang.
+ *
+ * Clickable when `href` is supplied — clicking navigates to the source
+ * page so the user doesn't have to hunt. Per Chris's feedback: every
+ * surface should be the click-target, not just a static read.
  */
 function Stat({
-  label, value, tone, tip,
-}: { label: string; value: React.ReactNode; tone: string; tip: string }) {
-  return (
-    <div className="flex flex-col min-w-0" title={tip}>
+  label, value, tone, tip, href, onNavigate,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone: string;
+  tip: string;
+  href?: string;
+  onNavigate?: (href: string) => void;
+}) {
+  const inner = (
+    <>
       <span className="text-micro uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
       <span className={`text-sm font-bold tabular-nums truncate ${tone}`}>{value}</span>
+    </>
+  );
+  if (href && onNavigate) {
+    return (
+      <button
+        type="button"
+        onClick={() => onNavigate(href)}
+        title={tip}
+        className="flex flex-col min-w-0 text-left rounded px-2 -mx-2 py-0.5 hover:bg-muted/40 transition-colors"
+        data-testid={`brief-stat-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col min-w-0" title={tip}>
+      {inner}
     </div>
   );
 }
 
 export function MorningBriefWidget() {
+  const [, navigate] = useLocation();
   const { data, isLoading, error } = useQuery<MorningBriefData>({
     queryKey: ["/api/dashboard/morning-brief"],
     queryFn: async () => (await apiRequest("GET", "/api/dashboard/morning-brief")).json(),
@@ -113,7 +144,9 @@ export function MorningBriefWidget() {
               )}
             </>
           }
-          tip="Market Pulse regime tier. RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC — computed from VIX, breadth, risk appetite. Click Market Pulse for details."
+          tip="Market Pulse regime tier. Click to open."
+          href="/market-pulse"
+          onNavigate={navigate}
         />
 
         <Stat
@@ -124,7 +157,9 @@ export function MorningBriefWidget() {
               ? <>{book.openPositionCount} <span className="text-muted-foreground font-normal">·</span> {fmtMoney(book.totalPnLDollar, true)}</>
               : <span className="text-muted-foreground font-normal">None</span>
           }
-          tip="How many trades are currently open + the combined unrealized + realized-today P&L on them. Click Current Positions for the breakdown."
+          tip="Count + total P&L on open trades. Click to open Current Positions."
+          href="/tracker"
+          onNavigate={navigate}
         />
 
         <Stat
@@ -135,7 +170,12 @@ export function MorningBriefWidget() {
               ? <>{attention.itemCount}{attention.criticalCount > 0 && <span className="text-bear-light font-normal ml-1">({attention.criticalCount} urgent)</span>}</>
               : <span className="text-bull-light">All clear</span>
           }
-          tip="Number of items in the Action Queue today — positions near stops/targets/partials, alerts that fired, earnings approaching."
+          tip="Items in today's Action Queue. Click to scroll to it."
+          href="#action-queue"
+          onNavigate={(_h) => {
+            const el = document.querySelector('[data-testid="action-queue"]');
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
         />
 
         <Stat
@@ -146,7 +186,9 @@ export function MorningBriefWidget() {
               ? <>{freshSetups.htfCount} HTF</>
               : <span className="font-normal">None</span>
           }
-          tip="Fresh HTF (High Tight Flag) breakouts that fired overnight and are still within Givens' entry window (today's or tomorrow's open)."
+          tip="Fresh HTF breakouts in the entry window. Click to open."
+          href="/htf"
+          onNavigate={navigate}
         />
 
         <Stat
@@ -158,7 +200,9 @@ export function MorningBriefWidget() {
               <span className="text-muted-foreground font-normal ml-1">({Math.round(lossBudget.pctUsed * 100)}%)</span>
             </>
           }
-          tip="Aziz 1%-per-day rule: how much $ you've put at risk today (realized losses + open drawdown) versus your daily cap (1% of starting account value). Above 60% = caution; above 100% = stop trading today."
+          tip="Today's risk vs daily cap. Click to open Current Positions."
+          href="/tracker"
+          onNavigate={navigate}
         />
       </div>
     </div>

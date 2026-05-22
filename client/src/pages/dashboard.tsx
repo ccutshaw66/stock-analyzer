@@ -256,9 +256,30 @@ export default function Dashboard() {
       headerRight={toolbarChips}
       howItWorks={
         <>
-          <p>Your 5-minute morning workspace. Six compartments synthesize data from across Stockotter so you don't have to click through 4 pages to figure out what needs your attention today.</p>
-          <p><strong className="text-foreground">Morning Brief</strong> (top banner): one-sentence summary of market regime + your book P&L + how many items need attention + fresh setups overnight + today's loss budget usage. <strong className="text-foreground">Action Queue</strong>: prioritized list of decisions today — open positions near stops/targets/partials, alerts that fired, fresh HTF setups in Givens' entry window, earnings on your tickers in 2 days. If nothing's actionable, it doesn't show up. <strong className="text-foreground">Morning Checklist</strong>: book-anchored pre-market routine (O'Neil + Aziz + Bennet + Wyckoff) with daily focus note + 7-day history + streak counter. <strong className="text-foreground">Confluence Pulse</strong>: 5-spoke radar (Smart Money + Dealer Positioning + Technical + Fundamental + Market Regime) for the active ticker — the "everything in one page" lens. <strong className="text-foreground">Position News</strong>: headlines + press releases on tickers you actually hold; no scanner-style discovery feed. <strong className="text-foreground">Ask Otter</strong>: Claude-powered Q&A — shell visible in v1, enable per-account in Settings to activate.</p>
-          <p><strong className="text-foreground">Customize</strong> button (top-right) reveals drag-to-rearrange + hide/restore widget controls. Off by default — the curated layout is opinionated for a reason. Hidden widgets show up as toolbar chips when Customize is on.</p>
+          <p>Your 5-minute morning workspace. Six tiles synthesize data from across Stockotter so you don't have to click through 4 pages to figure out what needs your attention today.</p>
+
+          <p className="font-semibold text-foreground mt-2">What each tile shows</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li><strong className="text-foreground">Morning Brief</strong> (top banner): five at-a-glance stats — market regime, count + P&L on open positions, items needing attention, fresh setups overnight, and how much of today's risk cap you've used. Hover any stat for a one-liner.</li>
+            <li><strong className="text-foreground">Action Queue</strong>: every decision you might need to make today, sorted by urgency. If there's nothing to do on a position, it doesn't appear. Empty queue = all clear.</li>
+            <li><strong className="text-foreground">Morning Checklist</strong>: pre-market routine + a one-sentence focus note for the day. Two items auto-check from system state (earnings exposure + daily risk); the other four you tick after scrolling the dashboard. Logged daily with a 7-day history and streak counter.</li>
+            <li><strong className="text-foreground">Confluence Pulse</strong>: five-spoke radar for the active ticker — smart money, dealer positioning, technicals, fundamentals, market regime. Click a spoke to drill into the source page.</li>
+            <li><strong className="text-foreground">Position News</strong>: headlines + press releases on tickers you hold. Not a discovery scanner — situational awareness only.</li>
+            <li><strong className="text-foreground">Ask Otter</strong>: AI chat for trading questions. Off by default; flip on per-account in Settings to activate (paid feature).</li>
+          </ul>
+
+          <p className="font-semibold text-foreground mt-2">Why each checklist item is there</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li><strong className="text-foreground">Reviewed Market Pulse regime</strong> — environment dictates whether to add risk today.</li>
+            <li><strong className="text-foreground">Reviewed Action Queue</strong> — manage existing positions before scanning for new ones.</li>
+            <li><strong className="text-foreground">Reviewed earnings exposure</strong> (auto) — surfaces any held tickers reporting in the next 14 days. Material for option holders especially.</li>
+            <li><strong className="text-foreground">Reviewed Position News</strong> — heads-up on what's happening with what you own, without inviting trade-the-news behaviour.</li>
+            <li><strong className="text-foreground">Reviewed dashboard for new overnight triggers</strong> — fresh HTF / Wyckoff / BBTC setups since you last looked.</li>
+            <li><strong className="text-foreground">Within today's loss budget</strong> (auto) — hard daily cap (1% of starting account value) protects you from spiral days.</li>
+            <li><strong className="text-foreground">Today's focus</strong> — one-sentence intention. Tracks whether you followed your plan, not whether you made money.</li>
+          </ul>
+
+          <p className="mt-2"><strong className="text-foreground">Customize</strong> button (top-right) reveals drag-to-rearrange + hide/restore widget controls. Off by default — the curated layout is opinionated for a reason. Hidden widgets show up as toolbar chips when Customize is on.</p>
         </>
       }
     >
