@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { useTicker } from "@/contexts/TickerContext";
 import { PageTemplate } from "@/components/PageTemplate";
 import { Loader2, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from "lucide-react";
 
@@ -79,6 +80,15 @@ type SortMode = "activity" | "most-buying" | "most-selling";
 
 export default function InsidersPage() {
   const [, navigate] = useLocation();
+  const { setActiveTicker } = useTicker();
+  // Set the global active ticker AND navigate to a research page. Without
+  // setActiveTicker, Profile / Trade Analysis / Confluence Pulse would all
+  // stay on whatever ticker the user had open before — the URL param alone
+  // doesn't reach those pages (they read from TickerContext, not the URL).
+  const drillToTicker = (symbol: string) => {
+    setActiveTicker(symbol);
+    navigate(`/institutional?ticker=${symbol}`);
+  };
   const [sortMode, setSortMode] = useState<SortMode>("activity");
   // Chris rule (2026-05-22): only show high-signal rows — either ≥$1M
   // dollar activity OR ≥3 distinct insiders transacting in the window
@@ -213,7 +223,7 @@ export default function InsidersPage() {
                       return (
                         <tr
                           key={r.symbol}
-                          onClick={() => navigate(`/institutional?ticker=${r.symbol}`)}
+                          onClick={() => drillToTicker(r.symbol)}
                           className="border-t border-card-border/40 cursor-pointer hover:bg-muted/30 transition-colors"
                           data-testid={`insider-row-${r.symbol}`}
                         >

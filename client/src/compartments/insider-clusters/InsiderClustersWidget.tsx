@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { useTicker } from "@/contexts/TickerContext";
 import { Users, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 
 interface InsiderCluster {
@@ -29,7 +30,16 @@ function fmtMoney(n: number | null | undefined): string {
 
 export function InsiderClustersWidget() {
   const [, navigate] = useLocation();
+  const { setActiveTicker } = useTicker();
   const [filter, setFilter] = useState<"all" | "buy" | "sell">("buy");
+
+  // Set the global active ticker before navigating so the research pages
+  // (Profile, Trade Analysis, Confluence Pulse, etc.) all sync to the
+  // clicked cluster.
+  const drillToTicker = (symbol: string) => {
+    setActiveTicker(symbol);
+    navigate(`/institutional?ticker=${symbol}`);
+  };
 
   const { data, isLoading, error } = useQuery<InsiderClustersData>({
     queryKey: ["/api/dashboard/insiders/clusters"],
@@ -100,7 +110,7 @@ export function InsiderClustersWidget() {
             return (
               <li
                 key={`${c.symbol}-${c.direction}`}
-                onClick={() => navigate(`/institutional?ticker=${c.symbol}`)}
+                onClick={() => drillToTicker(c.symbol)}
                 className="px-3 py-2 text-xs hover:bg-muted/30 transition-colors cursor-pointer"
                 data-testid={`cluster-${c.symbol}-${c.direction}`}
               >
