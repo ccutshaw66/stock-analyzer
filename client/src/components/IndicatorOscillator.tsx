@@ -7,9 +7,8 @@ import {
   CHART_RSI,
   SIGNAL_WATCH_SHORT,
   SIGNAL_SHORT_ADD,
+  CHART_AXIS_LINE,
 } from "@/lib/design-tokens";
-
-const GRID_NEUTRAL = "rgb(82,82,91)";
 
 interface Bar {
   t: number;
@@ -108,7 +107,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
       {/* MACD pane */}
       <svg viewBox={`0 0 ${W} ${MACD_H}`} className="w-full" preserveAspectRatio="none" style={{ height: `${MACD_H}px` }}>
         {/* zero line */}
-        <line x1={PAD_X} x2={W - PAD_X} y1={MACD_H / 2} y2={MACD_H / 2} stroke={GRID_NEUTRAL} strokeWidth="0.5" strokeDasharray="2,2" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={MACD_H / 2} y2={MACD_H / 2} stroke={CHART_AXIS_LINE} strokeWidth="0.5" strokeDasharray="2,2" />
         {/* histogram bars */}
         {series.map((s, i) => {
           const y0 = MACD_H / 2;
@@ -138,7 +137,7 @@ export function IndicatorOscillator({ ticker, bars = 60 }: { ticker: string; bar
       <svg viewBox={`0 0 ${W} ${RSI_H}`} className="w-full mt-1" preserveAspectRatio="none" style={{ height: `${RSI_H}px` }}>
         {/* overbought/oversold bands */}
         <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(70)} y2={rsiY(70)} stroke={SIGNAL_BEAR} strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
-        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(50)} y2={rsiY(50)} stroke={GRID_NEUTRAL} strokeWidth="0.5" strokeDasharray="2,2" />
+        <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(50)} y2={rsiY(50)} stroke={CHART_AXIS_LINE} strokeWidth="0.5" strokeDasharray="2,2" />
         <line x1={PAD_X} x2={W - PAD_X} y1={rsiY(30)} y2={rsiY(30)} stroke={SIGNAL_BULL} strokeWidth="0.5" strokeDasharray="2,2" opacity={0.6} />
         <polyline points={rsiLinePts} fill="none" stroke={SIGNAL_SHORT_ADD} strokeWidth="1.2" />
       </svg>

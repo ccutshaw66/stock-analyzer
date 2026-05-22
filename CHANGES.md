@@ -9,6 +9,46 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-21 — Site audit cleanup: token leakage + cache bypass
+
+**Why:** /verify-work site-wide pass flagged 8 should-fix items across the design-token compartmentalization rule and one cache-layer bypass. None blocked ship in isolation, but they're exactly the kind of drift that turns into "why doesn't the brand color update everywhere" bugs later. Cleaning them in one pass before they multiply.
+
+**Color/token leakage (6 fixes):**
+- `client/src/components/chart/HtfPatternChart.tsx` — `"#f59e0b"` (flag-marker amber) → `ACCENT_AMBER_DEEP` token.
+- `client/src/components/SignalPulse.tsx` — replaced 9 literal `rgb(34,197,94)` / `rgb(239,68,68)` / `rgb(251,191,36)` / `rgb(113,113,122)` / `rgb(161,161,170)` strings with `SIGNAL_BULL` / `SIGNAL_BEAR` / `ACCENT_AMBER` / `CHART_ZERO_LINE` / `CHART_TEXT`.
+- `client/src/components/IndicatorOscillator.tsx` — removed local `GRID_NEUTRAL = "rgb(82,82,91)"`; now imports `CHART_AXIS_LINE`.
+- `client/src/pages/sector-heatmap.tsx` — `getHeatColor()` no longer hardcodes RGB channel ints. Uses new `hexToRgb()` helper to parse `SIGNAL_BEAR` / `SIGNAL_BULL` tokens into channels for the interpolation. A brand-color swap now reaches the heatmap automatically.
+- `client/src/pages/chart.tsx:568` — TACTICAL layer badge `bg-emerald-500/20 text-emerald-300` → `bg-bull/20 text-bull-light`.
+- `client/src/pages/chart.tsx:425/426` — Time-in-Market / Position-Type hint `text-blue-400` → `text-brand-accent`.
+- `client/src/pages/admin.tsx:260` — Uptime KPI `text-emerald-400` → `text-bull-light`.
+
+**Design tokens added** (`client/src/lib/design-tokens.ts`):
+- `CHART_AXIS_LINE = "#52525b"` (zinc-600) — SVG axis/grid lines.
+- `CHART_ZERO_LINE = "#71717a"` (zinc-500) — SVG zero-line / dividers.
+- `hexToRgb(hex)` helper — parses `#rrggbb` to `{r,g,b}` for code that needs to interpolate between token colors. Throws on malformed input so a regressed token surfaces at module load, not as silent black pixels.
+
+**Cache bypass fix (1):**
+- `server/scanner-v2.ts:loadBars` no longer calls `fmpGet("/historical-price-eod/full")` directly. It now delegates to `getHtfBars()` from `server/data/htf-ohlcv-cache.ts`, which means scanner bar fetches share the disk-backed long-range cache with the HTF detector. First-scan of an HTF-universe ticker = warm disk hit instead of a fresh 380-day FMP pull. Existing in-memory 30-min cache stays on top for fast in-process re-scans.
+
+**Files**
+- mod: `client/src/lib/design-tokens.ts` — 2 new tokens + `hexToRgb` helper
+- mod: `client/src/components/chart/HtfPatternChart.tsx`
+- mod: `client/src/components/SignalPulse.tsx`
+- mod: `client/src/components/IndicatorOscillator.tsx`
+- mod: `client/src/pages/sector-heatmap.tsx`
+- mod: `client/src/pages/chart.tsx`
+- mod: `client/src/pages/admin.tsx`
+- mod: `server/scanner-v2.ts`
+
+**TypeScript:** clean. **Build:** clean.
+
+**Sanity check:** open `/sector-heatmap` and confirm the gradient still goes red → neutral → green (red endpoint shifts slightly from `#dc2626` to `SIGNAL_BEAR` = `#ef4444` — minor brand-aligning hue change). Open `/admin` and confirm the Uptime card is the same bull green as Active Today (was emerald-400, now bull-light — same family). Open SignalPulse on any scanner ticker — composite bars, rail labels, and zero line render unchanged. Run a fresh scanner v2 scan and confirm results still come back.
+
+**Not addressed (out of audit scope):**
+- Yahoo / Polygon ghost-code (~40 files) — tracked in `plan_yahoo_polygon_kill`, separate kill ship.
+- Other Tailwind palette colors in `chart.tsx` (sky-500 for CORE badge, zinc-500 for PAIR, blue-500 button styling) — audit's grep only flagged green/red/yellow/emerald/rose. Could come back in a follow-up "TV-Webull palette pass" if Chris wants full alignment.
+
+---
 ## 2026-05-21 — /chart page: derive strategy toggle from STRATEGY_REGISTRY (kill drift)
 
 **Why:** Site-wide audit caught two drift bugs on the /chart comparison page:

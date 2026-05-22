@@ -435,8 +435,8 @@ function SummaryStats({ summary }: { summary: ChartSummary }) {
     { label: "Max DD", value: fmtPct(summary.maxDrawdownPct, 1), color: "text-orange-400", hint: "worst peak-to-trough on per-trade equity" },
     { label: "Trades", value: `${summary.tradeCount}`, color: "text-foreground", hint: `${summary.closedTradeCount} closed, ${summary.openTradeCount} open` },
     summary.marketExposurePct != null
-      ? { label: "Time in Market", value: fmtPct(summary.marketExposurePct, 1), color: "text-blue-400", hint: "fraction of bars with nonzero position (TFT)" }
-      : { label: "Position Type", value: "Pair-traded", color: "text-blue-400", hint: "trade pairing — entries paired with exits per sub-strategy" },
+      ? { label: "Time in Market", value: fmtPct(summary.marketExposurePct, 1), color: "text-brand-accent", hint: "fraction of bars with nonzero position (TFT)" }
+      : { label: "Position Type", value: "Pair-traded", color: "text-brand-accent", hint: "trade pairing — entries paired with exits per sub-strategy" },
   ];
 
   return (
@@ -578,7 +578,7 @@ function TradeList({
                 <td className="px-2 py-1.5">
                   <span className={`text-micro px-1.5 py-0.5 rounded ${
                     t.layer === "CORE" ? "bg-sky-500/20 text-sky-300" :
-                    t.layer === "TACTICAL" ? "bg-emerald-500/20 text-emerald-300" :
+                    t.layer === "TACTICAL" ? "bg-bull/20 text-bull-light" :
                     "bg-zinc-500/20 text-zinc-300"
                   }`}>{t.layer}</span>
                 </td>

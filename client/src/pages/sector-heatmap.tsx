@@ -7,6 +7,7 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { PageHeader } from "@/components/PageHeader";
 import { formatCompact } from "@/lib/format";
 import { useTicker } from "@/contexts/TickerContext";
+import { SIGNAL_BULL, SIGNAL_BEAR, hexToRgb } from "@/lib/design-tokens";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,26 +34,35 @@ const TIMEFRAME_LABELS: Record<Timeframe, string> = {
 };
 
 // ─── Color interpolation ─────────────────────────────────────────────────────
+// Endpoints anchored to design tokens so a brand-color change automatically
+// reaches the heatmap. Midpoint is a near-black neutral (matches dark theme).
+
+const HEAT_BEAR = hexToRgb(SIGNAL_BEAR);
+const HEAT_BULL = hexToRgb(SIGNAL_BULL);
+const HEAT_NEUTRAL = { r: 40, g: 40, b: 40 };
+
+function lerp(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * t);
+}
 
 function getHeatColor(pct: number): string {
   // Clamp between -5 and +5 for color mapping
   const clamped = Math.max(-5, Math.min(5, pct));
-  const t = (clamped + 5) / 10; // 0 = deep red, 0.5 = neutral, 1 = deep green
+  const t = (clamped + 5) / 10; // 0 = bear, 0.5 = neutral, 1 = bull
 
   if (t < 0.5) {
-    // Red → neutral
-    const r = Math.round(220 - (220 - 40) * (t / 0.5));
-    const g = Math.round(38 + (40 - 38) * (t / 0.5));
-    const b = Math.round(38 + (40 - 38) * (t / 0.5));
-    const a = 0.15 + (1 - t / 0.5) * 0.35;
+    const f = t / 0.5; // 0 = full bear, 1 = neutral
+    const r = lerp(HEAT_BEAR.r, HEAT_NEUTRAL.r, f);
+    const g = lerp(HEAT_BEAR.g, HEAT_NEUTRAL.g, f);
+    const b = lerp(HEAT_BEAR.b, HEAT_NEUTRAL.b, f);
+    const a = 0.15 + (1 - f) * 0.35;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   } else {
-    // Neutral → green
-    const factor = (t - 0.5) / 0.5;
-    const r = Math.round(40 - (40 - 34) * factor);
-    const g = Math.round(40 + (197 - 40) * factor);
-    const b = Math.round(40 + (94 - 40) * factor);
-    const a = 0.15 + factor * 0.35;
+    const f = (t - 0.5) / 0.5; // 0 = neutral, 1 = full bull
+    const r = lerp(HEAT_NEUTRAL.r, HEAT_BULL.r, f);
+    const g = lerp(HEAT_NEUTRAL.g, HEAT_BULL.g, f);
+    const b = lerp(HEAT_NEUTRAL.b, HEAT_BULL.b, f);
+    const a = 0.15 + f * 0.35;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 }

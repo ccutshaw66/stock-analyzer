@@ -2,6 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { TrendingUp, TrendingDown, Minus, ArrowUpRight, ArrowDownRight, HelpCircle, X } from "lucide-react";
 import { useState } from "react";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  ACCENT_AMBER,
+  CHART_TEXT,
+  CHART_ZERO_LINE,
+} from "@/lib/design-tokens";
 
 interface PulseDay {
   t: number;
@@ -193,12 +200,12 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
       <svg viewBox={`0 0 ${W} ${COMP_H}`} className="w-full" preserveAspectRatio="none" style={{ height: `${COMP_H}px` }}>
         {/* zero line */}
         <line x1={PAD_X} x2={W - PAD_X} y1={COMP_H / 2} y2={COMP_H / 2}
-              stroke="rgb(113,113,122)" strokeWidth="1" />
+              stroke={CHART_ZERO_LINE} strokeWidth="1" />
         {/* +/- rails */}
         <line x1={PAD_X} x2={W - PAD_X} y1={compY(3)} y2={compY(3)}
-              stroke="rgb(34,197,94)" strokeWidth="0.5" strokeDasharray="3,3" opacity={0.4} />
+              stroke={SIGNAL_BULL} strokeWidth="0.5" strokeDasharray="3,3" opacity={0.4} />
         <line x1={PAD_X} x2={W - PAD_X} y1={compY(-3)} y2={compY(-3)}
-              stroke="rgb(239,68,68)" strokeWidth="0.5" strokeDasharray="3,3" opacity={0.4} />
+              stroke={SIGNAL_BEAR} strokeWidth="0.5" strokeDasharray="3,3" opacity={0.4} />
 
         {/* Composite bars */}
         {days.map((d, i) => {
@@ -207,16 +214,16 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
           const y1 = compY(d.composite);
           const top = Math.min(y0, y1);
           const h = Math.max(0.5, Math.abs(y1 - y0));
-          const color = d.composite > 0 ? "rgb(34,197,94)" : d.composite < 0 ? "rgb(239,68,68)" : "rgb(113,113,122)";
+          const color = d.composite > 0 ? SIGNAL_BULL : d.composite < 0 ? SIGNAL_BEAR : CHART_ZERO_LINE;
           return (
             <rect key={i} x={x + 0.5} y={top} width={Math.max(0.5, barW - 1)} height={h} fill={color} opacity={0.85} />
           );
         })}
 
         {/* Rail labels */}
-        <text x={PAD_X + 2} y={compY(3) - 2} fontSize="8" fill="rgb(34,197,94)" opacity={0.7}>+3 strong bull</text>
-        <text x={PAD_X + 2} y={compY(-3) + 9} fontSize="8" fill="rgb(239,68,68)" opacity={0.7}>−3 strong bear</text>
-        <text x={PAD_X + 2} y={COMP_H / 2 - 2} fontSize="8" fill="rgb(161,161,170)" opacity={0.6}>0 neutral</text>
+        <text x={PAD_X + 2} y={compY(3) - 2} fontSize="8" fill={SIGNAL_BULL} opacity={0.7}>+3 strong bull</text>
+        <text x={PAD_X + 2} y={compY(-3) + 9} fontSize="8" fill={SIGNAL_BEAR} opacity={0.7}>−3 strong bear</text>
+        <text x={PAD_X + 2} y={COMP_H / 2 - 2} fontSize="8" fill={CHART_TEXT} opacity={0.6}>0 neutral</text>
       </svg>
 
       {/* Per-signal stack */}
@@ -247,9 +254,9 @@ export function SignalPulse({ ticker }: { ticker: string | null }) {
                 if (!sig.triggered) return null;
                 const y = rowIdx * ROW_H + ROW_H / 2;
                 const color =
-                  sig.direction === "up" ? "rgb(34,197,94)" :
-                  sig.direction === "down" ? "rgb(239,68,68)" :
-                  "rgb(251,191,36)";
+                  sig.direction === "up" ? SIGNAL_BULL :
+                  sig.direction === "down" ? SIGNAL_BEAR :
+                  ACCENT_AMBER;
                 const r = 2 + sig.strength * 3; // strength affects size
                 return <circle key={`${i}-${sig.id}`} cx={x} cy={y} r={r} fill={color} opacity={0.85} />;
               });

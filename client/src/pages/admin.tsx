@@ -257,7 +257,7 @@ export default function AdminPage() {
         <KpiCard icon={Activity} label="Active Today" value={stats?.users.activeToday ?? 0} sub={`${stats?.users.activeThisWeek ?? 0} this week`} color="text-bull-light" />
         <KpiCard icon={Crown} label="Elite" value={stats?.users.elite ?? 0} color="text-amber-400" />
         <KpiCard icon={Zap} label="Pro" value={stats?.users.pro ?? 0} color="text-blue-400" />
-        <KpiCard icon={Server} label="Uptime" value={stats?.system.uptime ?? "—"} sub={`Memory: ${stats?.system.memoryMB ?? 0}MB`} color="text-emerald-400" />
+        <KpiCard icon={Server} label="Uptime" value={stats?.system.uptime ?? "—"} sub={`Memory: ${stats?.system.memoryMB ?? 0}MB`} color="text-bull-light" />
         <KpiCard
           icon={Database}
           label="Cache"

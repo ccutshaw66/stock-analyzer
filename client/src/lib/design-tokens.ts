@@ -69,9 +69,11 @@ export const CHART_CROSSHAIR = "#6366f1";       // primary indigo crosshair
 export const CHART_CROSSHAIR_DEEP = "#5558e6";  // deeper indigo variant
 
 export const CHART_WICK = "#6b7280";            // candle wick neutral
-export const CHART_TEXT = "#a1a1aa";            // candle pane axis text
+export const CHART_TEXT = "#a1a1aa";            // candle pane axis text (zinc-400)
 export const CHART_GRID = "#27272a";            // chart grid lines
 export const CHART_GRID_DARK = "#1f2937";        // chart grid lines (deeper variant)
+export const CHART_AXIS_LINE = "#52525b";       // SVG axis/grid mid-line (zinc-600)
+export const CHART_ZERO_LINE = "#71717a";       // SVG zero-line / dividers (zinc-500)
 
 // ─── Misc utility colors used across pages ─────────────────────────────────
 
@@ -99,6 +101,19 @@ export const OVERLAY_SLATE_20 = "rgba(148, 163, 184, 0.2)"; // radar grid
 export const OVERLAY_BULL_40 = "rgba(34, 197, 94, 0.4)";    // volume up bar
 export const OVERLAY_BEAR_40 = "rgba(239, 68, 68, 0.4)";    // volume down bar
 export const OVERLAY_NEUTRAL_8 = "rgba(127, 127, 127, 0.08)"; // candle grid lines
+
+/**
+ * Parse a `#rrggbb` hex token to its R/G/B channel ints. Used by code that
+ * needs to interpolate between two token colors (e.g. heatmap gradients) —
+ * the math wants integers, not strings. Throws on malformed input so a
+ * regressed token surfaces at module load, not as silent black pixels.
+ */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) throw new Error(`hexToRgb: expected #rrggbb, got "${hex}"`);
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
 
 /**
  * Convenience: full color-name index for places that want to iterate or

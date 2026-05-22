@@ -18,7 +18,7 @@ import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
 import { AlertTriangle, Flag } from "lucide-react";
 import {
-  SIGNAL_BULL, SIGNAL_BULL_LIGHT, SIGNAL_BEAR, SIGNAL_BEAR_LIGHT, CHART_SMA_20,
+  SIGNAL_BULL, SIGNAL_BULL_LIGHT, SIGNAL_BEAR, SIGNAL_BEAR_LIGHT, CHART_SMA_20, ACCENT_AMBER_DEEP,
 } from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -107,7 +107,7 @@ export function HtfPatternChart({ symbol }: { symbol: string }) {
           date: a.flagStartDate,
           position: "aboveBar",
           shape: "circle",
-          color: "#f59e0b",   // amber — consolidation
+          color: ACCENT_AMBER_DEEP, // amber — consolidation flag marker
           text: `Flag (${a.flagDays}d)`,
         });
       }

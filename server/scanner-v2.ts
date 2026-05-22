@@ -18,6 +18,7 @@
 import { fmpScreener, type FmpScreenerRow } from "./data/providers/fmp.adapter";
 import { fmpGet } from "./data/providers/fmp.client";
 import { getCached, setCache } from "./cache";
+import { getHtfBars } from "./data/htf-ohlcv-cache";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -235,41 +236,43 @@ async function fetchUniverse(filters: ScannerV2Filters): Promise<FmpScreenerRow[
 }
 
 /**
- * Load ~1 year of daily bars for a ticker via FMP (Polygon path retired
- * 2026-05-07 per the kill-Polygon directive). Cached 30 min so re-scans
- * within the same window don't repay the FMP call. Returns null if FMP
- * fails or there's insufficient history.
+ * Load ~1 year of daily bars for a ticker for the scanner.
+ *
+ * Two cache layers:
+ *   1. In-memory `getCached` (30 min) — fast path for re-scans in the same
+ *      process. Keeps the existing scanner-v2 cache key so warm runs are
+ *      indistinguishable in shape from before.
+ *   2. Disk-backed `getHtfBars` (long-range cache, 18h TTL) — shared with
+ *      the HTF detector so the first scanner ticker that's also in the HTF
+ *      universe hits a warm disk entry instead of repaying FMP. Survives
+ *      process restarts.
+ *
+ * Returns null if FMP fails AND there's no cached entry, or if the symbol
+ * has fewer than 150 daily bars.
  */
 async function loadBars(symbol: string): Promise<ScanContext["bars"] | null> {
-  const cacheKey = `scanner-v2:bars:v2:${symbol}`; // v2 = FMP-sourced
+  const cacheKey = `scanner-v2:bars:v2:${symbol}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  try {
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 380 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const data: any = await fmpGet("/historical-price-eod/full", { symbol, from, to });
-    const arr: any[] = Array.isArray(data) ? data : (data?.historical || []);
-    if (arr.length < 150) return null;
+  // 380d lookback preserves the prior warmup window (52w breakouts need
+  // ≥252 trading days + buffer). htf-ohlcv-cache returns oldest-first
+  // OHLCV{ t: Date }; convert to scanner's { t: unix-seconds } shape.
+  const htfBars = await getHtfBars(symbol, { lookbackDays: 380 });
+  if (htfBars.length < 150) return null;
 
-    // FMP returns most-recent-first; sort ascending so indicators see chronological order.
-    const sorted = [...arr].sort((a, b) =>
-      String(a.date).localeCompare(String(b.date)),
-    );
-
-    const bars: ScanContext["bars"] = [];
-    for (const r of sorted) {
-      const t = Math.floor(new Date(r.date).getTime() / 1000);
-      const o = Number(r.open), h = Number(r.high), l = Number(r.low), c = Number(r.close), v = Number(r.volume);
-      if (!Number.isFinite(c) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l)) continue;
-      bars.push({ t, o, h, l, c, v: Number.isFinite(v) ? v : 0 });
-    }
-    if (bars.length < 150) return null;
-    setCache(cacheKey, bars, 30 * 60 * 1000);
-    return bars;
-  } catch {
-    return null;
+  const bars: ScanContext["bars"] = [];
+  for (const b of htfBars) {
+    if (!Number.isFinite(b.c) || !Number.isFinite(b.o) || !Number.isFinite(b.h) || !Number.isFinite(b.l)) continue;
+    bars.push({
+      t: Math.floor(b.t.getTime() / 1000),
+      o: b.o, h: b.h, l: b.l, c: b.c,
+      v: Number.isFinite(b.v) ? b.v : 0,
+    });
   }
+  if (bars.length < 150) return null;
+  setCache(cacheKey, bars, 30 * 60 * 1000);
+  return bars;
 }
 
 // ─── Catalyst Preload ───────────────────────────────────────────────────────
