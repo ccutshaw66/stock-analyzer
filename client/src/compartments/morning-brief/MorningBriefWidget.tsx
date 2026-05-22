@@ -40,17 +40,38 @@ function pnlTone(n: number): string {
   return "text-muted-foreground";
 }
 
-function budgetTone(pct: number): string {
+function attentionTone(count: number, critical: number): string {
+  if (critical > 0) return "text-bear-light";
+  if (count > 0) return "text-watch-light";
+  return "text-bull-light";
+}
+
+function riskTone(pct: number): string {
   if (pct >= 1) return "text-bear-light";
   if (pct >= 0.6) return "text-watch-light";
-  return "text-muted-foreground";
+  return "text-bull-light";
+}
+
+/**
+ * Single labeled stat with a hover tooltip explaining what it means.
+ * Plain-English labels — no "Book" / "Loss budget" trader slang.
+ */
+function Stat({
+  label, value, tone, tip,
+}: { label: string; value: React.ReactNode; tone: string; tip: string }) {
+  return (
+    <div className="flex flex-col min-w-0" title={tip}>
+      <span className="text-micro uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+      <span className={`text-sm font-bold tabular-nums truncate ${tone}`}>{value}</span>
+    </div>
+  );
 }
 
 export function MorningBriefWidget() {
   const { data, isLoading, error } = useQuery<MorningBriefData>({
     queryKey: ["/api/dashboard/morning-brief"],
     queryFn: async () => (await apiRequest("GET", "/api/dashboard/morning-brief")).json(),
-    refetchInterval: 5 * 60 * 1000, // 5 min
+    refetchInterval: 5 * 60 * 1000,
     staleTime: 60 * 1000,
   });
 
@@ -72,36 +93,74 @@ export function MorningBriefWidget() {
 
   const { marketRegime, book, attention, freshSetups, lossBudget } = data;
   const tierLabel = marketRegime.tier ?? "Unknown";
-  const totalPnL = book.totalPnLDollar;
 
   return (
-    <div className="h-full flex items-center gap-4 px-4 py-2" data-testid="morning-brief">
-      <div className="shrink-0 flex items-center gap-2 text-muted-foreground">
+    <div className="h-full flex items-center gap-4 px-4 py-2 overflow-x-auto" data-testid="morning-brief">
+      <div className="shrink-0 flex items-center gap-2 text-muted-foreground border-r border-card-border pr-4">
         <Activity className="h-4 w-4" />
         <span className="text-xs font-semibold uppercase tracking-wider">Brief</span>
       </div>
-      <p className="text-sm text-foreground leading-relaxed flex-1">
-        Market is{" "}
-        <span className={`font-semibold ${regimeTone(marketRegime.tier)}`}>{tierLabel}</span>
-        {marketRegime.score != null && (
-          <span className="text-muted-foreground"> ({marketRegime.score}/100)</span>
-        )}
-        .{" "}
-        Book {book.openPositionCount > 0
-          ? <>{book.openPositionCount} open · <span className={`font-semibold tabular-nums ${pnlTone(totalPnL)}`}>{fmtMoney(totalPnL, true)}</span></>
-          : "flat (no open positions)"}.{" "}
-        {attention.itemCount > 0
-          ? <><span className={`font-semibold ${attention.criticalCount > 0 ? "text-bear-light" : "text-watch-light"}`}>{attention.itemCount}</span> need{attention.itemCount === 1 ? "s" : ""} attention{attention.criticalCount > 0 && <> ({attention.criticalCount} critical)</>}. </>
-          : <span className="text-bull-light font-semibold">All clear today. </span>}
-        {freshSetups.htfCount > 0 && (
-          <>{freshSetups.htfCount} fresh HTF setup{freshSetups.htfCount === 1 ? "" : "s"} overnight. </>
-        )}
-        Loss budget{" "}
-        <span className={`font-semibold tabular-nums ${budgetTone(lossBudget.pctUsed)}`}>
-          {fmtMoney(lossBudget.dollarsAtRisk)} of {fmtMoney(lossBudget.dollarsBudgeted)}
-        </span>{" "}
-        used ({Math.round(lossBudget.pctUsed * 100)}%).
-      </p>
+
+      <div className="flex items-center gap-6 flex-1 min-w-0">
+        <Stat
+          label="Market"
+          tone={regimeTone(marketRegime.tier)}
+          value={
+            <>
+              {tierLabel}
+              {marketRegime.score != null && (
+                <span className="text-muted-foreground font-normal ml-1">({marketRegime.score}/100)</span>
+              )}
+            </>
+          }
+          tip="Market Pulse regime tier. RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC — computed from VIX, breadth, risk appetite. Click Market Pulse for details."
+        />
+
+        <Stat
+          label="Open positions"
+          tone={pnlTone(book.totalPnLDollar)}
+          value={
+            book.openPositionCount > 0
+              ? <>{book.openPositionCount} <span className="text-muted-foreground font-normal">·</span> {fmtMoney(book.totalPnLDollar, true)}</>
+              : <span className="text-muted-foreground font-normal">None</span>
+          }
+          tip="How many trades are currently open + the combined unrealized + realized-today P&L on them. Click Current Positions for the breakdown."
+        />
+
+        <Stat
+          label="Need attention"
+          tone={attentionTone(attention.itemCount, attention.criticalCount)}
+          value={
+            attention.itemCount > 0
+              ? <>{attention.itemCount}{attention.criticalCount > 0 && <span className="text-bear-light font-normal ml-1">({attention.criticalCount} urgent)</span>}</>
+              : <span className="text-bull-light">All clear</span>
+          }
+          tip="Number of items in the Action Queue today — positions near stops/targets/partials, alerts that fired, earnings approaching."
+        />
+
+        <Stat
+          label="New setups"
+          tone={freshSetups.htfCount > 0 ? "text-foreground" : "text-muted-foreground"}
+          value={
+            freshSetups.htfCount > 0
+              ? <>{freshSetups.htfCount} HTF</>
+              : <span className="font-normal">None</span>
+          }
+          tip="Fresh HTF (High Tight Flag) breakouts that fired overnight and are still within Givens' entry window (today's or tomorrow's open)."
+        />
+
+        <Stat
+          label="Daily risk used"
+          tone={riskTone(lossBudget.pctUsed)}
+          value={
+            <>
+              {fmtMoney(lossBudget.dollarsAtRisk)}<span className="text-muted-foreground font-normal"> / {fmtMoney(lossBudget.dollarsBudgeted)}</span>
+              <span className="text-muted-foreground font-normal ml-1">({Math.round(lossBudget.pctUsed * 100)}%)</span>
+            </>
+          }
+          tip="Aziz 1%-per-day rule: how much $ you've put at risk today (realized losses + open drawdown) versus your daily cap (1% of starting account value). Above 60% = caution; above 100% = stop trading today."
+        />
+      </div>
     </div>
   );
 }

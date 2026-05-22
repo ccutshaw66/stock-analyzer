@@ -920,10 +920,10 @@ const MARKOV_V2_MANIFEST: StrategyManifest = {
   pageGroup: "wheel",
   evaluate(trade) {
     const entry = Math.abs(trade.openPrice);
-    const points = [{
+    const points: DisplayPoint[] = [{
       label: "Entry",
       value: trade.contractsShares != null ? `${trade.contractsShares} @ ${fmt$(entry)}` : fmt$(entry),
-      state: "past" as const,
+      state: "past",
     }];
     if (trade.currentPrice != null) {
       const pct = pctChange(entry, trade.currentPrice);
