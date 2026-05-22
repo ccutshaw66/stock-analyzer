@@ -50,6 +50,16 @@ export interface MorningBrief {
     /** worstDrawdownDollar / dollarsBudgeted. ≥1 = a single position has blown past its risk cap. */
     pctUsed: number;
   };
+  /**
+   * Open-position count per strategy id. Chris rule (2026-05-22): "if there
+   * are any trades in that strategy it should be on the dashboard." Lets the
+   * Brief surface what strategies the user is currently trading without
+   * dumping every individual position into the Action Queue.
+   *
+   * Strategy id matches `STRATEGY_REGISTRY` keys (htf, wyckoff-spring,
+   * bbtc-ver, tft-40w, tft-60w, tft-cat, amc, manual, other).
+   */
+  strategyMix: Array<{ strategy: string; count: number }>;
 }
 
 const DEFAULT_PER_TRADE_RISK_PCT = 0.05;  // 5% per trade default (user can override via htf_config)
@@ -135,6 +145,24 @@ async function fetchFreshSetups(): Promise<MorningBrief["freshSetups"]> {
   }
 }
 
+async function fetchStrategyMix(userId: number): Promise<MorningBrief["strategyMix"]> {
+  try {
+    const allTrades = (await storage.getAllTrades(userId)) as Trade[];
+    const open = allTrades.filter(t => !t.closeDate);
+    const counts = new Map<string, number>();
+    for (const t of open) {
+      const key = (t.strategy || "manual").toString();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    // Sort by count desc so the most-used strategy appears first.
+    return [...counts.entries()]
+      .map(([strategy, count]) => ({ strategy, count }))
+      .sort((a, b) => b.count - a.count);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPerTradeRisk(userId: number): Promise<MorningBrief["perTradeRisk"]> {
   try {
     const settings = await storage.getAccountSettings(userId);
@@ -180,12 +208,13 @@ async function fetchPerTradeRisk(userId: number): Promise<MorningBrief["perTrade
 }
 
 export async function buildMorningBrief(userId: number): Promise<MorningBrief> {
-  const [marketRegime, book, attention, freshSetups, perTradeRisk] = await Promise.all([
+  const [marketRegime, book, attention, freshSetups, perTradeRisk, strategyMix] = await Promise.all([
     fetchRegime(),
     fetchBook(userId),
     fetchAttention(userId),
     fetchFreshSetups(),
     fetchPerTradeRisk(userId),
+    fetchStrategyMix(userId),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -194,6 +223,7 @@ export async function buildMorningBrief(userId: number): Promise<MorningBrief> {
     attention,
     freshSetups,
     perTradeRisk,
+    strategyMix,
   };
 }
 

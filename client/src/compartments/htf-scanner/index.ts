@@ -16,7 +16,7 @@ const meta: CompartmentMeta = {
   tier: "free",
   fullPageRoute: "/htf",
   description:
-    "30%+ pole / tight flag breakouts firing right now. Givens-rules entry, target, and stop.",
+    "30%+ pole / tight flag breakouts firing right now. Entry, target, and stop per the HTF ruleset.",
 };
 
 export const htfScannerCompartment: ClientCompartmentEntry = {

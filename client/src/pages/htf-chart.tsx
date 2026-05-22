@@ -49,7 +49,7 @@ export default function HtfChartPage() {
             <li><span className="font-semibold text-foreground">Flag</span> marker — beginning of the tight consolidation</li>
             <li><span className="font-semibold text-foreground">Breakout</span> arrow — close that broke the flag high on volume</li>
             <li>Horizontal price lines for the suggested <span className="font-semibold text-foreground">entry</span>, <span className="font-semibold text-foreground">target</span>, and <span className="font-semibold text-foreground">stop</span></li>
-            <li><span className="font-semibold text-foreground">20-day MA</span> overlay — Givens' suggested trail-stop line for the back 2/3 of the position after the partial</li>
+            <li><span className="font-semibold text-foreground">20-day MA</span> overlay — suggested trail-stop line for the back 2/3 of the position after the partial</li>
           </ul>
           <p>Click <span className="font-semibold text-foreground">Back to setups</span> for the full scanner ruleset, position-sizing rules, and the Live / Watch / Filtered tabs.</p>
         </>

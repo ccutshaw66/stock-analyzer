@@ -20,7 +20,24 @@ interface MorningBriefData {
     worstSymbol: string | null;
     pctUsed: number;
   };
+  strategyMix: Array<{ strategy: string; count: number }>;
 }
+
+// Plain-English labels for strategy ids. Mirrors STRATEGY_REGISTRY.shortName
+// but kept local so the widget doesn't pull the whole registry just for a
+// label lookup.
+const STRATEGY_LABEL: Record<string, string> = {
+  htf: "HTF",
+  "wyckoff-spring": "Wyckoff Spring",
+  "bbtc-ver": "BBTC+VER",
+  "tft-40w": "TFT 40W",
+  "tft-60w": "TFT 60W",
+  "tft-cat": "TFT Cat",
+  amc: "AMC",
+  "markov-v2": "Markov",
+  manual: "Manual",
+  other: "Other",
+};
 
 function fmtMoney(n: number, signed = false): string {
   const abs = Math.abs(n);
@@ -127,17 +144,18 @@ export function MorningBriefWidget() {
     );
   }
 
-  const { marketRegime, book, attention, freshSetups, perTradeRisk } = data;
+  const { marketRegime, book, attention, freshSetups, perTradeRisk, strategyMix } = data;
   const tierLabel = marketRegime.tier ?? "Unknown";
 
   return (
-    <div className="h-full flex items-center gap-4 px-4 py-2 overflow-x-auto" data-testid="morning-brief">
-      <div className="shrink-0 flex items-center gap-2 text-muted-foreground border-r border-card-border pr-4">
-        <Activity className="h-4 w-4" />
-        <span className="text-xs font-semibold uppercase tracking-wider">Brief</span>
-      </div>
+    <div className="h-full flex flex-col gap-1 px-4 py-2 overflow-x-auto" data-testid="morning-brief">
+      <div className="flex items-center gap-4">
+        <div className="shrink-0 flex items-center gap-2 text-muted-foreground border-r border-card-border pr-4">
+          <Activity className="h-4 w-4" />
+          <span className="text-xs font-semibold uppercase tracking-wider">Brief</span>
+        </div>
 
-      <div className="flex items-center gap-6 flex-1 min-w-0">
+        <div className="flex items-center gap-6 flex-1 min-w-0">
         <Stat
           label="Market"
           tone={regimeTone(marketRegime.tier)}
@@ -216,7 +234,29 @@ export function MorningBriefWidget() {
           href="/tracker"
           onNavigate={navigate}
         />
+        </div>
       </div>
+
+      {strategyMix.length > 0 && (
+        <div className="flex items-center gap-2 pl-[4.25rem] text-micro" data-testid="brief-strategy-mix">
+          <span className="text-muted-foreground uppercase tracking-wider font-semibold">Strategies</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {strategyMix.map(s => (
+              <button
+                key={s.strategy}
+                type="button"
+                onClick={() => navigate("/tracker")}
+                title={`${s.count} open ${STRATEGY_LABEL[s.strategy] ?? s.strategy} ${s.count === 1 ? "trade" : "trades"} — click to open Current Positions`}
+                className="px-1.5 py-0.5 rounded bg-muted/40 hover:bg-muted/70 text-foreground tabular-nums transition-colors"
+                data-testid={`brief-strategy-${s.strategy}`}
+              >
+                {STRATEGY_LABEL[s.strategy] ?? s.strategy}
+                <span className="text-muted-foreground font-normal ml-1">{s.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

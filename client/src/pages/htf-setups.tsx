@@ -578,7 +578,7 @@ function BacktestTab() {
             <BrandedEmptyState
               icon={Flag}
               title="No HTF setups in history"
-              description="This ticker has no breakouts matching the Givens rules in the available bars."
+              description="This ticker has no breakouts matching the HTF rules in the available bars."
             />
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -857,9 +857,9 @@ export default function HtfSetupsPage() {
       howItWorks={
         <>
           <p>
-            <span className="font-semibold text-foreground">The High Tight Flag</span> is Bulkowski's #1-ranked
-            chart pattern. This scanner uses Ross Givens' loosening of the rules — looking for a sharp
-            run-up followed by a tight consolidation, then a breakout on heavy volume.
+            <span className="font-semibold text-foreground">The High Tight Flag</span> is one of the highest-rated
+            continuation patterns in chart-pattern research — a sharp run-up followed by a tight consolidation,
+            then a breakout on heavy volume.
           </p>
 
           <div className="space-y-1">
@@ -903,7 +903,7 @@ export default function HtfSetupsPage() {
           </div>
 
           <div className="space-y-1">
-            <div className="font-semibold text-foreground">Suggested exits (Givens' rules)</div>
+            <div className="font-semibold text-foreground">Suggested exits</div>
             <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
               <li><span className="font-semibold">Buy</span> the next day's open after the breakout day</li>
               <li><span className="font-semibold">Hard stop</span> just below the consolidation low</li>
@@ -917,10 +917,10 @@ export default function HtfSetupsPage() {
           <div className="space-y-1">
             <div className="font-semibold text-foreground">The tabs</div>
             <ul className="list-disc list-inside space-y-0.5 marker:text-muted-foreground/60">
-              <li><span className="font-semibold text-bull-light">🔥 Live</span> — breakouts that already fired. Enter at the next market open per Givens' rule. The "this is about to blow" list.</li>
+              <li><span className="font-semibold text-bull-light">🔥 Live</span> — breakouts that already fired. Enter at the next market open. The "this is about to blow" list.</li>
               <li><span className="font-semibold text-watch-light">👀 Watch</span> — patterns still forming. Pole is built (+30% in ≤60d), flag is consolidating, price hasn't broken above the flag high yet. Gives you time to set an alert before the trigger.</li>
               <li><span className="font-semibold">Portfolio</span> — your current open positions, capacity remaining, total risk (reads from Trade Tracker).</li>
-              <li><span className="font-semibold">Backtest</span> — run the Givens entry + exit rules against any ticker's history.</li>
+              <li><span className="font-semibold">Backtest</span> — run the entry + exit rules against any ticker's history.</li>
               <li><span className="font-semibold">Config</span> — edit your capital, risk caps, and position-sizing knobs.</li>
             </ul>
           </div>
@@ -928,7 +928,7 @@ export default function HtfSetupsPage() {
           <div className="space-y-1">
             <div className="font-semibold text-foreground">Only setups firing right now</div>
             <p>
-              Givens' rule says enter at the <span className="font-semibold">next market open</span>{" "}
+              The entry rule is the <span className="font-semibold">next market open</span>{" "}
               after a breakout. This scanner only shows setups where the breakout fired{" "}
               <span className="font-semibold">today or yesterday</span> — so the entry-day open is
               either right now (yesterday breakout → today's open) or the next session (today
