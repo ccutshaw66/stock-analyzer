@@ -15,6 +15,7 @@ import { registerChecklistRoutes } from "./checklist-routes";
 import { registerAskOtterRoutes } from "./ask-otter-routes";
 import { registerConfluencePulseRoute } from "./confluence-pulse";
 import { registerPositionInsidersRoute, registerInsiderClustersRoute } from "./insider-routes";
+import { registerInsiderRatioRoute } from "./insider-ratio";
 
 export function registerDashboardRoutes(app: Express): void {
   // Dashboard rebuild v1 routes — each compartment gets its own server module
@@ -29,6 +30,7 @@ export function registerDashboardRoutes(app: Express): void {
   registerConfluencePulseRoute(app);
   registerPositionInsidersRoute(app);
   registerInsiderClustersRoute(app);
+  registerInsiderRatioRoute(app);
 
   // Get the current user's dashboard layout. Returns the saved layout if
   // one exists, otherwise the server-computed default. Never 404s — the

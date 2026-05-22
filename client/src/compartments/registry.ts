@@ -20,14 +20,16 @@ import { askOtterCompartment } from "./ask-otter";
 import { confluencePulseCompartment } from "./confluence-pulse";
 import { positionInsidersCompartment } from "./position-insiders";
 import { insiderClustersCompartment } from "./insider-clusters";
+import { insiderRatioCompartment } from "./insider-ratio";
 
 const clientCompartments: ClientCompartmentEntry[] = [
-  // Dashboard rebuild v1 — the new curated default layout uses these eight.
+  // Dashboard rebuild v1 — the new curated default layout uses these nine.
   morningBriefCompartment,
   actionQueueCompartment,
   confluencePulseCompartment,
   morningChecklistCompartment,
   positionNewsCompartment,
+  insiderRatioCompartment,
   positionInsidersCompartment,
   insiderClustersCompartment,
   askOtterCompartment,

@@ -39,8 +39,9 @@ export function buildDefaultDashboardLayout(): DashboardLayout {
           // Row 4: Position News + Position Insiders side by side
           { compartmentId: "position-news",     visible: true, x: 0, y: 14, w: 6,  h: 6 },
           { compartmentId: "position-insiders", visible: true, x: 6, y: 14, w: 6,  h: 6 },
-          // Row 5: Insider Clusters (market-wide discovery)
-          { compartmentId: "insider-clusters",  visible: true, x: 0, y: 20, w: 12, h: 6 },
+          // Row 5: Insider B/S Ratio (8 cols) + Insider Clusters (4 cols)
+          { compartmentId: "insider-ratio",     visible: true, x: 0, y: 20, w: 4,  h: 6 },
+          { compartmentId: "insider-clusters",  visible: true, x: 4, y: 20, w: 8,  h: 6 },
         ],
       },
     ],

@@ -17,7 +17,7 @@ import {
   Activity, Award, BarChart3, Bell, BookOpen, Building2, Calculator,
   Calendar, CheckCircle2, ClipboardList, Compass, Crosshair, DollarSign,
   Flag, FlaskConical, Grid3X3, Landmark, Layers, LayoutDashboard, Microscope,
-  Percent, PieChart, Plus, Radar, RefreshCw, Sigma, Spline, Trophy,
+  Percent, PieChart, Plus, Radar, RefreshCw, Scale, Sigma, Spline, Trophy,
 } from "lucide-react";
 
 export interface PageEntry {
@@ -83,6 +83,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings with expected moves." },
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks." },
   { path: "/track-record",        label: "Track Record",          icon: Trophy,          group: "Investment Opportunities", subtitle: "Every signal logged. Every outcome tracked." },
+  { path: "/insiders",            label: "Insider Activity",      icon: Scale,           group: "Investment Opportunities", subtitle: "Monthly buy/sell ratio across the market + ranked ticker tables. SEC Form 4 deep-scan coming." },
   { path: "/alerts",              label: "Alerts",                icon: Bell,            group: "Investment Opportunities", subtitle: "Custom alerts on signals, levels, and verdict changes." },
 
   // ─── Calculators ───────────────────────────────────────────────────────

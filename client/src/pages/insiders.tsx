@@ -1,0 +1,291 @@
+/**
+ * /insiders — Monthly Insider Buy/Sell Ratio + ranked ticker tables.
+ *
+ * Source: FMP /insider-trading/latest, 30-day aggregations. SEC Form 4
+ * deep-scan (with 10b5-1 footnote parsing) is a planned Pass-2 add —
+ * will replace the FMP source where available and tag planned sales
+ * separately from discretionary sales.
+ */
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { PageTemplate } from "@/components/PageTemplate";
+import { Loader2, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from "lucide-react";
+
+interface MarketRatio {
+  windowDays: number;
+  windowStart: string;
+  windowEnd: string;
+  buyDollar: number;
+  sellDollar: number;
+  buyCount: number;
+  sellCount: number;
+  buySellRatio: number;
+  sellShare: number;
+}
+
+interface PerSymbolRatio {
+  symbol: string;
+  buyDollar: number;
+  sellDollar: number;
+  buyCount: number;
+  sellCount: number;
+  sellShare: number;
+  buySellRatio: number;
+}
+
+interface RatioResponse {
+  market: { current: MarketRatio; prior: MarketRatio; momDelta: number };
+  perSymbol: PerSymbolRatio[];
+  scannedAt: string;
+}
+
+function fmtRatio(r: number): string {
+  if (!isFinite(r)) return "∞";
+  if (r >= 10) return r.toFixed(1);
+  return r.toFixed(2);
+}
+
+function fmtMoney(n: number): string {
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function ratioTone(r: number): string {
+  if (!isFinite(r) || r >= 1.5) return "text-bull-light";
+  if (r >= 0.66) return "text-watch-light";
+  return "text-bear-light";
+}
+
+function ratioLabel(r: number): string {
+  if (!isFinite(r) || r >= 2) return "Strong buying";
+  if (r >= 1.2) return "Buying skew";
+  if (r >= 0.83) return "Balanced";
+  if (r >= 0.5) return "Selling skew";
+  return "Strong selling";
+}
+
+type SortMode = "activity" | "most-buying" | "most-selling";
+
+export default function InsidersPage() {
+  const [, navigate] = useLocation();
+  const [sortMode, setSortMode] = useState<SortMode>("activity");
+  // Chris rule (2026-05-22): only show high-signal rows — either ≥$1M
+  // dollar activity OR ≥3 distinct insiders transacting in the window
+  // (the latter mirrors the insider-cluster definition). Small isolated
+  // trades aren't conviction trades; clusters of small trades are.
+  const [minActivity, setMinActivity] = useState<number>(1_000_000);
+  const MIN_INSIDERS_FALLBACK = 3;
+
+  const { data, isLoading, error } = useQuery<RatioResponse>({
+    queryKey: ["/api/dashboard/insiders/ratio"],
+    queryFn: async () => (await apiRequest("GET", "/api/dashboard/insiders/ratio")).json(),
+    refetchInterval: 60 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+
+  const sorted = useMemo(() => {
+    if (!data) return [] as PerSymbolRatio[];
+    // OR filter: high $ activity OR clustered insider activity. Either one
+    // is a real signal; trivial isolated trades are noise.
+    const filtered = data.perSymbol.filter(r => {
+      const isHighDollar = (r.buyDollar + r.sellDollar) >= minActivity;
+      const isCluster = (r.buyCount + r.sellCount) >= MIN_INSIDERS_FALLBACK;
+      return isHighDollar || isCluster;
+    });
+    switch (sortMode) {
+      case "most-buying":
+        return [...filtered].sort((a, b) => b.buyDollar - a.buyDollar);
+      case "most-selling":
+        return [...filtered].sort((a, b) => b.sellDollar - a.sellDollar);
+      default:
+        return filtered;
+    }
+  }, [data, sortMode, minActivity]);
+
+  return (
+    <PageTemplate
+      maxWidth="max-w-7xl"
+      howItWorks={
+        <>
+          <p>The Monthly Insider Buy/Sell Ratio aggregates open-market Form 4 transactions (P-Purchase + S-Sale) across the entire insider universe over a 30-day window. The single big number at the top is <code>buy$ / sell$</code> — &gt;1 means insiders are buying more than they're selling.</p>
+          <p><strong className="text-foreground">Market tile</strong>: current 30-day ratio, the prior 30-day comparison, and the month-over-month delta. Aggregate buy$/sell$ totals + distinct insider counts on each side.</p>
+          <p><strong className="text-foreground">Ranked ticker table</strong>: every ticker with insider activity in the window. Sort by total activity (loudest names first), or pivot to most-bought / most-sold rankings. The <code>Min activity</code> filter hides low-volume noise (default $100K so the table doesn't drown in small grants and gifts).</p>
+          <p><strong className="text-foreground">Source caveat</strong>: data is FMP's <code>/insider-trading/latest</code> feed. Open-market Buy / Sell codes only — award grants, gifts, and exercises are excluded. <strong className="text-foreground">10b5-1 planned sales are NOT yet tagged</strong> — this means S-Sale totals over-count discretionary selling because a portion of those are pre-scheduled tax-advantaged plan sales. SEC Form 4 footnote parsing (which exposes the 10b5-1 flag) is on the roadmap; until then treat the sell side as a noisy ceiling.</p>
+          <p><strong className="text-foreground">How to read it</strong>: ratios &gt;1.5 = strong buying conviction (rare and informative), 0.66–1.5 = balanced/typical, &lt;0.66 = selling skew. Month-over-month deltas matter more than absolute level — a swing from 0.4 → 0.9 is a more interesting signal than a static 0.9.</p>
+        </>
+      }
+    >
+      {isLoading && (
+        <div className="flex items-center justify-center py-20 gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Scanning insider transactions…
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg bg-bear/10 border border-bear/30 p-4 text-sm text-bear-light">
+          Failed to load insider ratio data. The scan may still be warming the cache — retry in 60s.
+        </div>
+      )}
+
+      {data && (
+        <>
+          {/* Market headline ribbon */}
+          <MarketRibbon current={data.market.current} prior={data.market.prior} momDelta={data.market.momDelta} />
+
+          {/* Ranked tickers */}
+          <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-card-border flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-foreground">Ranked tickers (last 30d)</h2>
+                <p className="text-micro text-muted-foreground">
+                  {data.perSymbol.length} tickers with insider activity; {sorted.length} pass filter (≥${(minActivity/1_000_000).toFixed(0)}M activity OR ≥{MIN_INSIDERS_FALLBACK} insiders).
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <label className="text-muted-foreground">Min activity</label>
+                <select
+                  value={minActivity}
+                  onChange={e => setMinActivity(Number(e.target.value))}
+                  className="bg-background border border-card-border rounded px-2 py-1 text-foreground text-xs"
+                  data-testid="insiders-min-activity"
+                >
+                  <option value={1_000_000}>$1M (default)</option>
+                  <option value={5_000_000}>$5M</option>
+                  <option value={10_000_000}>$10M</option>
+                  <option value={25_000_000}>$25M</option>
+                </select>
+                <div className="flex items-center gap-1">
+                  {(["activity", "most-buying", "most-selling"] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setSortMode(m)}
+                      className={`px-2 py-1 rounded text-xs transition-colors ${
+                        sortMode === m
+                          ? "bg-brand-accent text-white"
+                          : "bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                      data-testid={`insiders-sort-${m}`}
+                    >
+                      {m === "activity" ? "Activity" : m === "most-buying" ? "Buying" : "Selling"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/30 text-muted-foreground uppercase tracking-wider">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold">Ticker</th>
+                    <th className="text-right px-3 py-2 font-semibold">Buy $</th>
+                    <th className="text-right px-3 py-2 font-semibold">Sell $</th>
+                    <th className="text-right px-3 py-2 font-semibold">B/S Ratio</th>
+                    <th className="text-right px-3 py-2 font-semibold">Insiders</th>
+                    <th className="text-left px-3 py-2 font-semibold">Skew</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                        No tickers match the activity filter. Lower it to see more rows.
+                      </td>
+                    </tr>
+                  ) : (
+                    sorted.slice(0, 200).map(r => (
+                      <tr
+                        key={r.symbol}
+                        onClick={() => navigate(`/institutional?ticker=${r.symbol}`)}
+                        className="border-t border-card-border/40 cursor-pointer hover:bg-muted/30 transition-colors"
+                        data-testid={`insider-row-${r.symbol}`}
+                      >
+                        <td className="px-3 py-2 font-mono font-bold text-foreground tabular-nums">{r.symbol}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmtMoney(r.buyDollar)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmtMoney(r.sellDollar)}</td>
+                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${ratioTone(r.buySellRatio)}`}>{fmtRatio(r.buySellRatio)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          <span className="text-bull-light">{r.buyCount}B</span>
+                          {" / "}
+                          <span className="text-bear-light">{r.sellCount}S</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <SkewBar sellShare={r.sellShare} />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-micro text-muted-foreground italic">
+            Scanned {new Date(data.scannedAt).toLocaleString()}. Cache refreshes every 60 minutes.
+          </p>
+        </>
+      )}
+    </PageTemplate>
+  );
+}
+
+function MarketRibbon({ current, prior, momDelta }: { current: MarketRatio; prior: MarketRatio; momDelta: number }) {
+  const tone = ratioTone(current.buySellRatio);
+  const trendUp = momDelta > 0;
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+        {/* Big number */}
+        <div className="flex flex-col items-start gap-1 md:col-span-1">
+          <div className="text-micro text-muted-foreground uppercase tracking-wider font-semibold">Market B/S ratio · last 30d</div>
+          <div className={`text-6xl font-bold tabular-nums ${tone}`}>{fmtRatio(current.buySellRatio)}</div>
+          <div className={`text-base font-semibold ${tone}`}>{ratioLabel(current.buySellRatio)}</div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums mt-1">
+            {trendUp ? <ArrowUpRight className="h-3.5 w-3.5 text-bull-light" /> : <ArrowDownRight className="h-3.5 w-3.5 text-bear-light" />}
+            <span>{momDelta > 0 ? "+" : ""}{momDelta.toFixed(2)} vs prior 30d ({fmtRatio(prior.buySellRatio)})</span>
+          </div>
+        </div>
+
+        {/* Buy / Sell totals */}
+        <div className="grid grid-cols-2 gap-4 md:col-span-2">
+          <div className="bg-bull/5 border border-bull/30 rounded p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingUp className="h-3.5 w-3.5 text-bull-light" />
+              <span className="text-micro uppercase tracking-wider font-semibold text-muted-foreground">Total buys</span>
+            </div>
+            <div className="text-2xl font-bold text-bull-light tabular-nums">{fmtMoney(current.buyDollar)}</div>
+            <div className="text-micro text-muted-foreground tabular-nums">{current.buyCount} distinct insiders</div>
+          </div>
+          <div className="bg-bear/5 border border-bear/30 rounded p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingDown className="h-3.5 w-3.5 text-bear-light" />
+              <span className="text-micro uppercase tracking-wider font-semibold text-muted-foreground">Total sells</span>
+            </div>
+            <div className="text-2xl font-bold text-bear-light tabular-nums">{fmtMoney(current.sellDollar)}</div>
+            <div className="text-micro text-muted-foreground tabular-nums">{current.sellCount} distinct insiders</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <SkewBar sellShare={current.sellShare} tall />
+      </div>
+    </div>
+  );
+}
+
+function SkewBar({ sellShare, tall = false }: { sellShare: number; tall?: boolean }) {
+  const buyPct = (1 - sellShare) * 100;
+  const sellPct = sellShare * 100;
+  return (
+    <div className={`flex w-full rounded overflow-hidden bg-muted ${tall ? "h-3" : "h-1.5"}`}>
+      <div className="bg-bull/70 transition-all" style={{ width: `${buyPct}%` }} title={`${buyPct.toFixed(0)}% buy $`} />
+      <div className="bg-bear/70 transition-all" style={{ width: `${sellPct}%` }} title={`${sellPct.toFixed(0)}% sell $`} />
+    </div>
+  );
+}
