@@ -1180,6 +1180,21 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — Form 4 repair endpoint: fix pre-fix ADR rows in place
+
+**Why:** The ADR parser fix shipped earlier today only applies to FUTURE Form 4 sweeps. Existing DB rows for tickers like SVRE still hold the inflated pre-fix values ($6B fake). The sweep won't touch them because it dedupes by accession number. Chris confirmed `/insiders` is still showing $6B on SVRE.
+
+**What:**
+- `server/dashboard/form4-routes.ts` — new `POST /api/diag/form4/repair-adrs` endpoint. Walks every row in `insider_form4`, runs `detectAdrRatio` against the saved `footnotes` text, and for any row where ratio > 1 normalizes `shares` and recomputes `totalValue`. Idempotent: US-common-stock rows (ratio = 1) are never touched. No EDGAR re-fetch needed — uses the footnote text already in the DB.
+- Returns `{scanned, normalized, examples}` so Chris can see exactly what got fixed (e.g. "SVRE: $4.32B → $100K").
+
+**How to use:**
+```
+POST /api/diag/form4/repair-adrs
+```
+Hit once after the deploy lands. Same auth as `/api/diag/form4/sweep`. Future sweeps will land correctly thanks to the parser fix; this endpoint is for the one-time backfill of pre-fix rows.
+
+---
 ## 2026-05-22 — /insiders: Conviction Buy Clusters with sponsor-pattern detection
 
 **Why:** The dashboard cluster widget already detected 3+ insider buys in 14 days, but ranked BXDC's IPO-day sponsor flood the same as MRP's organic post-selloff cluster. Chris wanted the page to actively surface MRP-like setups — the kind where the cluster is genuinely convergent (5+ different insiders, broadly distributed dollars, market price) rather than mechanical (one parent affiliate + token directors at IPO).

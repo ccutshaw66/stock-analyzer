@@ -125,4 +125,93 @@ export function registerForm4Routes(app: Express): void {
       }
     },
   );
+
+  // Repair endpoint — re-applies the ADR detector to already-stored rows
+  // using their saved footnote text. Fixes the SVRE-style "$6B fake
+  // insider buy" rows that were inserted before the ADR-ratio parser
+  // shipped. Idempotent: rows whose ratio is 1 (US common stock) are
+  // never touched.
+  app.post(
+    "/api/diag/form4/repair-adrs",
+    requireAuth,
+    async (_req: Request, res: Response) => {
+      try {
+        const { detectAdrRatio } = await import("../data/providers/edgar-form4");
+        // Pull every row that has footnote text (cheap; ~few thousand rows
+        // total). We only touch the rows where detectAdrRatio returns >1.
+        const allRows = await db
+          .select({
+            filingAccessionNo: insiderForm4.filingAccessionNo,
+            txIndex: insiderForm4.txIndex,
+            ticker: insiderForm4.ticker,
+            shares: insiderForm4.shares,
+            pricePerShare: insiderForm4.pricePerShare,
+            footnotes: insiderForm4.footnotes,
+          })
+          .from(insiderForm4);
+
+        let scanned = 0;
+        let normalized = 0;
+        const examples: Array<{
+          ticker: string;
+          accession: string;
+          ratio: number;
+          beforeShares: number;
+          afterShares: number;
+          beforeValue: number;
+          afterValue: number;
+        }> = [];
+
+        for (const r of allRows) {
+          scanned++;
+          if (!r.footnotes) continue;
+          const ratio = detectAdrRatio(r.footnotes);
+          if (ratio <= 1) continue;
+          const newShares = r.shares > 0 ? r.shares / ratio : r.shares;
+          const newTotalValue =
+            r.pricePerShare != null && newShares > 0 ? newShares * r.pricePerShare : null;
+
+          if (examples.length < 10) {
+            examples.push({
+              ticker: r.ticker,
+              accession: r.filingAccessionNo,
+              ratio,
+              beforeShares: r.shares,
+              afterShares: newShares,
+              beforeValue:
+                r.pricePerShare != null && r.shares > 0 ? r.shares * r.pricePerShare : 0,
+              afterValue: newTotalValue ?? 0,
+            });
+          }
+
+          await db
+            .update(insiderForm4)
+            .set({ shares: newShares, totalValue: newTotalValue })
+            .where(
+              and(
+                eq(insiderForm4.filingAccessionNo, r.filingAccessionNo),
+                eq(insiderForm4.txIndex, r.txIndex),
+              ),
+            );
+          normalized++;
+        }
+
+        res.json({
+          scanned,
+          normalized,
+          examples,
+          message:
+            normalized > 0
+              ? `Fixed ${normalized} ADR rows (e.g. ${examples[0].ticker}: $${(examples[0].beforeValue / 1e9).toFixed(2)}B → $${examples[0].afterValue.toLocaleString()}).`
+              : "No ADR rows needed repair — DB is already clean.",
+        });
+      } catch (err: any) {
+        console.error("[diag] form4/repair-adrs failed:", err?.message || err);
+        res.status(500).json({ error: "form4_repair_failed", message: String(err?.message || err) });
+      }
+    },
+  );
+
+  // Silence unused-import warning for sql when it's not used in this build.
+  void sql;
 }
