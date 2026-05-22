@@ -1180,6 +1180,18 @@ NOG −$3.3K, DCH −$3.3K, NVAX −$3.2K, FLR −$3.2K, ACHR −$3.1K, NEXT −
 **Files:** `server/diag/strategy-htf-pnl.ts` (new), `server/routes.ts`.
 
 ---
+## 2026-05-22 — Form 4 parser: normalize ADR ordinary-share counts to ADS units
+
+**Why:** SVRE (SaverOne, Israeli ADR — 43,200 ordinary shares per ADS) was showing a fake **$6 billion** insider buy on the /insiders page. SEC Form 4 reports the *ordinary* share count, but `pricePerShare` is per-ADS USD. Multiplying inflates by the ADR ratio. Real transaction value was ~$167K (a few thousand ADSs at $3-$4). Affects every foreign issuer with ADR ratios > 1.
+
+**What:**
+- `server/data/providers/edgar-form4.ts` — new `detectAdrRatio(footnotesText)` parses Form 4 footnotes for patterns like "Each ADS represents N ordinary shares" / "Each ADR represents N ordinary shares" / "One ADS = N ordinary shares". Returns 1 (no normalization) for US common stock.
+- `Form4Transaction.shares` field semantics changed: now stores the *tradeable security count* (ADS units for ADRs, raw shares for US common). Matches what brokers and aggregators (Finviz, Stocktitan) display. New `adrRatio` field on each transaction preserves the conversion factor for audit.
+- `totalValue` now correctly uses `normalizedShares × pricePerShare`. SVRE will read ~$167K instead of $6B once the EDGAR sweep re-parses.
+
+**Heads-up:** existing rows in the insider-transactions DB still hold the pre-fix inflated values. Next EDGAR sweep run (or manual re-fetch on any affected ticker) will overwrite with corrected numbers.
+
+---
 ## 2026-05-22 — HTF Watch: drop the actionableOnly gate (visibility, not filter)
 
 **Why:** Per the foundation-first memory + the `session_2026_05_21_pickup` note, the Watch tab is a *visibility* surface — the staging ground for the Add-Trade auto-fill flow (you watch a pattern form, set an alert, queue the trade). Earlier commit (`e22e3bb`) added `actionableOnly: true` to Watch which applied the R/R hard block + portfolio caps. With Chris's Min R/R = 5, every 4:1 forming pattern disappeared from Watch even though that's exactly what the Watch surface is for.

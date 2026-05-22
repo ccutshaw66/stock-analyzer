@@ -110,9 +110,23 @@ export interface Form4Transaction {
   transactionCode: string;
   /** "buy" / "sell" / "other" — buy = P + acquired; sell = S + disposed. */
   direction: "buy" | "sell" | "other";
+  /**
+   * Share count in the *tradeable security's* terms. For US common stock
+   * this is the SEC-reported count unchanged. For ADRs/ADSs (foreign
+   * issuers), the SEC-reported ordinary-share count is normalized down by
+   * the ADR ratio so this field represents marketable ADS units — matches
+   * what shows up on broker statements and what aggregators (Finviz,
+   * Stocktitan) display.
+   */
   shares: number;
   pricePerShare: number | null;
   totalValue: number | null;
+  /**
+   * ADR-to-ordinary ratio detected in this transaction's footnotes.
+   * 1 = US common stock (no normalization). >1 = foreign issuer; original
+   * ordinary-share count was `shares × adrRatio`.
+   */
+  adrRatio: number;
   rule10b5_1: boolean;
   /** Concatenated footnote text referenced by this transaction. */
   footnotes: string;
@@ -155,6 +169,41 @@ function looksLike10b51(text: string): boolean {
     t.includes("rule 10b5") ||
     (t.includes("trading plan") && t.includes("10b5"))
   );
+}
+
+/**
+ * Detect the ADR-to-ordinary-share ratio from Form 4 footnote text.
+ *
+ * Foreign issuers (Israeli, Chinese, etc.) report transactions in *ordinary
+ * shares* but the actual tradeable security in the US is the ADS (American
+ * Depositary Share). One ADS typically represents N ordinary shares — N is
+ * disclosed in a footnote like "Each ADS represents 43,200 ordinary shares."
+ *
+ * Without applying this ratio, `shares × pricePerShare` inflates by a factor
+ * of N — e.g. SVRE showed a fake $6B insider buy when the real money was
+ * $167K. Returns 1 (no normalization) when no ratio is detected.
+ */
+export function detectAdrRatio(footnotesText: string): number {
+  if (!footnotesText) return 1;
+  const t = footnotesText.replace(/\s+/g, " ");
+  // Patterns covered:
+  //   "Each ADS represents 43,200 ordinary shares"
+  //   "Each American Depositary Share represents 10 ordinary shares"
+  //   "Each ADR represents 5 ordinary shares"
+  //   "One ADS = 100 ordinary shares"
+  const patterns: RegExp[] = [
+    /each\s+(?:american\s+depositary\s+(?:share|receipt)s?\s*\(?(?:ads|adr)\)?|ads|adr)\s+(?:represents?|equals?|=)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    /one\s+(?:ads|adr)\s+(?:=|represents?|equals?)\s+([\d,]+)\s+ordinary\s+shares?/i,
+    /1\s+(?:ads|adr)\s*[=:]\s*([\d,]+)\s+ordinary\s+shares?/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(t);
+    if (m) {
+      const n = Number(m[1].replace(/,/g, ""));
+      if (Number.isFinite(n) && n > 1) return n;
+    }
+  }
+  return 1;
 }
 
 const xmlParser = new XMLParser({
@@ -257,14 +306,22 @@ export function parseForm4Xml(xml: string, filingAccessionNo: string): ParsedFor
 
     if (!transactionDate || (direction === "other" && shares <= 0)) continue;
 
+    // Normalize ordinary-share counts to ADS units when the issuer is an
+    // ADR. Without this, foreign issuers like SaverOne (SVRE, 43,200
+    // ordinary per ADS) show fake billion-dollar transactions because
+    // `shares × USD-per-ADS-price` inflates by the ADR ratio.
+    const adrRatio = detectAdrRatio(footnotesText);
+    const normalizedShares = adrRatio > 1 && shares > 0 ? shares / adrRatio : shares;
+
     txs.push({
       txIndex: i,
       transactionDate,
       transactionCode: code,
       direction,
-      shares,
+      shares: normalizedShares,
       pricePerShare: price,
-      totalValue: price != null && shares > 0 ? shares * price : null,
+      totalValue: price != null && normalizedShares > 0 ? normalizedShares * price : null,
+      adrRatio,
       rule10b5_1,
       footnotes: footnotesText,
     });
