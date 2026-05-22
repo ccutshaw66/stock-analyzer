@@ -966,6 +966,27 @@ export default function TradeTracker() {
     },
   });
 
+  // Auto-refresh prices every 5 minutes during market hours when the tab is
+  // visible. Skips off-hours and hidden tabs so we don't burn FMP calls or
+  // fight the user when they've navigated away. Chris feedback (2026-05-22):
+  // having to click Refresh to see updated P&L was friction.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      // Rough US market-hours guard: weekday + UTC 13:00-21:30 (covers
+      // 9:00am-4:30pm ET regardless of DST). Off-hours = no auto-refresh.
+      const now = new Date();
+      const day = now.getUTCDay();
+      const utcHour = now.getUTCHours();
+      if (day === 0 || day === 6) return;
+      if (utcHour < 13 || utcHour > 21) return;
+      if (refreshMutation.isPending) return;
+      refreshMutation.mutate();
+    };
+    const interval = setInterval(tick, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshMutation]);
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
     onSuccess: () => {
