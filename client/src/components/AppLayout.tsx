@@ -43,6 +43,8 @@ import {
   Trophy,
   Bell,
   Compass,
+  Bot,
+  Network,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { AlertsBell } from "@/components/AlertsBell";
@@ -551,7 +553,14 @@ function Sidebar({
         { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
         { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
         { path: "/kelly", label: "Kelly Criterion", icon: Percent },
+      ],
+    },
+    {
+      label: "Experimental",
+      items: [
+        { path: "/hermes", label: "HERMES Auto Trader", icon: Bot },
         { path: "/wheel", label: "Wheel Strategy", icon: RefreshCw },
+        { path: "/markov", label: "Markov Strategy", icon: Network },
       ],
     },
   ];
@@ -563,7 +572,11 @@ function Sidebar({
   // Add/Close trade modal states
   const [showAddTrade, setShowAddTrade] = useState(false);
   const [showCloseTrade, setShowCloseTrade] = useState(false);
-  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({ "Company Information": true, "Research": true, "Calculators": true, "Trade Tracker": true, "Watchlist": true, "Active Options": true, "Active Stocks": true });
+  // All groups collapsed by default; accordion behavior (only one open at a time).
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
+  const toggleGroup = (label: string) => {
+    setGroupOpen((prev) => (prev[label] ? {} : { [label]: true }));
+  };
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 
@@ -600,6 +613,7 @@ function Sidebar({
             openTrades={openTrades}
             groupOpen={groupOpen}
             setGroupOpen={setGroupOpen}
+            toggleGroup={toggleGroup}
             setShowAddTrade={setShowAddTrade}
             setShowCloseTrade={setShowCloseTrade}
           />
@@ -969,6 +983,7 @@ function SidebarContent({
   openTrades = [],
   groupOpen = {} as any,
   setGroupOpen = (_: any) => {},
+  toggleGroup = (_: string) => {},
   setShowAddTrade = () => {},
   setShowCloseTrade = () => {},
 }: any) {
@@ -988,16 +1003,16 @@ function SidebarContent({
       {/* Grouped Navigation */}
       <nav className="p-2 space-y-1">
         {navGroups.map((group: any) => {
-          const isOpen = groupOpen[group.label] !== false;
+          const isOpen = groupOpen[group.label] === true;
           return (
             <div key={group.label}>
               {expanded && (
                 <button
-                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, [group.label]: !isOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  onClick={() => toggleGroup(group.label)}
+                  className="flex items-center justify-between w-full px-3 py-2 mt-1 text-[12px] font-bold uppercase tracking-wider text-foreground/90 hover:text-foreground hover:bg-muted/40 rounded-md transition-colors"
                 >
                   {group.label}
-                  {isOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                  {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               )}
               {(isOpen || !expanded) && group.items.map((item: any) => {
@@ -1040,13 +1055,13 @@ function SidebarContent({
 
         {/* Watchlist (collapsible group) */}
         {(() => {
-          const isWatchlistOpen = groupOpen["Watchlist"] !== false;
+          const isWatchlistOpen = groupOpen["Watchlist"] === true;
           return (
             <div>
               {expanded ? (
                 <button
-                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, Watchlist: !isWatchlistOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  onClick={() => toggleGroup("Watchlist")}
+                  className="flex items-center justify-between w-full px-3 py-2 mt-1 text-[12px] font-bold uppercase tracking-wider text-foreground/90 hover:text-foreground hover:bg-muted/40 rounded-md transition-colors"
                   data-testid="toggle-watchlist"
                 >
                   <span className="flex items-center gap-2">
@@ -1057,7 +1072,7 @@ function SidebarContent({
                       </span>
                     )}
                   </span>
-                  {isWatchlistOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                  {isWatchlistOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               ) : (
                 <div className="flex justify-center py-1.5 px-3" title="Watchlist">
@@ -1134,20 +1149,20 @@ function SidebarContent({
         {/* Active Options (collapsible group) */}
         {(() => {
           const optionTrades = openTrades.filter((t: any) => t.tradeCategory === 'Option');
-          const isOptionsOpen = groupOpen["Active Options"] !== false;
+          const isOptionsOpen = groupOpen["Active Options"] === true;
           return (
             <div>
               {expanded ? (
                 <button
-                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Options": !isOptionsOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  onClick={() => toggleGroup("Active Options")}
+                  className="flex items-center justify-between w-full px-3 py-2 mt-1 text-[12px] font-bold uppercase tracking-wider text-foreground/90 hover:text-foreground hover:bg-muted/40 rounded-md transition-colors"
                   data-testid="toggle-trades"
                 >
                   <span className="flex items-center gap-2">
                     Active Options
                     {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
                   </span>
-                  {isOptionsOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                  {isOptionsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               ) : (
                 <div className="flex justify-center py-1.5 px-3" title="Active Options">
@@ -1167,19 +1182,19 @@ function SidebarContent({
         {/* Active Stocks (collapsible group) */}
         {(() => {
           const stockTrades = openTrades.filter((t: any) => t.tradeCategory === 'Stock');
-          const isStocksOpen = groupOpen["Active Stocks"] !== false;
+          const isStocksOpen = groupOpen["Active Stocks"] === true;
           return (
             <div>
               {expanded ? (
                 <button
-                  onClick={() => setGroupOpen((prev: any) => ({ ...prev, "Active Stocks": !isStocksOpen }))}
-                  className="flex items-center justify-between w-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground"
+                  onClick={() => toggleGroup("Active Stocks")}
+                  className="flex items-center justify-between w-full px-3 py-2 mt-1 text-[12px] font-bold uppercase tracking-wider text-foreground/90 hover:text-foreground hover:bg-muted/40 rounded-md transition-colors"
                 >
                   <span className="flex items-center gap-2">
                     Active Stocks
                     {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
                   </span>
-                  {isStocksOpen ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+                  {isStocksOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
               ) : (
                 <div className="flex justify-center py-1.5 px-3" title="Active Stocks">

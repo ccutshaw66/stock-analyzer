@@ -28,6 +28,8 @@ import Dividends from "@/pages/dividends";
 import DividendPortfolio from "@/pages/dividend-portfolio";
 import MMExposure from "@/pages/mm-exposure";
 import WheelCalculator from "@/pages/wheel";
+import HermesPage from "@/pages/hermes";
+import MarkovPage from "@/pages/markov";
 import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
 import AccountPage from "@/pages/account";
@@ -111,6 +113,8 @@ function AuthenticatedApp() {
             <Route path="/dividend-portfolio" component={DividendPortfolio} />
             <Route path="/mm-exposure" component={MMExposure} />
             <Route path="/wheel" component={WheelCalculator} />
+            <Route path="/hermes" component={HermesPage} />
+            <Route path="/markov" component={MarkovPage} />
             <Route path="/account" component={AccountPage} />
             <Route path="/admin" component={AdminPage} />
             <Route path="/reset-password" component={ResetPassword} />
