@@ -604,6 +604,7 @@ function Sidebar({
         openTrades={openTrades}
         groupOpen={groupOpen}
         setGroupOpen={setGroupOpen}
+        toggleGroup={toggleGroup}
         setShowAddTrade={setShowAddTrade}
         setShowCloseTrade={setShowCloseTrade}
       />
