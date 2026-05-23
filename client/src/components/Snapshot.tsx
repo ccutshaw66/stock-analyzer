@@ -9,17 +9,17 @@ type Signal = "good" | "bad" | "neutral";
 
 function getSignalColor(signal: Signal): string {
   switch (signal) {
-    case "good": return "text-green-500";
-    case "bad": return "text-red-500";
-    case "neutral": return "text-yellow-500";
+    case "good": return "text-bull";
+    case "bad": return "text-bear";
+    case "neutral": return "text-watch";
   }
 }
 
 function getSignalDotBg(signal: Signal): string {
   switch (signal) {
-    case "good": return "bg-green-500";
-    case "bad": return "bg-red-500";
-    case "neutral": return "bg-yellow-500";
+    case "good": return "bg-bull";
+    case "bad": return "bg-bear";
+    case "neutral": return "bg-watch";
   }
 }
 
@@ -83,10 +83,10 @@ function MetricRow({ label, value, signal, testId }: { label: string; value: str
       </div>
       <div className="flex items-center gap-2">
         <span className={`text-sm font-semibold tabular-nums ${getSignalColor(signal)}`} data-testid={testId}>{value}</span>
-        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-          signal === "good" ? "bg-green-500/15 text-green-500" :
-          signal === "bad" ? "bg-red-500/15 text-red-500" :
-          "bg-yellow-500/15 text-yellow-500"
+        <span className={`text-micro font-medium px-1.5 py-0.5 rounded ${
+          signal === "good" ? "bg-bull/15 text-bull" :
+          signal === "bad" ? "bg-bear/15 text-bear" :
+          "bg-watch/15 text-watch"
         }`}>
           {getSignalLabel(signal)}
         </span>
@@ -120,9 +120,9 @@ export function Snapshot({ data }: SnapshotProps) {
   if (rangePosition > 70) rangeSignal = "good";
   else if (rangePosition < 30) rangeSignal = "bad";
 
-  const rangeSignalColor = rangeSignal === "good" ? "bg-green-500" : rangeSignal === "bad" ? "bg-red-500" : "bg-yellow-500";
-  const rangeBarFill = rangeSignal === "good" ? "bg-green-500/25" : rangeSignal === "bad" ? "bg-red-500/25" : "bg-yellow-500/25";
-  const rangeDotColor = rangeSignal === "good" ? "bg-green-500" : rangeSignal === "bad" ? "bg-red-500" : "bg-yellow-500";
+  const rangeSignalColor = rangeSignal === "good" ? "bg-bull" : rangeSignal === "bad" ? "bg-bear" : "bg-watch";
+  const rangeBarFill = rangeSignal === "good" ? "bg-bull/25" : rangeSignal === "bad" ? "bg-bear/25" : "bg-watch/25";
+  const rangeDotColor = rangeSignal === "good" ? "bg-bull" : rangeSignal === "bad" ? "bg-bear" : "bg-watch";
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-6" data-testid="snapshot">
@@ -154,10 +154,10 @@ export function Snapshot({ data }: SnapshotProps) {
               <span className={`inline-block w-2 h-2 rounded-full ${rangeSignalColor}`} />
               <span>52-Week Range</span>
             </div>
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-              rangeSignal === "good" ? "bg-green-500/15 text-green-500" :
-              rangeSignal === "bad" ? "bg-red-500/15 text-red-500" :
-              "bg-yellow-500/15 text-yellow-500"
+            <span className={`text-micro font-medium px-1.5 py-0.5 rounded ${
+              rangeSignal === "good" ? "bg-bull/15 text-bull" :
+              rangeSignal === "bad" ? "bg-bear/15 text-bear" :
+              "bg-watch/15 text-watch"
             }`}>
               {rangeSignal === "good" ? "Near High" : rangeSignal === "bad" ? "Near Low" : "Mid Range"}
             </span>

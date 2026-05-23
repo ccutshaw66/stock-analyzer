@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 
 interface TickerContextType {
   activeTicker: string | null;
@@ -18,6 +19,7 @@ const TickerContext = createContext<TickerContextType | null>(null);
 
 export function TickerProvider({ children }: { children: React.ReactNode }) {
   const [activeTicker, setActiveTickerRaw] = useState<string | null>(null);
+  const { timeframe } = useTimeframe();
 
   const setActiveTicker = useCallback((ticker: string) => {
     setActiveTickerRaw(ticker.toUpperCase());
@@ -31,10 +33,10 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
     error: analysisError,
     dataUpdatedAt: analysisUpdatedAt,
   } = useQuery({
-    queryKey: ["/api/analyze", activeTicker],
+    queryKey: ["/api/analyze", activeTicker, timeframe],
     queryFn: async () => {
       if (!activeTicker) return null;
-      const res = await apiRequest("GET", `/api/analyze/${activeTicker}`);
+      const res = await apiRequest("GET", `/api/analyze/${activeTicker}?timeframe=${timeframe}`);
       return res.json();
     },
     enabled: !!activeTicker,
@@ -47,10 +49,10 @@ export function TickerProvider({ children }: { children: React.ReactNode }) {
     error: tradeError,
     dataUpdatedAt: tradeUpdatedAt,
   } = useQuery({
-    queryKey: ["/api/trade-analysis", activeTicker],
+    queryKey: ["/api/trade-analysis", activeTicker, timeframe],
     queryFn: async () => {
       if (!activeTicker) return null;
-      const res = await apiRequest("GET", `/api/trade-analysis/${activeTicker}`);
+      const res = await apiRequest("GET", `/api/trade-analysis/${activeTicker}?timeframe=${timeframe}`);
       return res.json();
     },
     enabled: !!activeTicker,

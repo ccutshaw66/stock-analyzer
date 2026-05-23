@@ -14,6 +14,10 @@ export const users = pgTable("users", {
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
   hasSeenTour: boolean("has_seen_tour").default(false),
   lastLoginAt: timestamp("last_login_at"),
+  // Per-account flag for the Ask Otter (Claude API) widget. Default false so
+  // no paid Anthropic calls fire until the user opts in via settings. Server
+  // route returns 503 unless this is true AND ANTHROPIC_API_KEY is set in env.
+  askOtterEnabled: boolean("ask_otter_enabled").default(false),
 });
 
 export const favorites = pgTable("favorites", {
@@ -54,6 +58,19 @@ export const trades = pgTable("trades", {
   creditDebit: text("credit_debit"),
   tradePlanNotes: text("trade_plan_notes"),
   behaviorTag: text("behavior_tag"),
+  // Which strategy opened this trade — drives Current Positions grouping +
+  // strategy-specific lifecycle alerts. Defaults to 'manual' so existing rows
+  // pre-migration still classify. Values come from STRATEGY_REGISTRY in
+  // shared/strategies/registry.ts (htf | bbtc-ver | tft-40w | tft-60w |
+  // tft-cat | amc | manual | other). When 'other', strategyReason captures
+  // the free-text "why I took this trade" (e.g. "Steve recommended").
+  strategy: text("strategy").default("manual").notNull(),
+  strategyReason: text("strategy_reason"),
+  // Strategy-specific snapshot captured at trade open. Each manifest in
+  // shared/strategies/registry.ts defines its own shape (HTF stores
+  // pole/flag/breakout/stop; BBTC stores entry/stop/exit-trigger; etc.).
+  // jsonb so the schema doesn't need to change when a new strategy is added.
+  strategyData: jsonb("strategy_data"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -65,6 +82,17 @@ export const accountSettings = pgTable("account_settings", {
   commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
   maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
   totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
+  // Brokerage cash balance — manually entered to match the user's broker app.
+  // Combined with open position market value to produce the "Total Portfolio"
+  // figure shown at the top of Trade Tracker.
+  // NOTE: when this column is added to a deployed env that hasn't run db:push
+  // yet, getAccountSettings in storage.ts has a raw-SQL fallback that
+  // tolerates the missing column, so deploys never 500 on a migration lag.
+  cashBalance: doublePrecision("cash_balance").default(0),
+  // HTF scanner overrides — null = use DEFAULT_ACCOUNT_CONFIG from
+  // server/signals/risk/position-sizing.ts. Stored as full AccountConfig
+  // JSON so we don't fragment the schema as new HTF knobs get added.
+  htfConfig: jsonb("htf_config"),
 });
 
 export const accountTransactions = pgTable("account_transactions", {
@@ -240,9 +268,114 @@ export const insertAccountTransactionSchema = createInsertSchema(accountTransact
 });
 
 export const insertTradePriceHistorySchema = createInsertSchema(tradePriceHistory).omit({ id: true });
+
+// ─── Dashboard Layouts (one row per user, JSONB blob) ─────────────────────────
+// Per-user customizable dashboard layout (Phase 1B Round 7). Single JSONB
+// column so the layout schema can evolve additively without migrations.
+// See `shared/dashboard/types.ts` for the typed shape of `data`.
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id).unique(),
+  data: jsonb("data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertDashboardLayoutSchema = createInsertSchema(dashboardLayouts).omit({ id: true });
+
+// ─── HTF setups (Phase 6 — High Tight Flag scanner) ─────────────────────────
+// One row per detected breakout from the nightly /htf scan. The actionable
+// vs filtered split is determined by `actionable` + `blockedReason`.
+export const htfSetups = pgTable("htf_setups", {
+  id: serial("id").primaryKey(),
+  runDate: text("run_date").notNull(),              // YYYY-MM-DD — scan date
+  symbol: text("symbol").notNull(),
+  pattern: text("pattern").notNull(),               // "HTF_Givens"
+  breakoutDate: text("breakout_date").notNull(),    // YYYY-MM-DD
+  breakoutPrice: doublePrecision("breakout_price").notNull(),
+  targetPrice: doublePrecision("target_price").notNull(),
+  stopPrice: doublePrecision("stop_price").notNull(),
+  qualityScore: integer("quality_score").notNull(),
+  poleGainPct: doublePrecision("pole_gain_pct").notNull(),
+  poleDays: integer("pole_days").notNull(),
+  flagDays: integer("flag_days").notNull(),
+  flagPullbackPct: doublePrecision("flag_pullback_pct").notNull(),
+  breakoutVolRatio: doublePrecision("breakout_vol_ratio").notNull(),
+  // Position-sizing snapshot at scan time (so historical setups remain
+  // interpretable even if AccountConfig changes later)
+  recommendedShares: integer("recommended_shares").notNull(),
+  positionValue: doublePrecision("position_value").notNull(),
+  actualRisk: doublePrecision("actual_risk").notNull(),
+  rewardRiskRatio: doublePrecision("reward_risk_ratio").notNull(),
+  actionable: boolean("actionable").notNull(),
+  blockedReason: text("blocked_reason"),
+  warnings: jsonb("warnings"),                      // string[]
+  sector: text("sector"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byRunDate: index("htf_setups_run_date_idx").on(table.runDate),
+  bySymbolDate: index("htf_setups_symbol_date_idx").on(table.symbol, table.breakoutDate),
+}));
+export const insertHtfSetupSchema = createInsertSchema(htfSetups).omit({ id: true, createdAt: true });
 export const insertDividendPortfolioSchema = createInsertSchema(dividendPortfolio).omit({ id: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true, lastFiredAt: true, lastFiredState: true });
+
+// ─── SEC Form 4 insider transactions (dashboard insider widgets v2) ─────────
+// One row per non-derivative transaction parsed from a Form 4 filing. The
+// FMP-sourced /insider-trading/latest feed gives us a "good enough" view but
+// can't tag 10b5-1 planned sales because the flag lives in the footnote text
+// of the SEC XML, not in any structured field. This table backs the
+// 10b5-1-aware sentiment view on /insiders.
+//
+// Dedupe: (filingAccessionNo, txIndex) is the natural key (one Form 4 can
+// list multiple transactions; the same filing is fetched only once).
+export const insiderForm4 = pgTable("insider_form4", {
+  id: serial("id").primaryKey(),
+  filingAccessionNo: text("filing_accession_no").notNull(), // SEC accession
+  txIndex: integer("tx_index").notNull(),                   // 0-based row inside the filing
+  filingDate: text("filing_date").notNull(),                // YYYY-MM-DD
+  transactionDate: text("transaction_date").notNull(),      // YYYY-MM-DD
+  ticker: text("ticker").notNull(),                         // issuer trading symbol (UPPER)
+  issuerCik: text("issuer_cik").notNull(),
+  reportingOwnerCik: text("reporting_owner_cik"),
+  reportingOwnerName: text("reporting_owner_name").notNull(),
+  // Relationship to issuer — pipe-joined ("Director|10%Owner|Officer:CEO")
+  reportingOwnerRelation: text("reporting_owner_relation"),
+  transactionCode: text("transaction_code").notNull(),      // P/S/A/F/M/...
+  // "buy" / "sell" / "other" — derived from code + acquiredDisposedCode
+  direction: text("direction").notNull(),
+  shares: doublePrecision("shares").notNull(),
+  pricePerShare: doublePrecision("price_per_share"),        // null if no price (gifts, etc.)
+  totalValue: doublePrecision("total_value"),               // shares × price
+  /** True if any footnote referenced by this txn mentions a 10b5-1 plan. */
+  rule10b5_1: boolean("rule_10b5_1").default(false).notNull(),
+  /** Concatenated footnote text the txn references; surfaced in UI tooltips. */
+  footnotes: text("footnotes"),
+  filingUrl: text("filing_url").notNull(),                  // link to SEC filing index
+  fetchedAt: timestamp("fetched_at").defaultNow().notNull(),
+}, (t) => ({
+  byTicker: index("insider_form4_ticker_idx").on(t.ticker, t.filingDate),
+  byFilingDate: index("insider_form4_filing_date_idx").on(t.filingDate),
+  byAccession: index("insider_form4_accession_idx").on(t.filingAccessionNo, t.txIndex),
+}));
+export const insertInsiderForm4Schema = createInsertSchema(insiderForm4).omit({ id: true, fetchedAt: true });
+
+// ─── Morning Checklist log (dashboard rebuild v1) ──────────────────────────
+// One row per user per trading day, capturing which items were checked + the
+// daily focus note. `items` is a jsonb map of itemId → boolean so the
+// checklist's item set can evolve additively without migrating the table.
+// History view reads back the last N days; phase-2 "force lock" gate reads
+// today's row to decide whether to block site access.
+export const morningChecklistLog = pgTable("morning_checklist_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  date: text("date").notNull(),                       // YYYY-MM-DD (user's local trading day)
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  items: jsonb("items").notNull(),                    // Record<itemId, boolean>
+  focusNote: text("focus_note"),                      // one-sentence intention
+}, (table) => ({
+  byUserDate: index("morning_checklist_user_date_idx").on(table.userId, table.date),
+}));
+export const insertMorningChecklistLogSchema = createInsertSchema(morningChecklistLog).omit({ id: true, completedAt: true });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -262,9 +395,17 @@ export type DividendPortfolioItem = typeof dividendPortfolio.$inferSelect;
 export type InsertDividendPortfolioItem = z.infer<typeof insertDividendPortfolioSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
+export type MorningChecklistLog = typeof morningChecklistLog.$inferSelect;
+export type InsertMorningChecklistLog = z.infer<typeof insertMorningChecklistLogSchema>;
+export type InsiderForm4 = typeof insiderForm4.$inferSelect;
+export type InsertInsiderForm4 = z.infer<typeof insertInsiderForm4Schema>;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
+export type DashboardLayoutRow = typeof dashboardLayouts.$inferSelect;
+export type InsertDashboardLayout = z.infer<typeof insertDashboardLayoutSchema>;
+export type HtfSetup = typeof htfSetups.$inferSelect;
+export type InsertHtfSetup = z.infer<typeof insertHtfSetupSchema>;
 
 // ─── Trade Type Definitions ───────────────────────────────────────────────────
 

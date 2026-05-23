@@ -10,8 +10,8 @@ import {
   Users, Search, Loader2, ChevronDown, ChevronUp, X, Eye, DollarSign,
   BarChart3, Activity, UserCheck, Briefcase, AlertTriangle, Zap, RefreshCw
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { Disclaimer } from "@/components/Disclaimer";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,23 +87,23 @@ interface ScanResult {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function flowColor(score: number): string {
-  if (score >= 40) return "text-green-400";
-  if (score >= 15) return "text-green-400/70";
-  if (score <= -40) return "text-red-400";
-  if (score <= -15) return "text-red-400/70";
-  return "text-yellow-400";
+  if (score >= 40) return "text-bull-light";
+  if (score >= 15) return "text-bull-light/70";
+  if (score <= -40) return "text-bear-light";
+  if (score <= -15) return "text-bear-light/70";
+  return "text-watch-light";
 }
 
 function signalBadge(signal: string) {
   const colors: Record<string, string> = {
-    "STRONG INFLOW": "bg-green-500 text-white",
-    "ACCUMULATING": "bg-green-500/20 text-green-400",
-    "DISTRIBUTING": "bg-red-500/20 text-red-400",
-    "STRONG OUTFLOW": "bg-red-500 text-white",
-    "NEUTRAL": "bg-yellow-500/20 text-yellow-400",
+    "STRONG INFLOW": "bg-bull text-white",
+    "ACCUMULATING": "bg-bull/20 text-bull-light",
+    "DISTRIBUTING": "bg-bear/20 text-bear-light",
+    "STRONG OUTFLOW": "bg-bear text-white",
+    "NEUTRAL": "bg-watch/20 text-watch-light",
   };
   return (
-    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md uppercase ${colors[signal] || colors.NEUTRAL}`}>
+    <span className={`text-2xs font-bold px-2 py-0.5 rounded-md uppercase ${colors[signal] || colors.NEUTRAL}`}>
       {signal}
     </span>
   );
@@ -116,11 +116,11 @@ function FlowBar({ score }: { score: number }) {
       <span className={`text-sm font-bold tabular-nums w-10 text-right ${flowColor(score)}`}>{score}</span>
       <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden relative max-w-[120px]">
         <div className="absolute inset-0 flex">
-          <div className="w-1/2 bg-red-500/20" />
-          <div className="w-1/2 bg-green-500/20" />
+          <div className="w-1/2 bg-bear/20" />
+          <div className="w-1/2 bg-bull/20" />
         </div>
         <div
-          className={`absolute top-0 h-full w-1.5 rounded-full ${score >= 0 ? "bg-green-500" : "bg-red-500"}`}
+          className={`absolute top-0 h-full w-1.5 rounded-full ${score >= 0 ? "bg-bull" : "bg-bear"}`}
           style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
         />
       </div>
@@ -193,9 +193,9 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
             value={data.institutionCount > 0 ? `${data.institutionPct.toFixed(1)}%` : "Warming"}
             sub={data.institutionCount > 0 ? `${data.institutionCount.toLocaleString()} holders (13F)` : "Data warming — check back later"}
           />
-          <MiniCard label="Insider Buys (6mo)" value={String(data.insiderBuyCount)} sub={`${formatCompact(data.insiderBuyShares)} shares`} color="text-green-400" />
-          <MiniCard label="Insider Sells (6mo)" value={String(data.insiderSellCount)} sub={`${formatCompact(data.insiderSellShares)} shares`} color="text-red-400" />
-          <MiniCard label="Net Insider Shares" value={formatCompact(data.netInsiderShares)} color={data.netInsiderShares >= 0 ? "text-green-400" : "text-red-400"} />
+          <MiniCard label="Insider Buys (6mo)" value={String(data.insiderBuyCount)} sub={`${formatCompact(data.insiderBuyShares)} shares`} color="text-bull-light" />
+          <MiniCard label="Insider Sells (6mo)" value={String(data.insiderSellCount)} sub={`${formatCompact(data.insiderSellShares)} shares`} color="text-bear-light" />
+          <MiniCard label="Net Insider Shares" value={formatCompact(data.netInsiderShares)} color={data.netInsiderShares >= 0 ? "text-bull-light" : "text-bear-light"} />
         </div>
 
         {/* Tabs */}
@@ -235,7 +235,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                     <td className="py-1.5 text-right tabular-nums">{formatCompact(inst.shares)}</td>
                     <td className="py-1.5 text-right tabular-nums">${formatCompact(inst.value)}</td>
                     <td className="py-1.5 text-right tabular-nums">{(inst.pctHeld * 100).toFixed(2)}%</td>
-                    <td className={`py-1.5 text-right font-semibold tabular-nums ${inst.changeQoQ > 0 ? "text-green-400" : inst.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                    <td className={`py-1.5 text-right font-semibold tabular-nums ${inst.changeQoQ > 0 ? "text-bull-light" : inst.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
                       {inst.changeQoQ > 0 ? "+" : ""}{inst.changeQoQ.toFixed(1)}%
                     </td>
                   </tr>
@@ -263,7 +263,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                       <td className="py-1.5 text-right tabular-nums">{formatCompact(fund.shares)}</td>
                       <td className="py-1.5 text-right tabular-nums">${formatCompact(fund.value)}</td>
                       <td className="py-1.5 text-right tabular-nums">{(fund.pctHeld * 100).toFixed(2)}%</td>
-                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-green-400" : fund.changeQoQ < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-bull-light" : fund.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
                         {fund.changeQoQ > 0 ? "+" : ""}{fund.changeQoQ.toFixed(1)}%
                       </td>
                     </tr>
@@ -297,7 +297,7 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
                       <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
                       <td className="py-1.5 text-right tabular-nums">{ins.shares > 0 ? formatCompact(ins.shares) : "—"}</td>
                       <td className="py-1.5 text-right tabular-nums text-muted-foreground">{ins.sharesIndirect > 0 ? formatCompact(ins.sharesIndirect) : "—"}</td>
-                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-red-400" : ins.latestTransaction === "Purchase" ? "text-green-400" : "text-muted-foreground"}`}>
+                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-bear-light" : ins.latestTransaction === "Purchase" ? "text-bull-light" : "text-muted-foreground"}`}>
                         {ins.latestTransaction || "—"}
                       </td>
                       <td className="py-1.5 text-right text-muted-foreground tabular-nums">{ins.latestDate || "—"}</td>
@@ -382,15 +382,15 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
           <tbody>
             {filtered.map((tx, i) => {
               const dirColor =
-                tx.direction === "buy" ? "text-green-400"
-                : tx.direction === "sell" ? "text-red-400"
+                tx.direction === "buy" ? "text-bull-light"
+                : tx.direction === "sell" ? "text-bear-light"
                 : "text-muted-foreground";
               const notable = isNotableRole(tx.relation);
               const bigTicket = tx.value >= 10_000_000 && tx.meaningful;
               return (
                 <tr
                   key={i}
-                  className={`border-b border-card-border/40 ${bigTicket ? "bg-yellow-500/5" : ""}`}
+                  className={`border-b border-card-border/40 ${bigTicket ? "bg-watch/5" : ""}`}
                   data-testid={`insider-txn-row-${i}`}
                 >
                   <td className="py-2 pr-2 text-muted-foreground tabular-nums">
@@ -400,18 +400,18 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{tx.insider}</span>
                       {notable && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
+                        <span className="text-mini px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
                           Key
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground">{tx.relation}</span>
+                    <span className="text-micro text-muted-foreground">{tx.relation}</span>
                   </td>
                   <td className="py-2 pr-2">
                     <div className="flex items-center gap-1.5" title={tx.explain || ""}>
                       <span className={`font-medium ${dirColor}`}>{tx.type}</span>
                       {tx.typeCode && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                        <span className="text-mini px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
                           {tx.typeCode}
                         </span>
                       )}
@@ -436,9 +436,9 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
 function MiniCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
+      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
       <span className={`text-sm font-bold tabular-nums ${color || "text-foreground"}`}>{value}</span>
-      {sub && <span className="block text-[10px] text-muted-foreground">{sub}</span>}
+      {sub && <span className="block text-micro text-muted-foreground">{sub}</span>}
     </div>
   );
 }
@@ -459,7 +459,7 @@ function ResultCard({ data, rank, onClick }: { data: InstitutionalData; rank: nu
               <span className="font-mono font-bold text-base text-foreground">{data.ticker}</span>
               {signalBadge(data.signal)}
               {volSurge && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex items-center gap-0.5">
+                <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 flex items-center gap-0.5">
                   <Zap className="h-2.5 w-2.5" />{volRatio.toFixed(1)}x Vol
                 </span>
               )}
@@ -485,15 +485,15 @@ function ResultCard({ data, rank, onClick }: { data: InstitutionalData; rank: nu
           <span className="text-xs font-semibold text-foreground">{data.insiderPct.toFixed(1)}%</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <ArrowUpRight className="h-3.5 w-3.5 text-green-400" />
-          <span className="text-xs font-semibold text-green-400">{data.instIncreased + data.instNew} in</span>
-          <ArrowDownRight className="h-3.5 w-3.5 text-red-400 ml-1" />
-          <span className="text-xs font-semibold text-red-400">{data.instDecreased + data.instSoldOut} out</span>
+          <ArrowUpRight className="h-3.5 w-3.5 text-bull-light" />
+          <span className="text-xs font-semibold text-bull-light">{data.instIncreased + data.instNew} in</span>
+          <ArrowDownRight className="h-3.5 w-3.5 text-bear-light ml-1" />
+          <span className="text-xs font-semibold text-bear-light">{data.instDecreased + data.instSoldOut} out</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Activity className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">Insider Net:</span>
-          <span className={`text-xs font-semibold ${data.netInsiderShares >= 0 ? "text-green-400" : "text-red-400"}`}>
+          <span className={`text-xs font-semibold ${data.netInsiderShares >= 0 ? "text-bull-light" : "text-bear-light"}`}>
             {data.netInsiderShares >= 0 ? "+" : ""}{formatCompact(data.netInsiderShares)}
           </span>
         </div>
@@ -567,55 +567,50 @@ export default function Institutional() {
   }
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto" data-testid="institutional-page">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
-            Institutional Money Flow
-          </h1>
-          <p className="text-xs text-muted-foreground">Track institutional buying/selling, insider moves, and smart money flow signals.</p>
-      <Disclaimer />
-        </div>
-      </div>
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto"
+      icon={Building2}
+      title="Institutions"
+      subtitle="Track institutional buying/selling, insider moves, and smart money flow signals."
+      howItWorksTitle="How Institutional Money Flow Scoring Works"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-bear-light">-100</strong> (all selling) to <strong className="text-bull-light">+100</strong> (all buying).</p>
 
-      {/* ─── FAQ / How It Works ──────────────────────────────────────── */}
-      <HelpBlock title="How Institutional Money Flow Scoring Works">
-        <p><strong className="text-foreground">Flow Score</strong> measures the net direction of institutional money movement on a scale from <strong className="text-red-400">-100</strong> (all selling) to <strong className="text-green-400">+100</strong> (all buying).</p>
+          <p className="font-semibold text-foreground mt-2">How it's calculated:</p>
+          <p>1. We look at each institution's <strong className="text-foreground">quarter-over-quarter position change</strong> — how much they increased or decreased their holdings.</p>
+          <p>2. <strong className="text-foreground">Inflow</strong> = dollar value of increased positions. <strong className="text-foreground">Outflow</strong> = dollar value of decreased positions.</p>
+          <p>3. <strong className="text-foreground">Base Flow Score</strong> = ((Inflow − Outflow) / Total Flow) × 100</p>
+          <p>4. We then add an <strong className="text-foreground">Insider Activity Bonus</strong>: each net insider buy adds +10, each net insider sell subtracts -10. This rewards insider confidence.</p>
+          <p>5. The combined score is clamped to -100 to +100.</p>
 
-        <p className="font-semibold text-foreground mt-2">How it's calculated:</p>
-        <p>1. We look at each institution's <strong className="text-foreground">quarter-over-quarter position change</strong> — how much they increased or decreased their holdings.</p>
-        <p>2. <strong className="text-foreground">Inflow</strong> = dollar value of increased positions. <strong className="text-foreground">Outflow</strong> = dollar value of decreased positions.</p>
-        <p>3. <strong className="text-foreground">Base Flow Score</strong> = ((Inflow − Outflow) / Total Flow) × 100</p>
-        <p>4. We then add an <strong className="text-foreground">Insider Activity Bonus</strong>: each net insider buy adds +10, each net insider sell subtracts -10. This rewards insider confidence.</p>
-        <p>5. The combined score is clamped to -100 to +100.</p>
+          <p className="font-semibold text-foreground mt-2">Signal Thresholds:</p>
+          <ScoreRange label="STRONG INFLOW" range="+40 to +100" color="green" description="Heavy institutional buying + insider support. Smart money is aggressively accumulating." />
+          <ScoreRange label="ACCUMULATING" range="+15 to +39" color="green" description="Moderate net buying. Institutions are building positions but not rushing." />
+          <ScoreRange label="NEUTRAL" range="-14 to +14" color="yellow" description="Balanced activity. No clear directional bias from institutions." />
+          <ScoreRange label="DISTRIBUTING" range="-15 to -39" color="red" description="Moderate net selling. Institutions are reducing positions." />
+          <ScoreRange label="STRONG OUTFLOW" range="-40 to -100" color="red" description="Heavy institutional selling + insider dumping. Smart money is exiting." />
 
-        <p className="font-semibold text-foreground mt-2">Signal Thresholds:</p>
-        <ScoreRange label="STRONG INFLOW" range="+40 to +100" color="green" description="Heavy institutional buying + insider support. Smart money is aggressively accumulating." />
-        <ScoreRange label="ACCUMULATING" range="+15 to +39" color="green" description="Moderate net buying. Institutions are building positions but not rushing." />
-        <ScoreRange label="NEUTRAL" range="-14 to +14" color="yellow" description="Balanced activity. No clear directional bias from institutions." />
-        <ScoreRange label="DISTRIBUTING" range="-15 to -39" color="red" description="Moderate net selling. Institutions are reducing positions." />
-        <ScoreRange label="STRONG OUTFLOW" range="-40 to -100" color="red" description="Heavy institutional selling + insider dumping. Smart money is exiting." />
+          <p className="font-semibold text-foreground mt-2">Real Examples:</p>
+          <Example type="good">
+            <p><strong className="text-bull-light">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
+          </Example>
+          <Example type="neutral">
+            <p><strong className="text-watch-light">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
+          </Example>
+          <Example type="bad">
+            <p><strong className="text-bear-light">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
+          </Example>
 
-        <p className="font-semibold text-foreground mt-2">Real Examples:</p>
-        <Example type="good">
-          <p><strong className="text-green-400">BAC (Flow Score +62, STRONG INFLOW):</strong> Most top institutions increased positions by 5-15% QoQ. 3 new institutions initiated positions. Insiders bought 50,000 shares. Net inflow far exceeds outflow → strong accumulation signal.</p>
-        </Example>
-        <Example type="neutral">
-          <p><strong className="text-yellow-400">INTC (Flow Score +5, NEUTRAL):</strong> Some institutions increased, others decreased. Roughly equal inflow and outflow. 1 insider buy, 1 insider sell. No clear direction from the smart money.</p>
-        </Example>
-        <Example type="bad">
-          <p><strong className="text-red-400">SNAP (Flow Score -55, STRONG OUTFLOW):</strong> Major funds cut positions by 20-40%. Several institutions sold out entirely. Multiple insider sales. Smart money is heading for the exit.</p>
-        </Example>
-
-        <p className="font-semibold text-foreground mt-2">Key Metrics Explained:</p>
-        <p><strong className="text-foreground">Institutional %</strong> — Percentage of outstanding shares held by institutions (hedge funds, mutual funds, pension funds). Higher = more institutional interest. Most large-caps are 60-90%.</p>
-        <p><strong className="text-foreground">Insider %</strong> — Percentage held by company insiders (executives, board members). High insider ownership (5%+) means management has skin in the game.</p>
-        <p><strong className="text-foreground">Inst. Increasing / Decreasing</strong> — Count of institutions that grew vs. shrank their positions this quarter. More increasing = bullish signal.</p>
-        <p><strong className="text-foreground">New / Sold Out</strong> — Institutions that initiated brand new positions (&gt;50% change) or completely exited (&gt;90% reduction). New positions = fresh conviction. Sold out = lost faith.</p>
-        <p><strong className="text-foreground">Insider Buys / Sells</strong> — Net insider transaction count over the past 6 months. Insider buying is one of the strongest bullish signals because they know the company best.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Key Metrics Explained:</p>
+          <p><strong className="text-foreground">Institutional %</strong> — Percentage of outstanding shares held by institutions (hedge funds, mutual funds, pension funds). Higher = more institutional interest. Most large-caps are 60-90%.</p>
+          <p><strong className="text-foreground">Insider %</strong> — Percentage held by company insiders (executives, board members). High insider ownership (5%+) means management has skin in the game.</p>
+          <p><strong className="text-foreground">Inst. Increasing / Decreasing</strong> — Count of institutions that grew vs. shrank their positions this quarter. More increasing = bullish signal.</p>
+          <p><strong className="text-foreground">New / Sold Out</strong> — Institutions that initiated brand new positions (&gt;50% change) or completely exited (&gt;90% reduction). New positions = fresh conviction. Sold out = lost faith.</p>
+          <p><strong className="text-foreground">Insider Buys / Sells</strong> — Net insider transaction count over the past 6 months. Insider buying is one of the strongest bullish signals because they know the company best.</p>
+        </>
+      }
+    >
       {/* Active Ticker Detail (if one is selected). Keep showing the previous
           data during a re-fetch (don't gate on !singleFetching) so a manual
           Refresh doesn't blink the whole section out for a second. */}
@@ -636,10 +631,10 @@ export default function Institutional() {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <MiniCard label="Institutional" value={`${singleData.institutionPct.toFixed(1)}%`} sub={`${singleData.institutionCount.toLocaleString()} holders`} />
             <MiniCard label="Insider" value={`${singleData.insiderPct.toFixed(1)}%`} />
-            <MiniCard label="Increasing" value={`${singleData.instIncreased + singleData.instNew}`} sub={`${singleData.instNew} new`} color="text-green-400" />
-            <MiniCard label="Decreasing" value={`${singleData.instDecreased + singleData.instSoldOut}`} sub={`${singleData.instSoldOut} exited`} color="text-red-400" />
-            <MiniCard label="Insider Buys" value={String(singleData.insiderBuyCount)} sub={`${formatCompact(singleData.insiderBuyShares)} sh`} color="text-green-400" />
-            <MiniCard label="Insider Sells" value={String(singleData.insiderSellCount)} sub={`${formatCompact(singleData.insiderSellShares)} sh`} color="text-red-400" />
+            <MiniCard label="Increasing" value={`${singleData.instIncreased + singleData.instNew}`} sub={`${singleData.instNew} new`} color="text-bull-light" />
+            <MiniCard label="Decreasing" value={`${singleData.instDecreased + singleData.instSoldOut}`} sub={`${singleData.instSoldOut} exited`} color="text-bear-light" />
+            <MiniCard label="Insider Buys" value={String(singleData.insiderBuyCount)} sub={`${formatCompact(singleData.insiderBuyShares)} sh`} color="text-bull-light" />
+            <MiniCard label="Insider Sells" value={String(singleData.insiderSellCount)} sub={`${formatCompact(singleData.insiderSellShares)} sh`} color="text-bear-light" />
           </div>
         </div>
       )}
@@ -678,7 +673,7 @@ export default function Institutional() {
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground placeholder:text-muted-foreground"
               data-testid="input-custom-tickers"
             />
-            <p className="text-[10px] text-muted-foreground mt-1">Comma-separated, max 50. Scans each ticker for institutional activity.</p>
+            <p className="text-micro text-muted-foreground mt-1">Comma-separated, max 50. Scans each ticker for institutional activity.</p>
           </div>
         )}
 
@@ -695,7 +690,7 @@ export default function Institutional() {
 
       {/* Scan Status */}
       {scanData && !scanFetching && (
-        <div className="text-center text-[11px] text-muted-foreground">
+        <div className="text-center text-2xs text-muted-foreground">
           Scanned {scanData.totalScanned} stocks at {new Date(scanData.scannedAt).toLocaleTimeString()} · {(scanData.results ?? []).length} results · Ranked by money flow strength
         </div>
       )}
@@ -747,6 +742,6 @@ export default function Institutional() {
 
       {/* Detail Modal */}
       {selectedData && <DetailModal data={selectedData} onClose={() => setSelectedData(null)} />}
-    </div>
+    </PageTemplate>
   );
 }

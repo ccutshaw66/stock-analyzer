@@ -5,7 +5,7 @@
  * during strangler migration. Frontend can cut over at its own pace.
  */
 import type { Express, Request, Response } from "express";
-import { searchTickers } from "../../features/search";
+import { searchTickers } from "../../compartments/search";
 
 export function registerSearchRoutes(app: Express): void {
   app.get("/api/search/v2", async (req: Request, res: Response) => {

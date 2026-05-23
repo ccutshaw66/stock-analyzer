@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
 import { Switch, Route, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient, queryPersister } from "./lib/queryClient";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TickerProvider } from "@/contexts/TickerContext";
+import { TimeframeProvider } from "@/contexts/TimeframeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/AppLayout";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import TradeAnalysis from "@/pages/trade-analysis";
+import ChartPage from "@/pages/chart";
 import Scanner from "@/pages/scanner";
 import TradeTracker from "@/pages/trade-tracker";
+import MarketPulse from "@/pages/market-pulse";
 import OptionsCalculator from "@/pages/options-calculator";
 import Help from "@/pages/help";
 import Institutional from "@/pages/institutional";
@@ -38,6 +41,11 @@ import ResetPassword from "@/pages/reset-password";
 import LegalPage from "@/pages/legal";
 import TrackRecord from "@/pages/track-record";
 import AlertsPage from "@/pages/alerts";
+import Dashboard from "@/pages/dashboard";
+import ConfluenceChartPage from "@/pages/confluence-chart";
+import HtfSetupsPage from "@/pages/htf-setups";
+import HtfChartPage from "@/pages/htf-chart";
+import InsidersPage from "@/pages/insiders";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -57,7 +65,7 @@ function AuthenticatedApp() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#040d22' }}>
+      <div className="min-h-screen flex items-center justify-center bg-brand-bg">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading Stock Otter...</p>
@@ -88,15 +96,23 @@ function AuthenticatedApp() {
 
   // Logged in — show the app
   return (
+    <TimeframeProvider>
     <TickerProvider>
       {showTour && <OnboardingTour onComplete={() => { setShowTour(false); setTourDismissed(true); }} />}
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
-            <Route path="/" component={TradeTracker} />
+            <Route path="/" component={MarketPulse} />
+            <Route path="/dashboard" component={Dashboard} />
+            <Route path="/chart/confluence/:ticker?" component={ConfluenceChartPage} />
+            <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
+            <Route path="/chart" component={ChartPage} />
             <Route path="/scanner" component={Scanner} />
+            <Route path="/htf" component={HtfSetupsPage} />
+            <Route path="/insiders" component={InsidersPage} />
+            <Route path="/htf/:symbol" component={HtfChartPage} />
             <Route path="/tracker" component={TradeTracker} />
             <Route path="/calculator" component={OptionsCalculator} />
             <Route path="/verdict" component={Verdict} />
@@ -127,20 +143,36 @@ function AuthenticatedApp() {
         </AppLayout>
       </Router>
     </TickerProvider>
+    </TimeframeProvider>
   );
 }
 
 function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: queryPersister,
+          // Persist only scanner-family queries — keeps sessionStorage from
+          // bloating with every API response and matches the legacy UX
+          // (scan results survive page reload inside the tab; everything
+          // else refetches). See lib/queryClient.ts for the rationale.
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) => {
+              const firstKey = query.queryKey[0];
+              return typeof firstKey === "string" && firstKey.startsWith("/api/scanner");
+            },
+          },
+        }}
+      >
         <TooltipProvider>
           <Toaster />
           <AuthProvider>
             <AuthenticatedApp />
           </AuthProvider>
         </TooltipProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }

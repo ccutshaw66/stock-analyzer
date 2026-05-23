@@ -16,10 +16,19 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL_RADAR,
+  SIGNAL_BEAR_LIGHT,
+  COLOR_GRAY_NEUTRAL,
+  COLOR_GRAY_NEUTRAL_LIGHT,
+  ACCENT_AMBER,
+  OVERLAY_SLATE_20,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
+import { API_DIAG_CONVICTION_BACKTEST } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
-import { Disclaimer } from "@/components/Disclaimer";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import {
   Compass, TrendingUp, TrendingDown, Minus, Loader2,
   Building2, Activity, LineChart, BarChart3,
@@ -79,23 +88,23 @@ const VERDICT_COPY: Record<ConvictionVerdict, { label: string; tone: "bull" | "b
 };
 
 function verdictToneClasses(tone: "bull" | "bear" | "mixed") {
-  if (tone === "bull") return "bg-green-500/15 text-green-400 border-green-500/30";
-  if (tone === "bear") return "bg-red-500/15 text-red-400 border-red-500/30";
-  return "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
+  if (tone === "bull") return "bg-bull/15 text-bull-light border-bull/30";
+  if (tone === "bear") return "bg-bear/15 text-bear-light border-bear/30";
+  return "bg-watch/15 text-watch-light border-watch/30";
 }
 
 function dirIcon(direction: AxisComponent["direction"]) {
-  if (direction === "bullish") return <TrendingUp className="h-3.5 w-3.5 text-green-400" />;
-  if (direction === "bearish") return <TrendingDown className="h-3.5 w-3.5 text-red-400" />;
+  if (direction === "bullish") return <TrendingUp className="h-3.5 w-3.5 text-bull-light" />;
+  if (direction === "bearish") return <TrendingDown className="h-3.5 w-3.5 text-bear-light" />;
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
 }
 
 function scoreColor(score: number): string {
-  if (score >= 50) return "text-green-400";
-  if (score >= 15) return "text-green-400/80";
-  if (score <= -50) return "text-red-400";
-  if (score <= -15) return "text-red-400/80";
-  return "text-yellow-400/80";
+  if (score >= 50) return "text-bull-light";
+  if (score >= 15) return "text-bull-light/80";
+  if (score <= -50) return "text-bear-light";
+  if (score <= -15) return "text-bear-light/80";
+  return "text-watch-light/80";
 }
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
@@ -154,21 +163,21 @@ function CompassRadar({ compass }: { compass: ConvictionCompass }) {
     <div className="w-full h-[360px] bg-card border border-card-border rounded-xl p-4">
       <ResponsiveContainer width="100%" height="100%">
         <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
-          <PolarGrid stroke="rgba(148, 163, 184, 0.2)" />
-          <PolarAngleAxis dataKey="axis" tick={{ fill: "#cbd5e1", fontSize: 12, fontWeight: 600 }} />
-          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} />
+          <PolarGrid stroke={OVERLAY_SLATE_20} />
+          <PolarAngleAxis dataKey="axis" tick={{ fill: COLOR_GRAY_NEUTRAL_LIGHT, fontSize: 12, fontWeight: 600 }} />
+          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: COLOR_GRAY_NEUTRAL, fontSize: 10 }} />
           <Radar
             name="Bullish"
             dataKey="bullish"
-            stroke="#34d399"
-            fill="#34d399"
+            stroke={SIGNAL_BULL_RADAR}
+            fill={SIGNAL_BULL_RADAR}
             fillOpacity={0.35}
           />
           <Radar
             name="Bearish"
             dataKey="bearish"
-            stroke="#f87171"
-            fill="#f87171"
+            stroke={SIGNAL_BEAR_LIGHT}
+            fill={SIGNAL_BEAR_LIGHT}
             fillOpacity={0.25}
           />
         </RadarChart>
@@ -182,7 +191,7 @@ function CompassRadar({ compass }: { compass: ConvictionCompass }) {
 function ConfluenceGauge({ confluence, alignment }: { confluence: number; alignment: number }) {
   const absConf = Math.abs(confluence);
   const isBull = confluence > 0;
-  const color = isBull ? "#34d399" : confluence < 0 ? "#f87171" : "#fbbf24";
+  const color = isBull ? SIGNAL_BULL_RADAR : confluence < 0 ? SIGNAL_BEAR_LIGHT : ACCENT_AMBER;
   // Filled bar from center outward
   const pctFromCenter = absConf / 100;
 
@@ -218,7 +227,7 @@ function ConfluenceGauge({ confluence, alignment }: { confluence: number; alignm
 
 function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon: React.ReactNode }) {
   const tone = axis.score >= 15 ? "bullish" : axis.score <= -15 ? "bearish" : "neutral";
-  const dot = tone === "bullish" ? "bg-green-400" : tone === "bearish" ? "bg-red-400" : "bg-yellow-400";
+  const dot = tone === "bullish" ? "bg-bull-light" : tone === "bearish" ? "bg-bear-light" : "bg-watch-light";
   return (
     <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -255,7 +264,7 @@ function AxisCard({ title, axis, icon }: { title: string; axis: AxisScore; icon:
         ))}
       </div>
       {axis.notes.length > 0 && (
-        <div className="text-[11px] text-amber-400/80 border-t border-card-border pt-2 space-y-0.5">
+        <div className="text-2xs text-amber-400/80 border-t border-card-border pt-2 space-y-0.5">
           {axis.notes.map((n, i) => (
             <div key={i}>• {n}</div>
           ))}
@@ -307,16 +316,16 @@ function fmtPct(n: number | null, samples: number): string {
 
 function pctTone(n: number | null, samples: number): string {
   if (n === null || samples < MIN_SAMPLES_FOR_DISPLAY) return "text-muted-foreground";
-  if (n > 0.5) return "text-green-400";
-  if (n < -0.5) return "text-red-400";
-  return "text-yellow-400/80";
+  if (n > 0.5) return "text-bull-light";
+  if (n < -0.5) return "text-bear-light";
+  return "text-watch-light/80";
 }
 
 function BacktestPanel() {
   const { data, isLoading } = useQuery<BacktestData>({
-    queryKey: ["/api/diag/conviction/backtest"],
+    queryKey: [API_DIAG_CONVICTION_BACKTEST],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/diag/conviction/backtest");
+      const res = await apiRequest("GET", API_DIAG_CONVICTION_BACKTEST);
       return res.json();
     },
     staleTime: 15 * 60 * 1000,
@@ -353,12 +362,12 @@ function BacktestPanel() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="text-sm font-semibold text-foreground">Live Forward-Tracking</div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             Real performance of each verdict class since tracking started.
             Averaged across all tickers in the tracked universe (~100 megacaps).
           </div>
         </div>
-        <div className="text-[11px] text-muted-foreground text-right">
+        <div className="text-2xs text-muted-foreground text-right">
           {data.totalSnapshots.toLocaleString()} snapshots
           {data.earliestDate && data.latestDate && (
             <> · {data.earliestDate} → {data.latestDate}</>
@@ -382,7 +391,7 @@ function BacktestPanel() {
           <tbody>
             {verdictRows.map((r) => (
               <tr key={r.verdict} className="border-b border-card-border/30">
-                <td className="py-1.5 font-mono text-[11px] text-foreground">{r.verdict.replace(/_/g, " ")}</td>
+                <td className="py-1.5 font-mono text-2xs text-foreground">{r.verdict.replace(/_/g, " ")}</td>
                 <td className="py-1.5 text-right text-muted-foreground tabular-nums">{r.count}</td>
                 <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn1d, r.count)}`}>{fmtPct(r.avgReturn1d, r.count)}</td>
                 <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn5d, r.count)}`}>{fmtPct(r.avgReturn5d, r.count)}</td>
@@ -393,7 +402,7 @@ function BacktestPanel() {
             ))}
             {/* SPY baseline row */}
             <tr className="border-t-2 border-card-border">
-              <td className="py-1.5 font-mono text-[11px] text-muted-foreground italic">SPY (baseline)</td>
+              <td className="py-1.5 font-mono text-2xs text-muted-foreground italic">SPY (baseline)</td>
               <td className="py-1.5 text-right text-muted-foreground tabular-nums">—</td>
               <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}</td>
               <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}</td>
@@ -406,7 +415,7 @@ function BacktestPanel() {
       </div>
 
       {(data.pendingForwardReturns.d30 > 0 || data.pendingForwardReturns.d90 > 0) && (
-        <div className="text-[11px] text-amber-400/80">
+        <div className="text-2xs text-amber-400/80">
           Pending forward returns: {data.pendingForwardReturns.d1} 1d · {data.pendingForwardReturns.d5} 5d · {data.pendingForwardReturns.d30} 30d · {data.pendingForwardReturns.d90} 90d.
           Filled in once each window closes.
         </div>
@@ -430,154 +439,153 @@ export default function ConvictionPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  if (!activeTicker) {
-    return (
-      <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="text-center py-24 text-muted-foreground">
+  const verdictMeta = compass ? VERDICT_COPY[compass.verdict] : null;
+
+  const subtitle = !activeTicker
+    ? "One signal from four independent data streams. High conviction requires agreement."
+    : isLoading
+      ? `Building reading for ${activeTicker}…`
+      : compass
+        ? `${compass.ticker} — one signal from four independent data streams.`
+        : `${activeTicker} — one signal from four independent data streams.`;
+
+  const headerRight = compass ? (
+    <div className="text-xs text-muted-foreground">
+      Confidence:{" "}
+      <span className={`font-semibold ${
+        compass.confidence === "HIGH" ? "text-bull-light"
+          : compass.confidence === "MODERATE" ? "text-watch-light"
+          : "text-bear-light"
+      }`}>{compass.confidence}</span>
+    </div>
+  ) : undefined;
+
+  return (
+    <PageTemplate
+      className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5"
+      icon={Compass}
+      title="Conviction Compass"
+      subtitle={subtitle}
+      headerRight={headerRight}
+      howItWorksTitle="How the Conviction Compass works"
+      howItWorks={
+        <>
+          <p>The Compass fuses <strong className="text-foreground">four independent signal categories</strong> into a single reading. Because each axis pulls from a different data stream, agreement across axes is much stronger evidence than agreement across, say, four technical indicators that all read the same price.</p>
+          <p><strong className="text-foreground">Smart Money Flow</strong> — institutional buying/selling and insider activity (13F + Form 4).</p>
+          <p><strong className="text-foreground">Dealer Positioning</strong> — gamma exposure and dealer hedging direction (options chain).</p>
+          <p><strong className="text-foreground">Technical Momentum</strong> — trend, RSI, and breakout structure (price/volume).</p>
+          <p><strong className="text-foreground">Fundamental Quality</strong> — earnings, balance sheet, and growth (financial statements).</p>
+          <p className="mt-2"><strong className="text-foreground">Reading the radar:</strong> distance from the center is magnitude; color is direction. When all four extend the same way, conviction is HIGH. When they fight, confidence drops to MODERATE or LOW.</p>
+        </>
+      }
+    >
+      {!activeTicker ? (
+        <div className="text-center py-16 text-muted-foreground">
           <Compass className="h-16 w-16 mx-auto mb-4 opacity-20" />
           <p className="text-lg font-medium">Search a ticker for a Conviction Compass reading</p>
-          <Disclaimer />
           <p className="text-sm mt-1 opacity-60">
             Combines smart money flow, dealer positioning, technical momentum, and fundamental quality
             into a single signal. Highest conviction = all four agree.
           </p>
         </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      ) : isLoading ? (
         <div className="flex flex-col items-center gap-3 py-24">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Building Conviction Compass for {activeTicker}…</p>
         </div>
-      </div>
-    );
-  }
-
-  if (error || !compass) {
-    return (
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="bg-card border border-red-500/30 rounded-xl p-6 text-center">
-          <p className="text-red-400 font-semibold">Could not build Conviction Compass</p>
+      ) : error || !compass || !verdictMeta ? (
+        <div className="bg-card border border-bear/30 rounded-xl p-6 text-center">
+          <p className="text-bear-light font-semibold">Could not build Conviction Compass</p>
           <p className="text-xs text-muted-foreground mt-2">{(error as any)?.message || "Try refreshing."}</p>
         </div>
-      </div>
-    );
-  }
+      ) : (
+        <>
+          {/* Verdict pill */}
+          <div className={`rounded-xl border p-5 ${verdictToneClasses(verdictMeta.tone)}`}>
+            <div className="text-xs uppercase tracking-wider opacity-80">Verdict</div>
+            <div className="text-2xl font-bold mt-1">{verdictMeta.label}</div>
+            <div className="text-sm mt-2 opacity-90">{verdictMeta.sub}</div>
+          </div>
 
-  const verdictMeta = VERDICT_COPY[compass.verdict];
+          {/* Radar + confluence side-by-side */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <CompassRadar compass={compass} />
+            </div>
+            <div>
+              <ConfluenceGauge confluence={compass.confluence} alignment={compass.alignment} />
+            </div>
+          </div>
 
-  return (
-    <div data-testid="conviction-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <Compass className="h-5 w-5 text-primary" />
-            Conviction Compass — <span className="font-mono">{compass.ticker}</span>
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            One signal from four independent data streams. High conviction requires agreement.
-          </p>
-          <Disclaimer />
-        </div>
-        <div className="text-xs text-muted-foreground self-end">
-          Confidence:{" "}
-          <span className={`font-semibold ${
-            compass.confidence === "HIGH" ? "text-green-400"
-              : compass.confidence === "MODERATE" ? "text-yellow-400"
-              : "text-red-400"
-          }`}>{compass.confidence}</span>
-        </div>
-      </div>
+          {/* Axis breakdown */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AxisCard
+              title="Smart Money Flow"
+              axis={compass.smartMoneyFlow}
+              icon={<Building2 className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Dealer Positioning"
+              axis={compass.dealerPositioning}
+              icon={<Activity className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Technical Momentum"
+              axis={compass.technicalMomentum}
+              icon={<LineChart className="h-4 w-4 text-primary" />}
+            />
+            <AxisCard
+              title="Fundamental Quality"
+              axis={compass.fundamentalQuality}
+              icon={<BarChart3 className="h-4 w-4 text-primary" />}
+            />
+          </div>
 
-      {/* Verdict pill */}
-      <div className={`rounded-xl border p-5 ${verdictToneClasses(verdictMeta.tone)}`}>
-        <div className="text-xs uppercase tracking-wider opacity-80">Verdict</div>
-        <div className="text-2xl font-bold mt-1">{verdictMeta.label}</div>
-        <div className="text-sm mt-2 opacity-90">{verdictMeta.sub}</div>
-      </div>
+          {/* Live forward-tracking results */}
+          <BacktestPanel />
 
-      {/* Radar + confluence side-by-side */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2">
-          <CompassRadar compass={compass} />
-        </div>
-        <div>
-          <ConfluenceGauge confluence={compass.confluence} alignment={compass.alignment} />
-        </div>
-      </div>
-
-      {/* Axis breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <AxisCard
-          title="Smart Money Flow"
-          axis={compass.smartMoneyFlow}
-          icon={<Building2 className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Dealer Positioning"
-          axis={compass.dealerPositioning}
-          icon={<Activity className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Technical Momentum"
-          axis={compass.technicalMomentum}
-          icon={<LineChart className="h-4 w-4 text-primary" />}
-        />
-        <AxisCard
-          title="Fundamental Quality"
-          axis={compass.fundamentalQuality}
-          icon={<BarChart3 className="h-4 w-4 text-primary" />}
-        />
-      </div>
-
-      {/* Live forward-tracking results */}
-      <BacktestPanel />
-
-      {/* Methodology */}
-      <HelpBlock title="How the Conviction Compass works">
-        <p>
-          Most "composite" trading indicators stack technical signals on top of each other —
-          MACD + RSI + Bollinger + ATR. That's still one category of signal:
-          price/volume momentum. When all four agree, you've confirmed momentum, but you
-          still don't know whether smart money agrees, whether dealers are positioned for
-          the move, or whether the fundamentals support it.
-        </p>
-        <p className="mt-2">
-          The Conviction Compass uses <strong className="text-foreground">four orthogonal
-          signal categories</strong> instead. When they agree, the signal is much stronger
-          than four correlated indicators agreeing.
-        </p>
-        <ul className="list-disc pl-5 mt-2 space-y-1">
-          <li><strong className="text-foreground">Smart Money Flow</strong> — institutional
-            QoQ position changes (13F-derived) plus insider transaction count (Form 4
-            buys minus sells over the trailing 180 days).</li>
-          <li><strong className="text-foreground">Dealer Positioning</strong> — gamma
-            exposure regime, distance from gamma walls, and put/call open interest skew
-            from the live options chain. Tells you what market makers must do as price moves.</li>
-          <li><strong className="text-foreground">Technical Momentum</strong> — RSI(14),
-            MACD histogram, EMA(9/21/50) stack alignment, and Bollinger %B from a 1-year
-            daily chart.</li>
-          <li><strong className="text-foreground">Fundamental Quality</strong> — the
-            existing 8-factor verdict score remapped from 0–10 to ±100.</li>
-        </ul>
-        <p className="mt-2">
-          Each axis is independently scored from −100 (strongly bearish) to +100 (strongly
-          bullish). The center confluence number is the magnitude-weighted average,
-          penalized when axes disagree in sign — divergent setups score near zero
-          regardless of how extreme any single axis is.
-        </p>
-        <p className="mt-2">
-          <strong className="text-foreground">Why "ALL ALIGNED" is the strongest setup:</strong>
-          {" "}independent data streams agreeing is much harder to fake than correlated TA
-          signals. Smart money can't manipulate analyst consensus, gamma exposure, AND
-          your moving averages simultaneously.
-        </p>
-      </HelpBlock>
-    </div>
+          {/* Methodology */}
+          <HelpBlock title="How the Conviction Compass works">
+            <p>
+              Most "composite" trading indicators stack technical signals on top of each other —
+              MACD + RSI + Bollinger + ATR. That's still one category of signal:
+              price/volume momentum. When all four agree, you've confirmed momentum, but you
+              still don't know whether smart money agrees, whether dealers are positioned for
+              the move, or whether the fundamentals support it.
+            </p>
+            <p className="mt-2">
+              The Conviction Compass uses <strong className="text-foreground">four orthogonal
+              signal categories</strong> instead. When they agree, the signal is much stronger
+              than four correlated indicators agreeing.
+            </p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li><strong className="text-foreground">Smart Money Flow</strong> — institutional
+                QoQ position changes (13F-derived) plus insider transaction count (Form 4
+                buys minus sells over the trailing 180 days).</li>
+              <li><strong className="text-foreground">Dealer Positioning</strong> — gamma
+                exposure regime, distance from gamma walls, and put/call open interest skew
+                from the live options chain. Tells you what market makers must do as price moves.</li>
+              <li><strong className="text-foreground">Technical Momentum</strong> — RSI(14),
+                MACD histogram, EMA(9/21/50) stack alignment, and Bollinger %B from a 1-year
+                daily chart.</li>
+              <li><strong className="text-foreground">Fundamental Quality</strong> — the
+                existing 8-factor verdict score remapped from 0–10 to ±100.</li>
+            </ul>
+            <p className="mt-2">
+              Each axis is independently scored from −100 (strongly bearish) to +100 (strongly
+              bullish). The center confluence number is the magnitude-weighted average,
+              penalized when axes disagree in sign — divergent setups score near zero
+              regardless of how extreme any single axis is.
+            </p>
+            <p className="mt-2">
+              <strong className="text-foreground">Why "ALL ALIGNED" is the strongest setup:</strong>
+              {" "}independent data streams agreeing is much harder to fake than correlated TA
+              signals. Smart money can't manipulate analyst consensus, gamma exposure, AND
+              your moving averages simultaneously.
+            </p>
+          </HelpBlock>
+        </>
+      )}
+    </PageTemplate>
   );
 }

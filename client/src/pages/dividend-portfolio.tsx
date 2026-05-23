@@ -5,8 +5,10 @@ import {
   AlertTriangle, Loader2, Wallet, Clock, BarChart3,
   RefreshCw, PiggyBank, ChevronDown, Landmark, Info,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { API_DIVIDEND_PORTFOLIO } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,11 +43,11 @@ interface DividendPosition {
 
 function PositionDetail({ pos }: { pos: DividendPosition }) {
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
   const payoutColor = (p: number) =>
-    p >= 20 && p <= 60 ? "text-green-400" : p > 60 && p <= 80 ? "text-yellow-400" : "text-red-400";
+    p >= 20 && p <= 60 ? "text-bull-light" : p > 60 && p <= 80 ? "text-watch-light" : "text-bear-light";
 
   const daysUntilExDiv = useMemo(() => {
     if (!pos.exDividendDate) return null;
@@ -63,7 +65,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat label="Yield" value={`${pos.dividendYield.toFixed(2)}%`} color={yieldColor(pos.dividendYield)} icon={<Percent className="h-3 w-3" />} />
         <MiniStat label="Yield on Cost" value={`${pos.yieldOnCost.toFixed(2)}%`}
-          color={pos.yieldOnCost > pos.dividendYield ? "text-green-400" : "text-foreground"}
+          color={pos.yieldOnCost > pos.dividendYield ? "text-bull-light" : "text-foreground"}
           icon={<TrendingUp className="h-3 w-3" />} />
         <MiniStat label="Div Rate / Share" value={`$${pos.dividendRate.toFixed(2)}`} color="text-foreground" icon={<DollarSign className="h-3 w-3" />} />
         <MiniStat label="Payout Ratio" value={`${pos.payoutRatio.toFixed(1)}%`} color={payoutColor(pos.payoutRatio)} icon={<Activity className="h-3 w-3" />} />
@@ -74,7 +76,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
         <MiniStat
           label="Ex-Dividend"
           value={pos.exDividendDate || "N/A"}
-          color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-yellow-400" : "text-foreground"}
+          color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-watch-light" : "text-foreground"}
           icon={<AlertTriangle className="h-3 w-3" />}
           subtitle={daysUntilExDiv !== null ? (daysUntilExDiv > 0 ? `${daysUntilExDiv}d away` : daysUntilExDiv === 0 ? "Today!" : "Passed") : undefined}
         />
@@ -88,7 +90,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat label="5Y Avg Yield" value={pos.fiveYearAvgYield != null ? `${pos.fiveYearAvgYield.toFixed(2)}%` : "N/A"}
-          color={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "text-green-400" : "text-muted-foreground"}
+          color={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "text-bull-light" : "text-muted-foreground"}
           icon={<BarChart3 className="h-3 w-3" />}
           subtitle={pos.fiveYearAvgYield != null && pos.dividendYield > pos.fiveYearAvgYield ? "Above avg" : undefined}
         />
@@ -97,7 +99,7 @@ function PositionDetail({ pos }: { pos: DividendPosition }) {
           subtitle={pos.lastDividendDate || undefined}
         />
         <MiniStat label="Quality Score" value={`${pos.score}`} color={scoreColor(pos.score)} icon={<Activity className="h-3 w-3" />} />
-        <MiniStat label="Per Payment" value={`$${(pos.annualIncome / payoutsPerYear).toFixed(2)}`} color="text-green-400" icon={<PiggyBank className="h-3 w-3" />}
+        <MiniStat label="Per Payment" value={`$${(pos.annualIncome / payoutsPerYear).toFixed(2)}`} color="text-bull-light" icon={<PiggyBank className="h-3 w-3" />}
           subtitle={`${payoutsPerYear}x / year`}
         />
       </div>
@@ -112,10 +114,10 @@ function MiniStat({ label, value, color, icon, subtitle }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
       <div className="flex items-center gap-1 mb-0.5">
         {icon && <span className={`${color} opacity-70`}>{icon}</span>}
-        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-xs font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[9px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-mini text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }
@@ -128,9 +130,9 @@ export default function DividendPortfolio() {
   const [sortBy, setSortBy] = useState<string>("annualIncome");
 
   const { data: positions = [], isLoading, isRefetching } = useQuery<DividendPosition[]>({
-    queryKey: ["/api/dividend-portfolio"],
+    queryKey: [API_DIVIDEND_PORTFOLIO],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/dividend-portfolio");
+      const res = await apiRequest("GET", API_DIVIDEND_PORTFOLIO);
       return res.json();
     },
   });
@@ -161,82 +163,80 @@ export default function DividendPortfolio() {
     return { totalCost, totalMarket, totalAnnualIncome, totalUnrealizedPL, avgYield, avgYieldOnCost, monthlyIncome, count: positions.length };
   }, [positions]);
 
-  const plColor = (v: number) => v >= 0 ? "text-green-400" : "text-red-400";
+  const plColor = (v: number) => v >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividend-portfolio-page">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Dividend Portfolio</h1>
-          <p className="text-xs text-muted-foreground">
-            Auto-detected from your open stock positions that pay dividends.
-          </p>
-        </div>
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Landmark}
+      title="Dividend Positions"
+      subtitle="Auto-detected from your open stock positions that pay dividends."
+      headerRight={
         <button
-          onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/dividend-portfolio"] })}
+          onClick={() => queryClient.invalidateQueries({ queryKey: [API_DIVIDEND_PORTFOLIO] })}
           disabled={isRefetching}
           className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-md bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
           data-testid="button-refresh-dividends"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
         </button>
-      </div>
-
-      {/* Help Block */}
-      <HelpBlock title="How This Works">
-        <p><strong className="text-foreground">Automatic Detection:</strong> This page scans all your open LONG stock positions and checks if they pay dividends. If they do, they show up here automatically — no manual entry needed.</p>
-        <p><strong className="text-foreground">Yield on Cost (YoC):</strong> Your personal dividend yield based on what you actually paid. If a stock's current yield is 3% but you bought it years ago at a lower price, your YoC could be much higher.</p>
-        <p><strong className="text-foreground">Annual Income:</strong> Total dividends expected per year based on shares owned and current dividend rate.</p>
-        <p><strong className="text-foreground">Ex-Dividend Date:</strong> Must own shares BEFORE this date to receive the next payment.</p>
-        <p><strong className="text-foreground">Distribution Date:</strong> When the dividend payment actually hits your account.</p>
-        <Example type="good">
-          <strong className="text-green-400">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
-        </Example>
-        <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth" />
-        <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield but may lack growth or consistency" />
-        <ScoreRange label="Weak" range="0-34" color="red" description="Low yield, high payout risk, or inconsistent payments" />
-      </HelpBlock>
-
+      }
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Automatic Detection:</strong> This page scans all your open LONG stock positions and checks if they pay dividends. If they do, they show up here automatically — no manual entry needed.</p>
+          <p><strong className="text-foreground">Yield on Cost (YoC):</strong> Your personal dividend yield based on what you actually paid. If a stock's current yield is 3% but you bought it years ago at a lower price, your YoC could be much higher.</p>
+          <p><strong className="text-foreground">Annual Income:</strong> Total dividends expected per year based on shares owned and current dividend rate.</p>
+          <p><strong className="text-foreground">Ex-Dividend Date:</strong> Must own shares BEFORE this date to receive the next payment.</p>
+          <p><strong className="text-foreground">Distribution Date:</strong> When the dividend payment actually hits your account.</p>
+          <Example type="good">
+            <strong className="text-bull-light">Buy a stock, get surprised:</strong> You might not know a stock pays dividends when you buy it. This page catches it for you.
+          </Example>
+          <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth" />
+          <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield but may lack growth or consistency" />
+          <ScoreRange label="Weak" range="0-34" color="red" description="Low yield, high payout risk, or inconsistent payments" />
+        </>
+      }
+    >
       {/* Portfolio Summary Cards */}
       {positions.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="portfolio-summary">
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <Wallet className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Market Value</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Market Value</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">${summary.totalMarket.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span className={`block text-[10px] font-mono tabular-nums ${plColor(summary.totalUnrealizedPL)}`}>
+            <span className={`block text-micro font-mono tabular-nums ${plColor(summary.totalUnrealizedPL)}`}>
               {summary.totalUnrealizedPL >= 0 ? "+" : ""}{summary.totalUnrealizedPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} P/L
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
-              <PiggyBank className="h-3 w-3 text-green-400 opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Annual Income</span>
+              <PiggyBank className="h-3 w-3 text-bull-light opacity-70" />
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Annual Income</span>
             </div>
-            <span className="text-sm font-bold tabular-nums font-mono text-green-400">${summary.totalAnnualIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="text-sm font-bold tabular-nums font-mono text-bull-light">${summary.totalAnnualIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               ${summary.monthlyIncome.toFixed(2)} / mo
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <Percent className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Avg Yield</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Avg Yield</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">{summary.avgYield.toFixed(2)}%</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               YoC: {summary.avgYieldOnCost.toFixed(2)}%
             </span>
           </div>
           <div className="bg-card border border-card-border rounded-lg p-3">
             <div className="flex items-center gap-1 mb-1">
               <BarChart3 className="h-3 w-3 text-primary opacity-70" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Dividend Stocks</span>
+              <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Dividend Stocks</span>
             </div>
             <span className="text-sm font-bold tabular-nums font-mono text-foreground">{summary.count}</span>
-            <span className="block text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="block text-micro text-muted-foreground font-mono tabular-nums">
               Cost: ${summary.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -247,7 +247,7 @@ export default function DividendPortfolio() {
       {positions.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sort by</label>
+            <label className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Sort by</label>
             <select value={sortBy} onChange={e => setSortBy(e.target.value)}
               className="h-7 px-2 text-xs bg-background border border-card-border rounded-md text-foreground"
               data-testid="sort-dividend-portfolio"
@@ -278,7 +278,7 @@ export default function DividendPortfolio() {
         <div className="flex flex-col items-center justify-center py-12 text-center bg-card border border-card-border rounded-lg">
           <Landmark className="h-10 w-10 text-muted-foreground/30 mb-3" />
           <p className="text-sm font-medium text-muted-foreground">No dividend-paying positions found</p>
-          <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
+          <p className="text-2xs text-muted-foreground mt-1 max-w-xs">
             When you have open LONG stock positions that pay dividends, they'll appear here automatically. Add stock trades via the Trade Tracker.
           </p>
         </div>
@@ -325,12 +325,12 @@ export default function DividendPortfolio() {
 
       {/* Info note */}
       {!isLoading && sorted.length > 0 && (
-        <div className="flex items-start gap-2 text-[10px] text-muted-foreground px-1">
+        <div className="flex items-start gap-2 text-micro text-muted-foreground px-1">
           <Info className="h-3 w-3 mt-0.5 shrink-0" />
           <span>Only open LONG stock positions with active dividends appear here. Close a position in Trade Tracker and it leaves this list automatically.</span>
         </div>
       )}
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -341,10 +341,10 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
   onToggle: () => void; onSelectTicker: () => void;
 }) {
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
-  const plColor = pos.unrealizedPL >= 0 ? "text-green-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
+  const plColor = pos.unrealizedPL >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
     <>
@@ -359,7 +359,7 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
             <div>
               <span className="font-mono font-bold text-foreground cursor-pointer hover:text-primary"
                 onClick={e => { e.stopPropagation(); onSelectTicker(); }}>{pos.symbol}</span>
-              <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{pos.companyName}</p>
+              <p className="text-micro text-muted-foreground truncate max-w-[120px]">{pos.companyName}</p>
             </div>
           </div>
         </td>
@@ -375,21 +375,21 @@ function PositionRow({ pos, isExpanded, onToggle, onSelectTicker }: {
         <td className={`py-2.5 px-2 text-right font-mono font-bold ${yieldColor(pos.dividendYield)}`}>
           {pos.dividendYield.toFixed(2)}%
         </td>
-        <td className={`py-2.5 px-2 text-right font-mono hidden lg:table-cell ${pos.yieldOnCost > pos.dividendYield ? "text-green-400 font-bold" : "text-foreground"}`}>
+        <td className={`py-2.5 px-2 text-right font-mono hidden lg:table-cell ${pos.yieldOnCost > pos.dividendYield ? "text-bull-light font-bold" : "text-foreground"}`}>
           {pos.yieldOnCost.toFixed(2)}%
         </td>
-        <td className="py-2.5 px-2 text-right font-mono font-bold text-green-400">
+        <td className="py-2.5 px-2 text-right font-mono font-bold text-bull-light">
           ${pos.annualIncome.toFixed(2)}
         </td>
         <td className="py-2.5 px-2 text-center hidden md:table-cell">
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+          <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
             {pos.frequency}
           </span>
         </td>
-        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-[10px]">
+        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-micro">
           {pos.exDividendDate || "—"}
         </td>
-        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-[10px]">
+        <td className="py-2.5 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell text-micro">
           {pos.distributionDate || "—"}
         </td>
         <td className={`py-2.5 px-2 text-right font-mono font-bold hidden md:table-cell ${scoreColor(pos.score)}`}>

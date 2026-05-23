@@ -20,6 +20,7 @@ import type { GetCompanySnapshotOpts } from "../snapshot";
 import { getChartSnapshot } from "../snapshot/chart";
 import { computeMMExposure } from "../mm-exposure";
 import { computeRSI, computeBollinger, computeMACD } from "../indicators";
+import { RSI_PERIOD, BB_PERIOD, BB_STDDEV } from "@shared/indicators/constants";
 import {
   computeConvictionCompass,
   type ConvictionCompass,
@@ -79,12 +80,12 @@ function deriveTechnicals(bars: OHLCV[]): TechnicalInput | null {
   const lastClose = closes[closes.length - 1];
 
   let rsi14: number | null = null;
-  try { rsi14 = computeRSI(bars, { period: 14 }); } catch { /* ignore */ }
+  try { rsi14 = computeRSI(bars, { period: RSI_PERIOD }); } catch { /* ignore */ }
 
   let macdHistogram: number | null = null;
   try { macdHistogram = computeMACD(bars)?.histogram ?? null; } catch { /* ignore */ }
 
-  const bb = computeBollinger(bars, 20, 2);
+  const bb = computeBollinger(bars, BB_PERIOD, BB_STDDEV);
   let pctB: number | null = null;
   if (bb) {
     const range = bb.upper - bb.lower;

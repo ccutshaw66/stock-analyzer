@@ -1,15 +1,18 @@
-import { useState, useMemo, memo } from "react";
+import React, { useState, useMemo, memo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
 import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
+import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView, type DisplayPoint } from "@shared/strategies/registry";
+import { useHtfScanner, type HtfSetupRow } from "@/compartments/htf-scanner";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
-  CheckCircle2, Loader2, History, Clock
+  CheckCircle2, Loader2, History, Clock, ClipboardList
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
-import { HelpBlock } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
 // Lightweight badge that calls /api/scanner-v2/quick/:ticker and shows
@@ -24,30 +27,31 @@ import { HelpBlock } from "@/components/HelpBlock";
 //   "NO SETUP"               = nothing here
 function classifyGateVerdict(verdict: string): { bg: string; text: string; label: string } {
   const v = verdict || "";
-  if (v.startsWith("GO"))       return { bg: "bg-green-500/20",  text: "text-green-400",       label: v };
-  if (v.startsWith("SET"))      return { bg: "bg-green-500/10",  text: "text-green-300",       label: v };
-  if (v.startsWith("READY"))    return { bg: "bg-yellow-500/15", text: "text-yellow-400",      label: v };
+  if (v.startsWith("GO"))       return { bg: "bg-bull/20",  text: "text-bull-light",       label: v };
+  if (v.startsWith("SET"))      return { bg: "bg-bull/10",  text: "text-bull-light",       label: v };
+  if (v.startsWith("READY"))    return { bg: "bg-watch/15", text: "text-watch-light",      label: v };
   if (v.startsWith("PULLBACK")) return { bg: "bg-blue-500/15",   text: "text-blue-400",        label: v };
   if (v.startsWith("GATES"))    return { bg: "bg-muted",         text: "text-muted-foreground", label: "CLOSED" };
   return                          { bg: "bg-muted",         text: "text-muted-foreground", label: "NO SETUP" };
 }
 
 const ScannerPip = memo(function ScannerPip({ ticker }: { ticker: string }) {
+  const { timeframe } = useTimeframe();
   const { data, isLoading } = useQuery<{ score: number | null; verdict: string | null }>({
-    queryKey: ["/api/scanner-v2/quick", ticker],
+    queryKey: ["/api/scanner-v2/quick", ticker, timeframe],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}`);
+      const res = await apiRequest("GET", `/api/scanner-v2/quick/${ticker}?timeframe=${timeframe}`);
       return res.json();
     },
     staleTime: 15 * 60 * 1000,
     retry: false,
   });
-  if (isLoading) return <span className="ml-1.5 text-[9px] text-muted-foreground/50">…</span>;
+  if (isLoading) return <span className="ml-1.5 text-mini text-muted-foreground/50">…</span>;
   if (!data || data.verdict == null) return null;
   const { bg, text, label } = classifyGateVerdict(data.verdict);
   const gates = data.score ?? 0;
   return (
-    <span className={`ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded tabular-nums ${bg} ${text}`}
+    <span className={`ml-1.5 text-mini font-bold px-1 py-0.5 rounded tabular-nums ${bg} ${text}`}
       title={`Scanner 2.0: ${data.verdict} (${gates}/3 gates)`}>
       {gates}·{label}
     </span>
@@ -64,12 +68,23 @@ interface Trade {
   allocation: number | null; maxProfit: number | null; closeDate: string | null;
   closePrice: number | null; commOut: number | null; spreadWidth: number | null;
   creditDebit: string | null; tradePlanNotes: string | null;
-  behaviorTag: string | null; createdAt: string;
+  behaviorTag: string | null;
+  // Which strategy opened the trade — drives Current Positions grouping +
+  // strategy-specific lifecycle alerts. See shared/strategies/registry.ts.
+  strategy: string;
+  strategyReason: string | null;
+  strategyData: Record<string, any> | null;
+  // Live lifecycle state computed server-side by walking bars from entry
+  // to today. Attached on /api/trades for open HTF trades. Drives the
+  // manifest's dynamic decisions (partial fired?, current 20-MA, etc.).
+  lifecycleState?: Record<string, any> | null;
+  createdAt: string;
 }
 
 interface Summary {
   totalTrades: number; openTrades: number; totalProfit: number;
-  totalWins: number; winRate: number; accountValue: number; openPL: number;
+  totalWins: number; winRate: number; openPL: number;
+  cashBalance?: number; openPositionMarketValue?: number; totalPortfolioValue?: number;
   allocated: number; allocatedPct: number;
   byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }>;
   equityCurve: { date: string; value: number }[];
@@ -79,14 +94,18 @@ interface Summary {
 interface AccountSettings {
   id: number; startingAccountValue: number; commPerSharesTrade: number;
   commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
+  cashBalance?: number;
 }
 
-type FilterTab = "all" | "open" | "closed" | "stocks" | "options";
+type FilterTab = "open" | "closed" | "stocks" | "options";
 type SortField = "tradeDate" | "symbol" | "tradeType" | "openPrice" | "profit";
 
 // ─── Position aggregation ─────────────────────────────────────────────────────
 // An open position groups one or more "lots" (individual trade rows) that share
-// the same symbol + tradeType + strikes + expiration. Closed trades are never
+// the same strategy + symbol + tradeType + strikes + expiration. Strategy is
+// part of the key because the same symbol opened under two strategies (e.g.
+// manual then later HTF) needs to be tracked separately — each strategy has
+// its own lifecycle rules and alert conditions. Closed trades are never
 // grouped — they render as flat rows.
 interface OpenPosition {
   kind: "group";
@@ -105,11 +124,14 @@ interface OpenPosition {
   totalOpenPL: number;        // sum of computeStockPL / computeOptionPL per lot
   currentPrice: number | null;
   totalAllocation: number;
+  /** Strategy id of the first lot — all lots share this since strategy is in the key. */
+  strategy: string;
 }
 
 /**
- * Group open trades by (symbol, tradeType, strikes, expiration). Closed trades
- * pass through as single-lot pseudo-groups so the table renders uniformly.
+ * Group open trades by (strategy, symbol, tradeType, strikes, expiration).
+ * Closed trades pass through as single-lot pseudo-groups so the table
+ * renders uniformly.
  */
 function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
   const openMap = new Map<string, Trade[]>();
@@ -117,6 +139,7 @@ function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
   for (const t of trades) {
     if (t.closeDate) { closedRows.push(t); continue; }
     const key = [
+      t.strategy || "manual",
       t.symbol.toUpperCase(),
       t.tradeType,
       (t.strikes || "").trim(),
@@ -155,6 +178,7 @@ function aggregateOpenPositions(trades: Trade[]): OpenPosition[] {
       totalOpenPL,
       currentPrice,
       totalAllocation,
+      strategy: first.strategy || "manual",
     });
   });
   return groups;
@@ -321,6 +345,10 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");
   const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
   const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
+  // Strategy is required on every new trade. Pre-existing rows default to
+  // 'manual' (or whatever was saved). 'other' reveals the reason text input.
+  const [strategy, setStrategy] = useState<string>(initial?.strategy || "manual");
+  const [strategyReason, setStrategyReason] = useState<string>(initial?.strategyReason || "");
 
   // CTV dual-vertical fields
   const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
@@ -345,6 +373,18 @@ function TradeForm({ mode, initial, settings, onClose }: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF surfaces depend on trade rows too — Portfolio counts HTF-tagged
+      // open positions; the live scanner gates new entries against the same
+      // portfolio. Invalidate both so saved strategyData (stop/target etc.)
+      // reflects immediately on /htf without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === "string" && k.startsWith("/api/htf/setups");
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
       onClose();
     },
   });
@@ -379,7 +419,20 @@ function TradeForm({ mode, initial, settings, onClose }: {
     }
 
     const targetROI = typeDef?.targetROI || 0;
-    const target = targetROI > 0 ? rawPrice * (targetROI / 100) : null;
+    // Target math:
+    //   - Stocks: targetROI is "% gain target", so price target = entry × (1 + ROI/100).
+    //     Old code computed entry × (ROI/100) = 25% OF entry, producing $0.89
+    //     target on a $3.55 stock (75% drawdown). Bug.
+    //   - Options: targetROI is "% of premium" target (e.g. 100% = double the
+    //     premium). The legacy `rawPrice × ROI/100` works for that case because
+    //     premium starts small.
+    // For stocks where strategyData provides a real target (HTF auto-fill from
+    // Live setup), we DON'T compute one here — initial?.strategyData wins on
+    // the read side. This computation only feeds the trades.target column for
+    // legacy non-strategy display.
+    const target = targetROI > 0
+      ? (category === "Stock" ? rawPrice * (1 + targetROI / 100) : rawPrice * (targetROI / 100))
+      : null;
 
     const tradeData: any = {
       pilotOrAdd,
@@ -399,6 +452,15 @@ function TradeForm({ mode, initial, settings, onClose }: {
       creditDebit: isCredit ? "CREDIT" : "DEBIT",
       tradePlanNotes: notes || null,
       behaviorTag: behaviorTag || null,
+      strategy,
+      strategyReason: strategy === "other" ? (strategyReason.trim() || null) : null,
+      // strategyData is purely from the strategy source (e.g. /htf Live row
+      // auto-fill populates pole/flag/stop/target). Manual edits don't touch
+      // it here — if the user needs a stop where the strategy didn't supply
+      // one, the right fix is to (a) create the trade from the strategy's
+      // entry surface (/htf Live + button) which carries the full snapshot,
+      // or (b) wire that strategy's entry flow if it doesn't have one yet.
+      strategyData: initial?.strategyData ?? null,
     };
 
     // Historical: include close data
@@ -445,11 +507,42 @@ function TradeForm({ mode, initial, settings, onClose }: {
             ))}
           </div>
 
+          {/* Strategy — REQUIRED. Drives Current Positions grouping + lifecycle alerts. */}
+          <div>
+            <label htmlFor="tf-strategy" className="text-xs font-medium text-muted-foreground mb-1 block">
+              Strategy <span className="text-bear-light">*</span>
+            </label>
+            <select id="tf-strategy" name="strategy" value={strategy} onChange={e => setStrategy(e.target.value)}
+              className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
+              data-testid="select-strategy" required>
+              {Object.values(STRATEGY_REGISTRY).map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <div className="text-2xs text-muted-foreground mt-1">
+              {getStrategyManifest(strategy).description}
+            </div>
+            {getStrategyManifest(strategy).requiresReason && (
+              <input
+                id="tf-strategy-reason"
+                name="strategyReason"
+                type="text"
+                value={strategyReason}
+                onChange={e => setStrategyReason(e.target.value)}
+                placeholder="Why this trade? (e.g. 'Steve recommended', 'FOMO on news')"
+                className="w-full h-9 px-3 mt-2 text-sm bg-background border border-card-border rounded-md text-foreground"
+                data-testid="input-strategy-reason"
+                aria-label="Reason for this trade"
+                required={getStrategyManifest(strategy).requiresReason}
+              />
+            )}
+          </div>
+
           {/* Type + Pilot/Add */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
-              <select value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
+              <label htmlFor="tf-trade-type" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Type</label>
+              <select id="tf-trade-type" name="tradeType" value={tradeType} onChange={e => setTradeType(e.target.value as TradeTypeCode)}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" data-testid="select-trade-type">
                 {filteredTypes.map(code => (
                   <option key={code} value={code}>{code} - {TRADE_TYPES[code].label}</option>
@@ -457,8 +550,8 @@ function TradeForm({ mode, initial, settings, onClose }: {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
-              <select value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)}
+              <label htmlFor="tf-pilot-add" className="text-xs font-medium text-muted-foreground mb-1 block">Pilot / Add</label>
+              <select id="tf-pilot-add" name="pilotOrAdd" value={pilotOrAdd} onChange={e => setPilotOrAdd(e.target.value)}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
                 <option value="Pilot">Pilot</option>
                 <option value="Add">Add</option>
@@ -469,14 +562,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Symbol + Contracts */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
-              <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL"
+              <label htmlFor="tf-symbol" className="text-xs font-medium text-muted-foreground mb-1 block">Symbol</label>
+              <input id="tf-symbol" name="symbol" type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} placeholder="AAPL"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground"
                 required data-testid="input-trade-symbol" />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
-              <input type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
+              <label htmlFor="tf-contracts" className="text-xs font-medium text-muted-foreground mb-1 block">{category === "Option" ? "Contracts" : "Shares"}</label>
+              <input id="tf-contracts" name="contractsShares" type="number" value={contractsShares} onChange={e => setContractsShares(parseInt(e.target.value) || 1)} min={1}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
@@ -484,13 +577,13 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
-              <DatePicker value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required />
+              <label htmlFor="tf-trade-date" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Date</label>
+              <DatePicker id="tf-trade-date" value={tradeDate} onChange={setTradeDate} placeholder="Trade date" required />
             </div>
             {category === "Option" && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
-                <DatePicker value={expiration} onChange={setExpiration} placeholder="Expiration" />
+                <label htmlFor="tf-expiration" className="text-xs font-medium text-muted-foreground mb-1 block">Expiration</label>
+                <DatePicker id="tf-expiration" value={expiration} onChange={setExpiration} placeholder="Expiration" />
               </div>
             )}
           </div>
@@ -498,25 +591,25 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Price — auto credit/debit label */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>
-                {isCredit ? "Credit Received" : "Debit Paid"} <span className="text-[10px] text-muted-foreground">(enter as positive)</span>
+              <label htmlFor="tf-open-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
+                {isCredit ? "Credit Received" : "Debit Paid"} <span className="text-micro text-muted-foreground">(enter as positive)</span>
               </label>
               <div className="relative">
-                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-green-400" : "text-red-400"}`}>
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold ${isCredit ? "text-bull-light" : "text-bear-light"}`}>
                   {isCredit ? "+" : "−"}
                 </span>
-                <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
+                <input id="tf-open-price" name="openPrice" type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50"
                   className={`w-full h-9 pl-7 pr-3 text-sm bg-background border rounded-md font-mono text-foreground ${
-                    isCredit ? "border-green-500/30" : "border-red-500/30"
+                    isCredit ? "border-bull/30" : "border-bear/30"
                   }`} required />
               </div>
             </div>
             {category === "Option" && numLegs >= 1 && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  Strike(s) <span className="text-[10px]">{numLegs >= 3 ? "e.g. 55/60/65" : numLegs >= 2 ? "e.g. 55/60" : "e.g. 55"}</span>
+                <label htmlFor="tf-strikes" className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Strike(s) <span className="text-micro">{numLegs >= 3 ? "e.g. 55/60/65" : numLegs >= 2 ? "e.g. 55/60" : "e.g. 55"}</span>
                 </label>
-                <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)}
+                <input id="tf-strikes" name="strikes" type="text" value={strikes} onChange={e => setStrikes(e.target.value)}
                   className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
               </div>
             )}
@@ -528,30 +621,34 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
-                  <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
-                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <label htmlFor="tf-ctv-buy-strikes" className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
+                  <input id="tf-ctv-buy-strikes" name="ctvBuyStrikes" type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
+                    placeholder="65/70" aria-label="Buy spread strikes"
+                    className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
-                    <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
-                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
+                    <input id="tf-ctv-buy-price" name="ctvBuyPrice" type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
+                      placeholder="1.50" aria-label="Buy spread price"
+                      className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
-                  <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
-                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                  <label htmlFor="tf-ctv-sell-strikes" className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
+                  <input id="tf-ctv-sell-strikes" name="ctvSellStrikes" type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
+                    placeholder="70/75" aria-label="Sell spread strikes"
+                    className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
-                    <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
-                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
+                    <input id="tf-ctv-sell-price" name="ctvSellPrice" type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
+                      placeholder="2.50" aria-label="Sell spread price"
+                      className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
               {ctvBuyPrice && ctvSellPrice && (
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Net:</span>
-                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
                     {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
                   </span>
                   <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>
@@ -564,14 +661,14 @@ function TradeForm({ mode, initial, settings, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             {numLegs >= 2 && !isDualVertical && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
-                <input type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
+                <label htmlFor="tf-spread-width" className="text-xs font-medium text-muted-foreground mb-1 block">Spread Width</label>
+                <input id="tf-spread-width" name="spreadWidth" type="number" step="0.5" value={spreadWidth} onChange={e => setSpreadWidth(e.target.value)} placeholder="5"
                   className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
               </div>
             )}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
-              <input type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
+              <label htmlFor="tf-allocation" className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
+              <input id="tf-allocation" name="allocation" type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
           </div>
@@ -579,17 +676,17 @@ function TradeForm({ mode, initial, settings, onClose }: {
           {/* Historical: Close fields */}
           {isHistorical && (
             <div className="border-t border-card-border pt-4">
-              <p className="text-xs font-semibold text-yellow-400 mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
+              <p className="text-xs font-semibold text-watch-light mb-3 flex items-center gap-1"><Clock className="h-3 w-3" />Close Information</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-                  <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
+                  <label htmlFor="tf-historical-close-date" className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+                  <DatePicker id="tf-historical-close-date" value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
                 </div>
                 <div>
-                  <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
-                    {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-[10px] text-muted-foreground">(positive)</span>
+                  <label htmlFor="tf-historical-close-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
+                    {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(positive)</span>
                   </label>
-                  <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
+                  <input id="tf-historical-close-price" name="historicalClosePrice" type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50"
                     className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
                 </div>
               </div>
@@ -598,32 +695,32 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
           {/* Behavior + Notes */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Behavior Tag</label>
-            <select value={behaviorTag} onChange={e => setBehaviorTag(e.target.value)}
+            <label htmlFor="tf-behavior-tag" className="text-xs font-medium text-muted-foreground mb-1 block">Behavior Tag</label>
+            <select id="tf-behavior-tag" name="behaviorTag" value={behaviorTag} onChange={e => setBehaviorTag(e.target.value)}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground">
               <option value="">None</option>
               {BEHAVIOR_TAGS.map(tag => <option key={tag} value={tag}>{tag}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Trade Plan Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+            <label htmlFor="tf-notes" className="text-xs font-medium text-muted-foreground mb-1 block">Trade Plan Notes</label>
+            <textarea id="tf-notes" name="notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2}
               className="w-full px-3 py-2 text-sm bg-background border border-card-border rounded-md text-foreground resize-none"
               placeholder="Entry rule, catalyst, setup..." />
           </div>
 
           {/* Info badges */}
           <div className="flex flex-wrap gap-2">
-            <span className={`text-[11px] px-2 py-1 rounded-md font-semibold ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+            <span className={`text-2xs px-2 py-1 rounded-md font-semibold ${isCredit ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
               {isCredit ? "CREDIT" : "DEBIT"}
             </span>
-            <span className="text-[11px] px-2 py-1 rounded-md bg-muted text-muted-foreground">
+            <span className="text-2xs px-2 py-1 rounded-md bg-muted text-muted-foreground">
               {numLegs} leg{numLegs !== 1 ? "s" : ""}
             </span>
             {typeDef?.targetROI > 0 && (
-              <span className="text-[11px] px-2 py-1 rounded-md bg-primary/15 text-primary">Target ROI: {typeDef.targetROI}%</span>
+              <span className="text-2xs px-2 py-1 rounded-md bg-primary/15 text-primary">Target ROI: {typeDef.targetROI}%</span>
             )}
-            {isHistorical && <span className="text-[11px] px-2 py-1 rounded-md bg-yellow-500/15 text-yellow-400">Historical Entry</span>}
+            {isHistorical && <span className="text-2xs px-2 py-1 rounded-md bg-watch/15 text-watch-light">Historical Entry</span>}
           </div>
 
           <button type="submit" disabled={createMutation.isPending || !symbol}
@@ -640,10 +737,27 @@ function TradeForm({ mode, initial, settings, onClose }: {
 
 // ─── Close Trade Modal ────────────────────────────────────────────────────────
 
-function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: () => void; settings: AccountSettings }) {
+function CloseTradeModal({ trade, defaultQty, onClose, settings }: {
+  trade: Trade;
+  /** Pre-fill qty input. Strategy manifests pass `actionShares` so a "Sell 3 (1/3)" button opens this modal with qty=3 already typed. */
+  defaultQty?: number;
+  onClose: () => void;
+  // Settings can be undefined if the query hasn't resolved when the button is
+  // clicked. The modal MUST still open — commission falls back to the schema
+  // defaults (0 for stock, $0.65 per option contract). Previously the page
+  // gated the modal on `settings &&` which made the action button look broken
+  // when the query was momentarily empty (e.g., right after a session refresh).
+  settings?: AccountSettings;
+}) {
   const [closeDate, setCloseDate] = useState(new Date().toISOString().split("T")[0]);
   const [closePrice, setClosePrice] = useState("");
-  const [qty, setQty] = useState(String(trade.contractsShares));
+  const initialQty = (() => {
+    if (defaultQty != null && defaultQty > 0 && defaultQty <= trade.contractsShares) {
+      return String(defaultQty);
+    }
+    return String(trade.contractsShares);
+  })();
+  const [qty, setQty] = useState(initialQty);
   const typeDef = TRADE_TYPES[trade.tradeType as TradeTypeCode];
   const isCredit = typeDef?.isCredit ?? trade.creditDebit === "CREDIT";
   const qtyNum = Math.max(1, Math.min(trade.contractsShares, parseInt(qty) || 0));
@@ -657,6 +771,18 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF surfaces depend on trade rows too — Portfolio counts HTF-tagged
+      // open positions; the live scanner gates new entries against the same
+      // portfolio. Invalidate both so saved strategyData (stop/target etc.)
+      // reflects immediately on /htf without a manual refresh.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return typeof k === "string" && k.startsWith("/api/htf/setups");
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
       onClose();
     },
   });
@@ -669,9 +795,9 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
     const numLegs = typeDef?.legs || 0;
     let commOut = 0;
     if (trade.tradeCategory === "Option") {
-      commOut = qtyNum * numLegs * (settings.commPerOptionContract || 0.65);
+      commOut = qtyNum * numLegs * (settings?.commPerOptionContract ?? 0.65);
     } else {
-      commOut = settings.commPerSharesTrade || 0;
+      commOut = settings?.commPerSharesTrade ?? 0;
     }
     closeMutation.mutate({ closeDate, closePrice: signedClose, commOut, qty: qtyNum });
   };
@@ -685,37 +811,37 @@ function CloseTradeModal({ trade, onClose, settings }: { trade: Trade; onClose: 
         </div>
         <form onSubmit={handleClose} className="p-4 space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              Quantity to Close <span className="text-[10px] text-muted-foreground">(of {trade.contractsShares} {trade.tradeCategory === "Option" ? "contracts" : "shares"})</span>
+            <label htmlFor="ct-qty" className="text-xs font-medium text-muted-foreground mb-1 block">
+              Quantity to Close <span className="text-micro text-muted-foreground">(of {trade.contractsShares} {trade.tradeCategory === "Option" ? "contracts" : "shares"})</span>
             </label>
             <div className="flex items-center gap-2">
-              <input type="number" min={1} max={trade.contractsShares} step={1} value={qty}
+              <input id="ct-qty" name="qty" type="number" min={1} max={trade.contractsShares} step={1} value={qty}
                 onChange={e => setQty(e.target.value)}
                 className="flex-1 h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
               <button type="button" onClick={() => setQty(String(trade.contractsShares))}
-                className="h-9 px-3 text-[11px] font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">All</button>
+                className="h-9 px-3 text-2xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">All</button>
               <button type="button" onClick={() => setQty(String(Math.max(1, Math.floor(trade.contractsShares / 2))))}
-                className="h-9 px-3 text-[11px] font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">½</button>
+                className="h-9 px-3 text-2xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80">½</button>
             </div>
             {isPartial && (
-              <p className="text-[10px] text-amber-400 mt-1">Partial close: {qtyNum} will close, {trade.contractsShares - qtyNum} stays open.</p>
+              <p className="text-micro text-amber-400 mt-1">Partial close: {qtyNum} will close, {trade.contractsShares - qtyNum} stays open.</p>
             )}
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
-            <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
+            <label htmlFor="ct-close-date" className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
+            <DatePicker id="ct-close-date" value={closeDate} onChange={setCloseDate} placeholder="Close date" required />
           </div>
           <div>
-            <label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
-              {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-[10px] text-muted-foreground">(enter positive)</span>
+            <label htmlFor="ct-close-price" className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
+              {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"} <span className="text-micro text-muted-foreground">(enter positive)</span>
             </label>
-            <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
+            <input id="ct-close-price" name="closePrice" type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)}
               placeholder={isCredit ? "0.50" : "2.00"}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" required />
-            <p className="text-[10px] text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless (full profit)" : "Enter 0 if expired worthless (full loss)"}</p>
+            <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless (full profit)" : "Enter 0 if expired worthless (full loss)"}</p>
           </div>
           <button type="submit" disabled={closeMutation.isPending}
-            className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50 flex items-center justify-center gap-2">
+            className="w-full py-2.5 rounded-lg bg-watch text-white font-semibold text-sm hover:bg-watch disabled:opacity-50 flex items-center justify-center gap-2">
             {closeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Close Trade
           </button>
@@ -743,15 +869,15 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
-            ["startingAccountValue", "Starting Account Value ($)"],
+            ["cashBalance", "Brokerage Cash ($) — set this to whatever your broker shows right now"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
             ["totalAllocatedLimit", "Total Allocated Limit (decimal)"],
           ] as const).map(([key, label]) => (
             <div key={key}>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
-              <input type="number" step="0.01" value={vals[key] ?? ""}
+              <label htmlFor={`set-${key}`} className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+              <input id={`set-${key}`} name={key} type="number" step="0.01" value={vals[key] ?? ""}
                 onChange={e => setVals(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
@@ -772,10 +898,38 @@ export default function TradeTracker() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addSeed, setAddSeed] = useState<Partial<Trade> | null>(null);
 
+  // Cross-page handoff from /htf Live row "+" button. The setup row drops a
+  // full Partial<Trade> seed into sessionStorage; we open the Add Trade modal
+  // pre-filled, then clear the storage so a refresh doesn't re-open. This is
+  // the foundation-first answer to "the scanner already has all this data" —
+  // no manual re-entry of stop / target / pole / flag / sector.
+  useEffect(() => {
+    const raw = sessionStorage.getItem("htf-add-seed");
+    if (!raw) return;
+    try {
+      const seed = JSON.parse(raw) as Partial<Trade>;
+      setAddSeed(seed);
+      setShowAddModal(true);
+    } catch {
+      // Bad JSON — silently ignore; not worth alerting the user.
+    } finally {
+      sessionStorage.removeItem("htf-add-seed");
+    }
+  }, []);
+
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
+  // When the user clicks an action button driven by a strategy alert
+  // (e.g. "Sell 3"), we want the Close Trade modal to open with qty
+  // pre-filled to that action's recommended shares. closingQty carries
+  // that hint until consumed.
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
+  const [closingQty, setClosingQty] = useState<number | undefined>(undefined);
+  const openClose = (trade: Trade, qty?: number) => {
+    setClosingTrade(trade);
+    setClosingQty(qty);
+  };
   const [showSettings, setShowSettings] = useState(false);
-  const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [filterTab, setFilterTab] = useState<FilterTab>("open");
   const [sortField, setSortField] = useState<SortField>("tradeDate");
   const [sortAsc, setSortAsc] = useState(false);
   // Expanded-state for aggregated open positions. Closed trades always render flat.
@@ -803,18 +957,140 @@ export default function TradeTracker() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => { const r = await apiRequest("POST", "/api/trades/refresh-prices"); return r.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF-tagged trade changes also affect portfolio cap + sizing.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
+    },
   });
+
+  // Auto-refresh prices every 5 minutes during market hours when the tab is
+  // visible. Skips off-hours and hidden tabs so we don't burn FMP calls or
+  // fight the user when they've navigated away. Chris feedback (2026-05-22):
+  // having to click Refresh to see updated P&L was friction.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      // Rough US market-hours guard: weekday + UTC 13:00-21:30 (covers
+      // 9:00am-4:30pm ET regardless of DST). Off-hours = no auto-refresh.
+      const now = new Date();
+      const day = now.getUTCDay();
+      const utcHour = now.getUTCHours();
+      if (day === 0 || day === 6) return;
+      if (utcHour < 13 || utcHour > 21) return;
+      if (refreshMutation.isPending) return;
+      refreshMutation.mutate();
+    };
+    const interval = setInterval(tick, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [refreshMutation]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/trades/${id}`); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] });
+      // HTF-tagged trade changes also affect portfolio cap + sizing.
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/htf/sizing-recommendation"] });
+    },
     onError: (err: any) => {
       const msg = err.message || "";
       // Extract readable message from "403: {"error":"..."}"
       try { const parsed = JSON.parse(msg.replace(/^\d+:\s*/, "")); alert(parsed.error); } catch { alert(msg); }
     },
   });
+
+  // Live HTF scan — used to backfill empty strategyData on pre-auto-fill
+  // HTF-tagged trades. Pre-2026-05-21 HTF trades (entered manually, before
+  // the + button auto-fill flow) have strategy='htf' but no strategyData.
+  // We pull the live scan once and look up by symbol to enrich them at
+  // render time — no schema change, no persisted backfill, just derivation.
+  const htfScan = useHtfScanner();
+  const htfScanBySymbol = useMemo(() => {
+    const map = new Map<string, HtfSetupRow>();
+    for (const r of htfScan.data?.rows ?? []) map.set(r.symbol.toUpperCase(), r);
+    return map;
+  }, [htfScan.data]);
+
+  // Auto-persist strategyData on open HTF trades that are missing it. Pre-
+  // 2026-05-21 HTF trades (PURR/NVTS/ONDS etc.) were tagged HTF before the
+  // auto-fill flow shipped, so their strategyData column is empty. Without
+  // this backfill, the per-strategy columns show "—" forever even though
+  // we CAN derive the snapshot from the symbol's bar history.
+  //
+  // Flow: for each open HTF trade with no strategyData, prefer the live
+  // scan map (instant), else fall back to GET /api/htf/derive/:symbol
+  // (re-runs scanHtf on cached bars). Once we have a snapshot, PATCH the
+  // trade row so the data is locked in — one-time backfill per trade.
+  //
+  // Deduped + concurrency-limited: each trade only gets backfilled once
+  // per session, and at most 4 derive requests fly at once.
+  const persistedAttempts = useMemo(() => new Set<number>(), []);
+  useEffect(() => {
+    const candidates = trades.filter(t =>
+      !t.closeDate &&
+      t.strategy === "htf" &&
+      (!t.strategyData || Object.keys(t.strategyData).length === 0) &&
+      !persistedAttempts.has(t.id),
+    );
+    if (candidates.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const PARALLEL = 4;
+      for (let i = 0; i < candidates.length; i += PARALLEL) {
+        if (cancelled) return;
+        const slice = candidates.slice(i, i + PARALLEL);
+        await Promise.allSettled(slice.map(async (t) => {
+          persistedAttempts.add(t.id);
+          // Try the live scan map first — no network round-trip.
+          const sym = t.symbol.toUpperCase();
+          let snapshot: Record<string, any> | null = null;
+          const live = htfScanBySymbol.get(sym);
+          if (live) {
+            snapshot = {
+              stopPrice: live.stopPrice,
+              targetPrice: live.targetPrice,
+              poleGainPct: live.poleGainPct,
+              poleDays: live.poleDays,
+              flagDays: live.flagDays,
+              flagPullbackPct: live.flagPullbackPct,
+              breakoutVolRatio: live.breakoutVolRatio,
+              qualityScore: live.qualityScore,
+              sector: live.sector ?? "Unknown",
+            };
+          } else {
+            // Fall back to deriving from history.
+            try {
+              const r = await apiRequest("GET", `/api/htf/derive/${sym}`);
+              const data = await r.json();
+              if (data?.hit) snapshot = { ...data.hit };
+            } catch {
+              // Server error — leave row with dashes; will try again next page load.
+            }
+          }
+          if (!snapshot || cancelled) return;
+          try {
+            await apiRequest("PATCH", `/api/trades/${t.id}`, {
+              strategyData: snapshot,
+            });
+          } catch {
+            // PATCH error — don't crash; just leave the row dashed.
+          }
+        }));
+      }
+      if (!cancelled) {
+        queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/htf/portfolio"] });
+      }
+    })();
+    return () => { cancelled = true; };
+    // Deliberately exclude persistedAttempts from deps — Set mutation
+    // doesn't change reference; if we depended on it we'd re-fire forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, htfScanBySymbol]);
 
   // Filter first, then split open vs closed so we can aggregate open.
   const { openGroups, closedFlat } = useMemo(() => {
@@ -828,7 +1104,16 @@ export default function TradeTracker() {
     const closedOnly = list.filter(t => !!t.closeDate);
 
     const groups = aggregateOpenPositions(openOnly);
+    // Sort by strategy priority FIRST so same-strategy positions render together
+    // under one header, then by the user's chosen sort within each strategy.
+    // Strategies the user actively trades go on top; manual/other sink to bottom.
+    const strategyOrder: Record<string, number> = {
+      htf: 1, "bbtc-ver": 2, amc: 3, "tft-40w": 4, "tft-60w": 5, "tft-cat": 6, manual: 7, other: 8,
+    };
     groups.sort((a, b) => {
+      const sa = strategyOrder[a.strategy] ?? 99;
+      const sb = strategyOrder[b.strategy] ?? 99;
+      if (sa !== sb) return sa - sb;
       let cmp = 0;
       if (sortField === "tradeDate") cmp = a.firstTradeDate.localeCompare(b.firstTradeDate);
       else if (sortField === "symbol") cmp = a.symbol.localeCompare(b.symbol);
@@ -860,7 +1145,7 @@ export default function TradeTracker() {
 
   const SortBtn = ({ field, label }: { field: SortField; label: string }) => (
     <button onClick={() => handleSort(field)}
-      className={`flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider hover:text-foreground ${
+      className={`flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider hover:text-foreground ${
         sortField === field ? "text-primary" : "text-muted-foreground"
       }`}>
       {label}
@@ -871,10 +1156,11 @@ export default function TradeTracker() {
   if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto" data-testid="trade-tracker-page">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-lg font-bold text-foreground">Trade Tracker</h1>
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto"
+      icon={ClipboardList}
+      title="Current Positions"
+      headerRight={
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}
             className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5" data-testid="button-refresh-prices">
@@ -884,53 +1170,63 @@ export default function TradeTracker() {
             className="h-8 px-3 text-xs font-medium rounded-md bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 flex items-center gap-1.5">
             <Settings className="h-3.5 w-3.5" />Settings
           </button>
-
           <button onClick={() => { setAddSeed(null); setShowAddModal(true); }}
             className="h-8 px-4 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5" data-testid="button-add-trade">
             <Plus className="h-3.5 w-3.5" />Add Trade
           </button>
         </div>
-      </div>
+      }
+      howItWorksTitle="How the Trade Tracker works"
+      howItWorks={
+        <>
+          <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
 
-      {/* FAQ / How It Works */}
-      <HelpBlock title="How the Trade Tracker Works">
-        <p>Track every trade from entry to exit with automatic P/L calculations, commission tracking, and behavioral analysis.</p>
+          <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
+          <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
+          <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-bull-light font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
+          <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
 
-        <p className="font-semibold text-foreground mt-2">Adding a Trade:</p>
-        <p><strong className="text-foreground">Pilot vs. Add</strong> — <strong className="text-foreground">Pilot</strong> = initial entry into a new position. <strong className="text-foreground">Add</strong> = scaling into an existing position. This helps you track how averaging in affects your overall cost basis.</p>
-        <p><strong className="text-foreground">Open Price</strong> — Enter a <span className="text-green-400 font-semibold">positive number always</span>. The app automatically determines the sign based on trade type. Credit trades (PCS, CCS, SC, SP) show green "Credit Received" label. Debit trades (CDS, PDS, C, P) show red "Debit Paid" label.</p>
-        <p><strong className="text-foreground">CTV (Call/Put Vertical)</strong> — For dual-vertical entries (buying one spread, selling another), the form shows two separate leg inputs. The net credit/debit is calculated automatically.</p>
+          <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
+          <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
+          <p><strong className="text-foreground">Partial closes</strong> — the close modal has a <strong className="text-foreground">Qty</strong> field with All/½ helpers. Close part of a position and the tracker creates a closed child row with prorated commissions, allocation, and max profit while keeping the rest open at the original cost basis.</p>
+          <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
 
-        <p className="font-semibold text-foreground mt-2">Closing a Trade:</p>
-        <p>Click the checkmark icon on any open trade. Enter the close date and close price (positive number). The app calculates your net P/L including commissions in and out.</p>
-        <p><strong className="text-foreground">Partial closes</strong> — the close modal has a <strong className="text-foreground">Qty</strong> field with All/½ helpers. Close part of a position and the tracker creates a closed child row with prorated commissions, allocation, and max profit while keeping the rest open at the original cost basis.</p>
-        <p><strong className="text-foreground">Expired worthless?</strong> Enter close price = 0. For credit spreads expiring OTM, this means full profit. For debit spreads, full loss.</p>
+          <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
+          <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-bull-light">GO ↑</span>, <span className="text-bear-light">GO ↓</span>, <span className="text-bull-light">SET ↑</span>, <span className="text-bear-light">SET ↓</span>, <span className="text-bull-light">READY ↑</span>, <span className="text-bear-light">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
 
-        <p className="font-semibold text-foreground mt-2">Scanner Pip:</p>
-        <p>Each ticker row shows a <strong className="text-foreground">colored pip</strong> next to the symbol with the live Scanner 2.0 verdict (<span className="text-green-400">GO ↑</span>, <span className="text-red-400">GO ↓</span>, <span className="text-green-400">SET ↑</span>, <span className="text-red-400">SET ↓</span>, <span className="text-green-400">READY ↑</span>, <span className="text-red-400">READY ↓</span>, <span className="text-amber-400">PULLBACK</span>, GATES CLOSED, NO SETUP). These match the Scanner, Trade Analysis, and Watchlist exactly — one signal engine, one answer everywhere.</p>
+          <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
+          <p><strong className="text-foreground">Total Portfolio</strong> — Brokerage Cash + Open Positions. Always live, always = cash + positions.</p>
+          <p><strong className="text-foreground">Brokerage Cash</strong> — Auto-tracks every trade's open/close cash flow. Doesn't match your broker? Open Settings and type in the current cash value — the system re-anchors and stays in sync from there.</p>
+          <p><strong className="text-foreground">Open Positions</strong> — Market value of everything currently open (stocks at live price, options at allocation).</p>
+          <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
+          <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
+          <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-bull-light">green 55%+</span>, <span className="text-watch-light">yellow 45–54%</span>, <span className="text-bear-light">red below 45%</span>.</p>
+          <p><strong className="text-foreground">Allocated</strong> — What percentage of your portfolio is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
 
-        <p className="font-semibold text-foreground mt-2">Summary Cards:</p>
-        <p><strong className="text-foreground">Account Value</strong> — Starting balance + all closed P/L + deposits/withdrawals. Set your starting balance in Settings.</p>
-        <p><strong className="text-foreground">Total P/L</strong> — Sum of all closed trade profits and losses after commissions.</p>
-        <p><strong className="text-foreground">Open P/L</strong> — Unrealized P/L on open trades based on last refreshed prices. Click "Refresh P/L" to update live.</p>
-        <p><strong className="text-foreground">Win Rate</strong> — Percentage of profitable closed trades. Target: above 55%. Color coded: <span className="text-green-400">green 55%+</span>, <span className="text-yellow-400">yellow 45–54%</span>, <span className="text-red-400">red below 45%</span>.</p>
-        <p><strong className="text-foreground">Allocated</strong> — What percentage of your account is at risk in open trades. Goes red when exceeding your limit (default 30%, adjustable in Settings).</p>
-
-        <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
-        <p>Track your trading psychology by tagging each closed trade:</p>
-        <p><span className="text-green-400 font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-red-400 font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-red-400 font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-yellow-400 font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-yellow-400 font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
+          <p>Track your trading psychology by tagging each closed trade:</p>
+          <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
+        </>
+      }
+    >
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <SC label="Account Value" value={formatCurrency(summary.accountValue)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
-          <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-green-400" : "text-red-400"} />
-          <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-green-400" : "text-red-400"} />
-          <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-green-400" : summary.winRate >= 0.45 ? "text-yellow-400" : "text-red-400"} />
-          <SC label="Open Trades" value={String(summary.openTrades)} icon={<BarChart3 className="h-4 w-4" />} color="text-primary" />
-          <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-red-400" : "text-foreground"} />
-        </div>
+        <>
+          {/* Top row — broker-matching figures (cash + open positions = total) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <SC label="Total Portfolio" value={formatCurrency(summary.totalPortfolioValue ?? 0)} icon={<DollarSign className="h-4 w-4" />} color="text-primary" />
+            <SC label="Brokerage Cash" value={formatCurrency(summary.cashBalance ?? 0)} icon={<DollarSign className="h-4 w-4" />} color="text-foreground" />
+            <SC label="Open Positions" value={formatCurrency(summary.openPositionMarketValue ?? 0)} icon={<BarChart3 className="h-4 w-4" />} color="text-foreground" />
+          </div>
+          {/* Bottom row — performance + activity */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <SC label="Total P/L" value={formatCurrency(summary.totalProfit)} icon={summary.totalProfit >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={summary.totalProfit >= 0 ? "text-bull-light" : "text-bear-light"} />
+            <SC label="Open P/L" value={formatCurrency(summary.openPL)} icon={<BarChart3 className="h-4 w-4" />} color={summary.openPL >= 0 ? "text-bull-light" : "text-bear-light"} />
+            <SC label="Win Rate" value={`${(summary.winRate * 100).toFixed(1)}%`} icon={<Target className="h-4 w-4" />} color={summary.winRate >= 0.55 ? "text-bull-light" : summary.winRate >= 0.45 ? "text-watch-light" : "text-bear-light"} />
+            <SC label="Open Trades" value={String(summary.openTrades)} icon={<BarChart3 className="h-4 w-4" />} color="text-primary" />
+            <SC label="Allocated" value={`${(summary.allocatedPct * 100).toFixed(1)}%`} icon={<DollarSign className="h-4 w-4" />} color={summary.allocatedPct > (summary.settings?.totalAllocatedLimit || 0.3) ? "text-bear-light" : "text-foreground"} />
+          </div>
+        </>
       )}
 
       {/* Performance by Type */}
@@ -951,11 +1247,11 @@ export default function TradeTracker() {
                   <tr key={type} className="border-b border-card-border/50">
                     <td className="py-1.5 pr-4 font-semibold text-foreground">{TRADE_TYPES[type as TradeTypeCode]?.label || type}</td>
                     <td className="text-right px-3 tabular-nums">{d.count}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-green-400" : winPct >= 45 ? "text-yellow-400" : "text-red-400"}`}>{winPct.toFixed(1)}%</td>
-                    <td className="text-right px-3 text-green-400 tabular-nums">{formatCurrency(d.profit)}</td>
-                    <td className="text-right px-3 text-red-400 tabular-nums">{formatCurrency(d.loss)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(net)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-green-400" : "text-red-400"}`}>{roi.toFixed(1)}%</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-bull-light" : winPct >= 45 ? "text-watch-light" : "text-bear-light"}`}>{winPct.toFixed(1)}%</td>
+                    <td className="text-right px-3 text-bull-light tabular-nums">{formatCurrency(d.profit)}</td>
+                    <td className="text-right px-3 text-bear-light tabular-nums">{formatCurrency(d.loss)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-bull-light" : "text-bear-light"}`}>{formatCurrency(net)}</td>
+                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-bull-light" : "text-bear-light"}`}>{roi.toFixed(1)}%</td>
                   </tr>
                 );
               })}</tbody>
@@ -966,13 +1262,13 @@ export default function TradeTracker() {
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(["all", "open", "closed", "stocks", "options"] as FilterTab[]).map(tab => (
+        {(["open", "stocks", "options", "closed"] as FilterTab[]).map(tab => (
           <button key={tab} onClick={() => setFilterTab(tab)}
             className={`h-7 px-3 text-xs font-medium rounded-md transition-colors ${
               filterTab === tab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
             }`}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            {tab !== "all" && ` (${
+            {` (${
               tab === "open" ? trades.filter(t => !t.closeDate).length :
               tab === "closed" ? trades.filter(t => !!t.closeDate).length :
               tab === "stocks" ? trades.filter(t => t.tradeCategory === "Stock").length :
@@ -982,206 +1278,399 @@ export default function TradeTracker() {
         ))}
       </div>
 
-      {/* Trades Table */}
-      <div className="bg-card border border-card-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs" data-testid="trades-table">
-            <thead><tr className="bg-muted/30 border-b border-card-border">
-              <th className="text-left py-2.5 px-3"><SortBtn field="tradeDate" label="Date" /></th>
-              <th className="text-left py-2.5 px-3"><SortBtn field="symbol" label="Symbol" /></th>
-              <th className="text-left py-2.5 px-3"><SortBtn field="tradeType" label="Type" /></th>
-              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">P/A</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Qty</th>
-              <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Strikes</th>
-              <th className="text-right py-2.5 px-3"><SortBtn field="openPrice" label="Open" /></th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Close</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Price</th>
-              <th className="text-right py-2.5 px-3"><SortBtn field="profit" label="P/L" /></th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Total</th>
-              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Exp</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Days</th>
-              <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Status</th>
-              <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-[11px]">Actions</th>
-            </tr></thead>
-            <tbody>
-              {totalRowsInView === 0 ? (
-                <tr><td colSpan={15} className="text-center py-12 text-muted-foreground">No trades yet. Click "Add Trade" to get started.</td></tr>
-              ) : (() => {
-                let runningTotal = 0;
-                const rendered: React.ReactNode[] = [];
+      {/* Open positions — one table PER STRATEGY. Each strategy's manifest
+          owns its column set (manifest.columnOrder) so HTF surfaces Stop /
+          Take 1/3 / Trail 20-MA / Target as REAL columns; BBTC surfaces
+          Stop (EXIT) / Exit Trigger / Target; etc. No more one-size-fits-all
+          table. The Total column is gone — running cumulative P&L on a
+          per-row basis was confusing and doesn't recompute. */}
+      {(() => {
+        // Tailwind class set per manifest color (visual stripe + header tint).
+        const strategyHeaderClass = (color: StrategyManifest["color"]): string => {
+          switch (color) {
+            case "bull":    return "bg-bull/10 border-bull text-bull-light";
+            case "watch":   return "bg-watch/10 border-watch text-watch-light";
+            case "bear":    return "bg-bear/10 border-bear text-bear-light";
+            case "info":    return "bg-primary/10 border-primary text-primary";
+            case "neutral": return "bg-muted/30 border-muted-foreground/40 text-muted-foreground";
+            default:        return "bg-muted/30 border-muted-foreground/40 text-muted-foreground";
+          }
+        };
+        // Color the strategy-specific cell value based on the manifest's
+        // assessment of that lifecycle point's state.
+        const pointStateClass = (state: DisplayPoint["state"]): string => {
+          switch (state) {
+            case "triggered": return "text-bear-light font-bold";
+            case "armed":     return "text-watch-light font-semibold";
+            case "past":      return "text-muted-foreground";
+            case "pending":   return "text-foreground";
+            default:          return "text-foreground";
+          }
+        };
 
-                // ─── Open positions (grouped) ───────────────────────────────
-                for (const g of openGroups) {
-                  runningTotal += g.totalOpenPL;
-                  const isSingleLot = g.lots.length === 1;
-                  const isExpanded = expandedGroups.has(g.key) || isSingleLot;
-                  const daysToExp = g.expiration ? Math.ceil((new Date(g.expiration).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                  const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
-                  const isWin = g.totalOpenPL >= 0;
-                  const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
-                  rendered.push(
-                    <tr key={`grp-${g.key}`}
-                      className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
-                      onClick={isSingleLot ? undefined : () => toggleGroup(g.key)}
-                      data-testid={`position-row-${g.key}`}>
-                      <td className="py-2 px-3 text-foreground tabular-nums">
-                        <div className="flex items-center gap-1.5">
-                          {!isSingleLot && (isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground rotate-180" />)}
-                          <span>{g.firstTradeDate}</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">
-                        {g.symbol}
-                        <ScannerPip ticker={g.symbol} />
-                        {!isSingleLot && <span className="ml-1.5 text-[9px] font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
-                      </td>
-                      <td className="py-2 px-3"><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${g.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{g.tradeType}</span></td>
-                      <td className="py-2 px-3 text-muted-foreground">{isSingleLot ? (g.lots[0].pilotOrAdd === "Pilot" ? "P" : "A") : "Σ"}</td>
-                      <td className="py-2 px-3 text-right text-foreground tabular-nums font-semibold">{g.totalQty}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{g.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${g.avgOpenPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {g.avgOpenPrice > 0 ? "+" : ""}{g.avgOpenPrice.toFixed(2)}
-                        {!isSingleLot && <span className="block text-[9px] opacity-60">avg</span>}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">—</td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">{g.currentPrice ? `$${g.currentPrice.toFixed(2)}` : "—"}</td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
-                        {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
-                        {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                        {g.tradeCategory === "Option" && g.totalOpenPL !== 0 && <span className="text-[9px] ml-0.5 opacity-50">est</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {g.expiration ? (
-                          <span className={`text-[10px] font-mono tabular-nums ${daysToExp !== null && daysToExp <= 7 && daysToExp >= 0 ? "text-yellow-400 font-bold" : daysToExp !== null && daysToExp < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                            {g.expiration.substring(5)}
-                            {daysToExp !== null && (<span className="text-[8px] block">{daysToExp > 0 ? `${daysToExp}d` : daysToExp === 0 ? "Today" : "Exp"}</span>)}
-                          </span>
-                        ) : (<span className="text-muted-foreground">—</span>)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center"><span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-400">OPEN</span></td>
-                      <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              setAddSeed({ symbol: g.symbol, tradeType: g.tradeType, tradeCategory: g.tradeCategory, strikes: g.strikes, expiration: g.expiration, creditDebit: g.creditDebit, pilotOrAdd: "Add" });
-                              setShowAddModal(true);
-                            }}
-                            className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
-                            title="Add to this position">
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-                          {isSingleLot && (<>
-                            <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setClosingTrade(g.lots[0])} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close trade"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </>)}
-                        </div>
-                      </td>
+        const sevOrder = { critical: 4, warn: 3, watch: 2, info: 1 } as const;
+
+        // Bucket open groups by strategy in the same order they were sorted.
+        const groupsByStrategy = new Map<string, OpenPosition[]>();
+        for (const g of openGroups) {
+          const arr = groupsByStrategy.get(g.strategy) ?? [];
+          arr.push(g);
+          groupsByStrategy.set(g.strategy, arr);
+        }
+
+        if (openGroups.length === 0 && closedFlat.length === 0) {
+          return (
+            <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                No trades yet. Click "Add Trade" or pull a setup from /htf to get started.
+              </div>
+            </div>
+          );
+        }
+
+        const sections: React.ReactNode[] = [];
+
+        // ─── One table per strategy ──────────────────────────────────────
+        // `Array.from(...)` avoids the downlevel-iteration TS gripe; we want
+        // the same insertion-ordered list of [stratId, groups] either way.
+        for (const [stratId, groups] of Array.from(groupsByStrategy.entries())) {
+          const manifest = getStrategyManifest(stratId);
+          const columnLabels = manifest.columnOrder;
+
+          sections.push(
+            <div
+              key={`section-${stratId}`}
+              className={`rounded-lg border-l-4 ${strategyHeaderClass(manifest.color)} bg-card border-y border-r border-card-border overflow-hidden`}
+            >
+              {/* Strategy header bar */}
+              <div className="px-3 py-2 flex items-center justify-between gap-3 flex-wrap border-b border-card-border/40">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tracking-tight">{manifest.name}</span>
+                  <span className="text-2xs opacity-70">· {groups.length} position{groups.length !== 1 ? "s" : ""}</span>
+                </div>
+                <span className="text-2xs opacity-70 italic">{manifest.description}</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" data-testid={`trades-table-${stratId}`}>
+                  <thead>
+                    <tr className="bg-muted/30 border-b border-card-border">
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Date</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Symbol</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Pos</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Current</th>
+                      {columnLabels.map(label => (
+                        <th key={label} className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">{label}</th>
+                      ))}
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">P/L</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Days</th>
+                      <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Action</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Edit</th>
                     </tr>
-                  );
-                  if (!isSingleLot && isExpanded) {
-                    for (const t of g.lots) {
-                      const profit = t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t);
-                      const lotDays = daysInTrade(t);
-                      const lotPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                      rendered.push(
-                        <tr key={`lot-${t.id}`} className="border-b border-card-border/20 bg-background/40 text-muted-foreground" data-testid={`lot-row-${t.id}`}>
-                          <td className="py-1.5 px-3 pl-10 tabular-nums text-[11px]">└ {t.tradeDate}</td>
-                          <td className="py-1.5 px-3 text-[11px] opacity-60">—</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"><span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.pilotOrAdd === "Pilot" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"}`}>{t.pilotOrAdd === "Pilot" ? "P" : "A"}</span></td>
-                          <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400/80" : "text-red-400/80"}`}>{t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className={`py-1.5 px-3 text-right tabular-nums text-[11px] ${profit >= 0 ? "text-green-400/80" : "text-red-400/80"}`}>{profit !== 0 ? formatCurrency(profit) : "—"}{lotPct !== 0 && <span className="text-[9px] ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3 text-right tabular-nums text-[11px]">{lotDays}d</td>
-                          <td className="py-1.5 px-3"></td>
-                          <td className="py-1.5 px-3 text-right">
+                  </thead>
+                  <tbody>
+                    {groups.map((g: OpenPosition) => {
+                      const isSingleLot = g.lots.length === 1;
+                      const isExpanded = expandedGroups.has(g.key) || isSingleLot;
+                      const days = Math.max(0, Math.ceil((Date.now() - new Date(g.firstTradeDate).getTime()) / 86400000));
+                      const isWin = g.totalOpenPL >= 0;
+                      const profitPct = g.totalAllocation > 0 ? (g.totalOpenPL / g.totalAllocation * 100) : 0;
+
+                      // Backfill empty strategyData from the live HTF scan
+                      // for HTF-tagged trades. Pre-auto-fill trades have
+                      // strategy='htf' but no snapshot — if the scanner
+                      // currently sees the symbol, use its data so the
+                      // manifest can fill in Stop/Target/Pole/Flag columns
+                      // instead of showing "—" everywhere.
+                      let effectiveStrategyData = g.lots[0].strategyData;
+                      const hasRealStrategyData =
+                        effectiveStrategyData && Object.keys(effectiveStrategyData).length > 0;
+                      if (!hasRealStrategyData && g.strategy === "htf") {
+                        const scanRow = htfScanBySymbol.get(g.symbol.toUpperCase());
+                        if (scanRow) {
+                          effectiveStrategyData = {
+                            stopPrice: scanRow.stopPrice,
+                            targetPrice: scanRow.targetPrice,
+                            poleGainPct: scanRow.poleGainPct,
+                            poleDays: scanRow.poleDays,
+                            flagDays: scanRow.flagDays,
+                            flagPullbackPct: scanRow.flagPullbackPct,
+                            breakoutVolRatio: scanRow.breakoutVolRatio,
+                            qualityScore: scanRow.qualityScore,
+                            sector: scanRow.sector ?? "Unknown",
+                          };
+                        }
+                      }
+
+                      const evalLot: StrategyTradeView = {
+                        symbol: g.symbol,
+                        openPrice: g.avgOpenPrice,
+                        currentPrice: g.currentPrice,
+                        target: g.lots[0].target,
+                        closeDate: null,
+                        tradeDate: g.firstTradeDate,
+                        strategy: g.strategy,
+                        strategyReason: g.lots[0].strategyReason,
+                        strategyData: effectiveStrategyData,
+                        contractsShares: g.totalQty,
+                        // Pass through the server-computed lifecycle. Manifest
+                        // prefers this for dynamic fields (partial fired?
+                        // current 20-MA?). Snapshot data in strategyData is
+                        // entry-time only — stale by definition mid-trade.
+                        lifecycleState: g.lots[0].lifecycleState,
+                      };
+                      const evalResult = manifest.evaluate(evalLot);
+                      const pointByLabel = new Map(evalResult.displayPoints.map(p => [p.label, p]));
+                      const topAlert = evalResult.alerts.slice().sort((a, b) => sevOrder[b.severity] - sevOrder[a.severity])[0];
+
+                      const statusBadge = (
+                        <span className={`text-micro font-semibold px-2 py-0.5 rounded ${
+                          topAlert
+                            ? topAlert.severity === "critical" ? "bg-bear text-bear-foreground"
+                            : topAlert.severity === "warn"     ? "bg-bear/40 text-bear-light"
+                            : topAlert.severity === "watch"    ? "bg-watch/30 text-watch-light"
+                            :                                    "bg-primary/20 text-primary"
+                            : "bg-bull/15 text-bull-light"
+                        }`}>
+                          {topAlert ? (
+                            topAlert.action === "dump"          ? "DUMP NOW"
+                            : topAlert.action === "exit"        ? "EXIT"
+                            : topAlert.action === "take-partial" ? "TAKE PARTIAL"
+                            :                                     "WATCH"
+                          ) : "HOLD"}
+                        </span>
+                      );
+
+                      const mainRow = (
+                        <tr
+                          key={`grp-${g.key}`}
+                          className={`border-b border-card-border/30 transition-colors ${isSingleLot ? "hover:bg-muted/20" : "bg-muted/10 hover:bg-muted/25 cursor-pointer"}`}
+                          onClick={isSingleLot ? undefined : () => toggleGroup(g.key)}
+                          data-testid={`position-row-${g.key}`}
+                        >
+                          <td className="py-2 px-3 text-foreground tabular-nums">
+                            <div className="flex items-center gap-1.5">
+                              {!isSingleLot && (isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground rotate-180" />)}
+                              <span>{g.firstTradeDate}</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 font-mono font-bold text-foreground">
+                            {g.symbol}
+                            <ScannerPip ticker={g.symbol} />
+                            {!isSingleLot && <span className="ml-1.5 text-mini font-semibold px-1 py-0.5 rounded bg-primary/15 text-primary">{g.lots.length} lots</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            <span className="font-semibold">{g.totalQty}</span>
+                            <span className="text-muted-foreground"> @ ${Math.abs(g.avgOpenPrice).toFixed(2)}</span>
+                            {!isSingleLot && <span className="block text-mini opacity-60">avg</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {g.currentPrice != null ? `$${g.currentPrice.toFixed(2)}` : "—"}
+                          </td>
+                          {columnLabels.map(label => {
+                            const p = pointByLabel.get(label);
+                            return (
+                              <td key={label} className={`py-2 px-3 text-right tabular-nums font-mono ${p ? pointStateClass(p.state) : "text-muted-foreground"}`}>
+                                {p?.value ?? "—"}
+                              </td>
+                            );
+                          })}
+                          <td className={`py-2 px-3 text-right font-semibold tabular-nums ${g.totalOpenPL !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
+                            {g.totalOpenPL !== 0 ? formatCurrency(g.totalOpenPL) : "—"}
+                            {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}d</td>
+                          <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col items-center gap-1 min-w-[140px]">
+                              {topAlert && topAlert.actionShares != null && topAlert.actionShares > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Always actionable now. Multi-lot groups
+                                    // close from the oldest lot first; the
+                                    // modal caps qty at that lot's shares.
+                                    // If the manifest's actionShares exceeds
+                                    // the oldest lot, the user closes more
+                                    // from subsequent lots after this trade.
+                                    const lot = g.lots[0];
+                                    const qty = Math.min(topAlert.actionShares!, lot.contractsShares);
+                                    openClose(lot, qty);
+                                  }}
+                                  title={topAlert.message}
+                                  data-testid={`act-${topAlert.action}-${g.symbol}`}
+                                  className={`w-full px-3 py-1.5 rounded text-xs font-bold transition-colors ${
+                                    topAlert.action === "dump"          ? "bg-bear text-bear-foreground hover:brightness-110 animate-pulse"
+                                    : topAlert.action === "exit"        ? "bg-bear/80 text-bear-foreground hover:bg-bear"
+                                    : topAlert.action === "take-partial" ? "bg-watch text-background hover:brightness-110"
+                                    :                                     "bg-primary text-primary-foreground hover:brightness-110"
+                                  }`}
+                                >
+                                  {topAlert.actionLabel}
+                                  {!isSingleLot && g.lots[0].contractsShares < topAlert.actionShares! && (
+                                    <span className="block text-2xs opacity-80 font-normal">
+                                      (from oldest lot — close more after)
+                                    </span>
+                                  )}
+                                </button>
+                              ) : (
+                                statusBadge
+                              )}
+                              {topAlert && (
+                                <span
+                                  className={`text-2xs leading-tight max-w-[200px] ${
+                                    topAlert.severity === "critical" ? "text-bear-light font-semibold"
+                                    : topAlert.severity === "warn"   ? "text-bear-light"
+                                    : topAlert.severity === "watch"  ? "text-watch-light"
+                                    :                                  "text-muted-foreground"
+                                  }`}
+                                >
+                                  {topAlert.message}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
-                              <button onClick={() => setClosingTrade(t)} className="p-1 rounded hover:bg-yellow-500/15 text-muted-foreground hover:text-yellow-400 transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
-                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                              <button
+                                onClick={() => {
+                                  setAddSeed({ symbol: g.symbol, tradeType: g.tradeType, tradeCategory: g.tradeCategory, strikes: g.strikes, expiration: g.expiration, creditDebit: g.creditDebit, pilotOrAdd: "Add" });
+                                  setShowAddModal(true);
+                                }}
+                                className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                                title="Add to this position"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                              {isSingleLot && (
+                                <>
+                                  <button onClick={() => setEditingTrade(g.lots[0])} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade"><Edit2 className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => openClose(g.lots[0])} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close full position"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                  <button onClick={() => deleteMutation.mutate(g.lots[0].id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade"><Trash2 className="h-3.5 w-3.5" /></button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
                       );
-                    }
-                  }
-                }
 
-                // ─── Closed trades (flat) ───────────────────────────────────────
-                for (const t of closedFlat) {
-                  const profit = computeTradeProfit(t);
-                  runningTotal += profit;
-                  const days = daysInTrade(t);
-                  const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
-                  const isWin = profit >= 0;
-                  rendered.push(
-                    <tr key={`t-${t.id}`} className="border-b border-card-border/30 hover:bg-muted/20 transition-colors" data-testid={`trade-row-${t.id}`}>
-                      <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
-                      <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
-                      <td className="py-2 px-3">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          t.creditDebit === "CREDIT" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
-                        }`}>{t.tradeType}</span>
-                      </td>
-                      <td className="py-2 px-3 text-muted-foreground">{t.pilotOrAdd === "Pilot" ? "P" : "A"}</td>
-                      <td className="py-2 px-3 text-right text-foreground tabular-nums">{t.contractsShares}</td>
-                      <td className="py-2 px-3 font-mono text-muted-foreground">{t.strikes || "—"}</td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono ${t.openPrice > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {t.openPrice > 0 ? "+" : ""}{t.openPrice.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
-                        {t.closePrice !== null ? t.closePrice.toFixed(2) : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-right tabular-nums font-mono text-muted-foreground">
-                        {t.currentPrice ? `$${t.currentPrice.toFixed(2)}` : "—"}
-                      </td>
-                      <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-green-400" : "text-red-400") : "text-muted-foreground"}`}>
-                        {profit !== 0 ? formatCurrency(profit) : "—"}
-                        {profitPct !== 0 && <span className="text-[10px] ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
-                      </td>
-                      <td className={`py-2 px-3 text-right tabular-nums font-mono text-[11px] ${runningTotal >= 0 ? "text-green-400/70" : "text-red-400/70"}`}>
-                        {runningTotal !== 0 ? `${runningTotal >= 0 ? "+" : ""}${runningTotal.toFixed(0)}` : "—"}
-                      </td>
-                      <td className="py-2 px-3 text-center">
-                        {t.expiration ? (
-                          <span className="text-[10px] font-mono tabular-nums text-muted-foreground">{t.expiration.substring(5)}</span>
-                        ) : (<span className="text-muted-foreground">—</span>)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}</td>
-                      <td className="py-2 px-3 text-center">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${isWin ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
-                          {isWin ? "WIN" : "LOSS"}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors" title="Delete trade">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      const lotRows = !isSingleLot && isExpanded
+                        ? g.lots.map(t => {
+                            const profit = t.tradeCategory === "Stock" ? computeStockPL(t) : computeOptionPL(t);
+                            const lotDays = daysInTrade(t);
+                            const lotPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                            return (
+                              <tr key={`lot-${t.id}`} className="border-b border-card-border/20 bg-background/40 text-muted-foreground" data-testid={`lot-row-${t.id}`}>
+                                <td className="py-1.5 px-3 pl-10 tabular-nums text-2xs">└ {t.tradeDate}</td>
+                                <td className="py-1.5 px-3 text-2xs opacity-60">—</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{t.contractsShares} @ ${Math.abs(t.openPrice).toFixed(2)}</td>
+                                <td className="py-1.5 px-3 text-right tabular-nums">{t.currentPrice != null ? `$${t.currentPrice.toFixed(2)}` : "—"}</td>
+                                {columnLabels.map(label => <td key={label} className="py-1.5 px-3"></td>)}
+                                <td className={`py-1.5 px-3 text-right tabular-nums text-2xs ${profit >= 0 ? "text-bull-light/80" : "text-bear-light/80"}`}>
+                                  {profit !== 0 ? formatCurrency(profit) : "—"}
+                                  {lotPct !== 0 && <span className="text-mini ml-1 opacity-70">({lotPct.toFixed(0)}%)</span>}
+                                </td>
+                                <td className="py-1.5 px-3 text-right tabular-nums text-2xs">{lotDays}d</td>
+                                <td className="py-1.5 px-3"></td>
+                                <td className="py-1.5 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit lot"><Edit2 className="h-3 w-3" /></button>
+                                    <button onClick={() => openClose(t)} className="p-1 rounded hover:bg-watch/15 text-muted-foreground hover:text-watch-light transition-colors" title="Close lot"><CheckCircle2 className="h-3 w-3" /></button>
+                                    <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete lot"><Trash2 className="h-3 w-3" /></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        : [];
+
+                      return (
+                        <React.Fragment key={`row-frag-${g.key}`}>
+                          {mainRow}
+                          {lotRows}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        // ─── Closed trades — separate flat table at the bottom ──────────
+        if (closedFlat.length > 0) {
+          sections.push(
+            <div key="closed-section" className="bg-card border border-card-border rounded-lg overflow-hidden">
+              <div className="px-3 py-2 border-b border-card-border/40 flex items-center justify-between">
+                <span className="text-sm font-bold text-muted-foreground tracking-tight">Closed Trades</span>
+                <span className="text-2xs opacity-60 italic">{closedFlat.length} closed · realized P/L visible per row</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" data-testid="trades-table-closed">
+                  <thead>
+                    <tr className="bg-muted/30 border-b border-card-border">
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Date</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Symbol</th>
+                      <th className="text-left py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Strategy</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Qty @ Open</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Close</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">P/L</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Days</th>
+                      <th className="text-center py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Status</th>
+                      <th className="text-right py-2.5 px-3 text-muted-foreground font-semibold uppercase tracking-wider text-2xs">Edit</th>
                     </tr>
-                  );
-                }
-                return rendered;
-              })()}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  </thead>
+                  <tbody>
+                    {closedFlat.map((t: Trade) => {
+                      const profit = computeTradeProfit(t);
+                      const days = daysInTrade(t);
+                      const profitPct = t.allocation && t.allocation > 0 ? (profit / t.allocation * 100) : 0;
+                      const isWin = profit >= 0;
+                      const manifest = getStrategyManifest(t.strategy);
+                      return (
+                        <tr key={`closed-${t.id}`} className="border-b border-card-border/30 hover:bg-muted/20" data-testid={`closed-row-${t.id}`}>
+                          <td className="py-2 px-3 text-foreground tabular-nums">{t.tradeDate}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-foreground">{t.symbol}</td>
+                          <td className="py-2 px-3 text-2xs text-muted-foreground">{manifest.shortName}</td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {t.contractsShares} @ ${Math.abs(t.openPrice).toFixed(2)}
+                          </td>
+                          <td className="py-2 px-3 text-right tabular-nums font-mono text-foreground">
+                            {t.closePrice != null ? `$${Math.abs(t.closePrice).toFixed(2)}` : "—"}
+                            <span className="block text-mini opacity-60">{t.closeDate}</span>
+                          </td>
+                          <td className={`py-2 px-3 text-right font-semibold tabular-nums ${profit !== 0 ? (isWin ? "text-bull-light" : "text-bear-light") : "text-muted-foreground"}`}>
+                            {profit !== 0 ? formatCurrency(profit) : "—"}
+                            {profitPct !== 0 && <span className="text-micro ml-1 opacity-70">({profitPct.toFixed(0)}%)</span>}
+                          </td>
+                          <td className="py-2 px-3 text-right text-muted-foreground tabular-nums">{days}d</td>
+                          <td className="py-2 px-3 text-center">
+                            <span className={`text-micro font-semibold px-2 py-0.5 rounded ${isWin ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
+                              {isWin ? "WIN" : "LOSS"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => setEditingTrade(t)} className="p-1 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors" title="Edit trade">
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => deleteMutation.mutate(t.id)} className="p-1 rounded hover:bg-bear/15 text-muted-foreground hover:text-bear-light transition-colors" title="Delete trade">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        return <div className="space-y-4">{sections}</div>;
+      })()}
 
       {/* Behavior */}
       {summary && Object.keys(summary.behaviorCounts).length > 0 && (
@@ -1190,8 +1679,8 @@ export default function TradeTracker() {
           <div className="flex flex-wrap gap-2">
             {Object.entries(summary.behaviorCounts).map(([tag, count]) => (
               <span key={tag} className={`text-xs px-3 py-1.5 rounded-md font-medium ${
-                tag === "All to Plan" ? "bg-green-500/15 text-green-400" :
-                tag.includes("Panic") || tag.includes("FOMO") ? "bg-red-500/15 text-red-400" : "bg-yellow-500/15 text-yellow-400"
+                tag === "All to Plan" ? "bg-bull/15 text-bull-light" :
+                tag.includes("Panic") || tag.includes("FOMO") ? "bg-bear/15 text-bear-light" : "bg-watch/15 text-watch-light"
               }`}>{tag}: {count}</span>
             ))}
           </div>
@@ -1202,9 +1691,16 @@ export default function TradeTracker() {
       {showAddModal && settings && <TradeForm mode="add" initial={addSeed as any} settings={settings} onClose={() => { setShowAddModal(false); setAddSeed(null); }} />}
 
       {editingTrade && settings && <TradeForm mode="edit" initial={editingTrade} settings={settings} onClose={() => setEditingTrade(null)} />}
-      {closingTrade && settings && <CloseTradeModal trade={closingTrade} onClose={() => setClosingTrade(null)} settings={settings} />}
+      {closingTrade && (
+        <CloseTradeModal
+          trade={closingTrade}
+          defaultQty={closingQty}
+          onClose={() => { setClosingTrade(null); setClosingQty(undefined); }}
+          settings={settings ?? undefined}
+        />
+      )}
       {showSettings && settings && <SettingsPanel settings={settings} onClose={() => setShowSettings(false)} />}
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -1213,7 +1709,7 @@ function SC({ label, value, icon, color }: { label: string; value: string; icon:
     <div className="bg-card border border-card-border rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-muted-foreground">{icon}</span>
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-base font-bold tabular-nums ${color}`}>{value}</span>
     </div>

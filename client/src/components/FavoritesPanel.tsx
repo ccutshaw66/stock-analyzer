@@ -38,7 +38,7 @@ function ScoreBadge({ score, verdict }: { score: number | null; verdict: string 
         {score.toFixed(2)}
       </span>
       {verdict && (
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${colors.bg} text-white`}>
+        <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${colors.bg} text-white`}>
           {verdict}
         </span>
       )}
@@ -58,7 +58,7 @@ function FavoriteRow({ item, onRemove, onSelect }: { item: FavoriteItem; onRemov
           <div className="flex items-center gap-2">
             <span className="font-mono font-bold text-sm text-foreground">{item.ticker}</span>
             {item.sector && (
-              <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{item.sector}</span>
+              <span className="text-micro text-muted-foreground truncate hidden sm:inline">{item.sector}</span>
             )}
           </div>
           <p className="text-xs text-muted-foreground truncate max-w-[160px]">{item.companyName}</p>
@@ -69,7 +69,7 @@ function FavoriteRow({ item, onRemove, onSelect }: { item: FavoriteItem; onRemov
         <ScoreBadge score={item.score} verdict={item.verdict} />
         <button
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-1"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-bear p-1"
           data-testid={`button-remove-${item.ticker}`}
           aria-label={`Remove ${item.ticker}`}
         >
@@ -157,7 +157,7 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
           <Eye className="h-4 w-4" />
           Watchlist
           {items.length > 0 && activeTab === "watchlist" && (
-            <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">{items.length}</span>
+            <span className="text-micro bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">{items.length}</span>
           )}
         </button>
         <button
@@ -172,7 +172,7 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
           <Briefcase className="h-4 w-4" />
           Portfolio
           {items.length > 0 && activeTab === "portfolio" && (
-            <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">{items.length}</span>
+            <span className="text-micro bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">{items.length}</span>
           )}
         </button>
       </div>
@@ -199,8 +199,8 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
               disabled={isInList("portfolio") || addMutation.isPending}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-colors ${
                 isInList("portfolio")
-                  ? "bg-green-500/10 text-green-500 cursor-default"
-                  : "bg-green-600/80 hover:bg-green-600 text-white"
+                  ? "bg-bull/10 text-bull cursor-default"
+                  : "bg-bull/80 hover:bg-bull text-white"
               }`}
               data-testid="button-add-portfolio"
             >
@@ -208,7 +208,7 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
               {isInList("portfolio") ? "In Portfolio" : `+ Portfolio`}
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+          <p className="text-micro text-muted-foreground text-center mt-1.5">
             Add <span className="font-mono font-bold">{currentAnalysis.ticker}</span> ({currentAnalysis.score.toFixed(2)}/10)
           </p>
         </div>
@@ -224,13 +224,13 @@ export function FavoritesPanel({ onSelectTicker, currentAnalysis }: FavoritesPan
             <p className="text-xs">
               {activeTab === "watchlist" ? "No stocks on your watchlist" : "No stocks in your portfolio"}
             </p>
-            <p className="text-[10px] mt-0.5 opacity-70">Analyze a stock and add it here</p>
+            <p className="text-micro mt-0.5 opacity-70">Analyze a stock and add it here</p>
           </div>
         ) : (
           <div className="space-y-0.5">
             {sortedItems.map((item, idx) => (
               <div key={item.id} className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground w-4 text-right tabular-nums shrink-0">
+                <span className="text-micro text-muted-foreground w-4 text-right tabular-nums shrink-0">
                   {idx + 1}
                 </span>
                 <div className="flex-1">

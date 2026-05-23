@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_AUTH_FORGOT_PASSWORD } from "@shared/api/endpoints";
 import { Loader2, Mail, Lock, User, TrendingUp, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import iconUrl from "@/assets/icon.png";
 import logoTextUrl from "@/assets/logo-text.png";
@@ -21,7 +22,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
     setLoading(true);
     try {
       if (mode === "forgot") {
-        const res = await (await import("@/lib/queryClient")).apiRequest("POST", "/api/auth/forgot-password", { email });
+        const res = await (await import("@/lib/queryClient")).apiRequest("POST", API_AUTH_FORGOT_PASSWORD, { email });
         if (res.ok) setForgotSent(true);
         else { const err = await res.json(); throw new Error(err.error); }
       } else if (mode === "login") {
@@ -37,7 +38,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
   };
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#040d22' }}>
+    <div className="min-h-screen flex bg-brand-bg">
       {/* Left side — Branding */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-center items-center p-12 relative overflow-hidden">
         {/* Mesh gradient background */}
@@ -103,8 +104,8 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
           )}
 
           {forgotSent && mode === "forgot" ? (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 text-center">
-              <p className="text-sm text-green-400 font-semibold mb-1">Check your email</p>
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-4 text-center">
+              <p className="text-sm text-bull-light font-semibold mb-1">Check your email</p>
               <p className="text-xs text-muted-foreground">If an account exists for {email}, we sent a password reset link. It expires in 1 hour.</p>
               <button onClick={() => { setMode("login"); setForgotSent(false); setError(""); }} className="text-xs text-primary hover:underline mt-3" data-testid="button-back-to-login">Back to sign in</button>
             </div>
@@ -172,7 +173,7 @@ export default function AuthPage({ initialMode = "login", onBack }: { initialMod
                 <button
                   type="button"
                   onClick={() => { setMode("forgot"); setError(""); setForgotSent(false); }}
-                  className="text-[11px] text-primary hover:underline mt-1.5 block ml-auto"
+                  className="text-2xs text-primary hover:underline mt-1.5 block ml-auto"
                 >
                   Forgot password?
                 </button>

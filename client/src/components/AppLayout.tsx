@@ -1,55 +1,44 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import iconUrl from "@/assets/icon.png";
 import logoUrl from "@/assets/logo.png";
 import logoTextUrl from "@/assets/logo-text.png";
+// AppLayout only needs UI-chrome icons here. Page icons come from the
+// page-registry (sidebar nav iterates over `getNavGroups` and renders
+// each entry's icon dynamically).
 import {
-  BarChart3,
-  Activity,
-  Radar,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  Trash2,
-  RefreshCw,
-  Search,
-  Loader2,
-  Menu,
   ChevronDown,
   ChevronUp,
-  X,
-  ClipboardList,
-  Calculator,
-  BookOpen,
-  TrendingUp,
-  TrendingDown,
-  Building2,
-  Award,
-  Plus,
-  CheckCircle2,
-  LineChart,
-  Sigma,
-  Grid3X3,
-  Calendar,
-  PieChart,
-  Percent,
+  Eye,
+  Loader2,
   LogOut,
-  UserCircle,
+  Menu,
+  RefreshCw,
+  Search,
   Shield,
-  DollarSign,
-  Landmark,
-  Crosshair,
-  Trophy,
-  Bell,
-  Compass,
-  Bot,
-  Network,
+  Trash2,
+  TrendingUp,
+  UserCircle,
+  X,
+  BookOpen,
+  ClipboardList,
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe } from "@/contexts/TimeframeContext";
+import { getNavGroups } from "@/lib/page-registry";
+import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  API_TRADES,
+  API_TRADES_SUMMARY,
+  API_ACCOUNT_SETTINGS,
+  API_FAVORITES,
+  API_FAVORITES_WATCHLIST,
+  API_FAVORITES_PORTFOLIO,
+} from "@shared/api/endpoints";
 import { getVerdictColor, getChangeColor, formatCurrency } from "@/lib/format";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
@@ -148,7 +137,7 @@ function StickyHeader({
 
       {/* Logo */}
       <Link href="/">
-        <div className="hidden sm:flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: '#040d22' }}>
+        <div className="hidden sm:flex items-center shrink-0 cursor-pointer" data-testid="link-home-logo" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={logoTextUrl} alt="Stock Otter" className="h-8 w-auto" />
         </div>
       </Link>
@@ -182,9 +171,9 @@ function StickyHeader({
                 >
                   <div className="min-w-0">
                     <span className="font-mono font-bold text-xs text-foreground">{r.symbol}</span>
-                    <span className="text-[10px] text-muted-foreground ml-2 truncate">{r.name}</span>
+                    <span className="text-micro text-muted-foreground ml-2 truncate">{r.name}</span>
                   </div>
-                  <span className="text-[9px] text-muted-foreground shrink-0 ml-2">{r.type}</span>
+                  <span className="text-mini text-muted-foreground shrink-0 ml-2">{r.type}</span>
                 </div>
               ))}
             </div>
@@ -205,6 +194,9 @@ function StickyHeader({
         </button>
       </form>
 
+      {/* Timeframe picker — site-wide; drives charts/scanners/indicators */}
+      <TimeframePicker />
+
       {/* Active stock info — verdict banner style like the analysis card */}
       {analysisData && !isAnalysisLoading && verdictColor && (
         <div className={`hidden sm:flex items-center gap-4 ml-auto shrink-0 bg-card/80 border ${verdictColor.border} rounded-lg px-4 py-1.5`} data-testid="header-stock-info">
@@ -221,7 +213,7 @@ function StickyHeader({
             <p className="text-sm font-bold text-foreground truncate max-w-[200px] leading-tight" data-testid="header-company">
               {analysisData.companyName}
             </p>
-            <p className="text-[10px] text-muted-foreground leading-tight">
+            <p className="text-micro text-muted-foreground leading-tight">
               <span className="font-mono font-semibold text-foreground" data-testid="header-ticker">{analysisData.ticker}</span>
               <span className="mx-1">·</span>{analysisData.assetType}
               <span className="mx-1">·</span>{analysisData.sector}
@@ -234,7 +226,7 @@ function StickyHeader({
               <span className="text-base font-bold tabular-nums text-foreground" data-testid="header-price">
                 {formatCurrency(analysisData.price)}
               </span>
-              <span className={`text-[11px] font-semibold tabular-nums ${changeColor}`} data-testid="header-change">
+              <span className={`text-2xs font-semibold tabular-nums ${changeColor}`} data-testid="header-change">
                 {analysisData.changePercent !== null
                   ? (analysisData.changePercent >= 0 ? "+" : "") + analysisData.changePercent.toFixed(2) + "%"
                   : ""}
@@ -247,7 +239,7 @@ function StickyHeader({
             <span className={`text-lg font-bold tabular-nums ${verdictColor.text}`}>
               {analysisData.score.toFixed(2)}
             </span>
-            <span className="text-[9px] text-muted-foreground"> / 10</span>
+            <span className="text-mini text-muted-foreground"> / 10</span>
           </div>
         </div>
       )}
@@ -292,7 +284,7 @@ function StickyHeader({
               <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-card-border rounded-xl shadow-lg z-50 py-2">
                 <div className="px-3 py-2 border-b border-card-border">
                   <p className="text-sm font-semibold text-foreground truncate">{user.displayName || "User"}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                  <p className="text-2xs text-muted-foreground truncate">{user.email}</p>
                 </div>
                 <div className="py-1">
                   <div
@@ -313,7 +305,7 @@ function StickyHeader({
                 <div className="border-t border-card-border pt-1">
                   <div
                     onClick={() => { logout(); setUserMenuOpen(false); }}
-                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-red-500/10 hover:text-red-400 cursor-pointer"
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-bear/10 hover:text-bear-light cursor-pointer"
                     data-testid="button-logout"
                   >
                     <LogOut className="h-4 w-4" /> Sign Out
@@ -347,16 +339,16 @@ function ScoreBadge({
 
   if (isGateData && verdict) {
     const gatesCleared = Math.round(score ?? 0);
-    const signalColor = verdict.startsWith("GO") ? "bg-green-500" :
+    const signalColor = verdict.startsWith("GO") ? "bg-bull" :
       verdict.startsWith("SET") ? "bg-blue-500" :
       verdict.startsWith("READY") ? "bg-amber-500" :
       verdict.startsWith("PULLBACK") ? "bg-orange-500" :
-      verdict.startsWith("GATES") ? "bg-red-500" :
+      verdict.startsWith("GATES") ? "bg-bear" :
       "bg-zinc-500";
     // For PULLBACK/GATES CLOSED, tint ALL the active pips to match the signal
     // color so the watchlist row reads as a single state (not mixed gate colors).
     const isExitState = verdict.startsWith("PULLBACK") || verdict.startsWith("GATES");
-    const exitPipColor = verdict.startsWith("PULLBACK") ? "bg-orange-500" : "bg-red-500";
+    const exitPipColor = verdict.startsWith("PULLBACK") ? "bg-orange-500" : "bg-bear";
     return (
       <div className="flex items-center gap-1">
         <div className="flex gap-0.5">
@@ -365,12 +357,12 @@ function ScoreBadge({
               g <= gatesCleared
                 ? isExitState
                   ? exitPipColor
-                  : g === 3 ? "bg-green-500" : g === 2 ? "bg-blue-500" : "bg-amber-500"
+                  : g === 3 ? "bg-bull" : g === 2 ? "bg-blue-500" : "bg-amber-500"
                 : "bg-muted-foreground/20"
             }`} />
           ))}
         </div>
-        <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
+        <span className={`text-mini font-bold px-1 py-0.5 rounded ${signalColor} text-white leading-none`}>
           {verdict}
         </span>
       </div>
@@ -379,7 +371,7 @@ function ScoreBadge({
 
   // Legacy profile score — show refresh indicator
   return (
-    <span className="text-[9px] text-muted-foreground/50 italic">refresh</span>
+    <span className="text-mini text-muted-foreground/50 italic">refresh</span>
   );
 }
 
@@ -395,6 +387,7 @@ function Sidebar({
   const [location] = useLocation();
   const { activeTicker, setActiveTicker, analysisData, tradeData, isAnalysisLoading } =
     useTicker();
+  const { timeframe } = useTimeframe();
   const { tier } = useSubscription();
   // Fetch open trades for sidebar
   interface TradeItem {
@@ -410,9 +403,9 @@ function Sidebar({
     commIn: number | null;
   }
   const { data: allTrades = [] } = useQuery<TradeItem[]>({
-    queryKey: ["/api/trades"],
+    queryKey: [API_TRADES],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/trades");
+      const res = await apiRequest("GET", API_TRADES);
       return res.json();
     },
   });
@@ -420,22 +413,22 @@ function Sidebar({
 
   // Account settings for trade modals
   const { data: accountSettings } = useQuery<any>({
-    queryKey: ["/api/account/settings"],
-    queryFn: async () => { const res = await apiRequest("GET", "/api/account/settings"); return res.json(); },
+    queryKey: [API_ACCOUNT_SETTINGS],
+    queryFn: async () => { const res = await apiRequest("GET", API_ACCOUNT_SETTINGS); return res.json(); },
   });
 
   const { data: watchlistItems = [] } = useQuery<FavoriteItem[]>({
-    queryKey: ["/api/favorites", "watchlist"],
+    queryKey: [API_FAVORITES, "watchlist"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/favorites/watchlist");
+      const res = await apiRequest("GET", API_FAVORITES_WATCHLIST);
       return res.json();
     },
   });
 
   const { data: portfolioItems = [] } = useQuery<FavoriteItem[]>({
-    queryKey: ["/api/favorites", "portfolio"],
+    queryKey: [API_FAVORITES, "portfolio"],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/favorites/portfolio");
+      const res = await apiRequest("GET", API_FAVORITES_PORTFOLIO);
       return res.json();
     },
   });
@@ -451,7 +444,7 @@ function Sidebar({
       await apiRequest("DELETE", `/api/favorites/${listType}/${ticker}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -461,12 +454,12 @@ function Sidebar({
       // button always returns fresh gate signals.
       const res = await apiRequest(
         "POST",
-        `/api/favorites/${listType}/refresh?force=1`
+        `/api/favorites/${listType}/refresh?force=1&timeframe=${timeframe}`
       );
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -479,11 +472,11 @@ function Sidebar({
       verdict: string;
       sector: string;
     }) => {
-      const res = await apiRequest("POST", "/api/favorites", data);
+      const res = await apiRequest("POST", API_FAVORITES, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+      queryClient.invalidateQueries({ queryKey: [API_FAVORITES] });
     },
   });
 
@@ -512,59 +505,14 @@ function Sidebar({
     if (isMobile) onClose();
   };
 
-  // Grouped nav structure
-  const navGroups = [
-    {
-      label: "Trade Tracker",
-      items: [
-        { path: "/tracker", label: "Current Positions", icon: ClipboardList },
-        { path: "/dividend-portfolio", label: "Dividend Positions", icon: Landmark },
-        { path: "#add-trade", label: "Add Trade", icon: Plus },
-        { path: "#close-trade", label: "Close Trade", icon: CheckCircle2 },
-        { path: "/analytics", label: "Performance Analytics", icon: PieChart },
-      ],
-    },
-    {
-      label: "Company Research",
-      items: [
-        { path: "/profile", label: "Profile", icon: BarChart3 },
-        { path: "/trade", label: "Trade Analysis", icon: Activity },
-        ...(tier !== "free" ? [{ path: "/mm-exposure", label: "MM Exposure", icon: Crosshair }] : []),
-        { path: "/institutional", label: "Institutions", icon: Building2 },
-        { path: "/conviction", label: "Conviction Compass", icon: Compass },
-        { path: "/verdict", label: "Long-Term Outlook", icon: Award },
-      ],
-    },
-    {
-      label: "Investment Opportunities",
-      items: [
-        { path: "/scanner", label: "Scanner", icon: Radar },
-        { path: "/sectors", label: "Sector Heatmap", icon: Grid3X3 },
-        { path: "/earnings", label: "Earnings Calendar", icon: Calendar },
-        { path: "/dividends", label: "Dividend Finder", icon: DollarSign },
-        { path: "/track-record", label: "Track Record", icon: Trophy },
-        { path: "/alerts", label: "Alerts", icon: Bell },
-      ],
-    },
-    {
-      label: "Calculators",
-      items: [
-        { path: "/calculator", label: "Options Calculator", icon: Calculator },
-        { path: "/payoff", label: "Payoff Diagram", icon: LineChart },
-        { path: "/greeks", label: "Greeks Calculator", icon: Sigma },
-        { path: "/kelly", label: "Kelly Criterion", icon: Percent },
-      ],
-    },
-    {
-      label: "Experimental",
-      items: [
-        { path: "/hermes", label: "HERMES Auto Trader", icon: Bot },
-        { path: "/wheel", label: "Wheel Strategy", icon: RefreshCw },
-        { path: "/markov", label: "Markov Strategy", icon: Network },
-      ],
-    },
-  ];
-  const helpItem = { path: "/help", label: "Help / FAQ", icon: BookOpen };
+  // Sidebar nav comes from the page registry — single source of truth.
+  // Adding a page = one entry in `client/src/lib/page-registry.ts`.
+  // Help is split off because it renders separately at the bottom of the nav.
+  const allGroups = getNavGroups(tier as "free" | "starter" | "premium");
+  const navGroups = allGroups.filter((g) => g.label !== "Help");
+  const helpItem = allGroups
+    .find((g) => g.label === "Help")
+    ?.items[0] ?? { path: "/help", label: "Help / FAQ", icon: BookOpen };
 
   const sortedWatchlist = [...watchlistItems].sort(
     (a, b) => (b.score ?? 0) - (a.score ?? 0)
@@ -705,8 +653,8 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
   const filteredTypes = category === "Stock" ? STOCK_TYPES : OPTION_TYPES;
 
   const createMut = useMutation({
-    mutationFn: async (data: any) => { const res = await apiRequest("POST", "/api/trades", data); return res.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", API_TRADES, data); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [API_TRADES] }); queryClient.invalidateQueries({ queryKey: [API_TRADES_SUMMARY] }); onClose(); },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -786,30 +734,30 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-red-400 mb-1 block">Buy Spread (Debit Leg)</label>
+                  <label className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
                   <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
-                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-red-400">−$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
                     <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
-                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-red-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-green-400 mb-1 block">Sell Spread (Credit Leg)</label>
+                  <label className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
                   <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
-                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground mb-1" />
+                    placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-green-400">+$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
                     <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
-                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-green-500/30 rounded-md font-mono text-foreground" />
+                      placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
               {ctvBuyPrice && ctvSellPrice && (
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Net:</span>
-                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
                     {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
                   </span>
                   {ctvBuyStrikes && ctvSellStrikes && <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>}
@@ -819,9 +767,9 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-green-400" : "text-red-400"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
+                <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bull-light" : "text-bear-light"}`}>{isCredit ? "Credit Received" : "Debit Paid"}</label>
                   <input type="number" step="0.01" value={openPrice} onChange={e => setOpenPrice(e.target.value)} placeholder="1.50" required
-                    className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-green-500/30" : "border-red-500/30"}`} /></div>
+                    className={`w-full h-9 px-3 text-sm bg-background border rounded-md font-mono text-foreground ${isCredit ? "border-bull/30" : "border-bear/30"}`} /></div>
                 {category === "Option" && numLegs >= 1 && <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Strike(s)</label>
                   <input type="text" value={strikes} onChange={e => setStrikes(e.target.value)} placeholder={numLegs >= 2 ? "55/60" : "55"}
                     className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" /></div>}
@@ -858,7 +806,7 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
 
   const closeMut = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trades/${selectedId}/close`, data); return res.json(); },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/trades"] }); queryClient.invalidateQueries({ queryKey: ["/api/trades/summary"] }); onClose(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [API_TRADES] }); queryClient.invalidateQueries({ queryKey: [API_TRADES_SUMMARY] }); onClose(); },
   });
 
   const handleClose = (e: React.FormEvent) => {
@@ -899,19 +847,19 @@ function SidebarCloseTradeModal({ openTrades, settings, onClose }: { openTrades:
                   <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-bold text-foreground">{selected.symbol}</span>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>{selected.tradeType}</span>
+                      <span className={`text-micro font-semibold px-1.5 py-0.5 rounded ${isCredit ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>{selected.tradeType}</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
+                    <p className="text-2xs text-muted-foreground mt-1">{selected.contractsShares} {selected.tradeCategory === "Option" ? "contracts" : "shares"} · {selected.strikes || "no strikes"} · {selected.tradeDate}</p>
                   </div>
                   <div><label className="text-xs font-medium text-muted-foreground mb-1 block">Close Date</label>
                     <DatePicker value={closeDate} onChange={setCloseDate} placeholder="Close date" required /></div>
-                  <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-red-400" : "text-green-400"}`}>
+                  <div><label className={`text-xs font-medium mb-1 block ${isCredit ? "text-bear-light" : "text-bull-light"}`}>
                     {isCredit ? "Cost to Close (Debit)" : "Proceeds (Credit)"}</label>
                     <input type="number" step="0.01" value={closePrice} onChange={e => setClosePrice(e.target.value)} placeholder="0.50" required
                       className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground" />
-                    <p className="text-[10px] text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
+                    <p className="text-micro text-muted-foreground mt-1">{isCredit ? "Enter 0 if expired worthless" : "Enter 0 if expired worthless"}</p></div>
                   <button type="submit" disabled={closeMut.isPending}
-                    className="w-full py-2.5 rounded-lg bg-yellow-600 text-white font-semibold text-sm hover:bg-yellow-700 disabled:opacity-50">
+                    className="w-full py-2.5 rounded-lg bg-watch text-white font-semibold text-sm hover:bg-watch disabled:opacity-50">
                     {closeMut.isPending ? "Closing..." : "Close Trade"}
                   </button>
                 </>
@@ -939,9 +887,9 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-mono font-bold text-xs text-foreground">{t.symbol}</span>
-          <span className={`text-[9px] font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{t.tradeType}</span>
+          <span className={`text-mini font-semibold px-1 py-0.5 rounded ${t.creditDebit === 'CREDIT' ? 'bg-bull/15 text-bull-light' : 'bg-bear/15 text-bear-light'}`}>{t.tradeType}</span>
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-micro text-muted-foreground">
           {t.contractsShares} {t.tradeCategory === 'Option' ? 'ct' : 'sh'} @ {t.openPrice > 0 ? '+' : ''}{t.openPrice.toFixed(2)}
         </p>
       </div>
@@ -949,16 +897,16 @@ function SidebarTradeRow({ t, handleSelectTicker }: { t: any; handleSelectTicker
         {t.currentPrice ? (
           t.tradeCategory === 'Stock' ? (
             <>
-              <div className={`text-[11px] font-bold tabular-nums ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+              <div className={`text-2xs font-bold tabular-nums ${isUp ? 'text-bull-light' : 'text-bear-light'}`}>
                 {isUp ? '+' : ''}{pl.toFixed(0)}
               </div>
-              <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+              <div className="text-mini text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
             </>
           ) : (
-            <div className="text-[9px] text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
+            <div className="text-mini text-muted-foreground tabular-nums">${t.currentPrice.toFixed(2)}</div>
           )
         ) : (
-          <span className="text-[10px] text-muted-foreground">—</span>
+          <span className="text-micro text-muted-foreground">—</span>
         )}
       </div>
     </div>
@@ -991,11 +939,11 @@ function SidebarContent({
     <>
       {/* Logo */}
       {expanded ? (
-        <div className="px-2 py-3 border-b border-card-border" style={{ backgroundColor: '#040d22' }}>
+        <div className="px-2 py-3 border-b border-card-border" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={logoUrl} alt="Stock Otter" className="w-full h-auto" />
         </div>
       ) : (
-        <div className="p-1.5 border-b border-card-border flex justify-center" style={{ backgroundColor: '#040d22' }}>
+        <div className="p-1.5 border-b border-card-border flex justify-center" style={{ backgroundColor: 'rgb(var(--brand-bg))' }}>
           <img src={iconUrl} alt="Stock Otter" className="w-full h-auto rounded-lg" />
         </div>
       )}
@@ -1067,7 +1015,7 @@ function SidebarContent({
                   <span className="flex items-center gap-2">
                     Watchlist
                     {sortedWatchlist.length > 0 && (
-                      <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
+                      <span className="text-micro bg-primary/15 text-primary px-1.5 py-0.5 rounded-full tabular-nums">
                         {sortedWatchlist.length}
                       </span>
                     )}
@@ -1082,7 +1030,7 @@ function SidebarContent({
               {isWatchlistOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
                   {sortedWatchlist.length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground text-center py-3">
+                    <p className="text-micro text-muted-foreground text-center py-3">
                       No stocks on watchlist
                     </p>
                   ) : (
@@ -1101,7 +1049,7 @@ function SidebarContent({
                           <span className="font-mono font-bold text-xs text-foreground">
                             {item.ticker}
                           </span>
-                          <p className="text-[10px] text-muted-foreground truncate max-w-[100px]">
+                          <p className="text-micro text-muted-foreground truncate max-w-[100px]">
                             {item.companyName}
                           </p>
                         </div>
@@ -1115,7 +1063,7 @@ function SidebarContent({
                                 listType: "watchlist",
                               });
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500 p-0.5"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-bear p-0.5"
                             data-testid={`button-remove-watchlist-${item.ticker}`}
                             aria-label={`Remove ${item.ticker} from watchlist`}
                           >
@@ -1129,7 +1077,7 @@ function SidebarContent({
                     <button
                       onClick={() => refreshMutation.mutate("watchlist")}
                       disabled={refreshMutation.isPending}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 text-micro text-muted-foreground hover:text-foreground transition-colors"
                       data-testid="button-refresh-watchlist"
                     >
                       <RefreshCw
@@ -1160,7 +1108,7 @@ function SidebarContent({
                 >
                   <span className="flex items-center gap-2">
                     Active Options
-                    {optionTrades.length > 0 && <span className="text-[10px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
+                    {optionTrades.length > 0 && <span className="text-micro bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded-full tabular-nums">{optionTrades.length}</span>}
                   </span>
                   {isOptionsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
@@ -1171,7 +1119,7 @@ function SidebarContent({
               )}
               {isOptionsOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
-                  {optionTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open options</p>
+                  {optionTrades.length === 0 ? <p className="text-micro text-muted-foreground text-center py-2">No open options</p>
                   : optionTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
                 </div>
               )}
@@ -1192,7 +1140,7 @@ function SidebarContent({
                 >
                   <span className="flex items-center gap-2">
                     Active Stocks
-                    {stockTrades.length > 0 && <span className="text-[10px] bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
+                    {stockTrades.length > 0 && <span className="text-micro bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded-full tabular-nums">{stockTrades.length}</span>}
                   </span>
                   {isStocksOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
@@ -1203,7 +1151,7 @@ function SidebarContent({
               )}
               {isStocksOpen && expanded && (
                 <div className="space-y-0.5 mt-1">
-                  {stockTrades.length === 0 ? <p className="text-[10px] text-muted-foreground text-center py-2">No open stocks</p>
+                  {stockTrades.length === 0 ? <p className="text-micro text-muted-foreground text-center py-2">No open stocks</p>
                   : stockTrades.slice(0, 10).map((t: any) => <SidebarTradeRow key={t.id} t={t} handleSelectTicker={handleSelectTicker} />)}
                 </div>
               )}
@@ -1249,6 +1197,15 @@ function SidebarContent({
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
   const [sidebarExpanded, setSidebarExpanded] = useState(!isMobile);
+  const [location] = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Reset scroll to top whenever the route changes — clicking a sidebar
+  // link should always land at the top of the new page, never inherit
+  // the previous page's scroll offset.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location]);
 
   const toggleSidebar = () => setSidebarExpanded((v) => !v);
   const closeSidebar = () => setSidebarExpanded(false);
@@ -1265,7 +1222,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           onClose={closeSidebar}
           isMobile={isMobile}
         />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="main-content">
+        <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden" data-testid="main-content">
           {children}
         </main>
       </div>

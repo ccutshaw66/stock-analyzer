@@ -18,14 +18,14 @@ export function DecisionShortcut({ data }: DecisionShortcutProps) {
         </h3>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">No answers:</span>
-          <span className={`text-sm font-bold tabular-nums ${noCount >= 2 ? "text-red-500" : "text-green-500"}`}>
+          <span className={`text-sm font-bold tabular-nums ${noCount >= 2 ? "text-bear" : "text-bull"}`}>
             {noCount} / {decisionShortcut?.length ?? 7}
           </span>
         </div>
       </div>
 
       {noCount >= 2 && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2 mb-4 text-sm text-red-400">
+        <div className="bg-bear/10 border border-bear/20 rounded-lg px-4 py-2 mb-4 text-sm text-bear-light">
           ⚠ Warning: 2 or more "No" answers — consider WATCH or NO verdict.
         </div>
       )}

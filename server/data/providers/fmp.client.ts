@@ -67,6 +67,9 @@ const TTL_BY_PREFIX: Array<{ prefix: string; ttlMs: number }> = [
   { prefix: "/ratings-historical", ttlMs: 60 * 60 * 1000 },     // 1h
   { prefix: "/earnings", ttlMs: 60 * 60 * 1000 },               // 1h
   { prefix: "/insider-trading", ttlMs: 30 * 60 * 1000 },        // 30m
+  // Universe scanning — refreshed once/day
+  { prefix: "/company-screener", ttlMs: 24 * 60 * 60 * 1000 },   // 24h
+  { prefix: "/stock-list", ttlMs: 24 * 60 * 60 * 1000 },         // 24h
   // Default: 5m
 ];
 const DEFAULT_TTL_MS = 5 * 60 * 1000;

@@ -1,6 +1,7 @@
 import { TrendingUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { formatPercent, getChangeColor, formatCurrency } from "@/lib/format";
+import { useTimeframe, TIMEFRAME_LABELS } from "@/contexts/TimeframeContext";
 
 interface PerformanceProps {
   data: any;
@@ -34,6 +35,8 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export function Performance({ data }: PerformanceProps) {
   const { historicalReturns, chartData } = data;
+  const { timeframe } = useTimeframe();
+  const tfLabel = TIMEFRAME_LABELS[timeframe];
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-6" data-testid="performance">
@@ -52,7 +55,7 @@ export function Performance({ data }: PerformanceProps) {
       {/* Price Chart */}
       {chartData && chartData.length > 0 && (
         <div>
-          <div className="text-xs text-muted-foreground mb-3">1-Year Price History</div>
+          <div className="text-xs text-muted-foreground mb-3">{tfLabel} Price History</div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>

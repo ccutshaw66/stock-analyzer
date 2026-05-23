@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
+import { SIGNAL_BULL, CHART_RSI, ACCENT_AMBER_DEEP } from "@/lib/design-tokens";
 import {
   RefreshCw, DollarSign, Percent, Calendar,
-  Target, AlertTriangle, TrendingUp, ShieldCheck,
+  Target, AlertTriangle, TrendingUp, ShieldCheck, FlaskConical,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 import { useTicker } from "@/contexts/TickerContext";
+import { STRATEGY_REGISTRY } from "@shared/strategies/registry";
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -176,44 +178,45 @@ export default function WheelCalculator() {
   }, [stockPrice, putStrike, callStrike, dte, metrics]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="wheel-page">
-      <div className="flex items-center gap-2">
-        <RefreshCw className="h-5 w-5 text-primary" />
-        <h1 className="text-lg font-bold text-foreground">The Wheel Strategy</h1>
-      </div>
-      <p className="text-xs text-muted-foreground -mt-4">
-        Generate income by selling cash-secured puts and covered calls in a continuous cycle.
-        {activeTicker && <> Currently analyzing <span className="text-primary font-semibold">{activeTicker}</span>.</>}
-      </p>
-
-      {/* ── Instructions ─────────────────────────────────────────── */}
-      <HelpBlock title="What is the Wheel Strategy?" defaultOpen>
-        <p>
-          The Wheel is a <strong className="text-foreground">neutral-to-bullish income strategy</strong> that combines
-          <strong className="text-foreground"> cash-secured puts (CSPs)</strong> and
-          <strong className="text-foreground"> covered calls (CCs)</strong> on a stock you'd be happy to own.
-        </p>
-        <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
-          <li><strong className="text-foreground">Phase 1 (CSP):</strong> Sell a put at a strike below current price. Set aside strike × 100 in cash per contract.</li>
-          <li><strong className="text-foreground">Expiry:</strong> If stock stays above strike, put expires worthless — keep the premium, sell another CSP.</li>
-          <li><strong className="text-foreground">Assignment:</strong> If stock drops below strike, you buy 100 shares per contract at the strike. Your cost basis is <em>strike − put premium</em>.</li>
-          <li><strong className="text-foreground">Phase 2 (CC):</strong> Now sell covered calls above your cost basis. Collect premium each cycle.</li>
-          <li><strong className="text-foreground">Called away:</strong> If stock rises above the call strike, shares are sold. Pocket the gain + call premium, then restart with a new CSP.</li>
-        </ol>
-        <Example type="good">
-          <strong className="text-green-400">Ideal setup:</strong> Stock at $100, sell 30 DTE $95 put for $1.50. Capital: $9,500.
-          Return if unassigned: 1.58% in 30 days ≈ 19.2% annualized. If assigned, cost basis = $93.50 and you start selling calls.
-        </Example>
-        <Example type="bad">
-          <strong className="text-red-400">Wheel trap:</strong> Stock crashes from $100 to $60. You're assigned at $95, stuck with
-          $35/share unrealized loss, and any call you sell above $95 barely covers the bleeding. Only wheel stocks you're
-          <em> genuinely willing to own through a drawdown</em>.
-        </Example>
-        <ScoreRange label="Great candidate" range="IV Rank 30–60, stable price, quality business" color="green" description="High premium, limited tail risk" />
-        <ScoreRange label="OK candidate" range="IV Rank 15–30 or slight uptrend" color="yellow" description="Lower income, but safer" />
-        <ScoreRange label="Avoid" range="Biotech / earnings run-ups / meme stocks" color="red" description="Gap-down risk destroys the wheel" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={RefreshCw}
+      title="Wheel Strategy"
+      subtitle={
+        activeTicker
+          ? `Generate income via cash-secured puts → covered calls — currently analyzing ${activeTicker}.`
+          : "Generate income by selling cash-secured puts and covered calls in a continuous cycle."
+      }
+      howItWorksTitle="What is the Wheel Strategy?"
+      howItWorks={
+        <>
+          <p>
+            The Wheel is a <strong className="text-foreground">neutral-to-bullish income strategy</strong> that combines
+            <strong className="text-foreground"> cash-secured puts (CSPs)</strong> and
+            <strong className="text-foreground"> covered calls (CCs)</strong> on a stock you'd be happy to own.
+          </p>
+          <ol className="list-decimal list-inside space-y-1 text-2xs leading-relaxed">
+            <li><strong className="text-foreground">Phase 1 (CSP):</strong> Sell a put at a strike below current price. Set aside strike × 100 in cash per contract.</li>
+            <li><strong className="text-foreground">Expiry:</strong> If stock stays above strike, put expires worthless — keep the premium, sell another CSP.</li>
+            <li><strong className="text-foreground">Assignment:</strong> If stock drops below strike, you buy 100 shares per contract at the strike. Your cost basis is <em>strike − put premium</em>.</li>
+            <li><strong className="text-foreground">Phase 2 (CC):</strong> Now sell covered calls above your cost basis. Collect premium each cycle.</li>
+            <li><strong className="text-foreground">Called away:</strong> If stock rises above the call strike, shares are sold. Pocket the gain + call premium, then restart with a new CSP.</li>
+          </ol>
+          <Example type="good">
+            <strong className="text-bull-light">Ideal setup:</strong> Stock at $100, sell 30 DTE $95 put for $1.50. Capital: $9,500.
+            Return if unassigned: 1.58% in 30 days ≈ 19.2% annualized. If assigned, cost basis = $93.50 and you start selling calls.
+          </Example>
+          <Example type="bad">
+            <strong className="text-bear-light">Wheel trap:</strong> Stock crashes from $100 to $60. You're assigned at $95, stuck with
+            $35/share unrealized loss, and any call you sell above $95 barely covers the bleeding. Only wheel stocks you're
+            <em> genuinely willing to own through a drawdown</em>.
+          </Example>
+          <ScoreRange label="Great candidate" range="IV Rank 30–60, stable price, quality business" color="green" description="High premium, limited tail risk" />
+          <ScoreRange label="OK candidate" range="IV Rank 15–30 or slight uptrend" color="yellow" description="Lower income, but safer" />
+          <ScoreRange label="Avoid" range="Biotech / earnings run-ups / meme stocks" color="red" description="Gap-down risk destroys the wheel" />
+        </>
+      }
+    >
       {/* ── Inputs ──────────────────────────────────────────────── */}
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -232,7 +235,7 @@ export default function WheelCalculator() {
           <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-3.5 w-3.5 text-blue-400" />
-              <span className="text-[11px] font-semibold text-blue-400 uppercase tracking-wider">Cash-Secured Put</span>
+              <span className="text-2xs font-semibold text-blue-400 uppercase tracking-wider">Cash-Secured Put</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <NumField label="Put Strike ($)" value={putStrike} onChange={setPutStrike} step={0.5} testId="wheel-put-strike" />
@@ -241,8 +244,8 @@ export default function WheelCalculator() {
           </div>
           <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-3.5 w-3.5 text-green-400" />
-              <span className="text-[11px] font-semibold text-green-400 uppercase tracking-wider">Covered Call (after assignment)</span>
+              <TrendingUp className="h-3.5 w-3.5 text-bull-light" />
+              <span className="text-2xs font-semibold text-bull-light uppercase tracking-wider">Covered Call (after assignment)</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <NumField label="Call Strike ($)" value={callStrike} onChange={setCallStrike} step={0.5} testId="wheel-call-strike" />
@@ -329,7 +332,7 @@ export default function WheelCalculator() {
 
         <HelpBlock title="How to read the payoff chart">
           <p>The <span className="text-blue-400 font-semibold">blue line</span> shows P/L if you only sold the cash-secured put.</p>
-          <p>The <span className="text-green-400 font-semibold">green line</span> shows the full wheel: you got assigned and then sold a covered call.</p>
+          <p>The <span className="text-bull-light font-semibold">green line</span> shows the full wheel: you got assigned and then sold a covered call.</p>
           <p>Look for the flat top on the green line — that's the cap on your upside once called away. The kink on the downside is your cost basis.</p>
         </HelpBlock>
 
@@ -355,11 +358,11 @@ export default function WheelCalculator() {
                 labelFormatter={(label: number) => `Stock @ $${label}`}
               />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-              <ReferenceLine x={putStrike} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: "#3b82f6", position: "top" }} />
-              <ReferenceLine x={callStrike} stroke="#22c55e" strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: "#22c55e", position: "top" }} />
-              <ReferenceLine x={metrics.breakEven} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: "#f59e0b", position: "top" }} />
-              <Line type="monotone" dataKey="putPL" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="wheelPL" stroke="#22c55e" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <ReferenceLine x={putStrike} stroke={CHART_RSI} strokeDasharray="4 4" label={{ value: "Put Strike", fontSize: 9, fill: CHART_RSI, position: "top" }} />
+              <ReferenceLine x={callStrike} stroke={SIGNAL_BULL} strokeDasharray="4 4" label={{ value: "Call Strike", fontSize: 9, fill: SIGNAL_BULL, position: "top" }} />
+              <ReferenceLine x={metrics.breakEven} stroke={ACCENT_AMBER_DEEP} strokeDasharray="4 4" label={{ value: "Break-even", fontSize: 9, fill: ACCENT_AMBER_DEEP, position: "top" }} />
+              <Line type="monotone" dataKey="putPL" stroke={CHART_RSI} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="wheelPL" stroke={SIGNAL_BULL} strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -370,7 +373,7 @@ export default function WheelCalculator() {
         <div className="flex items-center gap-2 mb-3">
           <ShieldCheck className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">
-            Setup Quality: <span className={health.score >= 80 ? "text-green-400" : health.score >= 60 ? "text-yellow-400" : "text-red-400"}>
+            Setup Quality: <span className={health.score >= 80 ? "text-bull-light" : health.score >= 60 ? "text-watch-light" : "text-bear-light"}>
               {health.score}%
             </span>
           </h3>
@@ -387,20 +390,59 @@ export default function WheelCalculator() {
           {health.flags.map((f, i) => (
             <li key={i} className="flex items-start gap-2 p-2 rounded-md bg-muted/20 border border-card-border/30">
               {f.ok ? (
-                <ShieldCheck className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+                <ShieldCheck className="h-4 w-4 text-bull-light shrink-0 mt-0.5" />
               ) : (
-                <AlertTriangle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+                <AlertTriangle className="h-4 w-4 text-watch-light shrink-0 mt-0.5" />
               )}
               <div className="flex-1">
                 <div className="text-xs font-semibold text-foreground">{f.label}</div>
-                <div className="text-[11px] text-muted-foreground">{f.detail}</div>
+                <div className="text-2xs text-muted-foreground">{f.detail}</div>
               </div>
             </li>
           ))}
         </ul>
       </div>
 
-      <Disclaimer />
+      {/* Experimental Strategies — research-stage manifests grouped under wheel.
+          Registry-driven so adding the next one is one manifest entry, not a
+          page edit. (Markov v2 registered 2026-05-22.) */}
+      <ExperimentalStrategiesSection />
+    </PageTemplate>
+  );
+}
+
+function ExperimentalStrategiesSection() {
+  const experimental = Object.values(STRATEGY_REGISTRY).filter(
+    m => m.experimental && m.pageGroup === "wheel",
+  );
+  if (experimental.length === 0) return null;
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FlaskConical className="h-4 w-4 text-watch-light" />
+        <h3 className="text-sm font-bold text-foreground">Experimental Strategies</h3>
+        <span className="text-micro text-muted-foreground italic">research-stage</span>
+      </div>
+      <ul className="space-y-2">
+        {experimental.map(m => (
+          <li
+            key={m.id}
+            className="border border-card-border/50 rounded-md px-3 py-2 bg-muted/20"
+            data-testid={`experimental-strategy-${m.id}`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-semibold text-foreground">{m.name}</span>
+              <span className="text-micro font-bold px-1.5 py-0.5 rounded bg-watch/15 text-watch-light border border-watch/30">
+                EXPERIMENTAL
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-snug">{m.description}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="text-micro text-muted-foreground/60 italic mt-3">
+        Experimental strategies are registered in the manifest but not yet wired into the live signal stack. Use for manual paper-tracking; the port to production is tracked separately.
+      </p>
     </div>
   );
 }
@@ -419,7 +461,7 @@ function NumField({
 }) {
   return (
     <div>
-      <label className="text-[11px] font-medium text-muted-foreground mb-1 block">{label}</label>
+      <label className="text-2xs font-medium text-muted-foreground mb-1 block">{label}</label>
       <input
         type="number"
         step={step}
@@ -444,16 +486,16 @@ function ResultCard({
 }) {
   const color =
     accent === "blue" ? "text-blue-400"
-    : accent === "green" ? "text-green-400"
+    : accent === "green" ? "text-bull-light"
     : "text-primary";
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
-      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+      <div className="text-micro font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
       <div className={`text-lg font-bold tabular-nums font-mono ${color}`}>{pct.toFixed(2)}%</div>
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-2xs text-muted-foreground">
         <span className="text-foreground font-semibold tabular-nums">{annualized.toFixed(1)}%</span> annualized
       </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+      <div className="text-micro text-muted-foreground mt-0.5 tabular-nums">
         ${dollar.toLocaleString(undefined, { maximumFractionDigits: 0 })} premium
       </div>
     </div>
@@ -470,9 +512,9 @@ function InfoCard({
 }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
-      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-lg font-bold tabular-nums font-mono ${danger ? "text-red-400" : "text-foreground"}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      <div className="text-micro font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-lg font-bold tabular-nums font-mono ${danger ? "text-bear-light" : "text-foreground"}`}>{value}</div>
+      {sub && <div className="text-micro text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { BarChart3, TrendingUp, TrendingDown, Activity, X, Loader2, ArrowRight } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
-import { Disclaimer } from "@/components/Disclaimer";
+import { BarChart3, TrendingUp, TrendingDown, Activity, X, Loader2, ArrowRight, Grid3X3 } from "lucide-react";
+import { Example, ScoreRange } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import { formatCompact } from "@/lib/format";
 import { useTicker } from "@/contexts/TickerContext";
+import { SIGNAL_BULL, SIGNAL_BEAR, hexToRgb } from "@/lib/design-tokens";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -32,26 +33,35 @@ const TIMEFRAME_LABELS: Record<Timeframe, string> = {
 };
 
 // ─── Color interpolation ─────────────────────────────────────────────────────
+// Endpoints anchored to design tokens so a brand-color change automatically
+// reaches the heatmap. Midpoint is a near-black neutral (matches dark theme).
+
+const HEAT_BEAR = hexToRgb(SIGNAL_BEAR);
+const HEAT_BULL = hexToRgb(SIGNAL_BULL);
+const HEAT_NEUTRAL = { r: 40, g: 40, b: 40 };
+
+function lerp(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * t);
+}
 
 function getHeatColor(pct: number): string {
   // Clamp between -5 and +5 for color mapping
   const clamped = Math.max(-5, Math.min(5, pct));
-  const t = (clamped + 5) / 10; // 0 = deep red, 0.5 = neutral, 1 = deep green
+  const t = (clamped + 5) / 10; // 0 = bear, 0.5 = neutral, 1 = bull
 
   if (t < 0.5) {
-    // Red → neutral
-    const r = Math.round(220 - (220 - 40) * (t / 0.5));
-    const g = Math.round(38 + (40 - 38) * (t / 0.5));
-    const b = Math.round(38 + (40 - 38) * (t / 0.5));
-    const a = 0.15 + (1 - t / 0.5) * 0.35;
+    const f = t / 0.5; // 0 = full bear, 1 = neutral
+    const r = lerp(HEAT_BEAR.r, HEAT_NEUTRAL.r, f);
+    const g = lerp(HEAT_BEAR.g, HEAT_NEUTRAL.g, f);
+    const b = lerp(HEAT_BEAR.b, HEAT_NEUTRAL.b, f);
+    const a = 0.15 + (1 - f) * 0.35;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   } else {
-    // Neutral → green
-    const factor = (t - 0.5) / 0.5;
-    const r = Math.round(40 - (40 - 34) * factor);
-    const g = Math.round(40 + (197 - 40) * factor);
-    const b = Math.round(40 + (94 - 40) * factor);
-    const a = 0.15 + factor * 0.35;
+    const f = (t - 0.5) / 0.5; // 0 = neutral, 1 = full bull
+    const r = lerp(HEAT_NEUTRAL.r, HEAT_BULL.r, f);
+    const g = lerp(HEAT_NEUTRAL.g, HEAT_BULL.g, f);
+    const b = lerp(HEAT_NEUTRAL.b, HEAT_BULL.b, f);
+    const a = 0.15 + f * 0.35;
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   }
 }
@@ -91,11 +101,31 @@ export default function SectorHeatmap() {
   }, [sectors, timeframe]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="sector-heatmap-page">
-      <h1 className="text-lg font-bold text-foreground">Sector Rotation Heatmap</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Track money flow across market sectors. Green = outperforming, Red = underperforming.</p>
-      <Disclaimer />
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Grid3X3}
+      title="Sector Heatmap"
+      subtitle="Track money flow across market sectors. Green = outperforming, Red = underperforming."
+      howItWorksTitle="Understanding sector rotation"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Sector rotation</strong> is the movement of money between different market sectors as economic conditions change.</p>
+          <p>Smart money tends to rotate into sectors that benefit from the current economic cycle:</p>
+          <Example type="good">
+            <strong className="text-bull-light">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
+          </Example>
+          <Example type="neutral">
+            <strong className="text-watch-light">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
+          </Example>
+          <Example type="bad">
+            <strong className="text-bear-light">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
+          </Example>
+          <ScoreRange label="Strong" range="> +3%" color="green" description="Sector is outperforming — money is flowing in" />
+          <ScoreRange label="Neutral" range="±1%" color="yellow" description="Flat performance — sector is in line with the market" />
+          <ScoreRange label="Weak" range="< -3%" color="red" description="Sector is underperforming — money is flowing out" />
+        </>
+      }
+    >
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -122,35 +152,18 @@ export default function SectorHeatmap() {
           </div>
         </div>
 
-        <HelpBlock title="Understanding sector rotation">
-          <p><strong className="text-foreground">Sector rotation</strong> is the movement of money between different market sectors as economic conditions change.</p>
-          <p>Smart money tends to rotate into sectors that benefit from the current economic cycle:</p>
-          <Example type="good">
-            <strong className="text-green-400">Early recovery:</strong> Technology (XLK) and Consumer Discretionary (XLY) tend to lead. Industrials (XLI) follow as the economy picks up steam.
-          </Example>
-          <Example type="neutral">
-            <strong className="text-yellow-400">Late cycle:</strong> Energy (XLE) and Materials (XLB) often outperform as commodity prices rise. Financials (XLF) may benefit from rising rates.
-          </Example>
-          <Example type="bad">
-            <strong className="text-red-400">Recession:</strong> Utilities (XLU), Consumer Staples (XLP), and Healthcare (XLV) are defensive plays — they hold up better when the market falls.
-          </Example>
-          <ScoreRange label="Strong" range="> +3%" color="green" description="Sector is outperforming — money is flowing in" />
-          <ScoreRange label="Neutral" range="±1%" color="yellow" description="Flat performance — sector is in line with the market" />
-          <ScoreRange label="Weak" range="< -3%" color="red" description="Sector is underperforming — money is flowing out" />
-        </HelpBlock>
-
         {isLoading && (
           <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Activity className="h-4 w-4 animate-spin" />
-              <span>Loading sector data from Yahoo Finance...</span>
+              <span>Loading sector data...</span>
             </div>
           </div>
         )}
 
         {error && (
           <div className="flex items-center justify-center py-12">
-            <span className="text-xs text-red-400">Failed to load sector data. Please try again.</span>
+            <span className="text-xs text-bear-light">Failed to load sector data. Please try again.</span>
           </div>
         )}
 
@@ -170,18 +183,18 @@ export default function SectorHeatmap() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-foreground">{sector.name}</span>
                     {isPositive
-                      ? <TrendingUp className="h-3 w-3 text-green-400" />
-                      : <TrendingDown className="h-3 w-3 text-red-400" />
+                      ? <TrendingUp className="h-3 w-3 text-bull-light" />
+                      : <TrendingDown className="h-3 w-3 text-bear-light" />
                     }
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] text-muted-foreground font-mono">{sector.symbol}</span>
+                    <span className="text-micro text-muted-foreground font-mono">{sector.symbol}</span>
                     <span className="text-xs text-muted-foreground font-mono tabular-nums">
                       ${sector.price.toFixed(2)}
                     </span>
                   </div>
                   <div className="mt-2">
-                    <span className={`text-lg font-bold font-mono tabular-nums ${isPositive ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`text-lg font-bold font-mono tabular-nums ${isPositive ? "text-bull-light" : "text-bear-light"}`}>
                       {isPositive ? "+" : ""}{ret.toFixed(2)}%
                     </span>
                   </div>
@@ -194,8 +207,8 @@ export default function SectorHeatmap() {
                         <div key={key} className={`flex-1 text-center rounded py-0.5 ${
                           key === timeframe ? "bg-foreground/10" : ""
                         }`}>
-                          <div className="text-[8px] text-muted-foreground">{label}</div>
-                          <div className={`text-[9px] font-mono tabular-nums font-semibold ${v >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          <div className="text-tiny text-muted-foreground">{label}</div>
+                          <div className={`text-mini font-mono tabular-nums font-semibold ${v >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                             {v >= 0 ? "+" : ""}{v.toFixed(1)}%
                           </div>
                         </div>
@@ -216,7 +229,7 @@ export default function SectorHeatmap() {
           onClose={() => setDrillSymbol(null)}
         />
       )}
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -265,7 +278,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
             </div>
           )}
           {error && (
-            <div className="text-center py-8 text-xs text-red-400">Failed to load sector leaders.</div>
+            <div className="text-center py-8 text-xs text-bear-light">Failed to load sector leaders.</div>
           )}
           {data && data.leaders.length === 0 && (
             <div className="text-center py-8 text-xs text-muted-foreground">No leaders found for this sector right now.</div>
@@ -295,16 +308,16 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
                     <td className="py-2 pr-2 text-muted-foreground">{i + 1}</td>
                     <td className="py-2 pr-2">
                       <div className="font-semibold">{l.ticker}</div>
-                      <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
+                      <div className="text-micro text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums">${l.price.toFixed(2)}</td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                       {l.changePct >= 0 ? "+" : ""}{l.changePct.toFixed(2)}%
                     </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                       {l.return1m >= 0 ? "+" : ""}{l.return1m.toFixed(1)}%
                     </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-yellow-400 font-semibold" : "text-muted-foreground"}`}>
+                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-watch-light font-semibold" : "text-muted-foreground"}`}>
                       {l.volSurge.toFixed(2)}x
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
@@ -318,7 +331,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
               </tbody>
             </table>
           )}
-          <p className="text-[10px] text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
+          <p className="text-micro text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
         </div>
       </div>
     </div>

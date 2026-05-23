@@ -1,14 +1,15 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { SIGNAL_BULL, BRAND_ACCENT, SIGNAL_WATCH_SHORT } from "@/lib/design-tokens";
 import {
   DollarSign, TrendingUp, Calendar, Percent, Award,
   Activity, AlertTriangle, Search, Loader2, Clock,
   CalendarDays, PiggyBank, Zap,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,16 +99,16 @@ export default function Dividends() {
   };
 
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
 
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
 
   const scoreBgColor = (s: number) =>
-    s >= 60 ? "border-green-500/40" : s >= 35 ? "border-yellow-500/40" : "border-red-500/40";
+    s >= 60 ? "border-bull/40" : s >= 35 ? "border-watch/40" : "border-bear/40";
 
   const payoutColor = (p: number) =>
-    p >= 20 && p <= 60 ? "text-green-400" : p > 60 && p <= 80 ? "text-yellow-400" : "text-red-400";
+    p >= 20 && p <= 60 ? "text-bull-light" : p > 60 && p <= 80 ? "text-watch-light" : "text-bear-light";
 
   // Calculate days until ex-div
   const daysUntilExDiv = useMemo(() => {
@@ -121,33 +122,33 @@ export default function Dividends() {
   }, [tickerDividend?.exDividendDate]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="dividends-page">
-      <h1 className="text-lg font-bold text-foreground">Dividend Finder</h1>
-      <p className="text-xs text-muted-foreground -mt-4">
-        Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality.
-      </p>
-      <Disclaimer />
-
-      {/* Help Block */}
-      <HelpBlock title="Understanding Dividends">
-        <p><strong className="text-foreground">Dividend Yield:</strong> Annual dividend payment divided by the stock price. A 3% yield on a $100 stock means $3/year in dividends per share.</p>
-        <p><strong className="text-foreground">Payout Ratio:</strong> What percentage of earnings the company pays out as dividends. Under 60% is generally sustainable — the company retains enough to reinvest and grow.</p>
-        <p><strong className="text-foreground">Distribution Date:</strong> The date the dividend payment is deposited into your brokerage account. This is when you actually get paid.</p>
-        <p><strong className="text-foreground">Ex-Dividend Date:</strong> The cutoff date — you must own shares BEFORE this date to receive the dividend. If you buy on or after this date, you won't get the next payment.</p>
-        <p><strong className="text-foreground">Settlement:</strong> Typically T+1 (one business day) after purchase for the trade to settle. Plan your purchases accordingly relative to the ex-dividend date.</p>
-        <p><strong className="text-foreground">Distribution Frequency:</strong> How often dividends are paid — Monthly, Quarterly, Semi-Annual, or Annual. Most US stocks pay quarterly.</p>
-        <p><strong className="text-foreground">Dividend Quality Score (0-100):</strong> A composite ranking based on yield level, payout sustainability, yield growth vs 5-year average, payment consistency, and frequency.</p>
-        <Example type="good">
-          <strong className="text-green-400">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
-        </Example>
-        <Example type="good">
-          <strong className="text-green-400">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
-        </Example>
-        <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth — top dividend pick" />
-        <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield or payout — may lack growth or consistency" />
-        <ScoreRange label="Weak" range="0-34" color="red" description="Low or no yield, high payout risk, or inconsistent payments" />
-      </HelpBlock>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={DollarSign}
+      title="Dividend Finder"
+      subtitle="Discover, compare, and rank dividend-paying stocks by yield, sustainability, and quality."
+      howItWorksTitle="Understanding Dividends"
+      howItWorks={
+        <>
+          <p><strong className="text-foreground">Dividend Yield:</strong> Annual dividend payment divided by the stock price. A 3% yield on a $100 stock means $3/year in dividends per share.</p>
+          <p><strong className="text-foreground">Payout Ratio:</strong> What percentage of earnings the company pays out as dividends. Under 60% is generally sustainable — the company retains enough to reinvest and grow.</p>
+          <p><strong className="text-foreground">Distribution Date:</strong> The date the dividend payment is deposited into your brokerage account. This is when you actually get paid.</p>
+          <p><strong className="text-foreground">Ex-Dividend Date:</strong> The cutoff date — you must own shares BEFORE this date to receive the dividend. If you buy on or after this date, you won't get the next payment.</p>
+          <p><strong className="text-foreground">Settlement:</strong> Typically T+1 (one business day) after purchase for the trade to settle. Plan your purchases accordingly relative to the ex-dividend date.</p>
+          <p><strong className="text-foreground">Distribution Frequency:</strong> How often dividends are paid — Monthly, Quarterly, Semi-Annual, or Annual. Most US stocks pay quarterly.</p>
+          <p><strong className="text-foreground">Dividend Quality Score (0-100):</strong> A composite ranking based on yield level, payout sustainability, yield growth vs 5-year average, payment consistency, and frequency.</p>
+          <Example type="good">
+            <strong className="text-bull-light">O (Realty Income)</strong> pays monthly dividends and is known as "The Monthly Dividend Company." Great for income-focused investors.
+          </Example>
+          <Example type="good">
+            <strong className="text-bull-light">KO (Coca-Cola)</strong> has over 60 years of consecutive dividend growth — a "Dividend King." Yield + growth + consistency.
+          </Example>
+          <ScoreRange label="Strong" range="60-100" color="green" description="High yield, sustainable payout, consistent growth — top dividend pick" />
+          <ScoreRange label="Moderate" range="35-59" color="yellow" description="Decent yield or payout — may lack growth or consistency" />
+          <ScoreRange label="Weak" range="0-34" color="red" description="Low or no yield, high payout risk, or inconsistent payments" />
+        </>
+      }
+    >
       {/* Active Ticker Hero Card */}
       {activeTicker && (
         <div className="bg-card border border-card-border rounded-lg p-4" data-testid="dividend-hero-card">
@@ -177,7 +178,7 @@ export default function Dividends() {
                 <div className={`flex items-center justify-center w-14 h-14 rounded-full border-2 ${scoreBgColor(tickerDividend.score)}`} data-testid="dividend-score-ring">
                   <div className="text-center">
                     <span className={`text-lg font-bold tabular-nums ${scoreColor(tickerDividend.score)}`}>{tickerDividend.score}</span>
-                    <span className="block text-[8px] text-muted-foreground">/ 100</span>
+                    <span className="block text-tiny text-muted-foreground">/ 100</span>
                   </div>
                 </div>
               </div>
@@ -224,7 +225,7 @@ export default function Dividends() {
                 <MiniCard
                   label="Ex-Dividend Date"
                   value={tickerDividend.exDividendDate || "N/A"}
-                  color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-yellow-400" : "text-foreground"}
+                  color={daysUntilExDiv !== null && daysUntilExDiv >= 0 && daysUntilExDiv <= 7 ? "text-watch-light" : "text-foreground"}
                   icon={<AlertTriangle className="h-3 w-3" />}
                   subtitle={daysUntilExDiv !== null ? (daysUntilExDiv > 0 ? `${daysUntilExDiv} day${daysUntilExDiv !== 1 ? "s" : ""} away` : daysUntilExDiv === 0 ? "Today!" : "Passed") : "Must own before this date"}
                   data-testid="dividend-ex-div-date"
@@ -232,7 +233,7 @@ export default function Dividends() {
                 <MiniCard
                   label="5Y Avg Yield"
                   value={tickerDividend.fiveYearAvgYield != null ? `${tickerDividend.fiveYearAvgYield.toFixed(2)}%` : "N/A"}
-                  color={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "text-green-400" : "text-muted-foreground"}
+                  color={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "text-bull-light" : "text-muted-foreground"}
                   icon={<TrendingUp className="h-3 w-3" />}
                   subtitle={tickerDividend.fiveYearAvgYield != null && tickerDividend.dividendYield > tickerDividend.fiveYearAvgYield ? "Above avg" : ""}
                 />
@@ -246,16 +247,16 @@ export default function Dividends() {
               </div>
 
               {tickerDividend.dividendRate === 0 && (
-                <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
-                  <span className="text-xs text-red-400">{tickerDividend.ticker} does not currently pay a dividend.</span>
+                <div className="flex items-center gap-2 p-2 bg-bear/10 border border-bear/30 rounded-lg">
+                  <AlertTriangle className="h-3.5 w-3.5 text-bear-light" />
+                  <span className="text-xs text-bear-light">{tickerDividend.ticker} does not currently pay a dividend.</span>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <AlertTriangle className="h-3.5 w-3.5 text-yellow-400" />
-              <span className="text-xs text-yellow-400">No dividend data available for {activeTicker}.</span>
+            <div className="flex items-center gap-2 p-2 bg-watch/10 border border-watch/30 rounded-lg">
+              <AlertTriangle className="h-3.5 w-3.5 text-watch-light" />
+              <span className="text-xs text-watch-light">No dividend data available for {activeTicker}.</span>
             </div>
           )}
         </div>
@@ -271,7 +272,7 @@ export default function Dividends() {
         {/* Filter Controls */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3" data-testid="dividend-filters">
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Min Yield</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Min Yield</label>
             <select
               value={minYield}
               onChange={e => setMinYield(e.target.value)}
@@ -287,7 +288,7 @@ export default function Dividends() {
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Frequency</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Frequency</label>
             <select
               value={frequency}
               onChange={e => setFrequency(e.target.value)}
@@ -302,7 +303,7 @@ export default function Dividends() {
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Max Payout (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Max Payout (%)</label>
             <input
               type="number"
               step={5}
@@ -316,7 +317,7 @@ export default function Dividends() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Results</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Results</label>
             <select
               value={resultLimit}
               onChange={e => setResultLimit(e.target.value)}
@@ -414,7 +415,7 @@ export default function Dividends() {
                       {stock.payoutRatio.toFixed(1)}%
                     </td>
                     <td className="py-2 px-2 text-center hidden lg:table-cell">
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                      <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                         {stock.frequency}
                       </span>
                     </td>
@@ -448,7 +449,7 @@ export default function Dividends() {
           <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/20 border border-card-border/50 rounded-lg">
             <Award className="h-6 w-6 text-muted-foreground/40 mb-2" />
             <p className="text-xs text-muted-foreground font-medium">Click "Scan" to get started</p>
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-micro text-muted-foreground mt-1">
               Use filters above to narrow results, or enter custom tickers.
             </p>
           </div>
@@ -457,7 +458,7 @@ export default function Dividends() {
 
       {/* Weekly Dividend Strategy (Bowtie Nation) */}
       <WeeklyStrategy setActiveTicker={setActiveTicker} />
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -512,9 +513,9 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
   };
 
   const yieldColor = (y: number) =>
-    y > 3 ? "text-green-400" : y >= 1 ? "text-yellow-400" : "text-red-400";
+    y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
   const scoreColor = (s: number) =>
-    s >= 60 ? "text-green-400" : s >= 35 ? "text-yellow-400" : "text-red-400";
+    s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
 
   const quarterlyStocks = data?.weeklyPlan.filter(s => s.months !== "Monthly") || [];
   const monthlyStocks = data?.weeklyPlan.filter(s => s.months === "Monthly") || [];
@@ -529,7 +530,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">Weekly Dividend Strategy</h3>
-          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Bowtie Nation</span>
+          <span className="text-mini font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Bowtie Nation</span>
         </div>
         <div className="flex items-center gap-2">
           {showStrategy && data && (
@@ -577,22 +578,22 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
-              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Stocks</span>
+              <span className="text-mini font-semibold text-muted-foreground uppercase block">Stocks</span>
               <span className="text-sm font-bold text-foreground">{data.stats.totalStocks}</span>
-              <span className="text-[9px] text-muted-foreground block">{data.stats.quarterlyPayers}Q + {data.stats.monthlyPayers}M</span>
+              <span className="text-mini text-muted-foreground block">{data.stats.quarterlyPayers}Q + {data.stats.monthlyPayers}M</span>
             </div>
             <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
-              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Avg Yield</span>
+              <span className="text-mini font-semibold text-muted-foreground uppercase block">Avg Yield</span>
               <span className={`text-sm font-bold ${yieldColor(data.stats.avgYield)}`}>{data.stats.avgYield}%</span>
             </div>
             <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
-              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Avg Score</span>
+              <span className="text-mini font-semibold text-muted-foreground uppercase block">Avg Score</span>
               <span className={`text-sm font-bold ${scoreColor(data.stats.avgScore)}`}>{data.stats.avgScore}</span>
             </div>
             <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2">
-              <span className="text-[9px] font-semibold text-muted-foreground uppercase block">Coverage</span>
-              <span className="text-sm font-bold text-green-400">52 weeks</span>
-              <span className="text-[9px] text-muted-foreground block">Every week paid</span>
+              <span className="text-mini font-semibold text-muted-foreground uppercase block">Coverage</span>
+              <span className="text-sm font-bold text-bull-light">52 weeks</span>
+              <span className="text-mini text-muted-foreground block">Every week paid</span>
             </div>
           </div>
 
@@ -606,17 +607,17 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
                 <div key={s.ticker} className="bg-primary/5 border border-primary/20 rounded-lg p-2 cursor-pointer hover:bg-primary/10 transition-colors" onClick={() => setActiveTicker(s.ticker)}>
                   <div className="flex items-center justify-between mb-0.5">
                     <span className="font-mono font-bold text-xs text-foreground">{s.ticker}</span>
-                    <span className={`text-[10px] font-bold ${yieldColor(s.dividendYield)}`}>{s.dividendYield.toFixed(1)}%</span>
+                    <span className={`text-micro font-bold ${yieldColor(s.dividendYield)}`}>{s.dividendYield.toFixed(1)}%</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground truncate">{s.companyName}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5">${s.price.toFixed(2)} · ${s.dividendRate.toFixed(2)}/sh</p>
+                  <p className="text-micro text-muted-foreground truncate">{s.companyName}</p>
+                  <p className="text-mini text-muted-foreground mt-0.5">${s.price.toFixed(2)} · ${s.dividendRate.toFixed(2)}/sh</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Quarterly Calendar */}
-          {[["Jan / Apr / Jul / Oct", q1, "#22c55e"], ["Feb / May / Aug / Nov", q2, "#6366f1"], ["Mar / Jun / Sep / Dec", q3, "#f97316"]] .map(([label, stocks, color]) => (
+          {[["Jan / Apr / Jul / Oct", q1, SIGNAL_BULL], ["Feb / May / Aug / Nov", q2, BRAND_ACCENT], ["Mar / Jun / Sep / Dec", q3, SIGNAL_WATCH_SHORT]] .map(([label, stocks, color]) => (
             <div key={label as string}>
               <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" style={{ color: color as string }} /> {label as string}
@@ -639,7 +640,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
                     {(stocks as WeeklyItem[]).sort((a, b) => a.week - b.week).map(s => (
                       <tr key={s.ticker} className="border-b border-card-border/30 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setActiveTicker(s.ticker)}>
                         <td className="py-1.5 px-2">
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${color as string}15`, color: color as string }}>Wk {s.week}</span>
+                          <span className="text-micro font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${color as string}15`, color: color as string }}>Wk {s.week}</span>
                         </td>
                         <td className="py-1.5 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
                         <td className="py-1.5 px-2 text-muted-foreground truncate max-w-[120px] hidden sm:table-cell">{s.companyName}</td>
@@ -656,7 +657,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
             </div>
           ))}
 
-          <p className="text-[10px] text-muted-foreground italic px-1">
+          <p className="text-micro text-muted-foreground italic px-1">
             Strategy note: Buy equal dollar amounts of each. The 4 monthly payers ensure you get double payments every week. Quarterly payers fill the weeks between monthly payouts. Reinvest dividends (DRIP) to compound over time.
           </p>
         </div>
@@ -675,10 +676,10 @@ function MiniCard({ label, value, color, icon, subtitle, ...rest }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5" {...rest}>
       <div className="flex items-center gap-1 mb-0.5">
         {icon && <span className={`${color} opacity-70`}>{icon}</span>}
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[10px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-micro text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }

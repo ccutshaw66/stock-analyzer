@@ -17,8 +17,8 @@
  */
 import { fmpScreener, type FmpScreenerRow } from "./data/providers/fmp.adapter";
 import { fmpGet } from "./data/providers/fmp.client";
-import { getPolygonChart } from "./polygon";
 import { getCached, setCache } from "./cache";
+import { getHtfBars } from "./data/htf-ohlcv-cache";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -236,41 +236,43 @@ async function fetchUniverse(filters: ScannerV2Filters): Promise<FmpScreenerRow[
 }
 
 /**
- * Load ~180 days of daily bars for a ticker. Cached 30 min (re-use across scans).
- * Returns null if Polygon fails or returns insufficient data.
+ * Load ~1 year of daily bars for a ticker for the scanner.
+ *
+ * Two cache layers:
+ *   1. In-memory `getCached` (30 min) — fast path for re-scans in the same
+ *      process. Keeps the existing scanner-v2 cache key so warm runs are
+ *      indistinguishable in shape from before.
+ *   2. Disk-backed `getHtfBars` (long-range cache, 18h TTL) — shared with
+ *      the HTF detector so the first scanner ticker that's also in the HTF
+ *      universe hits a warm disk entry instead of repaying FMP. Survives
+ *      process restarts.
+ *
+ * Returns null if FMP fails AND there's no cached entry, or if the symbol
+ * has fewer than 150 daily bars.
  */
 async function loadBars(symbol: string): Promise<ScanContext["bars"] | null> {
-  const cacheKey = `scanner-v2:bars:${symbol}`;
+  const cacheKey = `scanner-v2:bars:v2:${symbol}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  try {
-    const chart = await getPolygonChart(symbol, "1y", "1d");
-    const ts: number[] = chart?.timestamp || [];
-    const q = chart?.indicators?.quote?.[0] || {};
-    const closes = q.close || [];
-    const opens = q.open || [];
-    const highs = q.high || [];
-    const lows = q.low || [];
-    const vols = q.volume || [];
-    if (ts.length < 150) return null;
+  // 380d lookback preserves the prior warmup window (52w breakouts need
+  // ≥252 trading days + buffer). htf-ohlcv-cache returns oldest-first
+  // OHLCV{ t: Date }; convert to scanner's { t: unix-seconds } shape.
+  const htfBars = await getHtfBars(symbol, { lookbackDays: 380 });
+  if (htfBars.length < 150) return null;
 
-    const bars: ScanContext["bars"] = [];
-    for (let i = 0; i < ts.length; i++) {
-      const c = closes[i];
-      const o = opens[i];
-      const h = highs[i];
-      const l = lows[i];
-      const v = vols[i];
-      if (c == null || o == null || h == null || l == null) continue;
-      bars.push({ t: ts[i], o, h, l, c, v: v ?? 0 });
-    }
-    if (bars.length < 150) return null;
-    setCache(cacheKey, bars, 30 * 60 * 1000); // 30 min
-    return bars;
-  } catch {
-    return null;
+  const bars: ScanContext["bars"] = [];
+  for (const b of htfBars) {
+    if (!Number.isFinite(b.c) || !Number.isFinite(b.o) || !Number.isFinite(b.h) || !Number.isFinite(b.l)) continue;
+    bars.push({
+      t: Math.floor(b.t.getTime() / 1000),
+      o: b.o, h: b.h, l: b.l, c: b.c,
+      v: Number.isFinite(b.v) ? b.v : 0,
+    });
   }
+  if (bars.length < 150) return null;
+  setCache(cacheKey, bars, 30 * 60 * 1000);
+  return bars;
 }
 
 // ─── Catalyst Preload ───────────────────────────────────────────────────────
@@ -609,7 +611,10 @@ export async function runScannerV2(filters: ScannerV2Filters): Promise<ScannerV2
   // Apply post-scan filters
   let filtered = rows;
   if (filters.direction && filters.direction !== "either") {
-    filtered = filtered.filter((r) => r.direction === filters.direction || r.direction === "either");
+    // Strict: when user picks "up" or "down", DROP bias-neutral ("either") rows.
+    // Previously kept them, which surfaced sell-leaning tickers under BUY and
+    // vice versa — that's the "BUY toggle returns sell-side results" bug.
+    filtered = filtered.filter((r) => r.direction === filters.direction);
   }
   if (filters.minScore != null) {
     filtered = filtered.filter((r) => r.score >= filters.minScore!);

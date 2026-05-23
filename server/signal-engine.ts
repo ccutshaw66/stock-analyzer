@@ -721,6 +721,13 @@ function findImpulseLeg(input: FibImpulseInput): FibImpulseLeg | null {
   const len = highs.length;
   if (len < lookbackBars + pivotWindow * 2) return null;
 
+  // A real impulse leg has to be ≥ 5% of the swing-high price. Without this
+  // gate, the detector can latch onto tiny ranges (MDT 88.67→84.92, ~4.2%
+  // range) and then flag any deeper move as a "FAILED retracement," which
+  // is just noise. 5% is a reasonable floor for what counts as a meaningful
+  // trend leg.
+  const MIN_IMPULSE_PCT = 0.05;
+
   const start = Math.max(pivotWindow, len - 1 - lookbackBars);
   const end = len - 1 - pivotWindow;
 
@@ -747,6 +754,7 @@ function findImpulseLeg(input: FibImpulseInput): FibImpulseLeg | null {
     if (priorLows.length === 0) return null;
     const precedingLow = priorLows[priorLows.length - 1];
     if (lastHigh.price <= precedingLow.price) return null;
+    if ((lastHigh.price - precedingLow.price) / lastHigh.price < MIN_IMPULSE_PCT) return null;
     return {
       swingHigh: lastHigh.price,
       swingLow: precedingLow.price,
@@ -759,6 +767,7 @@ function findImpulseLeg(input: FibImpulseInput): FibImpulseLeg | null {
     if (priorHighs.length === 0) return null;
     const precedingHigh = priorHighs[priorHighs.length - 1];
     if (precedingHigh.price <= lastLow.price) return null;
+    if ((precedingHigh.price - lastLow.price) / precedingHigh.price < MIN_IMPULSE_PCT) return null;
     return {
       swingHigh: precedingHigh.price,
       swingLow: lastLow.price,
@@ -1280,12 +1289,12 @@ export function analyzeTicker(input: AnalyzeTickerInput): GateSystemResult {
   // ── Strategies (SHARED helpers — single source of truth for BBTC/VER/AMC) ──
   // This is the ONLY computation path for scanner + watchlist + portfolio pip +
   // /api/analyze. Any divergence is a bug. Do NOT inline strategy logic here.
-  const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+  const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
   const bbtcSignal = bbtcResult.topSignal;
   const bbtcBias = bbtcResult.bias;
   const bbtcTrend = bbtcResult.trend;
 
-  const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+  const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
   const verSignal = verResult.topSignal;
 
   // Current-bar VER reporting (matches /api/analyze lines 2470-2474)

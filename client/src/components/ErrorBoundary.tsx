@@ -1,4 +1,13 @@
 import { Component, type ReactNode } from "react";
+import {
+  BRAND_BG,
+  BRAND_BG_ELEVATED,
+  BRAND_BORDER_STRONG,
+  SIGNAL_BEAR,
+  CHART_CROSSHAIR,
+  COLOR_WHITE,
+  COLOR_GRAY_500,
+} from "@/lib/design-tokens";
 
 interface Props {
   children: ReactNode;
@@ -32,23 +41,23 @@ export class ErrorBoundary extends Component<Props, State> {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#040d22",
-          color: "#fff",
+          backgroundColor: BRAND_BG,
+          color: COLOR_WHITE,
           fontFamily: "system-ui, sans-serif",
           padding: "2rem",
           textAlign: "center",
         }}>
           <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Something went wrong</h1>
-          <p style={{ color: "#888", fontSize: "0.875rem", maxWidth: "500px", marginBottom: "1rem" }}>
+          <p style={{ color: COLOR_GRAY_500, fontSize: "0.875rem", maxWidth: "500px", marginBottom: "1rem" }}>
             Stock Otter encountered an error. Try refreshing the page or clearing your browser cache.
           </p>
           <pre style={{
-            background: "#0a1628",
-            border: "1px solid #1e293b",
+            background: BRAND_BG_ELEVATED,
+            border: `1px solid ${BRAND_BORDER_STRONG}`,
             borderRadius: "8px",
             padding: "1rem",
             fontSize: "0.75rem",
-            color: "#ef4444",
+            color: SIGNAL_BEAR,
             maxWidth: "600px",
             overflow: "auto",
             textAlign: "left",
@@ -62,8 +71,8 @@ export class ErrorBoundary extends Component<Props, State> {
             onClick={() => window.location.reload()}
             style={{
               padding: "0.5rem 2rem",
-              background: "#6366f1",
-              color: "#fff",
+              background: CHART_CROSSHAIR,
+              color: COLOR_WHITE,
               border: "none",
               borderRadius: "8px",
               fontSize: "0.875rem",

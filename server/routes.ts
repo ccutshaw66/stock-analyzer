@@ -17,6 +17,7 @@ import {
 import { runGateSystem, analyzeTicker, type GateSystemResult } from "./signal-engine";
 import pg from "pg";
 import { computeRSISeries } from "./indicators";
+import { parseTimeframe, getTimeframePreset, type TimeframePreset } from "./timeframe";
 import { computeBBTC, computeVER, computeAMC, scoreAMC } from "./signals";
 import {
   getPolygonQuoteSummary,
@@ -32,6 +33,7 @@ import { fmpAdapter, getFmpProfileBeta } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
+import { computeClosedTradeProfit, computeOpenStockPL } from "@shared/pnl";
 
 const routesLog = rootLogger.child({ module: "routes" });
 
@@ -40,6 +42,8 @@ const routesLog = rootLogger.child({ module: "routes" });
 // Calls /price-target-consensus + /grades-consensus directly (not the adapter's
 // collapsed form) so we get per-bucket buy/hold/sell counts.
 import { fmpGet } from "./data/providers/fmp.client";
+import { getCompanySnapshot, snapshotHealth } from "./snapshot";
+import { scoreSnapshot, bucketVerdict, type CategoryScore } from "./snapshot/score";
 
 interface AnalystBlock {
   buy: number;
@@ -331,8 +335,31 @@ async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
   }
 }
 
-// Queued Yahoo fetch — all requests go through the global rate limiter
+// Master Yahoo kill switch. Yahoo is removed from the live request path when
+// FMP_TIER=ultimate is set OR YAHOO_DISABLED=true. Every Yahoo call routes
+// through this single chokepoint, so the kill switch here disables Yahoo
+// site-wide — the institutional scan, long-range charts, ownership warmups,
+// and any other code path that ends up calling yahooFetch all fail-fast
+// instead of hitting the network and burning into Yahoo's 429 block.
+function isYahooDisabled(): boolean {
+  const tier = (process.env.FMP_TIER || "").toLowerCase();
+  if (tier === "ultimate") return true;
+  if ((process.env.YAHOO_DISABLED || "").toLowerCase() === "true") return true;
+  return false;
+}
+
+class YahooDisabledError extends Error {
+  constructor() {
+    super("yahoo:disabled (FMP_TIER=ultimate or YAHOO_DISABLED=true)");
+    this.name = "YahooDisabledError";
+  }
+}
+
+// Queued Yahoo fetch — all requests go through the global rate limiter.
+// Returns immediately with a YahooDisabledError when Yahoo is disabled,
+// so no socket is opened, no crumb is fetched, no 429 is incurred.
 async function yahooFetch(url: string, retries = 3): Promise<any> {
+  if (isYahooDisabled()) throw new YahooDisabledError();
   return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
 }
 
@@ -360,6 +387,16 @@ const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
  */
 export async function getYahooOwnership(ticker: string): Promise<any> {
   const T = ticker.toUpperCase();
+  // Master kill switch: when Yahoo is disabled, return the empty shape
+  // immediately. No socket, no crumb fetch, no rate-limit retries.
+  if (isYahooDisabled()) {
+    return {
+      institutionOwnership: null,
+      fundOwnership: null,
+      majorHoldersBreakdown: null,
+      insiderHolders: null,
+    };
+  }
   const cacheKey = `yahoo:ownership:${T}`;
   const cached = getCached(cacheKey);
   if (cached !== undefined && cached !== null) {
@@ -415,6 +452,96 @@ async function getQuoteLight(ticker: string): Promise<any> {
   return getQuote(ticker);
 }
 
+/** Convert a Yahoo-style range string to a "days back" number for FMP from-date math. */
+function rangeStringToDays(range: string): number {
+  const map: Record<string, number> = {
+    "1d": 5, "5d": 10, "1mo": 35, "3mo": 95, "6mo": 185,
+    "1y": 370, "2y": 740, "3y": 1100, "5y": 1830, "10y": 3660,
+  };
+  return map[range] ?? 370;
+}
+
+/**
+ * FMP /historical-price-eod/full → Yahoo-shape converter for the short/mid
+ * range path. Single call (FMP caps at ~5000 rows ≈ 20y).
+ */
+/**
+ * Fetch a chart with ~200 trading days of indicator warmup PREPENDED before
+ * the user-visible window. Indicators (SMA200, EMA50, etc.) need history to
+ * compute correctly; without warmup, a 1Y chart shows blank EMAs/SMA200 for
+ * the first ~200 of 252 bars. With this helper, the full returned series has
+ * valid indicators throughout, and `displayStartIdx` tells the caller where
+ * the user's actual window begins.
+ *
+ * Caller should compute strategies on the full series, then slice chartData
+ * for display at `displayStartIdx`.
+ */
+async function fmpChartWithWarmup(
+  symbol: string,
+  range: string,
+  warmupTradingDays = 200,
+): Promise<{ chart: any; displayStartIdx: number } | null> {
+  const displayDays = rangeStringToDays(range);
+  // Trading-days → calendar-days conversion factor ≈ 365/252 = 1.45.
+  const warmupCalendarDays = Math.round(warmupTradingDays * 1.45);
+  const totalDays = displayDays + warmupCalendarDays;
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - totalDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  try {
+    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol, from, to });
+    const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+    if (rows.length === 0) return null;
+    const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const displayStartTs = Math.floor((Date.now() - displayDays * 24 * 60 * 60 * 1000) / 1000);
+    let displayStartIdx = 0;
+    for (let i = 0; i < asc.length; i++) {
+      const ts = Math.floor(new Date(asc[i].date).getTime() / 1000);
+      if (ts >= displayStartTs) { displayStartIdx = i; break; }
+    }
+    return {
+      chart: {
+        timestamp: asc.map(r => Math.floor(new Date(r.date).getTime() / 1000)),
+        indicators: { quote: [{
+          close: asc.map(r => Number(r.close)),
+          open: asc.map(r => Number(r.open)),
+          high: asc.map(r => Number(r.high)),
+          low: asc.map(r => Number(r.low)),
+          volume: asc.map(r => Number(r.volume)),
+        }] },
+      },
+      displayStartIdx,
+    };
+  } catch (err) {
+    console.log(`[chart-warmup] FMP failed for ${symbol} ${range}:`, (err as Error).message);
+    return null;
+  }
+}
+
+async function fmpChartShortRange(symbol: string, range: string): Promise<any> {
+  const days = rangeStringToDays(range);
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  try {
+    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol, from, to });
+    const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+    if (rows.length === 0) return null;
+    const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return {
+      timestamp: asc.map(r => Math.floor(new Date(r.date).getTime() / 1000)),
+      indicators: { quote: [{
+        close: asc.map(r => Number(r.close)),
+        open: asc.map(r => Number(r.open)),
+        high: asc.map(r => Number(r.high)),
+        low: asc.map(r => Number(r.low)),
+        volume: asc.map(r => Number(r.volume)),
+      }] },
+    };
+  } catch (err) {
+    console.log(`[chart] FMP failed for ${symbol} ${range}:`, (err as Error).message);
+    return null;
+  }
+}
+
 async function getChart(ticker: string, range: string, interval: string): Promise<any> {
   const cacheKey = `chart:${ticker.toUpperCase()}:${range}:${interval}`;
   const cached = getCached(cacheKey);
@@ -423,10 +550,9 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     return cached;
   }
 
-  // Phase 3.7: Yahoo is a BACKGROUND cache filler only — never invoked on
-  // the request path. For long-range (10y/25y/max) we read from a disk cache
-  // that a daily cron populates from Yahoo. If the disk cache is cold we
-  // fall back to Polygon (capped ~5y) rather than hit Yahoo live.
+  // Long-range (10y/25y/max): cron-populated disk cache is authoritative
+  // (deepest history). FMP fallback covers ~20y when disk is cold. Polygon
+  // is last-ditch (capped ~5y).
   const isLongRange = range === "10y" || range === "25y" || range === "max";
 
   if (isLongRange) {
@@ -436,7 +562,13 @@ async function getChart(ticker: string, range: string, interval: string): Promis
       setCache(cacheKey, cached, TTL.chart);
       return cached;
     }
-    // 2) Polygon as best-effort (capped ~5y)
+    // 2) FMP — covers ~20y, deeper than Polygon
+    const fmpResult = await fmpChartShortRange(ticker, range);
+    if (fmpResult && fmpResult.timestamp?.length) {
+      setCache(cacheKey, fmpResult, TTL.chart);
+      return fmpResult;
+    }
+    // 3) Polygon as best-effort (capped ~5y)
     try {
       const result = await getPolygonChart(ticker, range, interval);
       if (result && result.timestamp?.length) {
@@ -446,7 +578,7 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     } catch (err) {
       console.log(`[chart] Polygon long-range failed for ${ticker} ${range}:`, (err as Error).message);
     }
-    // 3) Stale disk cache (better than null)
+    // 4) Stale disk cache (better than null)
     const stale = readLongRange(ticker, range, interval);
     if (stale?.payload) {
       console.log(`[chart] Serving stale long-range cache for ${ticker} ${range} (age ${Math.round((Date.now() - stale.fetchedAt) / 3600000)}h)`);
@@ -456,7 +588,12 @@ async function getChart(ticker: string, range: string, interval: string): Promis
     return null;
   }
 
-  // Short/mid ranges: Polygon only
+  // Short/mid ranges: FMP primary, Polygon fallback.
+  const fmpResult = await fmpChartShortRange(ticker, range);
+  if (fmpResult && fmpResult.timestamp?.length) {
+    setCache(cacheKey, fmpResult, TTL.chart);
+    return fmpResult;
+  }
   try {
     const result = await getPolygonChart(ticker, range, interval);
     if (result && result.timestamp?.length) {
@@ -489,7 +626,7 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   // Aggregate scan cache is busted per click (refresh=1 from frontend) so
   // the user gets a different random sample each click while still hitting
   // this per-ticker cache for any tickers we've already fetched.
-  const cacheKey = `inst:${ticker.toUpperCase()}`;
+  const cacheKey = `inst:v4:${ticker.toUpperCase()}`; // v4 — quarter-selection bug fix
   const cached = getCached(cacheKey);
   if (cached) { recordCacheHit(); return cached; }
 
@@ -500,13 +637,17 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     quote = null;
   }
 
-  // FMP insider transactions (last ~50 for this symbol)
+  // FMP insider transactions. Limit bumped to 500 so we have enough history
+  // to identify each named insider's most recent post-transaction holding
+  // (the `securitiesOwned` field) — that's what we sum to compute insiderPct.
+  // 50 was too narrow; missed insiders who haven't transacted recently.
   let insiderTxns: any[] = [];
+  let insiderTotalShares = 0; // sum of latest securitiesOwned per unique insider
   try {
     const { fmpGet } = await import("./data/providers/fmp.client");
-    const rows: any[] = await fmpGet<any[]>(`/insider-trading/search`, { symbol: ticker, page: 0, limit: 50 });
+    const rows: any[] = await fmpGet<any[]>(`/insider-trading/search`, { symbol: ticker, page: 0, limit: 500 });
     if (Array.isArray(rows)) {
-      insiderTxns = rows.map((r) => ({
+      insiderTxns = rows.slice(0, 50).map((r) => ({
         filerName: r.reportingName || r.name || "Unknown",
         filerRelation: r.typeOfOwner || r.relation || "",
         transactionText: r.transactionType || r.acquistionOrDisposition || "Unknown",
@@ -514,6 +655,22 @@ async function getInstitutionalData(ticker: string): Promise<any> {
         value: { raw: Number(r.price ?? 0) * Number(r.securitiesTransacted ?? 0) || 0 },
         startDate: { fmt: r.transactionDate || r.filingDate || null },
       }));
+      // For each unique insider (by CIK if present, else name), pick the row
+      // with the latest filingDate / transactionDate and read securitiesOwned.
+      // Sum across insiders → total insider share count.
+      const latestByInsider = new Map<string, { date: string; owned: number }>();
+      for (const r of rows) {
+        const key = String(r.reportingCik || r.reportingName || r.name || "").toLowerCase();
+        if (!key) continue;
+        const owned = Number(r.securitiesOwned ?? 0);
+        if (!Number.isFinite(owned) || owned < 0) continue;
+        const date = String(r.filingDate || r.transactionDate || "");
+        const prior = latestByInsider.get(key);
+        if (!prior || date > prior.date) {
+          latestByInsider.set(key, { date, owned });
+        }
+      }
+      for (const v of latestByInsider.values()) insiderTotalShares += v.owned;
     }
   } catch (e: any) {
     routesLog.debug?.({ ticker, err: String(e?.message || e) }, "fmp insider fetch failed; continuing without");
@@ -535,12 +692,35 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo ownership modules (fund holders + 13F QoQ change deltas).
-  // Fetched in parallel with the rest above would be ideal, but keeping it
-  // sequential here avoids reordering the existing FMP/Polygon flow. The
-  // helper is internally cached and fails open (returns nulls) so a Yahoo
-  // outage degrades to the prior empty-tab behaviour rather than 500ing.
-  const yahooOwnership = await getYahooOwnership(ticker);
+  // Yahoo data — re-enabled here for insider% specifically. Long-term goal
+  // (per 2026-05-06 directive) is FMP-only, but until an FMP-side replacement
+  // for `majorHoldersBreakdown.insidersPercentHeld` is built, Yahoo's
+  // ownership module is the only source for that field. The Yahoo warmup
+  // cron pre-populates this 23h cache nightly so the request-path call
+  // almost always hits cache.
+  let yahooOwnership: {
+    institutionOwnership: any | null;
+    fundOwnership: any | null;
+    majorHoldersBreakdown: any | null;
+    insiderHolders: any | null;
+  } = {
+    institutionOwnership: null,
+    fundOwnership: null,
+    majorHoldersBreakdown: null,
+    insiderHolders: null,
+  };
+  try {
+    const yo = await getYahooOwnership(ticker);
+    if (yo) yahooOwnership = yo;
+  } catch (e: any) {
+    routesLog.debug?.({ ticker, err: String(e?.message || e) }, "yahoo ownership fetch failed; continuing with FMP-only");
+  }
+
+  // Derive sharesOutstanding from quote (marketCap / price). Polygon-shaped
+  // quote returns regularMarketPrice and marketCap as `{raw}` objects.
+  const qPrice = Number(quote?.price?.regularMarketPrice?.raw ?? 0);
+  const qMcap = Number(quote?.price?.marketCap?.raw ?? quote?.summaryDetail?.marketCap?.raw ?? 0);
+  const sharesOutstanding = qPrice > 0 && qMcap > 0 ? qMcap / qPrice : 0;
 
   const result: any = {
     // Yahoo-shaped facade so parseInstitutionalData stays unchanged
@@ -560,6 +740,12 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     institutionOwnership: yahooOwnership.institutionOwnership,
     fundOwnership: yahooOwnership.fundOwnership,
     majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
+    // FMP-derived signals consumed by parseInstitutionalData. insiderTotalShares
+    // is the sum of each unique insider's most recent securitiesOwned;
+    // dividing by sharesOutstanding gives an FMP-only insiderPct (replacement
+    // for Yahoo's insidersPercentHeld which is dead under FMP_TIER=ultimate).
+    fmpInsiderTotalShares: insiderTotalShares,
+    fmpSharesOutstanding: sharesOutstanding,
   };
 
   // Don't poison the 24h cache with empty results. If neither Yahoo nor FMP
@@ -583,16 +769,38 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderTxns = raw?.insiderTransactions?.transactions || [];
   const netActivity = raw?.netSharePurchaseActivity || {};
 
-  // EDGAR institutional summary
-  let edgar: Awaited<ReturnType<typeof getInstitutionalSummary>> | null = null;
+  // Institutional summary — provider chain:
+  //   1. FMP Ultimate (when FMP_TIER=ultimate is set) — paid, reliable
+  //   2. SEC EDGAR — free, authoritative, but IP-blockable
+  //   3. Yahoo majorHoldersBreakdown fallback — handled later in the
+  //      `usingEdgar` block, populates summary stats only
+  // FMP Ultimate is the primary when configured because it's the paid
+  // provider and removes the dependency on free sources that keep getting
+  // throttled. EDGAR stays in the chain as a free emergency fallback for
+  // when FMP has an outage.
+  let edgar: any = null;
   try {
-    // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
-    // present (even past TTL), triggers a background refresh. This prevents
-    // the 25-min EDGAR cold path from blocking a user-facing request.
-    edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    const { getFmpInstitutional, isFmpUltimateEnabled } = await import(
+      "./data/providers/fmp-institutional"
+    );
+    if (isFmpUltimateEnabled()) {
+      edgar = await getFmpInstitutional(ticker);
+      // edgar is null when FMP returns 402 (plan downgrade) or any other
+      // error — fall through to EDGAR below in that case.
+    }
   } catch (e) {
-    console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
-    edgar = null;
+    console.error(`[fmp-inst] failed for ${ticker}:`, (e as Error).message);
+  }
+  if (!edgar) {
+    try {
+      // Phase 3.8: stale-ok wrapper returns disk-cached data immediately if
+      // present (even past TTL), triggers a background refresh. This prevents
+      // the 25-min EDGAR cold path from blocking a user-facing request.
+      edgar = await getInstitutionalSummaryStaleOk(ticker, 25);
+    } catch (e) {
+      console.error(`[edgar] failed for ${ticker}:`, (e as Error).message);
+      edgar = null;
+    }
   }
 
   // Yahoo-sourced ownership data, attached by getInstitutionalData. If the
@@ -602,13 +810,13 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const fundOwnership: any[] = raw?.fundOwnership?.ownershipList || [];
   const majorBreakdown: any = raw?.majorHoldersBreakdown || {};
 
-  // Build a name -> pctChange index from Yahoo's institutionOwnership so we
-  // can merge real QoQ changes into the EDGAR-sourced rows. EDGAR has the
-  // authoritative shares/value/% held figures (more recent and complete than
-  // Yahoo) but does not expose quarter-over-quarter delta — that comes from
-  // Yahoo. Names rarely match exactly across the two sources (EDGAR uses
-  // legal entity names with full corp suffixes, Yahoo trims), so we
-  // normalize both sides before joining.
+  // QoQ change source:
+  //   - FMP Ultimate path: `getFmpInstitutional` now diffs the prior 13F quarter
+  //     and writes `changeQoQ` directly onto each top holder. We just read it.
+  //   - EDGAR fallback path: `topHolders` from EDGAR has no QoQ field. Yahoo's
+  //     `institutionOwnership.pctChange` was the historical merge source, but
+  //     under FMP_TIER=ultimate the Yahoo modules are nulled out by
+  //     getInstitutionalData, so this map will be empty and rows fall back to 0.
   const normalizeOrgName = (s: string): string =>
     String(s || "")
       .toLowerCase()
@@ -625,16 +833,16 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     if (Number.isFinite(pct)) yahooQoQByName.set(key, pct);
   }
 
-  // Top institutional holders (EDGAR 13F + Yahoo QoQ delta where available)
-  let topInstitutions = (edgar?.topHolders ?? []).map(h => ({
+  // Top institutional holders. FMP path provides changeQoQ directly; EDGAR
+  // path tries the (likely empty) Yahoo merge as a last-ditch.
+  let topInstitutions = (edgar?.topHolders ?? []).map((h: any) => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
     pctHeld: h.pctHeld,
-    // changeQoQ: Yahoo's pctChange is a fraction (0.05 = 5%); convert to
-    // the percent the frontend renders. Falls back to 0 when no match,
-    // which is preferable to omitting the column entirely.
-    changeQoQ: (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
+    changeQoQ: Number.isFinite(h.changeQoQ)
+      ? Number(h.changeQoQ)
+      : (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
     reportDate: h.reportDate,
     accession: h.accession,
     cik: h.cik,
@@ -659,12 +867,22 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   }
 
   // Top fund holders (mutual funds / ETFs).
-  // Yahoo's pctHeld and pctChange both come in as fractions (0.05 = 5%).
-  // Frontend convention is split: pctHeld is rendered with `(v*100).toFixed(2)%`
-  // (so we send the raw fraction), while changeQoQ is rendered with
-  // `v.toFixed(1)%` (so we convert to percent here, matching the
-  // topInstitutions row above).
-  const topFunds = fundOwnership.slice(0, 15).map((fund: any) => ({
+  // PRIMARY: when edgar source is FMP (paid Ultimate plan), use the topFunds
+  // FMP returned — same 13F data filtered to fund/ETF filers.
+  // FALLBACK: Yahoo's fundOwnership (only populated when Yahoo is enabled).
+  // When neither has data, the Fund Holders tab shows the empty state.
+  const fmpFunds: any[] = (edgar?.topFunds && Array.isArray(edgar.topFunds)) ? edgar.topFunds : [];
+  const fundSource = fmpFunds.length > 0 ? "fmp" : "yahoo";
+  const topFunds = fundSource === "fmp"
+    ? fmpFunds.map((f: any) => ({
+        name: f.name || "Unknown",
+        shares: Number(f.shares || 0),
+        value: Number(f.value || 0),
+        pctHeld: Number(f.pctHeld || 0),
+        changeQoQ: Number(f.changeQoQ || 0),
+        reportDate: f.reportDate || null,
+      }))
+    : fundOwnership.slice(0, 15).map((fund: any) => ({
     name: fund.organization || "Unknown",
     shares: fund.position?.raw || 0,
     value: fund.value?.raw || 0,
@@ -673,8 +891,76 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     reportDate: fund.reportDate?.fmt || null,
   }));
 
-  // Insider holders (current positions)
-  const insiders = insiderHolders.map((h: any) => ({
+  // Display cutoff: surface holders that are EITHER significant in size OR
+  // meaningful movers (|QoQ| >= 0.05% — anything that would render as
+  // something other than "0.0%" at one-decimal precision).
+  //
+  // Size threshold is tiered by market cap because megacaps (MSFT, AAPL,
+  // NVDA, GOOG) have hundreds of $100M+ institutional positions just by
+  // virtue of being multi-trillion-dollar stocks. Without scaling, the
+  // cutoff barely shortens the list. The tiers below produce a list that
+  // is qualitatively similar across cap sizes — "the holders big enough
+  // to matter to *this* stock," not "anyone holding $100M of anything."
+  //
+  // The snapshot/scoring pipeline still operates on the full holder list —
+  // this is purely a display filter.
+  const marketCap = Number(price.marketCap?.raw || summary.marketCap?.raw || 0);
+  const MIN_DISPLAY_VALUE =
+    marketCap >= 500_000_000_000 ? 500_000_000 : // megacap (>=$500B): $500M cutoff
+    marketCap >= 100_000_000_000 ? 250_000_000 : // large cap (>=$100B): $250M cutoff
+    100_000_000;                                  // mid/small/default: $100M cutoff
+  const MIN_DISPLAY_CHANGE_PCT = 0.05;
+  const passesDisplayFilter = (row: { value: number; changeQoQ: number }) =>
+    Number(row.value) >= MIN_DISPLAY_VALUE ||
+    Math.abs(Number(row.changeQoQ) || 0) >= MIN_DISPLAY_CHANGE_PCT;
+  // Sort by |changeQoQ| desc so movers float to the top of each table; ties
+  // (e.g., multiple zero-change rows that survived the filter on size) fall
+  // back to value desc.
+  const sortByMoversThenValue = (a: { value: number; changeQoQ: number }, b: { value: number; changeQoQ: number }) => {
+    const aChg = Math.abs(Number(a.changeQoQ) || 0);
+    const bChg = Math.abs(Number(b.changeQoQ) || 0);
+    if (aChg !== bChg) return bChg - aChg;
+    return Number(b.value) - Number(a.value);
+  };
+  const topInstitutionsFiltered = topInstitutions.filter(passesDisplayFilter).sort(sortByMoversThenValue);
+  const topFundsFiltered = topFunds.filter(passesDisplayFilter).sort(sortByMoversThenValue);
+  topInstitutions = topInstitutionsFiltered;
+
+  // Insider holders (current positions).
+  // PRIMARY: Yahoo's insiderHolders module (only populated when Yahoo is
+  // enabled, which it isn't on FMP_TIER=ultimate).
+  // FALLBACK: derive a roster from the insider transaction history we already
+  // pull from FMP — group by insider name, take the most recent transaction
+  // per name, sum the shares involved as a proxy for "current activity."
+  // It's not a true holdings statement (that requires Form 3/Form 5 data),
+  // but it gives the Insiders tab a populated roster of who's been moving
+  // shares lately, sourced entirely from FMP.
+  const insidersFromTxns = (() => {
+    if (insiderHolders.length > 0) return null; // Yahoo path will be used
+    if (!Array.isArray(insiderTxns) || insiderTxns.length === 0) return [];
+    const byName = new Map<string, any>();
+    for (const tx of insiderTxns) {
+      const name = String(tx.filerName || "Unknown");
+      const date = tx.startDate?.fmt || null;
+      const existing = byName.get(name);
+      if (!existing || (date && (!existing.latestDate || date > existing.latestDate))) {
+        byName.set(name, {
+          name,
+          relation: String(tx.filerRelation || "Insider"),
+          shares: Number(tx.shares?.raw || 0),
+          sharesIndirect: 0,
+          latestTransaction: String(tx.transactionText || "").includes("S") ? "Sale"
+            : String(tx.transactionText || "").includes("P") ? "Purchase"
+            : "Form 4 Filing",
+          latestDate: date,
+        });
+      }
+    }
+    return Array.from(byName.values()).slice(0, 20);
+  })();
+  const insiders = insidersFromTxns !== null
+    ? insidersFromTxns
+    : insiderHolders.map((h: any) => ({
     name: h.name || "Unknown",
     relation: h.relation || "Unknown",
     shares: h.positionDirect?.raw || 0,
@@ -745,21 +1031,43 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderBuyPct = netActivity.buyPercentInsiderShares?.raw || 0;
   const insiderSellPct = netActivity.sellPercentInsiderShares?.raw || 0;
 
-  // Institutional inflow/outflow from QoQ changes
+  // Institutional inflow/outflow from QoQ changes.
+  //
+  // Source priority:
+  //   1. FMP topHolders (paid Ultimate path) — has changeQoQ per holder
+  //      computed from CIK-keyed prior-quarter diff. Authoritative when the
+  //      FMP institutional adapter is in play.
+  //   2. Yahoo institutionOwnership.ownershipList — legacy fallback, dead
+  //      under FMP_TIER=ultimate but still works on the EDGAR-only path.
   let instInflow = 0;
   let instOutflow = 0;
   let instIncreased = 0;
   let instDecreased = 0;
   let instNew = 0;
   let instSoldOut = 0;
-  for (const inst of instOwnership) {
-    const chg = inst.pctChange?.raw || 0;
-    if (chg > 50) instNew++;
-    else if (chg > 0) instIncreased++;
-    if (chg < -90) instSoldOut++;
-    else if (chg < 0) instDecreased++;
-    if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
-    if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
+  const fmpHolders: any[] = (edgar?.topHolders && Array.isArray(edgar.topHolders)) ? edgar.topHolders : [];
+  if (fmpHolders.length > 0) {
+    for (const h of fmpHolders) {
+      const chgPct = Number(h.changeQoQ || 0); // already in percent (e.g. 5.2)
+      const value = Number(h.value || 0);
+      if (chgPct > 50) instNew++;
+      else if (chgPct > 0) instIncreased++;
+      if (chgPct < -90) instSoldOut++;
+      else if (chgPct < 0) instDecreased++;
+      const chgFraction = chgPct / 100;
+      if (chgFraction > 0) instInflow += value * chgFraction;
+      if (chgFraction < 0) instOutflow += Math.abs(value * chgFraction);
+    }
+  } else {
+    for (const inst of instOwnership) {
+      const chg = inst.pctChange?.raw || 0;
+      if (chg > 50) instNew++;
+      else if (chg > 0) instIncreased++;
+      if (chg < -90) instSoldOut++;
+      else if (chg < 0) instDecreased++;
+      if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
+      if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
+    }
   }
 
   // Money Flow Score: -100 (all selling) to +100 (all buying)
@@ -794,7 +1102,19 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     volume: price.regularMarketVolume?.raw || 0,
     avgVolume: summary.averageVolume?.raw || 0,
 
-    insiderPct: (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100,
+    insiderPct: (() => {
+      // FMP-side insider %: sum each unique insider's most recent post-
+      // transaction holding (securitiesOwned), divide by sharesOutstanding.
+      // Replaces Yahoo's insidersPercentHeld which is dead under
+      // FMP_TIER=ultimate (and unreliable when alive).
+      const fmpInsiderShares = Number(raw?.fmpInsiderTotalShares ?? 0);
+      const fmpSharesOut = Number(raw?.fmpSharesOutstanding ?? 0);
+      if (fmpInsiderShares > 0 && fmpSharesOut > 0) {
+        return (fmpInsiderShares / fmpSharesOut) * 100;
+      }
+      // Last-ditch: Yahoo (almost always 0 under Ultimate).
+      return (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100;
+    })(),
     institutionPct: usingEdgar ? (edgar!.institutionPct || yahooInstPct) : yahooInstPct,
     institutionCount: usingEdgar ? edgar!.institutionCount : yahooInstCount,
     floatPct: usingEdgar ? (edgar!.institutionPct || yahooFloatPct) : yahooFloatPct,
@@ -823,7 +1143,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
 
     // Detailed lists
     topInstitutions,
-    topFunds,
+    topFunds: topFundsFiltered,
     insiders,
     recentInsiderTxns,
   };
@@ -1181,13 +1501,32 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
   if (!chartResult || !chartResult.timestamp) return { chartData: [], computedReturn: null };
 
   const timestamps = chartResult.timestamp;
-  const closes = chartResult.indicators?.quote?.[0]?.close || [];
+  const q = chartResult.indicators?.quote?.[0] || {};
+  const closes = q.close || [];
+  const opens = q.open || [];
+  const highs = q.high || [];
+  const lows = q.low || [];
+  const volumes = q.volume || [];
 
   const chartData = timestamps.map((t: number, i: number) => {
     const close = closes[i];
     if (close == null) return null;
     const date = new Date(t * 1000).toISOString().split("T")[0];
-    return { date, close: Number(close.toFixed(2)) };
+    // Include OHLC + volume so consumers can render candlesticks (Round 9 fix —
+    // previously only {date, close} was returned, which silently broke any
+    // candlestick chart trying to render off `chartData`).
+    const open = opens[i];
+    const high = highs[i];
+    const low = lows[i];
+    const volume = volumes[i];
+    return {
+      date,
+      close: Number(close.toFixed(2)),
+      open: open != null ? Number(Number(open).toFixed(2)) : Number(close.toFixed(2)),
+      high: high != null ? Number(Number(high).toFixed(2)) : Number(close.toFixed(2)),
+      low: low != null ? Number(Number(low).toFixed(2)) : Number(close.toFixed(2)),
+      volume: volume != null ? Number(volume) : 0,
+    };
   }).filter(Boolean);
 
   let computedReturn: number | null = null;
@@ -1206,6 +1545,8 @@ function extractChartData(chartResult: any): { chartData: any[]; computedReturn:
 // ============================================================
 
 import { registerSearchRoutes } from "./api/routes/search";
+import { mountAllCompartmentRoutes } from "./compartments/registry";
+import { registerDashboardRoutes } from "./dashboard/routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1214,10 +1555,24 @@ export async function registerRoutes(
 
   // ─── New compartmentalized routes (Phase 1 strangler) ──────────────────
   registerSearchRoutes(app);
+  // ─── Phase 1B compartment registry — wires each compartment's routes ───
+  // (Compartments without mountRoutes are silently skipped during the
+  // strangler migration; routes still in legacy code below keep working.)
+  mountAllCompartmentRoutes(app);
+  // ─── Phase 1B Round 7 — per-user dashboard layout persistence ──────────
+  registerDashboardRoutes(app);
 
-  // Warm up Yahoo crumb on startup — API routes wait for this before making Yahoo calls
+  // Warm up Yahoo crumb on startup — API routes wait for this before making
+  // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate
+  // or YAHOO_DISABLED=true) — no point burning into Yahoo's 429 block fetching
+  // a crumb we'll never use.
   let _warmupDone = false;
   const _warmupPromise = (async () => {
+    if (isYahooDisabled()) {
+      console.log("[yahoo] kill switch active (FMP_TIER=ultimate or YAHOO_DISABLED=true) — skipping crumb warmup");
+      _warmupDone = true;
+      return;
+    }
     for (let attempt = 1; attempt <= 5; attempt++) {
       await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s, 8s, 10s
       try {
@@ -2406,13 +2761,15 @@ export async function registerRoutes(
 
   app.get("/api/analyze/:ticker", checkFeatureAccess('analysisPerDay'), async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
+    const tf = parseTimeframe(req);
 
     try {
       await ensureReady();
-      // Fetch all data in parallel
+      // Fetch all data in parallel. Primary daily bars use the user-selected
+      // timeframe so RSI/EMA/Bollinger match what other pages compute.
       const [summaryResult, chart1YResult, chart3YResult, chart5YResult] = await Promise.allSettled([
         getQuote(ticker),
-        getChart(ticker, "1y", "1d"),
+        getChart(ticker, tf.range, tf.interval),
         getChart(ticker, "3y", "1wk"),
         getChart(ticker, "5y", "1wk"),
       ]);
@@ -2492,10 +2849,63 @@ export async function registerRoutes(
 
       const fullData = { quote, financials, historicalReturns };
 
-      // Compute scoring
-      const scoring = computeScoring(fullData);
-      const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-      const { verdict, ruling } = computeVerdict(weightedScore);
+      // ─── Phase 2.5 cutover ─────────────────────────────────────────────
+      // The verdict/score/ruling/scoring fields below now come from
+      // scoreSnapshot (the unified scoring function in
+      // server/snapshot/score.ts). The legacy computeScoring formula was
+      // structurally blind to institutional flow, insider activity, and
+      // analyst consensus — see CHANGES.md 2026-05-05 Phase 2 entry for
+      // the full rationale.
+      //
+      // Other fields (chartData, redFlags, businessQuality, etc.) stay
+      // on the legacy path because they don't depend on the score and
+      // wholesale-rewriting /api/analyze would be a much bigger change.
+      // The duplicate fetch (snapshot + legacy in parallel) costs an
+      // extra ~1-2s per call but guarantees nothing else breaks.
+      let verdict: string;
+      let ruling: string;
+      let weightedScore: number;
+      let scoring: Array<{ name: string; score: number; weight: number; reasoning: string }>;
+      try {
+        const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+        const next = scoreSnapshot(snap);
+        verdict = next.verdict;
+        ruling = next.ruling;
+        weightedScore = next.score10;
+        scoring = next.categories.map(c => ({
+          name: c.name, score: c.score, weight: c.weight, reasoning: c.reasoning,
+        }));
+
+        // Patch the legacy `financials` object with the snapshot's fundamentals
+        // for any field Polygon's quoteSummary returned null on. The snapshot
+        // adapter now has FMP fallbacks for D/E and ROE, but the legacy
+        // `financials` (sourced from extractQuoteData → Polygon directly) is
+        // what feeds the page's display fields, the red-flag generator, the
+        // decision-shortcut generator, and the bull/bear copy. Without this
+        // patch, the page shows "Debt/Equity: N/A" on PLTR/KO even though
+        // the score reflects the FMP-fallback value.
+        const sf = snap.fundamentals.value;
+        if (sf) {
+          if ((financials.debtToEquity == null) && sf.debtToEquity != null) {
+            financials.debtToEquity = sf.debtToEquity;
+          }
+          if ((financials.returnOnEquity == null) && sf.returnOnEquity != null) {
+            financials.returnOnEquity = sf.returnOnEquity;
+          }
+        }
+      } catch (e: any) {
+        // Snapshot path failed for whatever reason — fall back to the
+        // legacy formula so the page still renders. This is the safety
+        // net; if it fires often the snapshot pipeline has a bug worth
+        // investigating, not a reason to abandon the cutover.
+        routesLog.warn({ ticker, err: String(e?.message || e) }, "scoreSnapshot fallback to legacy computeScoring");
+        scoring = computeScoring(fullData);
+        weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+        const v = computeVerdict(weightedScore);
+        verdict = v.verdict;
+        ruling = v.ruling;
+      }
+
       const { positives, risks } = generateBullBear(fullData);
       const redFlags = generateRedFlags(fullData);
       const decisionShortcut = generateDecisionShortcut(fullData);
@@ -2711,15 +3121,21 @@ export async function registerRoutes(
 
   app.get("/api/trade-analysis/:ticker", async (req, res) => {
     const ticker = req.params.ticker.toUpperCase();
+    const tf = parseTimeframe(req);
     try {
       await ensureReady();
-      // Fetch 1-year daily for BBTC + RSI, 2-year weekly for SMA200
-      const [chart1YResult, chart2YResult] = await Promise.allSettled([
-        getChart(ticker, "1y", "1d"),
+      // Primary daily bars: fetch user range + 200 trading days of warmup
+      // so SMA200/EMA50/etc. are valid throughout the displayed window.
+      // Without warmup, a 1Y chart had SMA200 NaN for the first ~200 bars.
+      // 2-year weekly stays fixed for separate weekly SMA200 context.
+      const [chart1YWarmup, chart2YResult] = await Promise.allSettled([
+        fmpChartWithWarmup(ticker, tf.range, 200),
         getChart(ticker, "2y", "1wk"),
       ]);
 
-      const chart1Y = chart1YResult.status === "fulfilled" ? chart1YResult.value : null;
+      const warmupResult = chart1YWarmup.status === "fulfilled" ? chart1YWarmup.value : null;
+      const chart1Y = warmupResult?.chart ?? null;
+      const displayStartIdx = warmupResult?.displayStartIdx ?? 0;
       const chart2Y = chart2YResult.status === "fulfilled" ? chart2YResult.value : null;
 
       if (!chart1Y || !chart1Y.timestamp) {
@@ -2780,14 +3196,16 @@ export async function registerRoutes(
       const sma200Daily = computeSMA(closes, 200);
 
       // ---- Strategy 1: BBTC EMA Pyramid Risk ----
-      const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+      const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
       const bbtcSignals = bbtcResult.signals;
+      const bbtcSignalSides = bbtcResult.signalSides;
       const entryPrice = bbtcResult.entryPrice;
       const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
-      const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20 });
+      const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
       const verSignals = verResult.signals;
+      const verSignalSides = verResult.signalSides;
 
       // ---- Build response ----
       const lastIdx = closes.length - 1;
@@ -2945,35 +3363,44 @@ export async function registerRoutes(
         combinedSignal = "HOLD"; confidence = "Moderate"; reasoning = "No active signals from any strategy";
       }
 
-      // Chart data (subsample for frontend — every 3rd bar for ~80-90 points)
-      const step = Math.max(1, Math.floor(closes.length / 120));
+      // Chart data — strategies computed on the full series (incl. warmup
+      // bars), but the chart only RENDERS from displayStartIdx forward so
+      // the user sees only their requested timeframe. Within that window,
+      // uniformly sample at `step` PLUS include any bar with a signal so
+      // dots aren't silently dropped.
+      const displayLen = closes.length - displayStartIdx;
+      const step = Math.max(1, Math.floor(displayLen / 120));
       const chartDataArr: any[] = [];
-      for (let i = 0; i < closes.length; i += step) {
-        chartDataArr.push({
-          date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
-          close: Number(closes[i].toFixed(2)),
-          ema9: isNaN(ema9[i]) ? null : Number(ema9[i].toFixed(2)),
-          ema21: isNaN(ema21[i]) ? null : Number(ema21[i].toFixed(2)),
-          ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
-          sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
-          rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
-          bbtcSignal: bbtcSignals[i] || null,
-          verSignal: verSignals[i] || null,
-        });
+      const rowAt = (i: number) => ({
+        date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
+        // OHLC + volume so the TV-style CandlePane can render candles.
+        // Fall back to close when individual OHLC fields are missing so the
+        // candle isn't dropped entirely (Yahoo occasionally returns null
+        // for opens/highs/lows on illiquid days).
+        open: opens[i] != null ? Number(Number(opens[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        high: highs[i] != null ? Number(Number(highs[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        low: lows[i] != null ? Number(Number(lows[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
+        close: Number(closes[i].toFixed(2)),
+        volume: volumes[i] != null ? Number(volumes[i]) : 0,
+        ema9: isNaN(ema9[i]) ? null : Number(ema9[i].toFixed(2)),
+        ema21: isNaN(ema21[i]) ? null : Number(ema21[i].toFixed(2)),
+        ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
+        sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
+        rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
+        bbtcSignal: bbtcSignals[i] || null,
+        verSignal: verSignals[i] || null,
+        bbtcSide: bbtcSignalSides[i] || null,
+        verSide: verSignalSides[i] || null,
+      });
+      for (let i = displayStartIdx; i < closes.length; i++) {
+        const hasSignal = !!(bbtcSignals[i] || verSignals[i]);
+        const offset = i - displayStartIdx;
+        if (offset % step !== 0 && !hasSignal) continue;
+        chartDataArr.push(rowAt(i));
       }
       // Always include the last bar
       if (chartDataArr.length === 0 || chartDataArr[chartDataArr.length - 1].date !== new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0]) {
-        chartDataArr.push({
-          date: new Date(timestamps[lastIdx] * 1000).toISOString().split("T")[0],
-          close: Number(closes[lastIdx].toFixed(2)),
-          ema9: isNaN(ema9[lastIdx]) ? null : Number(ema9[lastIdx].toFixed(2)),
-          ema21: isNaN(ema21[lastIdx]) ? null : Number(ema21[lastIdx].toFixed(2)),
-          ema50: isNaN(ema50[lastIdx]) ? null : Number(ema50[lastIdx].toFixed(2)),
-          sma200: isNaN(sma200Daily[lastIdx]) ? null : Number(sma200Daily[lastIdx].toFixed(2)),
-          rsi: isNaN(rsi14[lastIdx]) ? null : Number(rsi14[lastIdx].toFixed(2)),
-          bbtcSignal: bbtcSignals[lastIdx] || null,
-          verSignal: verSignals[lastIdx] || null,
-        });
+        chartDataArr.push(rowAt(lastIdx));
       }
 
       // ── Run 3-Gate Signal Engine ──
@@ -3271,8 +3698,15 @@ export async function registerRoutes(
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
-    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    // Sized for an actually-completing scan: 1500 tickers × per-ticker FMP
+    // fetches was timing out at nginx's 60s default. 500 tickers, 20-wide
+    // batches, 500ms inter-batch backoff lands in ~15-25s. Shuffle in
+    // fmpScreener gives a different cross-section every call so it doesn't
+    // feel "stuck on the same tickers."
+    const scanSize = Math.min(Number(req.query.count) || 500, 1000);
     const showAll = req.query.showAll === "true";
+    const direction = ((req.query.direction as string) || "both").toLowerCase();
+    const tf = parseTimeframe(req);
 
     // Map market cap tier to min/max
     let minMarketCap = 500_000_000;
@@ -3285,13 +3719,11 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple → instant response.
-    // User-scoped to keep rate-limit fairness but shared filters hit the same key anyway.
-    const scanCacheKey = `scanner:main:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
-    {
-      const cached = getCached(scanCacheKey);
-      if (cached) return res.json(cached);
-    }
+    // Route-level cache REMOVED 2026-05-07. User wants press-button-get-
+    // fresh-results — cached payloads were locking him to the same handful
+    // of tickers for 30 min at a time. Per-ticker bar cache (30 min) and
+    // FMP screener still keep the recompute fast (~5-15s typical), and the
+    // shuffle in fmpScreener gives a different cross-section every call.
 
     try {
       await ensureReady();
@@ -3323,7 +3755,7 @@ export async function registerRoutes(
         const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
-            const chart = await getChart(ticker, "6mo", "1d");
+            const chart = await getChart(ticker, tf.range, tf.interval);
             if (!chart || !chart.timestamp) return null;
 
             const quoteData = chart.indicators?.quote?.[0] || {};
@@ -3350,15 +3782,18 @@ export async function registerRoutes(
             const ema21 = computeEMA(closes, 21);
             const ema50 = computeEMA(closes, 50);
             const atr14 = computeATR(highs, lows, closes, 14);
+            // RSI(14) computed up-front so BBTC can use it for the long-entry
+            // ceiling (RSI < 65) and short-entry floor (RSI > 35); VER reuses
+            // the same series below.
+            const rsi14 = computeRSI(closes, 14);
 
-            const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14 });
+            const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
             const bbtcSignals = bbtcResult.signals;
             const bbtcTopSignal = bbtcResult.topSignal;
             const bbtcTrend = bbtcResult.trend;
             const bbtcBias = bbtcResult.bias;
 
             // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
-            const rsi14 = computeRSI(closes, 14);
 
             const bbPeriodS = 20;
             const bbStdDevS = 2;
@@ -3385,6 +3820,7 @@ export async function registerRoutes(
               bbUpper: bbUpperS,
               bbLower: bbLowerS,
               volAvg20: volAvg20S,
+              atr14,
             });
             const verSignals = verResult.signals;
             const verTopSignal = verResult.topSignal;
@@ -3553,26 +3989,48 @@ export async function registerRoutes(
         return b.score - a.score;
       });
 
-      // Filter: only show stocks worth looking at
-      // - At least 1 gate cleared, OR
-      // - Old score >= 5 (Strong Buy by legacy system), OR
-      // - showAll mode shows everything scored
-      const results = showAll
-        ? sorted.slice(0, 50)
-        : sorted.filter(r => {
-            const gates = r.gates?.gatesCleared ?? 0;
-            if (gates >= 1) return true;          // Gate setup active
-            if (r.score >= 5) return true;         // Strong signal from legacy
-            return false;                          // Everything else is noise
-          }).slice(0, 25);
+      // Direction filter applied BEFORE truncation so the result count
+      // reflects what's actually present in the scanned universe — not
+      // "top 50 by sort, then client filters down to 3."
+      //   - "buy"  → only GO/SET/READY/PULLBACK signals with BULLISH direction
+      //   - "sell" → only GO/SET/READY/PULLBACK signals with BEARISH direction
+      //   - "both" → no direction filter (existing behavior)
+      const ENTRY_SIGNAL_RE = /^(GO|SET|READY|PULLBACK)/;
+      const directionFiltered = (direction === "buy" || direction === "sell")
+        ? sorted.filter(r => {
+            if (!ENTRY_SIGNAL_RE.test(String(r.gates?.signal ?? ""))) return false;
+            const dir = r.gates?.direction;
+            return direction === "buy" ? dir === "BULLISH" : dir === "BEARISH";
+          })
+        : sorted;
+
+      // Default-pass-fewer-out filter for the BOTH view. The previous version
+      // threw away any ticker without a fully-cleared gate or score>=5 — that
+      // left scans returning only 2-3 tickers. Now we return 50 ranked
+      // candidates: gate-cleared and strong-buy on top, then merely "Buy" /
+      // "Lean Buy" / neutral fill the rest. The user can see WHY each shows
+      // up via its score + gates fields.
+      const TOP_N = 50;
+      const qualified = directionFiltered.filter(r => {
+        const gates = r.gates?.gatesCleared ?? 0;
+        return gates >= 1 || r.score >= 3;
+      });
+      const fill = directionFiltered.filter(r => !qualified.includes(r));
+      const merged = [...qualified, ...fill];
+      // For BUY/SELL directional filters: drop fill entirely. We've already
+      // filtered to actionable entry signals; padding with NO SETUP rows would
+      // re-introduce the inconsistency.
+      const results = (direction === "buy" || direction === "sell")
+        ? directionFiltered.slice(0, TOP_N)
+        : showAll ? directionFiltered.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
-        filters: { minPrice, maxPrice, sector, marketCapTier },
+        filters: { minPrice, maxPrice, sector, marketCapTier, direction },
         results,
       };
-      setCache(scanCacheKey, payload, TTL.scanner);
+      // Route cache removed — see comment on the cache-read block above.
       res.json(payload);
     } catch (error: any) {
       console.error("Scanner error:", error?.message || error);
@@ -3614,14 +4072,12 @@ export async function registerRoutes(
       universeSize: q.universeSize != null ? Math.min(Number(q.universeSize), 3000) : 2000,
     };
 
-    const cacheKey = `scanner:v2:${JSON.stringify(filters)}`;
-    const cached = getCached(cacheKey);
-    if (cached) return res.json(cached);
-
+    // Route-level cache removed 2026-05-07 — match main + AMC scanners.
+    // Universe shuffle gives a different cross-section per scan; per-ticker
+    // bar cache (scanner-v2:bars:v2:*) keeps recompute fast.
     try {
       await ensureReady();
       const out = await runScannerV2(filters);
-      setCache(cacheKey, out, 60_000); // 1-min cache
       console.log(`[scanner-v2] scanned ${out.universeSize} tickers in ${out.scanDurationMs}ms, returned ${out.results.length}`);
       res.json(out);
     } catch (err: any) {
@@ -3640,8 +4096,12 @@ export async function registerRoutes(
     const maxPrice = Number(req.query.maxPrice) || 10000;
     const sector = (req.query.sector as string) || "all";
     const marketCapTier = (req.query.marketCap as string) || "all";
-    const scanSize = Math.min(Number(req.query.count) || 100, 200);
+    // 500 default / 1000 cap (matches main scanner). Sized to complete under
+    // nginx's 60s timeout window.
+    const scanSize = Math.min(Number(req.query.count) || 500, 1000);
     const showAll = req.query.showAll === "true";
+    const direction = ((req.query.direction as string) || "both").toLowerCase();
+    const tf = parseTimeframe(req);
 
     let minMarketCap = 500_000_000;
     let maxMarketCap: number | undefined;
@@ -3653,12 +4113,8 @@ export async function registerRoutes(
       default: minMarketCap = 500_000_000; break;
     }
 
-    // Route-level cache: same filter tuple → instant response.
-    const amcCacheKey = `scanner:amc:${minPrice}:${maxPrice}:${sector}:${marketCapTier}:${scanSize}:${showAll ? 1 : 0}`;
-    {
-      const cached = getCached(amcCacheKey);
-      if (cached) return res.json(cached);
-    }
+    // Route-level cache removed 2026-05-07 (matches main scanner). Per-ticker
+    // bar cache + universe shuffle keep recompute fast and results fresh.
 
     try {
       await ensureReady();
@@ -3685,7 +4141,7 @@ export async function registerRoutes(
         const batch = tickers.slice(b, b + BATCH);
         const batchResults = await Promise.allSettled(
           batch.map(async (ticker) => {
-            const chart = await getChart(ticker, "6mo", "1d");
+            const chart = await getChart(ticker, tf.range, tf.interval);
             if (!chart || !chart.timestamp) return null;
 
             const quoteData = chart.indicators?.quote?.[0] || {};
@@ -3754,7 +4210,12 @@ export async function registerRoutes(
                    : closes[li] < ema20[li] && ema20[li] < ema50[li] ? "DOWN" : "SIDEWAYS")
                 : "SIDEWAYS";
 
-            const label = amcScore >= 5 ? "Strong Entry" : amcScore >= 4 ? "Entry" : amcScore >= 3 ? "Near Entry" : null;
+            // AMC scanner is single-strategy — it scores by the AMC algorithm
+            // ALONE. The unified Trade Analysis gate system can still say
+            // NO SETUP for an AMC-Strong ticker if Gate 1 (reversal) isn't
+            // firing. Label the badge so the user knows the scope: "AMC
+            // STRONG" not "STRONG ENTRY".
+            const label = amcScore >= 5 ? "AMC STRONG" : amcScore >= 4 ? "AMC SETUP" : amcScore >= 3 ? "AMC WATCH" : null;
 
             return {
               ticker,
@@ -3784,17 +4245,35 @@ export async function registerRoutes(
         }
       }
 
-      // Sort by AMC score descending, then by VAMI
+      // Sort by AMC score descending, then by VAMI. Same default-pass-fewer-out
+      // logic as the main scanner: always return 50 ranked candidates with
+      // amcScore>=3 on top, then fill from the rest.
       const sorted = allResults.sort((a, b) => b.amcScore - a.amcScore || b.vami - a.vami);
-      const results = showAll ? sorted.slice(0, 50) : sorted.filter(r => r.amcScore >= 3).slice(0, 20);
+
+      // Direction filter applied BEFORE truncation so BUY/SELL counts reflect
+      // actual AMC entry/exit signals in the scanned universe.
+      //   - "buy"  → AMC signal === "ENTER"
+      //   - "sell" → AMC signal === "SELL"
+      //   - "both" → no direction filter
+      const directionFiltered = (direction === "buy" || direction === "sell")
+        ? sorted.filter(r => direction === "buy" ? r.signal === "ENTER" : r.signal === "SELL")
+        : sorted;
+
+      const TOP_N = 50;
+      const qualified = directionFiltered.filter(r => r.amcScore >= 3);
+      const fill = directionFiltered.filter(r => !qualified.includes(r));
+      const merged = [...qualified, ...fill];
+      const results = (direction === "buy" || direction === "sell")
+        ? directionFiltered.slice(0, TOP_N)
+        : showAll ? directionFiltered.slice(0, TOP_N) : merged.slice(0, TOP_N);
 
       const payload = {
         scannedAt: new Date().toISOString(),
         totalScanned: tickers.length,
-        filters: { minPrice, maxPrice, sector, marketCapTier },
+        filters: { minPrice, maxPrice, sector, marketCapTier, direction },
         results,
       };
-      setCache(amcCacheKey, payload, TTL.scanner);
+      // Route cache removed — see comment on the cache-read block above.
       res.json(payload);
     } catch (error: any) {
       console.error("AMC Scanner error:", error?.message || error);
@@ -3809,12 +4288,13 @@ export async function registerRoutes(
       await ensureReady();
       const ticker = String(req.params.ticker || "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker required" });
+      const tf = parseTimeframe(req);
 
-      const key = `v2:gate:${ticker}`;
+      const key = `v2:gate:${ticker}:${tf.value}`;
       const cached = getCached(key);
       if (cached) return res.json({ ticker, score: cached.score, verdict: cached.verdict, cached: true });
 
-      const chart6m = await getChart(ticker, "6mo", "1d");
+      const chart6m = await getChart(ticker, tf.range, tf.interval);
       if (!chart6m || !chart6m.timestamp) {
         return res.json({ ticker, score: null, verdict: null, reason: "no-chart" });
       }
@@ -3865,12 +4345,13 @@ export async function registerRoutes(
       const ticker = String(req.params.ticker || "").toUpperCase().trim();
       if (!ticker) return res.status(400).json({ error: "ticker required" });
       const bars = Number(req.query.bars) || 60;
+      const tf = parseTimeframe(req);
 
-      const key = `v2:osc:${ticker}:${bars}`;
+      const key = `v2:osc:${ticker}:${bars}:${tf.value}`;
       const cached = getCached(key);
       if (cached) return res.json({ ticker, ...cached, cached: true });
 
-      const chart = await getChart(ticker, "6mo", "1d");
+      const chart = await getChart(ticker, tf.range, tf.interval);
       if (!chart?.timestamp) return res.json({ ticker, series: [], reason: "no-chart" });
       const q = chart.indicators?.quote?.[0] || {};
       const closes: number[] = (q.close || []).map((v: any) => Number(v) || 0).filter((n: number) => n > 0);
@@ -3948,13 +4429,14 @@ export async function registerRoutes(
       const listType = req.params.listType;
       const items = await storage.getFavorites(req.user!.id, listType);
       const force = String(req.query.force || "") === "1";
+      const tf = parseTimeframe(req);
       const results: any[] = [];
 
       // Partition: cached vs needs-compute. Per-ticker gate cache with 15min TTL.
       // Force=1 (manual Refresh button) bypasses cache; normal page loads reuse.
       const toCompute: typeof items = [];
       for (const item of items) {
-        const key = `v2:gate:${item.ticker.toUpperCase()}`;
+        const key = `v2:gate:${item.ticker.toUpperCase()}:${tf.value}`;
         const cached = force ? null : getCached(key);
         if (cached) {
           results.push({ ...item, score: cached.score, verdict: cached.verdict });
@@ -3969,7 +4451,7 @@ export async function registerRoutes(
         const batchResults = await Promise.allSettled(
           batch.map(async (item) => {
             try {
-              const chart6m = await getChart(item.ticker, "6mo", "1d");
+              const chart6m = await getChart(item.ticker, tf.range, tf.interval);
               if (!chart6m || !chart6m.timestamp) {
                 console.log(`[watchlist-refresh] ${item.ticker}: no chart data`);
                 return { ...item };
@@ -3988,7 +4470,7 @@ export async function registerRoutes(
               const score = gateResult.gatesCleared;
               const verdict = gateResult.signal;
               await storage.updateFavoriteScore(req.user!.id, item.ticker, listType, score, verdict);
-              setCache(`v2:gate:${item.ticker.toUpperCase()}`, { score, verdict }, TTL.watchlist);
+              setCache(`v2:gate:${item.ticker.toUpperCase()}:${tf.value}`, { score, verdict }, TTL.watchlist);
               console.log(`[watchlist-refresh] ${item.ticker}: ${verdict} (${score} gates)`);
               return { ...item, score, verdict };
             } catch (err: any) {
@@ -4034,19 +4516,25 @@ export async function registerRoutes(
 
       // Route-level cache: 1h TTL per ticker. Verdict is long-term outlook;
       // recomputing it for every page load (7+ chart fetches) is pure waste.
-      const verdictCacheKey = `verdict:v3:${ticker}`;
+      const verdictCacheKey = `verdict:v11:${ticker}`; // v11 — metals/benchmarks payload moved to Market Pulse
       const verdictCached = getCached(verdictCacheKey);
       if (verdictCached) return res.json(verdictCached);
 
       const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-      // Batch 1: Core ticker data (analysis + institutional)
+      // Batch 1: Core ticker data (analysis + institutional). Phase 2.5
+      // cutover — score now comes from scoreSnapshot() instead of the
+      // legacy computeScoring() formula, matching what /api/analyze
+      // returns for the Trade Analysis header. The "header grade doesn't
+      // match outlook grade" complaint goes away once both pages read
+      // from the same scoring function.
       const [analysisRes, instRes] = await Promise.allSettled([
         (async () => {
           const summary = await getQuote(ticker);
           if (!summary) return null;
           const { quote, financials } = extractQuoteData(summary);
-          // Beta fallback — see verdict route comment above for rationale.
+          // Beta fallback for the legacy `quote` object — the page still
+          // displays this directly so we patch from FMP profile too.
           if (quote.beta == null) {
             try {
               const fmpBeta = await getFmpProfileBeta(ticker);
@@ -4057,11 +4545,43 @@ export async function registerRoutes(
           const chart1Y = await getChart(ticker, "1y", "1d").catch(() => null);
           const { computedReturn: ret1Y } = extractChartData(chart1Y);
           const historicalReturns = { oneYear: ret1Y, threeYear: null, fiveYear: null };
-          const fullData = { quote, financials, historicalReturns };
-          const scoring = computeScoring(fullData);
-          const weightedScore = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
-          const { verdict, ruling } = computeVerdict(weightedScore);
-          return { score: weightedScore, verdict, ruling, scoring, quote, financials };
+
+          // Score from the unified snapshot path. Falls back to the legacy
+          // formula if the snapshot throws so the page still renders.
+          let score: number;
+          let verdict: string;
+          let ruling: string;
+          let scoring: any[];
+          try {
+            const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+            const next = scoreSnapshot(snap);
+            score = next.score10;
+            verdict = next.verdict;
+            ruling = next.ruling;
+            scoring = next.categories.map(c => ({
+              name: c.name, score: c.score, weight: c.weight, reasoning: c.reasoning,
+            }));
+            // Patch legacy `financials` with snapshot fundamentals for any
+            // field Polygon left null — same shim as /api/analyze.
+            const sf = snap.fundamentals.value;
+            if (sf) {
+              if ((financials.debtToEquity == null) && sf.debtToEquity != null) {
+                financials.debtToEquity = sf.debtToEquity;
+              }
+              if ((financials.returnOnEquity == null) && sf.returnOnEquity != null) {
+                financials.returnOnEquity = sf.returnOnEquity;
+              }
+            }
+          } catch (e: any) {
+            routesLog.warn({ ticker, err: String(e?.message || e) }, "verdict scoreSnapshot fallback to legacy");
+            const fullData = { quote, financials, historicalReturns };
+            scoring = computeScoring(fullData);
+            score = scoring.reduce((sum, cat) => sum + cat.score * cat.weight, 0);
+            const v = computeVerdict(score);
+            verdict = v.verdict;
+            ruling = v.ruling;
+          }
+          return { score, verdict, ruling, scoring, quote, financials };
         })(),
         (async () => {
           await delay(500);
@@ -4070,30 +4590,51 @@ export async function registerRoutes(
         })(),
       ]);
 
-      // Batch 2: Historical charts for stress test (sequentially with delays)
-      await delay(500);
-      const tickerChart = await getChart(ticker, "25y", "1mo").catch(() => null);
-      await delay(400);
-      const spyChart = await getChart("SPY", "25y", "1mo").catch(() => null);
-      await delay(400);
-      // Metals via FMP (Yahoo GC=F/SI=F unreliable). Adapt to Yahoo chart shape.
-      async function fmpMetalChart(sym: string): Promise<any> {
+      // Batch 2: Historical charts for stress test.
+      // Polygon Stocks Starter is capped ~5y, so the oldest events (Dot-Com,
+      // 9/11, 2008, 2011) require a deeper-history source. With Yahoo killed
+      // under FMP_TIER=ultimate, the only working long-history source is FMP
+      // /historical-price-eod/full, which goes back to 2000-01-01. Same
+      // approach already used for gold/silver below — generalised to a single
+      // helper that takes any symbol.
+      async function fmpHistoricalChart(sym: string): Promise<any> {
         try {
           const to = new Date().toISOString().slice(0, 10);
-          const from = "2000-01-01";
-          const rows: any = await fmpGet(`/historical-price-eod/full?symbol=${sym}&from=${from}&to=${to}`);
-          const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
-          if (!arr.length) return null;
-          const asc = [...arr].sort((a: any, b: any) => a.date.localeCompare(b.date));
+          // FMP /historical-price-eod/full caps at ~5000 rows per call (~20y
+          // of trading days). One call from 2000 only returns back to ~2006,
+          // which kills the Dot-Com and 9/11 stress events. Split into two
+          // chunked calls and concatenate so 2000-present is fully covered.
+          const [oldChunk, newChunk] = await Promise.allSettled([
+            fmpGet("/historical-price-eod/full", { symbol: sym, from: "2000-01-01", to: "2009-12-31" }),
+            fmpGet("/historical-price-eod/full", { symbol: sym, from: "2010-01-01", to }),
+          ]);
+          const arrFrom = (r: any): any[] => {
+            const data = r.status === "fulfilled" ? r.value : null;
+            if (!data) return [];
+            return Array.isArray(data) ? data : (data?.historical || []);
+          };
+          const all = [...arrFrom(oldChunk), ...arrFrom(newChunk)];
+          if (!all.length) return null;
+          // Dedupe by date in case the chunks overlap
+          const byDate = new Map<string, any>();
+          for (const row of all) byDate.set(row.date, row);
+          const asc = [...byDate.values()].sort((a: any, b: any) => a.date.localeCompare(b.date));
           return {
             timestamp: asc.map((r: any) => Math.floor(new Date(r.date).getTime() / 1000)),
             indicators: { quote: [{ close: asc.map((r: any) => r.close) }] },
           };
         } catch { return null; }
       }
-      const goldChart = await fmpMetalChart("GCUSD");
+      await delay(500);
+      const tickerChart = await fmpHistoricalChart(ticker);
       await delay(200);
-      const silverChart = await fmpMetalChart("SIUSD");
+      const spyChart = await fmpHistoricalChart("SPY");
+      await delay(200);
+      const qqqChart = await fmpHistoricalChart("QQQ");
+      await delay(200);
+      const goldChart = await fmpHistoricalChart("GCUSD");
+      await delay(200);
+      const silverChart = await fmpHistoricalChart("SIUSD");
 
       const stratRes = { status: "fulfilled" as const, value: null };
 
@@ -4130,31 +4671,20 @@ export async function registerRoutes(
         period: `${event.start.substring(0, 7)} to ${event.end.substring(0, 7)}`,
         ticker: getReturnDuringPeriod(tickerChart, event.start, event.end) ?? 0,
         spy: getReturnDuringPeriod(spyChart, event.start, event.end) ?? 0,
+        nasdaq: getReturnDuringPeriod(qqqChart, event.start, event.end) ?? 0,
         gold: getReturnDuringPeriod(goldChart, event.start, event.end) ?? 0,
         silver: getReturnDuringPeriod(silverChart, event.start, event.end) ?? 0,
         hasData: getReturnDuringPeriod(tickerChart, event.start, event.end) !== null,
       }));
 
-      // Current metals data via FMP (Yahoo GC=F/SI=F unreliable)
-      async function fmpSpotQuote(sym: string): Promise<{ price: number; changePct: number } | null> {
-        try {
-          const rows: any = await fmpGet(`/quote?symbol=${sym}`);
-          const row = Array.isArray(rows) ? rows[0] : rows;
-          if (!row?.price) return null;
-          return { price: row.price, changePct: row.changePercentage ?? row.changesPercentage ?? 0 };
-        } catch { return null; }
-      }
-      const goldSpot = await fmpSpotQuote("GCUSD");
-      await delay(200);
-      const silverSpot = await fmpSpotQuote("SIUSD");
-      await delay(200);
-      const spyQuote = await getQuote("SPY").catch(() => null);
+      // (Spot quotes for Gold/Silver/SPY/QQQ moved to /api/market-pulse —
+      // those cards now live on the Market Pulse page.)
 
-      const spyPrice = spyQuote?.price || null;
-
-      // Compute unified verdict score (0-100)
-      // Weighted combination of: analysis score, institutional flow, strategy alignment
-      let unifiedScore = 50; // neutral baseline
+      // Build display-only factor breakdown shown on the verdict page.
+      // unifiedScore + finalVerdict are computed FROM THE SNAPSHOT below
+      // (Phase 2.5 cutover) — these factors are kept around so the user
+      // sees how stress resilience, institutional flow, etc. break down,
+      // but they don't drive the score anymore.
       const factors: { name: string; score: number; weight: number; signal: string; color: string }[] = [];
 
       if (analysis) {
@@ -4204,34 +4734,41 @@ export async function registerRoutes(
         factors.push({ name: "Insider Confidence", score: s, weight: 0.10, signal: netBuy > 2 ? "BUYING" : netBuy < -2 ? "SELLING" : "NEUTRAL", color: netBuy > 2 ? "green" : netBuy < -2 ? "red" : "yellow" });
       }
 
-      // Calculate unified score. NOTE: post-Polygon migration, some factors
-      // (institutional, strategies, stress, insider) can silently drop out
-      // when Yahoo endpoints are blocked or 25y history is unavailable.
-      // Re-normalize across the factors that actually contributed so we
-      // don't default to SPECULATIVE just because data is missing.
-      const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
-      if (totalWeight > 0) {
-        unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
-      }
-
-      // If only one or two factors contributed (common when Yahoo data is
-      // unavailable), nudge the buckets wider so the verdict is not
-      // artificially pessimistic.
-      const factorsContributed = factors.length;
-      const narrowEvidence = factorsContributed <= 2;
-
-      // Final verdict
+      // Phase 2.5 cutover: unifiedScore + finalVerdict come from the
+      // snapshot scoring path so they line up with /api/analyze. The
+      // `factors` array above is now a display-only breakdown — it shows
+      // the user how stress resilience, institutional flow, etc. each
+      // contribute, but the actual verdict bucket is determined by the
+      // unified score from scoreSnapshot, which reads from a richer set
+      // of categories with consistent weighting.
+      let unifiedScore = 50;
       let finalVerdict = "SPECULATIVE";
-      let verdictColor = "yellow";
-      // Thresholds widen by 5 points in each direction when evidence is thin
-      const strongCutoff = narrowEvidence ? 65 : 70;
-      const investCutoff = narrowEvidence ? 50 : 55;
-      const highRiskCutoff = narrowEvidence ? 25 : 30;
-      const specCutoff = narrowEvidence ? 35 : 40;
-      if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
-      else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
-      else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
-      else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
+      let verdictColor: "green" | "yellow" | "red" = "yellow";
+
+      if (analysis) {
+        unifiedScore = Math.round(analysis.score * 10);
+        finalVerdict = analysis.verdict;
+        verdictColor =
+          finalVerdict === "STRONG CONVICTION" || finalVerdict === "INVESTMENT GRADE" ? "green" :
+          finalVerdict === "HIGH RISK" ? "red" :
+          "yellow";
+      } else {
+        // No snapshot — fall back to the legacy factor-blend on the
+        // verdict-page-specific factors so the page still renders.
+        const totalWeight = factors.reduce((s, f) => s + f.weight, 0);
+        if (totalWeight > 0) {
+          unifiedScore = Math.round(factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight);
+        }
+        const narrowEvidence = factors.length <= 2;
+        const strongCutoff = narrowEvidence ? 65 : 70;
+        const investCutoff = narrowEvidence ? 50 : 55;
+        const highRiskCutoff = narrowEvidence ? 25 : 30;
+        const specCutoff = narrowEvidence ? 35 : 40;
+        if (unifiedScore >= strongCutoff) { finalVerdict = "STRONG CONVICTION"; verdictColor = "green"; }
+        else if (unifiedScore >= investCutoff) { finalVerdict = "INVESTMENT GRADE"; verdictColor = "green"; }
+        else if (unifiedScore <= highRiskCutoff) { finalVerdict = "HIGH RISK"; verdictColor = "red"; }
+        else if (unifiedScore <= specCutoff) { finalVerdict = "SPECULATIVE"; verdictColor = "yellow"; }
+      }
 
       const verdictPayload = {
         ticker,
@@ -4265,25 +4802,6 @@ export async function registerRoutes(
 
         // Stress tests
         stressTests,
-
-        // Metals comparison
-        metals: {
-          gold: {
-            price: goldSpot?.price || 0,
-            change: goldSpot?.changePct || 0,
-            name: "Gold",
-          },
-          silver: {
-            price: silverSpot?.price || 0,
-            change: silverSpot?.changePct || 0,
-            name: "Silver",
-          },
-          spy: {
-            price: spyPrice?.regularMarketPrice?.raw || 0,
-            change: spyPrice?.regularMarketChangePercent?.raw || 0,
-            name: "S&P 500",
-          },
-        },
       };
       setCache(verdictCacheKey, verdictPayload, TTL.verdict);
       res.json(verdictPayload);
@@ -4510,17 +5028,76 @@ export async function registerRoutes(
     { symbol: "XLC", name: "Communication Services", fmpSector: "Communication Services" },
   ];
 
+  // ─── Market Pulse ─────────────────────────────────────────────────────────
+  //
+  // Reads cron-warmed disk caches (intraday.json + breadth.json), stitches
+  // them, computes the regime score, returns the full snapshot. Zero live
+  // FMP calls on the request path — page loads in <50ms.
+  app.get("/api/market-pulse", async (_req, res) => {
+    try {
+      const { readIntraday, readBreadth } = await import("./market-pulse-cache");
+      const { computeRegime } = await import("./data/providers/market-pulse.adapter");
+      const intraday = readIntraday();
+      const breadth = readBreadth();
+      if (!intraday) {
+        return res.status(503).json({
+          error: "Market Pulse cache is warming. Try again in a few seconds.",
+        });
+      }
+      const breadthOut = breadth ?? {
+        pctAbove50d: null, pctAbove200d: null,
+        newHighs: null, newLows: null, universeSize: null,
+        asOf: 0,
+      };
+      const regime = computeRegime(intraday.volatility, breadthOut, intraday.riskAppetite);
+      res.json({
+        asOf: intraday.asOf,
+        breadthAsOf: breadthOut.asOf,
+        marketStatus: intraday.marketStatus,
+        volatility: intraday.volatility,
+        breadth: {
+          pctAbove50d: breadthOut.pctAbove50d,
+          pctAbove200d: breadthOut.pctAbove200d,
+          newHighs: breadthOut.newHighs,
+          newLows: breadthOut.newLows,
+          universeSize: breadthOut.universeSize,
+        },
+        riskAppetite: intraday.riskAppetite,
+        indices: intraday.indices,
+        safeHaven: intraday.safeHaven,
+        regime,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to load Market Pulse" });
+    }
+  });
+
   app.get("/api/sectors", async (_req, res) => {
     try {
       await ensureReady();
       const results: any[] = [];
 
+      // Pull ~95 days of EOD bars per SPDR ETF directly from FMP. We need
+      // ~22 trading days for the 1-month return and ~63 for the 3-month
+      // return, so 95 calendar days is comfortably enough buffer for
+      // weekends/holidays.
+      const to = new Date().toISOString().slice(0, 10);
+      const from = new Date(Date.now() - 95 * 24 * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+
       for (const etf of SECTOR_ETFS) {
         try {
-          const chart = await getChart(etf.symbol, "3mo", "1d");
-          if (!chart) continue;
+          const raw: any = await fmpGet("/historical-price-eod/full", {
+            symbol: etf.symbol, from, to,
+          });
+          const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
+          if (rows.length < 2) continue;
 
-          const closes: number[] = (chart.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
+          // FMP returns rows newest-first; sort ascending by date.
+          const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+          const closes: number[] = asc
+            .map(r => Number(r.close))
+            .filter((c: number) => Number.isFinite(c));
           if (closes.length < 2) continue;
 
           const last = closes[closes.length - 1];
@@ -4542,7 +5119,9 @@ export async function registerRoutes(
             },
           });
 
-          await new Promise(r => setTimeout(r, 400));
+          // FMP Ultimate is 3000 req/min, so 150ms per ETF (~7 req/sec)
+          // is well under the limit and still polite.
+          await new Promise(r => setTimeout(r, 150));
         } catch (e: any) {
           console.log(`[sectors] ${etf.symbol} failed: ${e?.message}`);
         }
@@ -4551,6 +5130,535 @@ export async function registerRoutes(
       res.json(results);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Sector data fetch failed" });
+    }
+  });
+
+  // ================================================================
+  // SNAPSHOT + SCORE DIAGNOSTICS
+  //
+  // Phase 1 of the architectural rebuild built getCompanySnapshot — a
+  // provider-agnostic snapshot with per-field provenance. Phase 2 added
+  // scoreSnapshot — a single scoring function that's no longer blind to
+  // institutional flow / insider activity / analyst consensus.
+  //
+  // Neither is wired into /api/analyze or /api/verdict yet. These diag
+  // routes expose them for verification:
+  //   GET /api/diag/snapshot/:ticker[?view=health|?refresh=1]
+  //   GET /api/diag/score/:ticker[?refresh=1]
+  //
+  // Use the score endpoint to compare the new score's `score10` and
+  // `verdict` fields against what /api/analyze and /api/verdict are
+  // returning today. The `legacyView` block in the response shows what
+  // the score WOULD be if the new flow/insider/analyst factors were
+  // dropped (i.e., what computeScoring effectively does today).
+  // ================================================================
+
+  // Strategy evaluator. Runs computeBBTC + computeVER on a basket of tickers
+  // for the past N days and returns per-fire metadata + win-rate aggregates.
+  // Used to ground strategy-tuning decisions in data instead of intuition.
+  //
+  //   GET /api/diag/strategy-eval?symbols=AAPL,MSFT,...&days=365[&detail=1]
+  //
+  // Default omits per-fire detail to keep the payload small. Pass detail=1
+  // to include every fire record per ticker. Cap of 100 symbols per call.
+  app.get("/api/diag/strategy-eval", async (req, res) => {
+    try {
+      const { runStrategyEval } = await import("./diag/strategy-eval");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
+      const detail = String(req.query.detail || "") === "1";
+      const sideRaw = String(req.query.side || "both").toLowerCase();
+      const side: "long" | "short" | "both" =
+        sideRaw === "long" ? "long" : sideRaw === "short" ? "short" : "both";
+      const result = await runStrategyEval(symbols, days, detail, side);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-eval failed" });
+    }
+  });
+
+  // Per-trade DOLLAR P&L evaluator. Pairs each long entry with its exit,
+  // computes round-trip dollar P&L assuming a fixed position size, and
+  // aggregates per-ticker and basket-wide. Complements strategy-eval (which
+  // measures forward-N-day edge) with the practical "did it make money" view.
+  //
+  //   GET /api/diag/strategy-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&amcGate=off|loose|strict]
+  //
+  // - days: 30..3650 (default 365)
+  // - positionSize: dollars per trade (default 10000, min 100, max 1000000)
+  // - detail=1 to include per-trade records
+  // - amcGate: off (default) | loose (AMC score ≥3 at entry) | strict (AMC ENTER at entry or within prior 10 bars).
+  //   Strict matches the live website's 3-phase Ready/Set/Go chain (VER → AMC → BBTC).
+  app.get("/api/diag/strategy-pnl", async (req, res) => {
+    try {
+      const { runStrategyPnL } = await import("./diag/strategy-pnl");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const amcRaw = String(req.query.amcGate || "off").toLowerCase();
+      const amcGate: "off" | "loose" | "strict" =
+        amcRaw === "loose" ? "loose" : amcRaw === "strict" ? "strict" : "off";
+      const result = await runStrategyPnL(symbols, days, positionSize, detail, amcGate);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-pnl failed" });
+    }
+  });
+
+  // Comparison chart page — returns bars + strategy-specific signal dots +
+  // regime bands (TFT only) + paired trades + summary stats for one ticker.
+  // Powers the new /chart/:ticker frontend page where users toggle between
+  // BBTC+VER, AMC, and three TFT modes to compare strategies visually.
+  //
+  //   GET /api/chart/:ticker?strategy=bbtc-ver|amc|tft-40w|tft-60w|tft-cat[&days=3650][&positionSize=10000]
+  //
+  // - days: 30..3650 (default 1825 = ~5y)
+  // - positionSize: dollars per unit (default 10000)
+  // - strategy: matches STRATEGY_REGISTRY ids. Legacy aliases
+  //   "tft-catastrophic" / "tft-catastrophic-only" are normalized to "tft-cat"
+  //   so any cached query URLs from before the registry-unification still work.
+  app.get("/api/chart/:ticker", async (req, res) => {
+    try {
+      const { getChartData } = await import("./diag/chart-data");
+      const ticker = String(req.params.ticker || "").trim().toUpperCase();
+      if (!ticker) return res.status(400).json({ error: "Provide :ticker" });
+      const stratRaw = String(req.query.strategy || "bbtc-ver").toLowerCase();
+      const strategy: "bbtc-ver" | "amc" | "tft-40w" | "tft-60w" | "tft-cat" =
+        stratRaw === "amc" ? "amc" :
+        stratRaw === "tft-40w" ? "tft-40w" :
+        stratRaw === "tft-60w" ? "tft-60w" :
+        (stratRaw === "tft-cat" || stratRaw === "tft-catastrophic" || stratRaw === "tft-catastrophic-only") ? "tft-cat" :
+        "bbtc-ver";
+      const days = Math.min(Math.max(Number(req.query.days) || 1825, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const result = await getChartData(ticker, strategy, days, positionSize);
+      if (!result) return res.status(404).json({ error: `No data available for "${ticker}"` });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "chart-data failed" });
+    }
+  });
+
+  // TFT (Two-Layer Trend Continuation) per-ticker dollar P&L evaluator. Designed
+  // to fix the BBTC+VER "sit on cash for months during secular trends" failure
+  // mode (NVDA captured ~$31K vs $3.78M buy-and-hold over 10y). Holds a CORE
+  // position throughout a confirmed regime and uses BBTC/VER as a tactical
+  // scaling layer. Stop-and-reverse on regime flip.
+  //
+  //   GET /api/diag/strategy-tft-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=10000][&detail=1][&shorts=on|off][&atrFloor=1.5][&coreStop=40w|60w|catastrophic-only]
+  //
+  // - days: 30..3650 (default 365). 350 bars warmup needed for 40W SMA; tickers with <300 bars are skipped.
+  // - positionSize: dollars per UNIT (default 10000). Max position = 2.0 units = 2× positionSize notional.
+  //   THIS DIFFERS FROM strategy-pnl which deploys ONE positionSize per trade.
+  // - detail=1 to include per-trade records
+  // - shorts=on (default) or off — ablation toggle
+  // - atrFloor: percent (e.g. 1.5 = 1.5%). Refuses entries when ATR/price is below the threshold.
+  //   Default 0 (no filter). Phase 1 testing showed it hurts more than helps.
+  // - coreStop: 40w (default) | 60w | catastrophic-only.
+  //     40w — current behavior (weekly close vs 40W SMA + regime exits + -15%)
+  //     60w — same exits but uses 60W SMA; slower trigger for moonshot capture
+  //     catastrophic-only — core only exits on -15% from entry; SMA + regime exits SKIPPED for core
+  app.get("/api/diag/strategy-tft-pnl", async (req, res) => {
+    try {
+      const { runStrategyTFTPnL } = await import("./diag/strategy-tft-pnl");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 365, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 10000, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const enableShorts = String(req.query.shorts || "on").toLowerCase() !== "off";
+      // atrFloor query param is a percent (e.g. "1.5"); convert to fraction (0.015) for the strategy.
+      const atrFloorPctRaw = Number(req.query.atrFloor);
+      const atrFloorPct = Number.isFinite(atrFloorPctRaw) && atrFloorPctRaw > 0
+        ? Math.min(atrFloorPctRaw, 20) / 100
+        : 0;
+      const csRaw = String(req.query.coreStop || "40w").toLowerCase();
+      const coreStopMode: "40w" | "60w" | "catastrophic-only" =
+        csRaw === "60w" ? "60w" :
+        (csRaw === "catastrophic-only" || csRaw === "catastrophic" || csRaw === "thesis") ? "catastrophic-only" :
+        "40w";
+      const result = await runStrategyTFTPnL(symbols, days, positionSize, detail, enableShorts, atrFloorPct, coreStopMode);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-tft-pnl failed" });
+    }
+  });
+
+  // HTF (High Tight Flag, Givens variant) per-ticker dollar P&L evaluator.
+  // Same response shape as /api/diag/strategy-pnl so direct apples-to-apples
+  // comparison against BBTC+VER and TFT is just a URL swap.
+  //
+  //   GET /api/diag/strategy-htf-pnl?symbols=AAPL,MSFT&days=3650[&positionSize=1750][&detail=1][&minScore=70]
+  //   GET /api/diag/strategy-htf-pnl?universe=htf&limit=500&days=3650[&positionSize=1750]
+  //
+  // - symbols: explicit ticker list (cap 2000). Ignored if universe=htf.
+  // - universe: "htf" → pulls the production HTF universe (FMP screener:
+  //   price $5–$75, vol ≥750K, mkt cap ≥$200M, NYSE/NASDAQ/AMEX, no
+  //   ETFs/funds, no IPOs <6mo). The basket the live /htf page actually
+  //   scans. Use this for "did HTF make money on what it actually trades?"
+  // - limit: when universe=htf, top-N by volume (default 500, max 2000).
+  // - days: 30..3650 (default 3650 = ~10y). HTF needs ~200 bars warmup.
+  // - positionSize: dollars per trade (default 1750, min 100, max 1000000).
+  //   Default matches a $7K account at 25% max-position-cap. Override for
+  //   apples-to-apples vs strategy-pnl ($10K).
+  // - detail=1 to include per-trade records.
+  // - minScore: 0..100 (default 70 = production threshold).
+  app.get("/api/diag/strategy-htf-pnl", async (req, res) => {
+    try {
+      const { runStrategyHtfPnL } = await import("./diag/strategy-htf-pnl");
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+        const u = await getHtfUniverse();
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = [...u.tickers]
+          .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+          .slice(0, limit)
+          .map(r => r.symbol.toUpperCase());
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const sizingModeRaw = String(req.query.sizingMode || "").toLowerCase();
+      const sizingMode: "fixed" | "resistance" =
+        sizingModeRaw === "resistance" ? "resistance" : "fixed";
+      // Tunable resistance bands. Default 5/10 = original Bulkowski reading.
+      // Common narrow-band experiment: skipBelow=3 & halfBelow=7.
+      const skipBelowRaw = Number(req.query.skipBelow);
+      const halfBelowRaw = Number(req.query.halfBelow);
+      const skipBelowPct = Number.isFinite(skipBelowRaw)
+        ? Math.min(Math.max(skipBelowRaw, 0), 50) : 5;
+      const halfBelowPct = Number.isFinite(halfBelowRaw)
+        ? Math.min(Math.max(halfBelowRaw, skipBelowPct), 50) : 10;
+      // Time-stop bars — exit at next close if N consecutive bars pass
+      // without a new closing-high since entry. 0 = disabled (baseline).
+      // Bulkowski reference value: 21 (~3 weeks of trading days).
+      const timeStopRaw = Number(req.query.timeStopBars);
+      const timeStopBars = Number.isFinite(timeStopRaw)
+        ? Math.min(Math.max(timeStopRaw, 0), 252) : 0;
+      const result = await runStrategyHtfPnL(
+        symbols, days, positionSize, detail, minScore, sizingMode, skipBelowPct, halfBelowPct, timeStopBars,
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-htf-pnl failed" });
+    }
+  });
+
+  // Wyckoff Spring P&L EVALUATOR — full backtest harness across a basket.
+  // Same response shape as /api/diag/strategy-htf-pnl so head-to-head
+  // comparison is a URL swap. Acceptance gate before manifest registration:
+  // basket totalPnLDollar > 0 AND avgPnLPerTrade ≥ $30 AND (winRate ≥ 50%
+  // OR rMultiple ≥ 1.5) AND maxDD ≤ HTF baseline DD.
+  //
+  //   GET /api/diag/strategy-wyckoff-spring-pnl?universe=htf&days=3650&positionSize=1750&minScore=70
+  //   GET /api/diag/strategy-wyckoff-spring-pnl?symbols=AAPL,AMZN&days=3650[&detail=1]
+  //
+  app.get("/api/diag/strategy-wyckoff-spring-pnl", async (req, res) => {
+    try {
+      const { runStrategyWyckoffSpringPnL } = await import("./diag/strategy-wyckoff-spring-pnl");
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+        const u = await getHtfUniverse();
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = [...u.tickers]
+          .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+          .slice(0, limit)
+          .map(r => r.symbol.toUpperCase());
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const result = await runStrategyWyckoffSpringPnL(symbols, days, positionSize, detail, minScore);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-wyckoff-spring-pnl failed" });
+    }
+  });
+
+  // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
+  // we can eyeball detection accuracy on a chart before investing in the
+  // full backtest harness.
+  //
+  //   GET /api/diag/wyckoff-spring-scan?symbol=AAPL&days=2500[&minScore=0]
+  //
+  app.get("/api/diag/wyckoff-spring-scan", async (req, res) => {
+    try {
+      const { runWyckoffSpringScan } = await import("./diag/wyckoff-spring-scan");
+      const symbol = String(req.query.symbol || "").trim().toUpperCase();
+      if (!symbol) {
+        return res.status(400).json({ error: "Provide ?symbol=AAPL" });
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 2500, 200), 3650);
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 0;
+      const result = await runWyckoffSpringScan(symbol, days, minScore);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "wyckoff-spring-scan failed" });
+    }
+  });
+
+  // HTF VALIDATION harness — Walk-Forward Efficiency + Monte Carlo + R-metrics.
+  // Cardoza-style "is this a real edge or an in-sample fit" check. Required
+  // before pushing any HTF parameter change. Wraps the same simulator as
+  // strategy-htf-pnl so trade rules stay single-sourced.
+  //
+  //   GET /api/diag/strategy-htf-validation?universe=htf&days=3650&positionSize=1750&minScore=70&isYears=7&oosYears=3&mcRuns=1000
+  //   GET /api/diag/strategy-htf-validation?symbols=AAPL,MSFT&days=3650
+  //
+  // Defaults: universe-htf via limit=500, days=3650, positionSize=1750,
+  // minScore=70, isYears=7, oosYears=3, mcRuns=1000 (clamped 100..5000).
+  app.get("/api/diag/strategy-htf-validation", async (req, res) => {
+    try {
+      const { runStrategyHtfValidation, resolveHtfUniverseSymbols } = await import(
+        "./diag/strategy-htf-validation"
+      );
+      const universeMode = String(req.query.universe || "").toLowerCase();
+      let symbols: string[];
+      if (universeMode === "htf") {
+        const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+        symbols = await resolveHtfUniverseSymbols(limit);
+      } else {
+        symbols = String(req.query.symbols || "")
+          .split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 2000);
+        if (!symbols.length) {
+          return res
+            .status(400)
+            .json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+        }
+      }
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw)
+        ? Math.min(Math.max(minScoreRaw, 0), 100)
+        : 70;
+      const isYears = Math.min(Math.max(Number(req.query.isYears) || 7, 1), 20);
+      const oosYears = Math.min(Math.max(Number(req.query.oosYears) || 3, 1), 20);
+      const mcRuns = Math.min(Math.max(Number(req.query.mcRuns) || 1000, 100), 5000);
+      const result = await runStrategyHtfValidation({
+        symbols,
+        days,
+        positionSize,
+        minScore,
+        isYears,
+        oosYears,
+        mcRuns,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-htf-validation failed" });
+    }
+  });
+
+  // Raw-FMP institutional diagnostic. Hit /api/diag/fmp-inst/:ticker to see
+  // exactly what FMP's symbol-positions-summary + extract-analytics/holder
+  // endpoints return for a ticker. Used for diagnosing field-name drift on
+  // the institutional pipeline (e.g. ownershipPercent returning unexpected
+  // values for megacaps in May 2026).
+  app.get("/api/diag/fmp-inst/:ticker", async (req, res) => {
+    try {
+      const ticker = String(req.params.ticker || "").toUpperCase();
+      const { fmpGet } = await import("./data/providers/fmp.client");
+      // Pick the latest quarter whose end was at least 60 days ago. Same
+      // walk-backward logic as latestAvailableQuarters in fmp-institutional.ts.
+      const now = new Date();
+      const minAgeMs = 60 * 24 * 60 * 60 * 1000;
+      let year = now.getUTCFullYear();
+      let quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+      for (let i = 0; i < 12; i++) {
+        const m = quarter * 3 - 1;
+        const d = quarter === 1 || quarter === 4 ? 31 : 30;
+        const qEnd = new Date(Date.UTC(year, m, d));
+        if (now.getTime() - qEnd.getTime() >= minAgeMs) break;
+        quarter -= 1;
+        if (quarter < 1) { quarter = 4; year -= 1; }
+      }
+      const [summary, holders, insiderSample] = await Promise.all([
+        fmpGet<any[]>("/institutional-ownership/symbol-positions-summary", { symbol: ticker, year, quarter }).catch((e: any) => ({ error: String(e?.message || e) })),
+        fmpGet<any[]>("/institutional-ownership/extract-analytics/holder", { symbol: ticker, year, quarter, page: 0, limit: 5 }).catch((e: any) => ({ error: String(e?.message || e) })),
+        fmpGet<any[]>("/insider-trading/search", { symbol: ticker, page: 0, limit: 3 }).catch((e: any) => ({ error: String(e?.message || e) })),
+      ]);
+      res.json({ ticker, year, quarter, summary, holdersSample: holders, insiderSample });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "FMP-inst diag failed" });
+    }
+  });
+
+  app.get("/api/diag/snapshot/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    const view = String(req.query.view || "");
+    const forceRefresh = String(req.query.refresh || "") === "1";
+    try {
+      await ensureReady();
+      const snap = await getCompanySnapshot(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      if (view === "health") {
+        return res.json(snapshotHealth(snap));
+      }
+      res.json(snap);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Snapshot fetch failed" });
+    }
+  });
+
+  // Raw-FMP diagnostic. Hit /api/diag/fmp/:ticker to see exactly what FMP
+  // returns from /ratios-ttm, /key-metrics-ttm, /profile, /quote — useful
+  // when the snapshot says "D/E N/A" and we need to know whether the field
+  // is missing in FMP's response or just under a different name.
+  app.get("/api/diag/fmp/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    try {
+      await ensureReady();
+      const [ratios, keyMetrics, profile, quote, balanceSheet] = await Promise.allSettled([
+        fmpGet<any[]>("/ratios-ttm", { symbol: ticker }),
+        fmpGet<any[]>("/key-metrics-ttm", { symbol: ticker }),
+        fmpGet<any[]>("/profile", { symbol: ticker }),
+        fmpGet<any[]>("/quote", { symbol: ticker }),
+        fmpGet<any[]>("/balance-sheet-statement", { symbol: ticker, limit: 1 }),
+      ]);
+      const settle = (s: PromiseSettledResult<any>) =>
+        s.status === "fulfilled" ? s.value : { _error: String((s as any).reason?.message || s.reason || "unknown") };
+      res.json({
+        ticker,
+        ratiosTtm: settle(ratios),
+        keyMetricsTtm: settle(keyMetrics),
+        profile: settle(profile),
+        quote: settle(quote),
+        balanceSheetLatest: settle(balanceSheet),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "FMP diag fetch failed" });
+    }
+  });
+
+  app.get("/api/diag/score/:ticker", async (req, res) => {
+    const ticker = String(req.params.ticker || "").toUpperCase();
+    const forceRefresh = String(req.query.refresh || "") === "1";
+    try {
+      await ensureReady();
+      const snap = await getCompanySnapshot(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      const next = scoreSnapshot(snap);
+
+      // Legacy-equivalent view: same scoring math but only the first 8
+      // fundamental categories — i.e., the factors computeScoring uses
+      // today. This makes the structural blindness visible: legacy
+      // computeScoring cannot see institutional flow, insider activity,
+      // or analyst consensus, so this slice approximates what the
+      // legacy /api/analyze produces from the same underlying data.
+      const LEGACY_NAMES = new Set([
+        "Income Strength",
+        "Income Quality",
+        "Business Quality",
+        "Balance Sheet Quality",
+        "Performance Quality",
+        "Valuation Sanity",
+        "Liquidity & Scale",
+        "Thesis Durability",
+      ]);
+      const legacyCats: CategoryScore[] = next.categories.filter(c => LEGACY_NAMES.has(c.name));
+      const legacyPopulated = legacyCats.filter(c => c.populated);
+      const legacyDenom = legacyPopulated.reduce((s, c) => s + c.weight, 0);
+      const legacyScore10 = legacyDenom > 0
+        ? legacyPopulated.reduce((s, c) => s + c.score * c.weight, 0) / legacyDenom
+        : 5;
+      const legacyBucket = bucketVerdict(legacyScore10);
+      const legacyView = {
+        score10: Math.round(legacyScore10 * 100) / 100,
+        score100: Math.round(legacyScore10 * 100) / 10,
+        verdict: legacyBucket.verdict,
+        ruling: legacyBucket.ruling,
+        factorsContributed: legacyPopulated.length,
+        factorsTotal: legacyCats.length,
+      };
+
+      // Which factors the new model added that legacy didn't see.
+      const addedFactors = next.categories
+        .filter(c => !LEGACY_NAMES.has(c.name))
+        .map(c => ({
+          name: c.name,
+          score: c.score,
+          weight: c.weight,
+          populated: c.populated,
+          source: c.source,
+          reasoning: c.reasoning,
+        }));
+
+      res.json({
+        ticker,
+        new: next,
+        legacyView,
+        addedFactors,
+        delta: {
+          score10: Math.round((next.score10 - legacyView.score10) * 100) / 100,
+          score100: Math.round((next.score100 - legacyView.score100) * 10) / 10,
+          verdictChanged: next.verdict !== legacyView.verdict,
+        },
+        snapshotHealth: snapshotHealth(snap),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Score diagnostic failed" });
     }
   });
 
@@ -4993,6 +6101,27 @@ export async function registerRoutes(
     }
   });
 
+  // Sum of all cash flows from the trade ledger + transactions for a user.
+  // cashFromActivity = deposits + opens (signed) + closes (signed) - commissions.
+  // currentCash = anchor (settings.cashBalance) + cashFromActivity.
+  // Inverse: anchor = currentCash - cashFromActivity (used by PATCH settings to
+  // let the user re-anchor cash to whatever their broker shows right now).
+  async function computeCashFromActivity(userId: number): Promise<number> {
+    const all = await storage.getAllTrades(userId);
+    const closed = all.filter(t => t.closeDate);
+    const txs = await storage.getAccountTransactions(userId);
+    const txTotal = txs.reduce((s, tx) => s + tx.amount, 0);
+    const opens = all.reduce((s, t) => {
+      const mult = t.tradeCategory === 'Option' ? 100 : 1;
+      return s + (t.openPrice * t.contractsShares * mult) - (t.commIn || 0);
+    }, 0);
+    const closes = closed.reduce((s, t) => {
+      const mult = t.tradeCategory === 'Option' ? 100 : 1;
+      return s + ((t.closePrice || 0) * t.contractsShares * mult) - (t.commOut || 0);
+    }, 0);
+    return txTotal + opens + closes;
+  }
+
   // Get trade summary stats
   app.get("/api/trades/summary", async (req, res) => {
     try {
@@ -5003,14 +6132,9 @@ export async function registerRoutes(
       const closedTrades = allTrades.filter(t => t.closeDate);
       const openTrades = allTrades.filter(t => !t.closeDate);
 
-      // Compute P/L for each closed trade
-      const tradeResults = closedTrades.map(t => {
-        const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
-        const costToOpen = t.openPrice * t.contractsShares * multiplier;
-        const costToClose = (t.closePrice || 0) * t.contractsShares * multiplier;
-        const profit = costToOpen + costToClose - (t.commIn || 0) - (t.commOut || 0);
-        return { ...t, profit };
-      });
+      // Compute P/L for each closed trade — canonical formula lives in
+      // shared/pnl/ so client widgets see the same number.
+      const tradeResults = closedTrades.map((t) => ({ ...t, profit: computeClosedTradeProfit(t) }));
 
       // Summary by trade type
       const byType: Record<string, { profit: number; loss: number; count: number; wins: number; investment: number }> = {};
@@ -5030,33 +6154,56 @@ export async function registerRoutes(
       const totalProfit = tradeResults.reduce((s, t) => s + t.profit, 0);
       const totalWins = tradeResults.filter(t => t.profit >= 0).length;
 
-      // Account value
+      // Cash balance auto-derives from the trade ledger so the user never has
+      // to keep it in sync with their broker manually. The Settings "Brokerage
+      // Cash" value is the STARTING-cash anchor; one-time deposits/withdrawals
+      // come in via account_transactions.
+      //
+      // openPrice / closePrice are stored signed by cash-flow direction
+      // (negative for buys/debits, positive for sells/credits) — same
+      // convention used by the totalProfit calc above — so this works for
+      // longs, shorts, debits, and credits without special-casing.
       const txTotal = transactions.reduce((s, tx) => s + tx.amount, 0);
-      const accountValue = settings.startingAccountValue + totalProfit + txTotal;
-
-      // Open P/L (stocks only — we have stock price for both open and current)
-      // Options are excluded: currentPrice is the STOCK price, not the option premium,
-      // so we can't compare it to openPrice (which is the option premium). The client-side
-      // computeOptionPL handles option P/L estimation using strike-based logic.
-      const openPL = openTrades.reduce((s, t) => {
-        if (!t.currentPrice) return s;
-        // Only calculate for stock trades where currentPrice and openPrice are comparable
-        if (t.tradeCategory !== 'Stock') return s;
-        const isShort = t.creditDebit === 'CREDIT' || t.tradeType === 'SHORT';
-        const pl = isShort
-          ? (Math.abs(t.openPrice) - t.currentPrice) * t.contractsShares
-          : (t.currentPrice - Math.abs(t.openPrice)) * t.contractsShares;
-        return s + pl - (t.commIn || 0);
+      const cashFromOpens = allTrades.reduce((s, t) => {
+        const mult = t.tradeCategory === 'Option' ? 100 : 1;
+        return s + (t.openPrice * t.contractsShares * mult) - (t.commIn || 0);
       }, 0);
+      const cashFromCloses = closedTrades.reduce((s, t) => {
+        const mult = t.tradeCategory === 'Option' ? 100 : 1;
+        return s + ((t.closePrice || 0) * t.contractsShares * mult) - (t.commOut || 0);
+      }, 0);
+      const startingCash = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashBalance = startingCash + txTotal + cashFromOpens + cashFromCloses;
 
-      // Allocated $
+      // Open P/L (stocks only — we have stock price for both open and current).
+      // Options excluded here: currentPrice is the STOCK price, not the option
+      // premium, so we can't compare it to openPrice. Shared `computeOpenOptionPL`
+      // handles options via strike-based estimation when consumers need it.
+      const openPL = openTrades.reduce((s, t) => s + computeOpenStockPL(t), 0);
+
+      // Open position market value — combined with cashBalance to produce
+      // the "Total Portfolio" figure that matches the user's broker app.
+      //   - Stocks:  currentPrice × shares (live price × position size)
+      //   - Options: allocation (best proxy without live option premiums)
+      const openPositionMarketValue = openTrades.reduce((s, t) => {
+        if (t.tradeCategory === "Stock" && t.currentPrice) {
+          return s + (t.currentPrice * t.contractsShares);
+        }
+        if (t.tradeCategory === "Option") {
+          return s + (t.allocation || 0);
+        }
+        return s;
+      }, 0);
+      const totalPortfolioValue = cashBalance + openPositionMarketValue;
+
+      // Allocated %: pct of total portfolio currently tied up in open trades.
       const allocated = openTrades.reduce((s, t) => s + (t.allocation || 0), 0);
-      const allocatedPct = accountValue > 0 ? allocated / accountValue : 0;
+      const allocatedPct = totalPortfolioValue > 0 ? allocated / totalPortfolioValue : 0;
 
       // Equity curve data points
       const equityCurve: { date: string; value: number }[] = [];
       const sortedTrades = [...closedTrades].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-      let runningValue = settings.startingAccountValue;
+      let runningValue = startingCash;
       for (const t of sortedTrades) {
         const multiplier = t.tradeCategory === 'Option' ? 100 : 1;
         const costToOpen = t.openPrice * t.contractsShares * multiplier;
@@ -5080,7 +6227,9 @@ export async function registerRoutes(
         totalProfit,
         totalWins,
         winRate: closedTrades.length > 0 ? totalWins / closedTrades.length : 0,
-        accountValue,
+        cashBalance,
+        openPositionMarketValue,
+        totalPortfolioValue,
         openPL,
         allocated,
         allocatedPct,
@@ -5098,7 +6247,58 @@ export async function registerRoutes(
   app.get("/api/trades", async (req, res) => {
     try {
       const allTrades = await storage.getAllTrades(req.user!.id);
-      res.json(allTrades);
+      // Enrich OPEN HTF trades with live lifecycle state (walks bars from
+      // entry → today: partialDone, currentMa20, hasStopped, hasTargeted,
+      // hadFailedBreakout, strength-day counter, peak/trough). The
+      // Current Positions page consumes `lifecycleState` so each row
+      // reflects the WHOLE trade cycle, not just a 1-day snapshot.
+      const { getHtfBars } = await import("./data/htf-ohlcv-cache");
+      const { computeHtfLifecycle } = await import("./compartments/htf-scanner/lifecycle");
+      const { computeBbtcVerLifecycle } = await import("./compartments/bbtc-ver/lifecycle");
+      const enriched = await Promise.all(
+        allTrades.map(async (t: any) => {
+          if (t.closeDate !== null) return t;
+          // Per-strategy lifecycle enrichment — each strategy's walker reads
+          // the symbol's bars and computes "where is this trade right now"
+          // state so the Current Positions row shows live trail/stop/etc.
+          try {
+            if (t.strategy === "htf") {
+              const bars = await getHtfBars(t.symbol);
+              if (bars.length === 0) return t;
+              const data = (t.strategyData ?? {}) as any;
+              const entryPrice = Math.abs(t.openPrice);
+              const lifecycleState = computeHtfLifecycle(
+                bars,
+                t.tradeDate,
+                entryPrice,
+                typeof data.flagHigh === "number" ? data.flagHigh : null,
+                typeof data.flagLow === "number" ? data.flagLow : null,
+                typeof data.targetPrice === "number" ? data.targetPrice : (t.target ?? null),
+              );
+              return { ...t, lifecycleState };
+            }
+            if (
+              t.strategy === "bbtc-ver" ||
+              t.strategy === "amc" ||
+              t.strategy === "insider-trigger"
+            ) {
+              // AMC + Insider Trigger route through the same manifest
+              // evaluator as BBTC+VER (see registry.ts) — same long-only
+              // 8% hard / 10% trail rule, so one walker covers all three.
+              const bars = await getHtfBars(t.symbol);
+              if (bars.length === 0) return t;
+              const entryPrice = Math.abs(t.openPrice);
+              const lifecycleState = computeBbtcVerLifecycle(bars, t.tradeDate, entryPrice);
+              return { ...t, lifecycleState };
+            }
+          } catch {
+            // Best-effort enrichment — if a single ticker's bars fail to load,
+            // the trade still renders, just without lifecycle state.
+          }
+          return t;
+        }),
+      );
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get trades" });
     }
@@ -5239,7 +6439,12 @@ export async function registerRoutes(
       const prorate = (v: any) => (v == null ? v : Number((Number(v) * ratio).toFixed(2)));
       const remain  = (v: any) => (v == null ? v : Number((Number(v) * (1 - ratio)).toFixed(2)));
 
-      // Create the closed child row (copy open details, prorate $ fields)
+      // Create the closed child row (copy open details, prorate $ fields).
+      // We strip `id` (auto-generated) and `createdAt` (we set a fresh one
+      // for the child row — that's the moment of THIS partial close, not
+      // the original trade open). Without an explicit createdAt the insert
+      // hits the NOT NULL constraint and 500s — root cause of the
+      // 2026-05-21 close-trade 500 on partial sells via the action button.
       const { id: _omitId, createdAt: _omitCreated, ...base } = current as any;
       const closedChild = await storage.createTrade({
         ...base,
@@ -5250,6 +6455,7 @@ export async function registerRoutes(
         closeDate,
         closePrice,
         commOut,
+        createdAt: new Date().toISOString(),
       });
 
       // Reduce the original open row
@@ -5262,6 +6468,9 @@ export async function registerRoutes(
 
       res.json({ closed: closedChild, open: updatedOpen });
     } catch (error: any) {
+      // Log so the server logs carry the stack — the JSON response only
+      // surfaces the message. Helps diagnose future partial-close failures.
+      console.error("[trades] POST /:id/close failed:", error);
       res.status(500).json({ error: error?.message || "Failed to close trade" });
     }
   });
@@ -5284,7 +6493,12 @@ export async function registerRoutes(
   app.get("/api/account/settings", async (req, res) => {
     try {
       const settings = await storage.getAccountSettings(req.user!.id);
-      res.json(settings);
+      // Surface LIVE cash in the cashBalance field so the Settings UI shows
+      // the same number the page shows. Anchor stays in the column under the
+      // hood; PATCH below re-derives it when the user types a new value.
+      const anchor = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashFromActivity = await computeCashFromActivity(req.user!.id);
+      res.json({ ...settings, cashBalance: anchor + cashFromActivity });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to get settings" });
     }
@@ -5292,8 +6506,20 @@ export async function registerRoutes(
 
   app.patch("/api/account/settings", async (req, res) => {
     try {
-      const settings = await storage.updateAccountSettings(req.user!.id, req.body);
-      res.json(settings);
+      const body = { ...req.body };
+      // The cashBalance field in the UI is the LIVE cash. To save it as the
+      // anchor we must subtract everything trades + transactions have already
+      // added to/subtracted from it.
+      if (typeof body.cashBalance === 'number') {
+        const cashFromActivity = await computeCashFromActivity(req.user!.id);
+        body.cashBalance = body.cashBalance - cashFromActivity;
+      }
+      await storage.updateAccountSettings(req.user!.id, body);
+      // Echo back live cash so the form shows the correct value after save.
+      const settings = await storage.getAccountSettings(req.user!.id);
+      const anchor = (settings as any).cashBalance ?? settings.startingAccountValue ?? 0;
+      const cashFromActivity = await computeCashFromActivity(req.user!.id);
+      res.json({ ...settings, cashBalance: anchor + cashFromActivity });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to update settings" });
     }

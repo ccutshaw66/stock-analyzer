@@ -5,6 +5,8 @@ import { registerJob } from "./platform/jobs/scheduler";
 import { rankedTopFilers } from "./data/providers/edgar.adapter";
 import { warmLongRangeCache } from "./long-range-warmup";
 import { warmInstitutionalCache } from "./institutional-warmup";
+import { warmIntradaySnapshot, warmDailyBreadth } from "./market-pulse-warmup";
+import { isMarketHours as isMarketPulseMarketHours } from "./data/providers/market-pulse.adapter";
 import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
 import type { GetCompanySnapshotOpts } from "./snapshot";
@@ -69,6 +71,26 @@ export function initCron(
   });
 
   console.log("[CRON] EDGAR top-filers refresh registered with scheduler (0 8 * * *)");
+
+  // Form 4 insider-transaction sweep — runs hourly at :15 past the hour.
+  // SEC posts new Form 4 filings throughout the day in near real-time, but
+  // bursts hit shortly after each market session close. Hourly cadence
+  // catches new filings within an hour while staying well clear of the
+  // EDGAR 4-req/sec throttle (each tick ~50s worth of work for 100 filings).
+  registerJob({
+    id: "edgar-form4-sweep",
+    description: "Hourly sweep of latest SEC Form 4 filings (insider transactions, 10b5-1 detection)",
+    cron: "15 * * * *",
+    timeoutMs: 5 * 60 * 1000, // 5 min hard cap
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const { runForm4Sweep } = await import("./data/providers/edgar-form4-sweep");
+      await runForm4Sweep();
+    },
+  });
+
+  console.log("[CRON] EDGAR Form 4 sweep registered with scheduler (15 * * * *)");
 
   // Phase 3.7: Long-range chart disk cache warmup. Runs nightly at 3:30am ET
   // (07:30 UTC). Pulls 10y/25y/max bars from Yahoo for open-trade symbols +
@@ -183,6 +205,50 @@ export function initCron(
     },
   });
   console.log("[CRON] Conviction forward-returns updater registered (45 21 * * 1-5)");
+
+  // ─── Market Pulse ─────────────────────────────────────────────────────────
+  //
+  // Two cadences:
+  //   1. Intraday snapshot — every 5 min during market hours. Quotes for
+  //      VIX, indices, gold/silver, plus the risk-appetite ratios. Cheap.
+  //   2. Daily breadth — 13:35 UTC (≈ 9:35am ET, 5 min after open). Walks
+  //      ~500 S&P 500 tickers' historical bars; takes a few seconds total.
+  //      Don't fire weekends.
+  //
+  // Both have runOnStart so a fresh deploy populates the cache immediately
+  // for the first user.
+  registerJob({
+    id: "market-pulse-intraday",
+    description: "Market Pulse intraday snapshot — VIX/indices/safe-haven/risk-appetite (every 5 min, market hours)",
+    cron: "*/5 * * * *",
+    timeoutMs: 60 * 1000,
+    preventOverrun: true,
+    runOnStart: true,
+    handler: async () => {
+      // Fire on first start regardless; subsequent runs skip if market is closed.
+      // (Strictly market-hours gating loses us the runOnStart benefit.)
+      if (!isMarketPulseMarketHours()) {
+        // Outside market hours, refresh once per hour to keep stale-marker fresh.
+        const m = new Date().getUTCMinutes();
+        if (m !== 0 && m !== 5) return;
+      }
+      await warmIntradaySnapshot();
+    },
+  });
+  console.log("[CRON] Market Pulse intraday snapshot registered (*/5 * * * *)");
+
+  registerJob({
+    id: "market-pulse-breadth",
+    description: "Market Pulse daily S&P 500 breadth (% above 50/200d MA + new H/L)",
+    cron: "35 13 * * 1-5", // 9:35am ET (13:35 UTC standard, 14:35 UTC during DST)
+    timeoutMs: 10 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: true,
+    handler: async () => {
+      await warmDailyBreadth();
+    },
+  });
+  console.log("[CRON] Market Pulse breadth registered (35 13 * * 1-5)");
 }
 
 function isMarketHours(): boolean {

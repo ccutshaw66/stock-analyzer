@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_TRACK_RECORD_BACKTEST } from "@shared/api/endpoints";
 import { Loader2, Play, Info } from "lucide-react";
 
 interface SignalStats {
@@ -46,7 +47,7 @@ export function BacktestPanel() {
         .split(/[,\s]+/)
         .map(t => t.trim().toUpperCase())
         .filter(Boolean);
-      const res = await apiRequest("POST", "/api/track-record/backtest", {
+      const res = await apiRequest("POST", API_TRACK_RECORD_BACKTEST, {
         tickers,
         years,
         minStrength,
@@ -58,7 +59,7 @@ export function BacktestPanel() {
   const data = mutation.data;
 
   const pctColor = (v: number) =>
-    v > 0 ? "text-green-400" : v < 0 ? "text-red-400" : "text-muted-foreground";
+    v > 0 ? "text-bull-light" : v < 0 ? "text-bear-light" : "text-muted-foreground";
 
   const winRate = (hits: number, samples: number) =>
     samples === 0 ? null : Math.round((hits / samples) * 100);
@@ -75,7 +76,7 @@ export function BacktestPanel() {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div className="md:col-span-2">
-            <label className="text-[10px] uppercase text-muted-foreground font-semibold">
+            <label className="text-micro uppercase text-muted-foreground font-semibold">
               Tickers (comma or space separated — leave blank to use watchlist)
             </label>
             <input
@@ -87,7 +88,7 @@ export function BacktestPanel() {
             />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted-foreground font-semibold">Years</label>
+            <label className="text-micro uppercase text-muted-foreground font-semibold">Years</label>
             <select
               value={years}
               onChange={e => setYears(Number(e.target.value))}
@@ -100,7 +101,7 @@ export function BacktestPanel() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted-foreground font-semibold">Min strength</label>
+            <label className="text-micro uppercase text-muted-foreground font-semibold">Min strength</label>
             <select
               value={minStrength}
               onChange={e => setMinStrength(Number(e.target.value))}
@@ -124,7 +125,7 @@ export function BacktestPanel() {
         </button>
 
         {mutation.isError && (
-          <p className="mt-2 text-xs text-red-400">
+          <p className="mt-2 text-xs text-bear-light">
             {mutation.error?.message || "Backtest failed"}
           </p>
         )}
@@ -151,7 +152,7 @@ export function BacktestPanel() {
             <h3 className="text-sm font-bold text-foreground mb-3">Technical signal performance</h3>
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-[10px] text-muted-foreground uppercase border-b border-card-border/50">
+                <tr className="text-micro text-muted-foreground uppercase border-b border-card-border/50">
                   <th className="text-left py-2 pr-2">Signal</th>
                   <th className="text-right py-2 px-2">Fires</th>
                   <th className="text-right py-2 px-2">Hit% 1d / Avg</th>
@@ -170,7 +171,7 @@ export function BacktestPanel() {
                           <span className="text-muted-foreground">—</span>
                         ) : (
                           <>
-                            <span className={wr >= 55 ? "text-green-400" : wr <= 45 ? "text-red-400" : "text-foreground"}>
+                            <span className={wr >= 55 ? "text-bull-light" : wr <= 45 ? "text-bear-light" : "text-foreground"}>
                               {wr}%
                             </span>
                             <span className="text-muted-foreground"> / </span>
@@ -203,7 +204,7 @@ export function BacktestPanel() {
                 <p className="mb-2">{data.catalystNote}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {data.catalystStubs.map(c => (
-                    <span key={c.id} className="text-[10px] px-2 py-0.5 rounded bg-zinc-700/40 text-zinc-400 border border-zinc-600/30">
+                    <span key={c.id} className="text-micro px-2 py-0.5 rounded bg-zinc-700/40 text-zinc-400 border border-zinc-600/30">
                       {c.label}
                     </span>
                   ))}
@@ -218,7 +219,7 @@ export function BacktestPanel() {
               <h3 className="text-sm font-bold text-foreground mb-3">Top 20 fires by |20d return|</h3>
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-[10px] text-muted-foreground uppercase border-b border-card-border/50">
+                  <tr className="text-micro text-muted-foreground uppercase border-b border-card-border/50">
                     <th className="text-left py-2 pr-2">Signal</th>
                     <th className="text-left py-2 px-2">Ticker</th>
                     <th className="text-left py-2 px-2">Date</th>

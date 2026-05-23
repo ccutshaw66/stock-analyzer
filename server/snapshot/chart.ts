@@ -90,22 +90,23 @@ export async function getChartSnapshot(
   return tryProviders<YahooChart>(
     [
       {
-        source: "polygon",
-        fetch: async () => {
-          // Polygon adapter already returns Yahoo-shape.
-          return getPolygonChart(T, range as any, interval as any);
-        },
-      },
-      {
         source: "fmp",
         fetch: async () => {
           const from = rangeToFromDate(range).toISOString().slice(0, 10);
           const to = new Date().toISOString().slice(0, 10);
-          // FMP intraday has a different endpoint; we stick to EOD for this fallback.
-          // Daily granularity is supported on /historical-price-eod/full.
+          // FMP intraday has a different endpoint; EOD is supported on
+          // /historical-price-eod/full. For weekly/monthly intervals we
+          // still pull EOD here and let the consumer downsample if needed.
           const rows: any = await fmpGet(`/historical-price-eod/full`, { symbol: T, from, to });
           const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
           return fmpRowsToYahooShape(arr);
+        },
+      },
+      {
+        source: "polygon",
+        fetch: async () => {
+          // Polygon adapter already returns Yahoo-shape. Kept as fallback.
+          return getPolygonChart(T, range as any, interval as any);
         },
       },
       {

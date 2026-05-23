@@ -6,13 +6,13 @@ interface BusinessQualityProps {
 }
 
 function TrendIcon({ direction }: { direction: string }) {
-  if (direction === "up") return <ArrowUp className="h-4 w-4 text-green-500" />;
-  if (direction === "down") return <ArrowDown className="h-4 w-4 text-red-500" />;
-  return <ArrowRight className="h-4 w-4 text-yellow-500" />;
+  if (direction === "up") return <ArrowUp className="h-4 w-4 text-bull" />;
+  if (direction === "down") return <ArrowDown className="h-4 w-4 text-bear" />;
+  return <ArrowRight className="h-4 w-4 text-watch" />;
 }
 
 function DotIndicator({ direction }: { direction: string }) {
-  const color = direction === "up" ? "bg-green-500" : direction === "down" ? "bg-red-500" : "bg-yellow-500";
+  const color = direction === "up" ? "bg-bull" : direction === "down" ? "bg-bear" : "bg-watch";
   return <div className={`h-2.5 w-2.5 rounded-full ${color}`} />;
 }
 

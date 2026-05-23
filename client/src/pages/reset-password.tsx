@@ -40,7 +40,7 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#040d22' }}>
+    <div className="min-h-screen flex items-center justify-center p-6 bg-brand-bg">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-3 mb-8">
           <img src={iconUrl} alt="Stock Otter" className="h-12 w-12 rounded-xl" />
@@ -53,7 +53,7 @@ export default function ResetPassword() {
           </div>
         ) : success ? (
           <div className="text-center">
-            <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
+            <CheckCircle2 className="h-12 w-12 text-bull-light mx-auto mb-4" />
             <h2 className="text-lg font-bold text-foreground mb-2">Password Reset</h2>
             <p className="text-sm text-muted-foreground mb-4">Your password has been changed. You can now sign in with your new password.</p>
             <a href="/" className="text-sm text-primary font-semibold hover:underline">Sign In</a>

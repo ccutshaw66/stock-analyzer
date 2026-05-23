@@ -1,18 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL_LIGHT,
+  SIGNAL_BEAR_LIGHT,
+  SIGNAL_WATCH_LIGHT,
+  OVERLAY_BULL_30,
+  OVERLAY_WATCH_25,
+  OVERLAY_BEAR_30,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { formatCurrency, formatCompact } from "@/lib/format";
 import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
-  Zap, AlertTriangle, Gem, DollarSign, Target,
+  Zap, AlertTriangle, DollarSign, Target,
   ArrowUpRight, ArrowDownRight, Minus, Loader2,
-  FlaskConical, Building2, UserCheck, LineChart
+  FlaskConical, Building2, UserCheck, LineChart, Scale, Award
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +62,7 @@ interface StressTest {
   period: string;
   ticker: number;
   spy: number;
+  nasdaq?: number;
   gold: number;
   silver: number;
   hasData?: boolean;
@@ -78,74 +87,69 @@ interface VerdictData {
   institutional: Institutional | null;
   strategies: null;
   stressTests: StressTest[];
-  metals: {
-    gold: MetalData;
-    silver: MetalData;
-    spy: MetalData;
-  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function ringColorClass(score: number): string {
-  if (score >= 70) return "text-green-400";
-  if (score >= 40) return "text-yellow-400";
-  return "text-red-400";
+  if (score >= 70) return "text-bull-light";
+  if (score >= 40) return "text-watch-light";
+  return "text-bear-light";
 }
 
 function ringStrokeColor(score: number): string {
-  if (score >= 70) return "#4ade80";
-  if (score >= 40) return "#facc15";
-  return "#f87171";
+  if (score >= 70) return SIGNAL_BULL_LIGHT;
+  if (score >= 40) return SIGNAL_WATCH_LIGHT;
+  return SIGNAL_BEAR_LIGHT;
 }
 
 function ringGlowColor(score: number): string {
-  if (score >= 70) return "rgba(74, 222, 128, 0.3)";
-  if (score >= 40) return "rgba(250, 204, 21, 0.25)";
-  return "rgba(248, 113, 113, 0.3)";
+  if (score >= 70) return OVERLAY_BULL_30;
+  if (score >= 40) return OVERLAY_WATCH_25;
+  return OVERLAY_BEAR_30;
 }
 
 function barColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-400";
-    case "red": return "bg-red-400";
-    case "yellow": return "bg-yellow-400";
+    case "green": return "bg-bull-light";
+    case "red": return "bg-bear-light";
+    case "yellow": return "bg-watch-light";
     default: return "bg-muted-foreground";
   }
 }
 
 function barTrackColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-400/15";
-    case "red": return "bg-red-400/15";
-    case "yellow": return "bg-yellow-400/15";
+    case "green": return "bg-bull-light/15";
+    case "red": return "bg-bear-light/15";
+    case "yellow": return "bg-watch-light/15";
     default: return "bg-muted/40";
   }
 }
 
 function signalBadgeColor(color: string): string {
   switch (color) {
-    case "green": return "bg-green-500/15 text-green-400 border border-green-500/20";
-    case "red": return "bg-red-500/15 text-red-400 border border-red-500/20";
-    case "yellow": return "bg-yellow-500/15 text-yellow-400 border border-yellow-500/20";
+    case "green": return "bg-bull/15 text-bull-light border border-bull/20";
+    case "red": return "bg-bear/15 text-bear-light border border-bear/20";
+    case "yellow": return "bg-watch/15 text-watch-light border border-watch/20";
     default: return "bg-muted text-muted-foreground border border-card-border";
   }
 }
 
 function verdictBadgeStyle(verdict: string): string {
   switch (verdict) {
-    case "STRONG CONVICTION": return "bg-green-500/20 text-green-400 border-green-500/30";
-    case "INVESTMENT GRADE": return "bg-green-500/15 text-green-400 border-green-500/20";
-    case "SPECULATIVE": return "bg-yellow-500/15 text-yellow-400 border-yellow-500/20";
-    case "HIGH RISK": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "STRONG CONVICTION": return "bg-bull/20 text-bull-light border-bull/30";
+    case "INVESTMENT GRADE": return "bg-bull/15 text-bull-light border-bull/20";
+    case "SPECULATIVE": return "bg-watch/15 text-watch-light border-watch/20";
+    case "HIGH RISK": return "bg-bear/20 text-bear-light border-bear/30";
     default: return "bg-muted text-muted-foreground border-card-border";
   }
 }
 
 function pctColor(val: number | null | undefined): string {
   if (val == null) return "text-muted-foreground";
-  if (val > 0) return "text-green-400";
-  if (val < 0) return "text-red-400";
+  if (val > 0) return "text-bull-light";
+  if (val < 0) return "text-bear-light";
   return "text-muted-foreground";
 }
 
@@ -261,7 +265,7 @@ function ScoreRing({ score, size = 220, strokeWidth = 14 }: { score: number; siz
 
 function VerdictSkeleton() {
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6 animate-pulse">
+    <div className="space-y-6 animate-pulse">
       {/* Hero skeleton */}
       <div className="bg-card border border-card-border rounded-xl p-8">
         <div className="flex flex-col items-center gap-4">
@@ -328,40 +332,9 @@ export default function Verdict() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ─── Empty state ──────────────────────────────────────────────────────────
-  if (!activeTicker) {
-    return (
-      <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="text-center py-24 text-muted-foreground">
-          <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
-          <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
-      <Disclaimer />
-          <p className="text-sm mt-1 opacity-60">Is this a good stock to own? Fundamentals, institutional flow, stress resilience &amp; insider confidence</p>
-          <p className="text-[10px] mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Loading ──────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div data-testid="verdict-page">
-        <div className="max-w-5xl mx-auto px-4 pt-4 pb-2">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm font-medium">
-              Building long-term outlook for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
-            </span>
-          </div>
-        </div>
-        <VerdictSkeleton />
-      </div>
-    );
-  }
-
-  // ─── Error ────────────────────────────────────────────────────────────────
-  // Limit reached — show otter instead of stale data
+  // ─── Limit reached — show otter instead of stale data ───────────────────
+  // This is intentionally chrome-free (no PageHeader/Disclaimer) to keep
+  // the LimitReached upgrade pitch as the only thing on screen.
   if (isAnalysisExhausted && !isLoading) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
@@ -370,69 +343,89 @@ export default function Verdict() {
     );
   }
 
-  if (error) {
-    const errMsg = (error as Error).message || "";
-    if (isSymbolNotFound(errMsg)) {
-      return (
-        <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-          <InvalidSymbol ticker={activeTicker} />
-        </div>
-      );
-    }
+  // ─── Invalid symbol → branded empty state, also chrome-free ─────────────
+  if (error && isSymbolNotFound((error as Error).message || "")) {
     return (
       <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 text-center">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-red-400" />
-          <p className="text-red-400 font-medium">{errMsg.replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
-        </div>
+        <InvalidSymbol ticker={activeTicker!} />
       </div>
     );
   }
 
-  if (!data) return null;
-
-  const sortedFactors = [...data.factors].sort((a, b) => b.weight - a.weight);
-  const goldSilverRatio = data.metals.silver.price > 0 ? (data.metals.gold.price / data.metals.silver.price) : 0;
+  const sortedFactors = data ? [...data.factors].sort((a, b) => b.weight - a.weight) : [];
+  const subtitle = !activeTicker
+    ? "Is this a good stock to own? Fundamentals, institutional flow, stress resilience & insider confidence."
+    : data
+      ? `${data.ticker} — fundamentals, institutional flow, stress resilience & insider confidence.`
+      : `${activeTicker} — fundamentals, institutional flow, stress resilience & insider confidence.`;
 
   return (
-    <div data-testid="verdict-page" className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6">
+    <PageTemplate
+      className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-6"
+      icon={Award}
+      title="Long-Term Outlook"
+      subtitle={subtitle}
+      howItWorksTitle="How the Long-Term Outlook Score Works"
+      howItWorks={
+        <>
+          <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
+          <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
 
-      {/* ━━━ FAQ / How It Works ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <HelpBlock title="How the Long-Term Outlook Score Works">
-        <p className="mb-2 text-amber-400/80 font-semibold">This score answers: "Is this a good stock to own over weeks to months?" It is NOT a trade signal. For entry timing, use Trade Analysis.</p>
-        <p>The outlook combines <strong className="text-foreground">5 weighted factors</strong> into a single 0–100 score that represents the overall investment thesis for a stock.</p>
+          <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
+          <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
+          <p><strong className="text-foreground">Institutional Flow (25%)</strong> — The flow score from the Institutions page (-100 to +100) converted to 0–100. Measures net smart money direction.</p>
+          <p><strong className="text-foreground">Stress Resilience (15%)</strong> — How well the stock performed vs. the S&P 500 during 7 major historical crises (2000–2025). Score = percentage of events where the stock beat the S&P.</p>
+          <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
 
-        <p className="font-semibold text-foreground mt-2">Factor Weights:</p>
-        <p><strong className="text-foreground">Fundamental Analysis (30%)</strong> — Your Trade Analysis score (0–10) scaled to 0–100. Covers income strength, business quality, balance sheet, valuation, and performance.</p>
-        <p><strong className="text-foreground">Institutional Flow (25%)</strong> — The flow score from the Institutions page (-100 to +100) converted to 0–100. Measures net smart money direction.</p>
-        <p><strong className="text-foreground">Stress Resilience (15%)</strong> — How well the stock performed vs. the S&P 500 during 7 major historical crises (2000–2025). Score = percentage of events where the stock beat the S&P.</p>
-        <p><strong className="text-foreground">Insider Confidence (10%)</strong> — Net insider buy/sell activity. Each net buy adds +10 points from a base of 50. Heavy insider buying = high confidence.</p>
+          <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
+          <ScoreRange label="STRONG CONVICTION" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident. Strong long-term hold." />
+          <ScoreRange label="INVESTMENT GRADE" range="55–69" color="green" description="Most factors positive with minor weaknesses. Solid long-term hold with some caveats." />
+          <ScoreRange label="SPECULATIVE" range="41–54" color="yellow" description="Mixed fundamentals. Some strengths, some concerns. Higher risk for long-term commitment." />
+          <ScoreRange label="SPECULATIVE" range="31–40" color="yellow" description="More negatives than positives. High risk for long-term holding." />
+          <ScoreRange label="HIGH RISK" range="0–30" color="red" description="Significant concerns across multiple categories. Not recommended for long-term holding." />
 
-        <p className="font-semibold text-foreground mt-2">Final Verdict Thresholds:</p>
-        <ScoreRange label="STRONG CONVICTION" range="70–100" color="green" description="All factors align. Fundamentals solid, institutions buying, stress-tested, insiders confident. Strong long-term hold." />
-        <ScoreRange label="INVESTMENT GRADE" range="55–69" color="green" description="Most factors positive with minor weaknesses. Solid long-term hold with some caveats." />
-        <ScoreRange label="SPECULATIVE" range="41–54" color="yellow" description="Mixed fundamentals. Some strengths, some concerns. Higher risk for long-term commitment." />
-        <ScoreRange label="SPECULATIVE" range="31–40" color="yellow" description="More negatives than positives. High risk for long-term holding." />
-        <ScoreRange label="HIGH RISK" range="0–30" color="red" description="Significant concerns across multiple categories. Not recommended for long-term holding." />
+          <p className="font-semibold text-foreground mt-2">Examples:</p>
+          <Example type="good">
+            <p><strong className="text-bull-light">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
+          </Example>
+          <Example type="neutral">
+            <p><strong className="text-watch-light">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
+          </Example>
+          <Example type="bad">
+            <p><strong className="text-bear-light">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
+          </Example>
 
-        <p className="font-semibold text-foreground mt-2">Examples:</p>
-        <Example type="good">
-          <p><strong className="text-green-400">HD (Score 78, STRONG BUY):</strong> Fundamental score 8.2/10 (strong dividends, low debt, high margins). Institutions accumulating (+35 flow). Beat the S&P in 5 of 7 stress events. Multiple insider buys. All factors green.</p>
-        </Example>
-        <Example type="neutral">
-          <p><strong className="text-yellow-400">F (Score 48, HOLD):</strong> Decent fundamentals (6.1/10) but high debt drags the score. Institutional flow neutral (+8). Only beat the S&P in 2 of 7 crises. Insiders mixed. Some promise but too many yellow flags.</p>
-        </Example>
-        <Example type="bad">
-          <p><strong className="text-red-400">RIVN (Score 25, AVOID):</strong> Weak fundamentals (3.4/10) — no profit, high cash burn. Institutions distributing (-28 flow). No historical stress data (too new). Insider selling. Red across the board.</p>
-        </Example>
+          <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
+          <p>The stress test table compares the stock's performance against S&P 500, Gold, and Silver during: <strong className="text-foreground">Dot-com Crash, 9/11, Great Recession, Flash Crash, China/Oil Crisis, COVID Crash, and 2022 Rate Hikes</strong>. Rows highlighted green mean the stock outperformed the S&P during that crisis. "N/A" means the company wasn't publicly traded during that period.</p>
 
-        <p className="font-semibold text-foreground mt-2">Stress Test Events:</p>
-        <p>The stress test table compares the stock's performance against S&P 500, Gold, and Silver during: <strong className="text-foreground">Dot-com Crash, 9/11, Great Recession, Flash Crash, China/Oil Crisis, COVID Crash, and 2022 Rate Hikes</strong>. Rows highlighted green mean the stock outperformed the S&P during that crisis. "N/A" means the company wasn't publicly traded during that period.</p>
-
-        <p className="font-semibold text-foreground mt-2">Metals Dashboard:</p>
-        <p>Gold and silver are traditional safe-haven assets. The <strong className="text-foreground">Gold/Silver Ratio</strong> (typically 60–90) indicates relative value. A ratio above 80 historically suggests silver is undervalued relative to gold. The S&P 500 (SPY) benchmark lets you compare your stock's context against the broader market.</p>
-      </HelpBlock>
-
+          <p className="font-semibold text-foreground mt-2">Metals Dashboard:</p>
+          <p>Gold and silver are traditional safe-haven assets. The <strong className="text-foreground">Gold/Silver Ratio</strong> (typically 60–90) indicates relative value. A ratio above 80 historically suggests silver is undervalued relative to gold. The S&P 500 (SPY) benchmark lets you compare your stock's context against the broader market.</p>
+        </>
+      }
+    >
+      {!activeTicker ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Shield className="h-16 w-16 mx-auto mb-4 opacity-20" />
+          <p className="text-lg font-medium">Search a ticker for a long-term outlook</p>
+          <p className="text-micro mt-3 opacity-40 uppercase tracking-wider">This is not a trade signal — see Trade Analysis for entry timing</p>
+        </div>
+      ) : isLoading ? (
+        <>
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm font-medium">
+              Building long-term outlook for <span className="text-foreground font-bold">{activeTicker}</span> — this may take 10-15 seconds…
+            </span>
+          </div>
+          <VerdictSkeleton />
+        </>
+      ) : error ? (
+        <div className="bg-bear/10 border border-bear/20 rounded-lg p-6 text-center">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-bear-light" />
+          <p className="text-bear-light font-medium">{((error as Error).message || "").replace(/^\d+:\s*/, "").replace(/[{}"]/g, "").replace(/error:/i, "").trim() || "Failed to generate verdict. Please try again."}</p>
+        </div>
+      ) : !data ? null : (
+        <>
       {/* ━━━ 1. UNIFIED VERDICT RING (Hero) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="bg-card border border-card-border rounded-xl overflow-hidden">
         {/* Gradient header accent */}
@@ -461,7 +454,7 @@ export default function Verdict() {
           <div className={`mt-5 px-5 py-1.5 rounded-full border text-sm font-bold tracking-wider uppercase ${verdictBadgeStyle(data.finalVerdict)}`}>
             {data.finalVerdict}
           </div>
-          <span className="mt-2 text-[10px] text-muted-foreground/50 uppercase tracking-widest">Long-Term Outlook — Not a Trade Signal</span>
+          <span className="mt-2 text-micro text-muted-foreground/50 uppercase tracking-widest">Long-Term Outlook — Not a Trade Signal</span>
 
           {/* Company info */}
           <h2 className="mt-4 text-lg font-semibold text-foreground">{data.companyName}</h2>
@@ -494,14 +487,14 @@ export default function Verdict() {
                   <span className="text-sm font-medium text-foreground">{factor.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md uppercase ${signalBadgeColor(factor.color)}`}>
+                  <span className={`text-2xs font-bold px-2 py-0.5 rounded-md uppercase ${signalBadgeColor(factor.color)}`}>
                     {factor.signal}
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">
                     {(factor.weight * 100).toFixed(0)}% wt
                   </span>
                   <span className={`text-sm font-bold tabular-nums w-8 text-right ${
-                    factor.score >= 70 ? "text-green-400" : factor.score >= 40 ? "text-yellow-400" : "text-red-400"
+                    factor.score >= 70 ? "text-bull-light" : factor.score >= 40 ? "text-watch-light" : "text-bear-light"
                   }`}>
                     {factor.score}
                   </span>
@@ -541,6 +534,7 @@ export default function Verdict() {
                   <th className="text-left py-2.5 px-3 font-semibold">Period</th>
                   <th className="text-right py-2.5 px-3 font-semibold">{data.ticker}</th>
                   <th className="text-right py-2.5 px-3 font-semibold">S&amp;P 500</th>
+                  <th className="text-right py-2.5 px-3 font-semibold">Nasdaq 100</th>
                   <th className="text-right py-2.5 px-3 font-semibold">Gold</th>
                   <th className="text-right py-2.5 px-6 font-semibold">Silver</th>
                 </tr>
@@ -553,7 +547,7 @@ export default function Verdict() {
                     <tr
                       key={i}
                       className={`border-b border-card-border/40 transition-colors ${
-                        noData ? "opacity-40" : beatSpy ? "bg-green-500/[0.04]" : "hover:bg-muted/20"
+                        noData ? "opacity-40" : beatSpy ? "bg-bull/[0.04]" : "hover:bg-muted/20"
                       }`}
                       title={test.desc}
                     >
@@ -566,6 +560,9 @@ export default function Verdict() {
                       </td>
                       <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.spy)}`}>
                         {noData ? "N/A" : formatPct(test.spy)}
+                      </td>
+                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData || test.nasdaq == null ? "text-muted-foreground" : pctColor(test.nasdaq)}`}>
+                        {noData || test.nasdaq == null ? "N/A" : formatPct(test.nasdaq)}
                       </td>
                       <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.gold)}`}>
                         {noData ? "N/A" : formatPct(test.gold)}
@@ -580,91 +577,13 @@ export default function Verdict() {
             </table>
           </div>
 
-          <div className="px-6 py-2.5 border-t border-card-border/40 text-[10px] text-muted-foreground flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-sm bg-green-500/[0.08] border border-green-500/20" />
+          <div className="px-6 py-2.5 border-t border-card-border/40 text-micro text-muted-foreground flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm bg-bull/[0.08] border border-bull/20" />
             <span>Highlighted rows indicate {data.ticker} outperformed the S&amp;P 500</span>
           </div>
         </section>
       )}
 
-      {/* ━━━ 4. METALS DASHBOARD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      {data.metals && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Gem className="h-5 w-5 text-muted-foreground" />
-            <h3 className="text-base font-semibold text-foreground">Safe Haven &amp; Benchmark Comparison</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Gold */}
-            <div className="bg-card border border-card-border rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-yellow-500/15 flex items-center justify-center">
-                  <Gem className="h-4 w-4 text-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{data.metals.gold.name}</p>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.gold.price)}</p>
-              <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.gold.change)}`}>
-                {data.metals.gold.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                <span className="tabular-nums">{formatPct(data.metals.gold.change)}</span>
-                <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
-              </div>
-            </div>
-
-            {/* Silver */}
-            <div className="bg-card border border-card-border rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-gray-400/15 flex items-center justify-center">
-                  <Gem className="h-4 w-4 text-gray-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{data.metals.silver.name}</p>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.silver.price)}</p>
-              <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.silver.change)}`}>
-                {data.metals.silver.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                <span className="tabular-nums">{formatPct(data.metals.silver.change)}</span>
-                <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
-              </div>
-            </div>
-
-            {/* S&P 500 */}
-            <div className="bg-card border border-card-border rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                  <LineChart className="h-4 w-4 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{data.metals.spy.name}</p>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-foreground tabular-nums">{formatCurrency(data.metals.spy.price)}</p>
-              <div className={`flex items-center gap-1 mt-1 text-sm font-semibold ${pctColor(data.metals.spy.change)}`}>
-                {data.metals.spy.change >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                <span className="tabular-nums">{formatPct(data.metals.spy.change)}</span>
-                <span className="text-xs text-muted-foreground font-normal ml-1">today</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Gold / Silver Ratio + Note */}
-          <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 px-1">
-            {goldSilverRatio > 0 && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Gold / Silver Ratio:</span>
-                <span className="font-bold text-foreground tabular-nums">{goldSilverRatio.toFixed(1)}</span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Gold and silver serve as traditional safe-haven hedges. When equities decline, precious metals often hold value or appreciate, providing portfolio resilience.
-            </p>
-          </div>
-        </section>
-      )}
 
       {/* ━━━ 5. COMPONENT SCORES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       {(data.analysis || data.institutional) && (
@@ -683,12 +602,12 @@ export default function Verdict() {
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-semibold text-foreground">Fundamental Analysis</span>
                   </div>
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border uppercase ${
+                  <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.analysis.verdict === "YES"
-                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      ? "bg-bull/15 text-bull-light border-bull/20"
                       : data.analysis.verdict === "NO"
-                      ? "bg-red-500/15 text-red-400 border-red-500/20"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      ? "bg-bear/15 text-bear-light border-bear/20"
+                      : "bg-watch/15 text-watch-light border-watch/20"
                   }`}>
                     {data.analysis.verdict}
                   </span>
@@ -697,7 +616,7 @@ export default function Verdict() {
                 {/* Score display */}
                 <div className="flex items-end gap-1.5 mb-4">
                   <span className={`text-4xl font-black tabular-nums leading-none ${
-                    data.analysis.score >= 7 ? "text-green-400" : data.analysis.score >= 5 ? "text-yellow-400" : "text-red-400"
+                    data.analysis.score >= 7 ? "text-bull-light" : data.analysis.score >= 5 ? "text-watch-light" : "text-bear-light"
                   }`}>
                     {typeof data.analysis.score === 'number' ? data.analysis.score.toFixed(2) : data.analysis.score}
                   </span>
@@ -711,7 +630,7 @@ export default function Verdict() {
                       <div key={i} className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground truncate mr-3">{item.name}</span>
                         <span className={`font-bold tabular-nums ${
-                          item.score >= 7 ? "text-green-400" : item.score >= 5 ? "text-yellow-400" : "text-red-400"
+                          item.score >= 7 ? "text-bull-light" : item.score >= 5 ? "text-watch-light" : "text-bear-light"
                         }`}>
                           {item.score}/10
                         </span>
@@ -730,12 +649,12 @@ export default function Verdict() {
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-semibold text-foreground">Institutional Flow</span>
                   </div>
-                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border uppercase ${
+                  <span className={`text-2xs font-bold px-2.5 py-0.5 rounded-md border uppercase ${
                     data.institutional.signal.includes("INFLOW") || data.institutional.signal === "ACCUMULATING"
-                      ? "bg-green-500/15 text-green-400 border-green-500/20"
+                      ? "bg-bull/15 text-bull-light border-bull/20"
                       : data.institutional.signal.includes("OUTFLOW") || data.institutional.signal === "DISTRIBUTING"
-                      ? "bg-red-500/15 text-red-400 border-red-500/20"
-                      : "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      ? "bg-bear/15 text-bear-light border-bear/20"
+                      : "bg-watch/15 text-watch-light border-watch/20"
                   }`}>
                     {data.institutional.signal}
                   </span>
@@ -744,9 +663,9 @@ export default function Verdict() {
                 {/* Flow Score */}
                 <div className="flex items-end gap-1.5 mb-4">
                   <span className={`text-4xl font-black tabular-nums leading-none ${
-                    data.institutional.flowScore >= 20 ? "text-green-400"
-                    : data.institutional.flowScore <= -20 ? "text-red-400"
-                    : "text-yellow-400"
+                    data.institutional.flowScore >= 20 ? "text-bull-light"
+                    : data.institutional.flowScore <= -20 ? "text-bear-light"
+                    : "text-watch-light"
                   }`}>
                     {data.institutional.flowScore > 0 ? "+" : ""}{data.institutional.flowScore}
                   </span>
@@ -756,28 +675,28 @@ export default function Verdict() {
                 {/* Quick stats */}
                 <div className="grid grid-cols-2 gap-3 border-t border-card-border pt-3">
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Institutional %</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Institutional %</p>
                     <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.institutionPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider %</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider %</p>
                     <p className="text-sm font-bold text-foreground tabular-nums">{(data.institutional.insiderPct ?? 0).toFixed(1)}%</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
-                    <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.instIncreased}</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Increasing</p>
+                    <p className="text-sm font-bold text-bull-light tabular-nums">{data.institutional.instIncreased}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Inst. Decreasing</p>
-                    <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.instDecreased}</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Inst. Decreasing</p>
+                    <p className="text-sm font-bold text-bear-light tabular-nums">{data.institutional.instDecreased}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider Buys</p>
-                    <p className="text-sm font-bold text-green-400 tabular-nums">{data.institutional.insiderBuyCount}</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Buys</p>
+                    <p className="text-sm font-bold text-bull-light tabular-nums">{data.institutional.insiderBuyCount}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Insider Sells</p>
-                    <p className="text-sm font-bold text-red-400 tabular-nums">{data.institutional.insiderSellCount}</p>
+                    <p className="text-micro text-muted-foreground uppercase tracking-wider">Insider Sells</p>
+                    <p className="text-sm font-bold text-bear-light tabular-nums">{data.institutional.insiderSellCount}</p>
                   </div>
                 </div>
               </div>
@@ -785,6 +704,8 @@ export default function Verdict() {
           </div>
         </section>
       )}
-    </div>
+        </>
+      )}
+    </PageTemplate>
   );
 }

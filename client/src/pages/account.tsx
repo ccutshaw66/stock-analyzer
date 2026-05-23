@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/queryClient";
+import { API_AUTH_PROFILE, API_AUTH_CHANGE_PASSWORD } from "@shared/api/endpoints";
 import { UserCircle, Mail, Lock, Save, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 
 export default function AccountPage() {
@@ -29,7 +30,7 @@ export default function AccountPage() {
     setProfileMsg("");
     setProfileLoading(true);
     try {
-      const res = await apiRequest("PATCH", "/api/auth/profile", { email, displayName });
+      const res = await apiRequest("PATCH", API_AUTH_PROFILE, { email, displayName });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to update profile");
@@ -55,7 +56,7 @@ export default function AccountPage() {
 
     setPasswordLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/change-password", { currentPassword, newPassword });
+      const res = await apiRequest("POST", API_AUTH_CHANGE_PASSWORD, { currentPassword, newPassword });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to change password");
@@ -107,7 +108,7 @@ export default function AccountPage() {
           </div>
 
           {user?.createdAt && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Account created {new Date(user.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
             </p>
           )}
@@ -116,7 +117,7 @@ export default function AccountPage() {
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 text-xs text-destructive">{profileError}</div>
           )}
           {profileMsg && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-xs text-green-400 flex items-center gap-1.5">
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-2.5 text-xs text-bull-light flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5" /> {profileMsg}
             </div>
           )}
@@ -190,7 +191,7 @@ export default function AccountPage() {
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 text-xs text-destructive">{passwordError}</div>
           )}
           {passwordMsg && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-xs text-green-400 flex items-center gap-1.5">
+            <div className="bg-bull/10 border border-bull/20 rounded-lg p-2.5 text-xs text-bull-light flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5" /> {passwordMsg}
             </div>
           )}

@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  SIGNAL_BULL,
+  SIGNAL_BEAR,
+  BRAND_BG_ELEVATED,
+  BRAND_BORDER_STRONG,
+  COLOR_GRAY_500,
+} from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Trophy, TrendingUp, TrendingDown, Target, BarChart3,
@@ -7,9 +14,9 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, Calendar, FlaskConical,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, Cell } from "recharts";
-import { Disclaimer } from "@/components/Disclaimer";
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { HelpBlock } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -39,24 +46,19 @@ export default function TrackRecord() {
     },
   });
 
-  const retColor = (v: number | null) => v == null ? "text-muted-foreground" : v >= 0 ? "text-green-400" : "text-red-400";
+  const retColor = (v: number | null) => v == null ? "text-muted-foreground" : v >= 0 ? "text-bull-light" : "text-bear-light";
   const signalColor = (s: string) =>
-    s === "STRONG_BUY" || s === "BUY" ? "text-green-400" : s === "STRONG_SELL" || s === "SELL" ? "text-red-400" : "text-yellow-400";
+    s === "STRONG_BUY" || s === "BUY" ? "text-bull-light" : s === "STRONG_SELL" || s === "SELL" ? "text-bear-light" : "text-watch-light";
   const signalBg = (s: string) =>
-    s === "STRONG_BUY" || s === "BUY" ? "bg-green-500/15" : s === "STRONG_SELL" || s === "SELL" ? "bg-red-500/15" : "bg-yellow-500/15";
+    s === "STRONG_BUY" || s === "BUY" ? "bg-bull/15" : s === "STRONG_SELL" || s === "SELL" ? "bg-bear/15" : "bg-watch/15";
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1100px] mx-auto" data-testid="track-record-page">
-      <Disclaimer />
-
-      <div className="flex items-center gap-3">
-        <Trophy className="h-5 w-5 text-primary" />
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Track Record</h1>
-          <p className="text-xs text-muted-foreground">Every signal logged. Every outcome tracked. Full transparency.</p>
-        </div>
-      </div>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1100px] mx-auto"
+      icon={Trophy}
+      title="Track Record"
+      subtitle="Every signal logged. Every outcome tracked. Full transparency."
+    >
       {/* Tabs */}
       <div className="flex border-b border-card-border">
         <button
@@ -133,20 +135,20 @@ export default function TrackRecord() {
               label="30-Day Win Rate"
               value={data.performance.day30 ? `${data.performance.day30.winRate}%` : "Pending..."}
               icon={<Target className="h-3.5 w-3.5" />}
-              color={data.performance.day30 && data.performance.day30.winRate >= 55 ? "text-green-400" : "text-foreground"}
+              color={data.performance.day30 && data.performance.day30.winRate >= 55 ? "text-bull-light" : "text-foreground"}
               subtitle={data.performance.day30 ? `${data.performance.day30.wins}/${data.performance.day30.count} calls` : ""}
             />
             <StatCard
               label="Avg Return (30d)"
               value={data.performance.day30 ? `${data.performance.day30.avgReturn >= 0 ? "+" : ""}${data.performance.day30.avgReturn}%` : "Pending..."}
               icon={<TrendingUp className="h-3.5 w-3.5" />}
-              color={data.performance.day30 && data.performance.day30.avgReturn >= 0 ? "text-green-400" : "text-red-400"}
+              color={data.performance.day30 && data.performance.day30.avgReturn >= 0 ? "text-bull-light" : "text-bear-light"}
             />
             <StatCard
               label="vs S&P 500 (Alpha)"
               value={data.vsSpy.sampleSize > 0 ? `${data.vsSpy.alpha >= 0 ? "+" : ""}${data.vsSpy.alpha}%` : "Pending..."}
               icon={<BarChart3 className="h-3.5 w-3.5" />}
-              color={data.vsSpy.alpha >= 0 ? "text-green-400" : "text-red-400"}
+              color={data.vsSpy.alpha >= 0 ? "text-bull-light" : "text-bear-light"}
               subtitle={data.vsSpy.sampleSize > 0 ? `Otter: ${data.vsSpy.otterAvg30d}% vs SPY: ${data.vsSpy.spyAvg30d}%` : ""}
             />
           </div>
@@ -160,13 +162,13 @@ export default function TrackRecord() {
               <div className="h-[200px] mb-3">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.byScoreBracket.day30.filter(b => b.count > 0)} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#888" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "#888" }} tickFormatter={(v: number) => `${v}%`} />
-                    <Tooltip contentStyle={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }} />
-                    <ReferenceLine y={0} stroke="#333" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} />
+                    <YAxis tick={{ fontSize: 10, fill: COLOR_GRAY_500 }} tickFormatter={(v: number) => `${v}%`} />
+                    <Tooltip contentStyle={{ background: BRAND_BG_ELEVATED, border: `1px solid ${BRAND_BORDER_STRONG}`, borderRadius: 8, fontSize: 11 }} />
+                    <ReferenceLine y={0} stroke="rgb(var(--brand-border-strong))" />
                     <Bar dataKey="avgReturn" name="Avg Return">
                       {data.byScoreBracket.day30.filter(b => b.count > 0).map((entry, i) => (
-                        <Cell key={i} fill={entry.avgReturn >= 0 ? "#22c55e" : "#ef4444"} opacity={0.7} />
+                        <Cell key={i} fill={entry.avgReturn >= 0 ? SIGNAL_BULL : SIGNAL_BEAR} opacity={0.7} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -186,8 +188,8 @@ export default function TrackRecord() {
                     <tr key={i} className="border-b border-card-border/30">
                       <td className="py-2 px-2 text-foreground font-medium">{b.label}</td>
                       <td className="py-2 px-2 text-right font-mono text-foreground">{b.count}</td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.avgReturn >= 0 ? "text-green-400" : "text-red-400"}`}>{b.avgReturn >= 0 ? "+" : ""}{b.avgReturn}%</td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.winRate >= 55 ? "text-green-400" : b.winRate >= 45 ? "text-yellow-400" : "text-red-400"}`}>{b.winRate}%</td>
+                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.avgReturn >= 0 ? "text-bull-light" : "text-bear-light"}`}>{b.avgReturn >= 0 ? "+" : ""}{b.avgReturn}%</td>
+                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.winRate >= 55 ? "text-bull-light" : b.winRate >= 45 ? "text-watch-light" : "text-bear-light"}`}>{b.winRate}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -198,33 +200,33 @@ export default function TrackRecord() {
           {/* Best & Worst Calls */}
           <div className="grid md:grid-cols-2 gap-4">
             {data.bestCalls.length > 0 && (
-              <div className="bg-card border border-green-500/20 rounded-lg p-4">
-                <h3 className="text-sm font-bold text-green-400 mb-3 flex items-center gap-2">
+              <div className="bg-card border border-bull/20 rounded-lg p-4">
+                <h3 className="text-sm font-bold text-bull-light mb-3 flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4" /> Best Calls (30-Day)
                 </h3>
                 {data.bestCalls.map((c, i) => (
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-card-border/30 last:border-0">
                     <div>
                       <span className="font-mono font-bold text-xs text-foreground">{c.ticker}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">{c.date}</span>
+                      <span className="text-micro text-muted-foreground ml-2">{c.date}</span>
                     </div>
-                    <span className="font-mono font-bold text-xs text-green-400">+{c.return30d?.toFixed(1)}%</span>
+                    <span className="font-mono font-bold text-xs text-bull-light">+{c.return30d?.toFixed(1)}%</span>
                   </div>
                 ))}
               </div>
             )}
             {data.worstCalls.length > 0 && (
-              <div className="bg-card border border-red-500/20 rounded-lg p-4">
-                <h3 className="text-sm font-bold text-red-400 mb-3 flex items-center gap-2">
+              <div className="bg-card border border-bear/20 rounded-lg p-4">
+                <h3 className="text-sm font-bold text-bear-light mb-3 flex items-center gap-2">
                   <XCircle className="h-4 w-4" /> Worst Calls (30-Day)
                 </h3>
                 {data.worstCalls.map((c, i) => (
                   <div key={i} className="flex items-center justify-between py-1.5 border-b border-card-border/30 last:border-0">
                     <div>
                       <span className="font-mono font-bold text-xs text-foreground">{c.ticker}</span>
-                      <span className="text-[10px] text-muted-foreground ml-2">{c.date}</span>
+                      <span className="text-micro text-muted-foreground ml-2">{c.date}</span>
                     </div>
-                    <span className="font-mono font-bold text-xs text-red-400">{c.return30d?.toFixed(1)}%</span>
+                    <span className="font-mono font-bold text-xs text-bear-light">{c.return30d?.toFixed(1)}%</span>
                   </div>
                 ))}
               </div>
@@ -256,7 +258,7 @@ export default function TrackRecord() {
                       <td className="py-2 px-2 text-muted-foreground font-mono">{s.date.substring(5)}</td>
                       <td className="py-2 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
                       <td className="py-2 px-2 text-center">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${signalBg(s.signal)} ${signalColor(s.signal)}`}>
+                        <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${signalBg(s.signal)} ${signalColor(s.signal)}`}>
                           {s.signal.replace("_", " ")}
                         </span>
                       </td>
@@ -289,7 +291,7 @@ export default function TrackRecord() {
         </>
       )}
       </>}
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -300,10 +302,10 @@ function StatCard({ label, value, icon, color, subtitle }: {
     <div className="bg-card border border-card-border rounded-lg p-3">
       <div className="flex items-center gap-1 mb-1">
         <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-sm font-bold tabular-nums font-mono ${color}`}>{value}</span>
-      {subtitle && <span className="block text-[9px] text-muted-foreground">{subtitle}</span>}
+      {subtitle && <span className="block text-mini text-muted-foreground">{subtitle}</span>}
     </div>
   );
 }

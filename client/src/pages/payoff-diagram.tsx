@@ -1,17 +1,19 @@
 import { useState, useMemo } from "react";
+import { SIGNAL_BULL, SIGNAL_BEAR, BRAND_ACCENT } from "@/lib/design-tokens";
 import {
   BarChart3, TrendingUp, DollarSign, Target,
-  AlertTriangle, Download,
+  AlertTriangle, Download, Spline,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_TRADES } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from "recharts";
-import { Disclaimer } from "@/components/Disclaimer";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -158,8 +160,8 @@ export default function PayoffDiagram() {
 
   // Fetch open trades when import is toggled on
   const { data: trades } = useQuery<any[]>({
-    queryKey: ["/api/trades"],
-    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    queryKey: [API_TRADES],
+    queryFn: async () => { const r = await apiRequest("GET", API_TRADES); return r.json(); },
     enabled: showImport,
   });
 
@@ -278,29 +280,33 @@ export default function PayoffDiagram() {
   }, [data]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="payoff-diagram-page">
-      <h1 className="text-lg font-bold text-foreground">Options Payoff Diagram</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Visualize the profit/loss at expiration for any options strategy.</p>
-
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Spline}
+      title="Payoff Diagram"
+      subtitle="Visualize the profit/loss at expiration for any options strategy."
+      howItWorksTitle="How to read a payoff diagram"
+      howItWorks={
+        <>
+          <p>A payoff diagram shows your <strong className="text-foreground">profit or loss at expiration</strong> for every possible stock price.</p>
+          <p><strong className="text-foreground">X-axis:</strong> Stock price at expiration. <strong className="text-foreground">Y-axis:</strong> Your profit or loss in dollars.</p>
+          <p><strong className="text-foreground">The horizontal line at $0</strong> is your breakeven — above it you profit, below you lose money.</p>
+          <Example type="good">
+            <strong className="text-bull-light">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
+          </Example>
+          <Example type="neutral">
+            <strong className="text-watch-light">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
+          </Example>
+          <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
+          <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
+        </>
+      }
+    >
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <BarChart3 className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-bold text-foreground">Strategy Builder</h3>
         </div>
-
-        <HelpBlock title="How to read a payoff diagram">
-          <p>A payoff diagram shows your <strong className="text-foreground">profit or loss at expiration</strong> for every possible stock price.</p>
-          <p><strong className="text-foreground">X-axis:</strong> Stock price at expiration. <strong className="text-foreground">Y-axis:</strong> Your profit or loss in dollars.</p>
-          <p><strong className="text-foreground">The horizontal line at $0</strong> is your breakeven — above it you profit, below you lose money.</p>
-          <Example type="good">
-            <strong className="text-green-400">Long Call at $100 strike, $3 premium:</strong> You break even at $103. Below $100 you lose the full $300 premium. Above $103 you profit dollar-for-dollar. Max loss = $300 (the premium paid).
-          </Example>
-          <Example type="neutral">
-            <strong className="text-yellow-400">Iron Condor:</strong> Max profit is the total credit received — you keep it if the stock stays between the short strikes. Max loss is the width of the wider spread minus the credit.
-          </Example>
-          <ScoreRange label="Green Area" range="Above $0" color="green" description="Profitable zone — stock prices where you make money at expiration" />
-          <ScoreRange label="Red Area" range="Below $0" color="red" description="Loss zone — stock prices where you lose money at expiration" />
-        </HelpBlock>
 
         {/* Import from Open Trades */}
         <div className="mb-4" data-testid="payoff-import-section">
@@ -317,7 +323,7 @@ export default function PayoffDiagram() {
             <div className="mt-2 p-3 bg-muted/20 border border-card-border/50 rounded-lg">
               {openOptions.length > 0 ? (
                 <div>
-                  <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Select an open option position</label>
+                  <label className="text-2xs font-medium text-muted-foreground mb-1 block">Select an open option position</label>
                   <select
                     value={selectedTradeId}
                     onChange={e => handleImportTrade(e.target.value)}
@@ -343,7 +349,7 @@ export default function PayoffDiagram() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="col-span-2 md:col-span-1">
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Strategy</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Strategy</label>
             <select
               value={strategy}
               onChange={e => setStrategy(e.target.value as Strategy)}
@@ -357,7 +363,7 @@ export default function PayoffDiagram() {
           </div>
           {def.fields.map(field => (
             <div key={field}>
-              <label className="text-[11px] font-medium text-muted-foreground mb-1 block">{FIELD_LABELS[field]}</label>
+              <label className="text-2xs font-medium text-muted-foreground mb-1 block">{FIELD_LABELS[field]}</label>
               <input
                 type="number"
                 step={field === "contracts" ? 1 : 0.5}
@@ -376,19 +382,19 @@ export default function PayoffDiagram() {
           <ResultCard
             label="Max Profit"
             value={summary.maxProfit === Infinity ? "Unlimited" : `$${summary.maxProfit.toFixed(2)}`}
-            color="text-green-400"
+            color="text-bull-light"
           />
           <ResultCard
             label="Max Loss"
             value={summary.maxLoss === -Infinity ? "Unlimited" : `$${summary.maxLoss.toFixed(2)}`}
-            color="text-red-400"
+            color="text-bear-light"
           />
           {summary.breakevens.map((be, i) => (
             <ResultCard
               key={i}
               label={summary.breakevens.length > 1 ? `Breakeven ${i + 1}` : "Breakeven"}
               value={`$${be.toFixed(2)}`}
-              color="text-yellow-400"
+              color="text-watch-light"
             />
           ))}
           {summary.breakevens.length === 0 && (
@@ -398,7 +404,7 @@ export default function PayoffDiagram() {
             <ResultCard
               label={`P/L @ $${currentStockPrice.toFixed(2)}`}
               value={`${currentPricePL >= 0 ? "+" : ""}$${currentPricePL.toFixed(2)}`}
-              color={currentPricePL >= 0 ? "text-green-400" : "text-red-400"}
+              color={currentPricePL >= 0 ? "text-bull-light" : "text-bear-light"}
             />
           )}
           {currentStockPrice != null && (
@@ -435,12 +441,12 @@ export default function PayoffDiagram() {
               {currentStockPrice != null && (
                 <ReferenceLine
                   x={Math.round(currentStockPrice * 100) / 100}
-                  stroke="#6366f1"
+                  stroke={BRAND_ACCENT}
                   strokeWidth={2}
                   strokeDasharray="6 3"
                   label={{
                     value: `Current $${currentStockPrice.toFixed(2)}`,
-                    fill: "#6366f1",
+                    fill: BRAND_ACCENT,
                     fontSize: 11,
                     fontWeight: 700,
                     position: "top",
@@ -450,8 +456,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="gain"
-                stroke="#22c55e"
-                fill="#22c55e"
+                stroke={SIGNAL_BULL}
+                fill={SIGNAL_BULL}
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}
@@ -461,8 +467,8 @@ export default function PayoffDiagram() {
               <Area
                 type="monotone"
                 dataKey="loss"
-                stroke="#ef4444"
-                fill="#ef4444"
+                stroke={SIGNAL_BEAR}
+                fill={SIGNAL_BEAR}
                 fillOpacity={0.25}
                 strokeWidth={2}
                 connectNulls={false}
@@ -473,7 +479,7 @@ export default function PayoffDiagram() {
           </ResponsiveContainer>
         </div>
       </div>
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -482,7 +488,7 @@ export default function PayoffDiagram() {
 function ResultCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-2.5">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
+      <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">{label}</span>
       <span className={`text-sm font-bold tabular-nums ${color}`}>{value}</span>
     </div>
   );

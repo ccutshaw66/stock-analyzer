@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import {
   Activity, TrendingUp, DollarSign, Percent,
-  AlertTriangle, Calculator, Target, Download,
+  AlertTriangle, Calculator, Target, Download, Sigma,
 } from "lucide-react";
-import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
+import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Disclaimer } from "@/components/Disclaimer";
+import { API_TRADES } from "@shared/api/endpoints";
+import { PageTemplate } from "@/components/PageTemplate";
 
 // ─── Black-Scholes Math ──────────────────────────────────────────────────────
 
@@ -114,26 +115,26 @@ function rhoInterpretation(rho: number, isCall: boolean): string {
 
 function deltaColor(delta: number): string {
   const ad = Math.abs(delta);
-  if (ad > 0.7) return "text-green-400";
-  if (ad > 0.4) return "text-yellow-400";
-  return "text-red-400";
+  if (ad > 0.7) return "text-bull-light";
+  if (ad > 0.4) return "text-watch-light";
+  return "text-bear-light";
 }
 
 function gammaColor(gamma: number): string {
-  if (gamma > 0.05) return "text-red-400";   // high gamma = risky near expiry
-  if (gamma > 0.02) return "text-yellow-400";
-  return "text-green-400";
+  if (gamma > 0.05) return "text-bear-light";   // high gamma = risky near expiry
+  if (gamma > 0.02) return "text-watch-light";
+  return "text-bull-light";
 }
 
 function thetaColor(theta: number): string {
-  if (theta < -0.05) return "text-red-400";
-  if (theta < -0.02) return "text-yellow-400";
-  return "text-green-400";
+  if (theta < -0.05) return "text-bear-light";
+  if (theta < -0.02) return "text-watch-light";
+  return "text-bull-light";
 }
 
 function vegaColor(vega: number): string {
-  if (vega > 0.15) return "text-green-400";
-  if (vega > 0.05) return "text-yellow-400";
+  if (vega > 0.15) return "text-bull-light";
+  if (vega > 0.05) return "text-watch-light";
   return "text-muted-foreground";
 }
 
@@ -142,8 +143,8 @@ function vegaColor(vega: number): string {
 function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) {
   const [open, setOpen] = useState(false);
   const { data: trades } = useQuery<any[]>({
-    queryKey: ["/api/trades"],
-    queryFn: async () => { const r = await apiRequest("GET", "/api/trades"); return r.json(); },
+    queryKey: [API_TRADES],
+    queryFn: async () => { const r = await apiRequest("GET", API_TRADES); return r.json(); },
     enabled: open,
   });
   const openOptions = (trades || []).filter((t: any) => !t.closeDate && t.tradeCategory === "Option");
@@ -153,7 +154,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} 
-        className="text-[11px] text-primary hover:underline flex items-center gap-1 mb-3"
+        className="text-2xs text-primary hover:underline flex items-center gap-1 mb-3"
         data-testid="button-import-position">
         <Download className="h-3 w-3" /> Import Open Position
       </button>
@@ -178,7 +179,7 @@ function ImportPositionButton({ onImport }: { onImport: (trade: any) => void }) 
           </option>
         ))}
       </select>
-      <button onClick={() => setOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground mt-1">Cancel</button>
+      <button onClick={() => setOpen(false)} className="text-micro text-muted-foreground hover:text-foreground mt-1">Cancel</button>
     </div>
   );
 }
@@ -201,33 +202,37 @@ export default function GreeksCalculator() {
   }, [stockPrice, strikePrice, dte, iv, riskFreeRate, isCall]);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto" data-testid="greeks-calculator-page">
-      <h1 className="text-lg font-bold text-foreground">Options Greeks Calculator</h1>
-      <p className="text-xs text-muted-foreground -mt-4">Black-Scholes Greeks with plain-English interpretation. Click the blue info bar for details.</p>
-
-      <div className="bg-card border border-card-border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Activity className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-bold text-foreground">Black-Scholes Calculator</h3>
-        </div>
-
-        <HelpBlock title="Understanding the Options Greeks">
+    <PageTemplate
+      className="p-3 sm:p-4 md:p-6 space-y-6 max-w-[1200px] mx-auto"
+      icon={Sigma}
+      title="Greeks Calculator"
+      subtitle="Black-Scholes Greeks with plain-English interpretation."
+      howItWorksTitle="Understanding the Options Greeks"
+      howItWorks={
+        <>
           <p>The Greeks measure how an option's price changes when market conditions change. They help you manage risk.</p>
           <p><strong className="text-foreground">Delta (Δ):</strong> How much the option price moves per $1 stock move. A delta of 0.50 means the option gains ~$50 per contract per $1 stock increase. Calls have positive delta (0 to 1), puts have negative delta (-1 to 0).</p>
           <Example type="good">
-            <strong className="text-green-400">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
+            <strong className="text-bull-light">Delta = 0.70 (Call):</strong> Deep ITM. The option behaves like 70 shares of stock. High probability of expiring ITM.
           </Example>
           <p><strong className="text-foreground">Gamma (Γ):</strong> How fast delta changes. High gamma near expiration means delta (and your position) can shift dramatically.</p>
           <p><strong className="text-foreground">Theta (Θ):</strong> Time decay — how much value the option loses each day. Negative for long options (you lose money each day), positive for short options (you benefit from decay).</p>
           <Example type="bad">
-            <strong className="text-red-400">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
+            <strong className="text-bear-light">Theta = -$0.15:</strong> You're losing $15 per contract per day just from the passage of time. Consider whether your directional move will outpace the decay.
           </Example>
           <p><strong className="text-foreground">Vega (ν):</strong> Sensitivity to implied volatility. A vega of 0.10 means a 1% IV increase adds $10 per contract. Buy options when you expect IV to rise, sell when you expect it to fall.</p>
           <p><strong className="text-foreground">Rho (ρ):</strong> Sensitivity to interest rates. Usually the least impactful Greek, but matters for LEAPS and in high-rate environments.</p>
           <ScoreRange label="High Delta" range="|Δ| > 0.70" color="green" description="Deep ITM — high probability of profit, behaves like stock" />
           <ScoreRange label="At the Money" range="|Δ| ≈ 0.50" color="yellow" description="Highest gamma and time value — maximum uncertainty" />
           <ScoreRange label="Low Delta" range="|Δ| < 0.30" color="red" description="OTM — low probability, but cheap. Lottery ticket territory" />
-        </HelpBlock>
+        </>
+      }
+    >
+      <div className="bg-card border border-card-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-bold text-foreground">Black-Scholes Calculator</h3>
+        </div>
 
         <ImportPositionButton onImport={(trade) => {
           if (trade.currentPrice) setStockPrice(trade.currentPrice);
@@ -243,7 +248,7 @@ export default function GreeksCalculator() {
         {/* Inputs */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Stock Price ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Stock Price ($)</label>
             <input
               type="number" step="0.5" min={0.01} value={stockPrice}
               onChange={e => setStockPrice(parseFloat(e.target.value) || 0)}
@@ -252,7 +257,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Strike Price ($)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Strike Price ($)</label>
             <input
               type="number" step="0.5" min={0.01} value={strikePrice}
               onChange={e => setStrikePrice(parseFloat(e.target.value) || 0)}
@@ -261,7 +266,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Days to Expiry</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Days to Expiry</label>
             <input
               type="number" step="1" min={1} value={dte}
               onChange={e => setDte(parseInt(e.target.value) || 1)}
@@ -270,7 +275,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">IV (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">IV (%)</label>
             <input
               type="number" step="0.5" min={0.1} value={iv}
               onChange={e => setIv(parseFloat(e.target.value) || 0)}
@@ -279,7 +284,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Risk-Free Rate (%)</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Risk-Free Rate (%)</label>
             <input
               type="number" step="0.1" min={0} value={riskFreeRate}
               onChange={e => setRiskFreeRate(parseFloat(e.target.value) || 0)}
@@ -288,7 +293,7 @@ export default function GreeksCalculator() {
             />
           </div>
           <div>
-            <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Option Type</label>
+            <label className="text-2xs font-medium text-muted-foreground mb-1 block">Option Type</label>
             <select
               value={optionType}
               onChange={e => setOptionType(e.target.value as "call" | "put")}
@@ -350,7 +355,7 @@ export default function GreeksCalculator() {
               <GreekCard
                 label="Prob. ITM"
                 value={`${(greeks.probITM * 100).toFixed(2)}%`}
-                color={greeks.probITM > 0.5 ? "text-green-400" : greeks.probITM > 0.3 ? "text-yellow-400" : "text-red-400"}
+                color={greeks.probITM > 0.5 ? "text-bull-light" : greeks.probITM > 0.3 ? "text-watch-light" : "text-bear-light"}
                 icon={<Target className="h-3 w-3" />}
                 interpretation={`There is a ${(greeks.probITM * 100).toFixed(1)}% chance this option expires in the money.`}
               />
@@ -363,38 +368,38 @@ export default function GreeksCalculator() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-muted-foreground border-b border-card-border">
-                      <th className="text-left pb-2 text-[11px] font-semibold uppercase tracking-wider">Scenario</th>
-                      <th className="text-right pb-2 text-[11px] font-semibold uppercase tracking-wider">$ Change</th>
+                      <th className="text-left pb-2 text-2xs font-semibold uppercase tracking-wider">Scenario</th>
+                      <th className="text-right pb-2 text-2xs font-semibold uppercase tracking-wider">$ Change</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">Stock moves +$1</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.delta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.delta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {greeks.delta >= 0 ? "+" : ""}${(greeks.delta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">Stock moves -$1</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${-greeks.delta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${-greeks.delta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {-greeks.delta >= 0 ? "+" : ""}${(-greeks.delta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">One day passes</td>
-                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.theta >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      <td className={`py-1.5 text-right tabular-nums font-mono ${greeks.theta >= 0 ? "text-bull-light" : "text-bear-light"}`}>
                         {greeks.theta >= 0 ? "+" : ""}${(greeks.theta * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr className="border-b border-card-border/30">
                       <td className="py-1.5 text-muted-foreground">IV increases 1%</td>
-                      <td className="py-1.5 text-right tabular-nums font-mono text-green-400">
+                      <td className="py-1.5 text-right tabular-nums font-mono text-bull-light">
                         +${(greeks.vega * 100).toFixed(2)}
                       </td>
                     </tr>
                     <tr>
                       <td className="py-1.5 text-muted-foreground">IV decreases 1%</td>
-                      <td className="py-1.5 text-right tabular-nums font-mono text-red-400">
+                      <td className="py-1.5 text-right tabular-nums font-mono text-bear-light">
                         -${(greeks.vega * 100).toFixed(2)}
                       </td>
                     </tr>
@@ -405,12 +410,12 @@ export default function GreeksCalculator() {
           </>
         ) : (
           <div className="flex items-center gap-2 p-4 bg-muted/20 border border-card-border/50 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-yellow-400" />
+            <AlertTriangle className="h-4 w-4 text-watch-light" />
             <span className="text-xs text-muted-foreground">Enter valid positive values for stock price, strike, DTE, and IV to calculate Greeks.</span>
           </div>
         )}
       </div>
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -423,10 +428,10 @@ function GreekCard({ label, value, color, icon, interpretation }: {
     <div className="bg-muted/30 border border-card-border/50 rounded-lg p-3">
       <div className="flex items-center gap-1.5 mb-1">
         <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className={`text-lg font-bold tabular-nums font-mono block ${color}`}>{value}</span>
-      <span className="text-[10px] text-muted-foreground leading-snug block mt-1">{interpretation}</span>
+      <span className="text-micro text-muted-foreground leading-snug block mt-1">{interpretation}</span>
     </div>
   );
 }

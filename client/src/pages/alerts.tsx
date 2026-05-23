@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { API_ALERT_RULES, API_ALERTS_EVALUATE_NOW } from "@shared/api/endpoints";
 import { Bell, Plus, Trash2, Zap, TrendingUp, Calendar, Radio } from "lucide-react";
-import { HelpBlock } from "@/components/HelpBlock";
+import { PageTemplate } from "@/components/PageTemplate";
 
 interface AlertRule {
   id: number;
@@ -27,50 +28,33 @@ export default function AlertsPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: rules, isLoading } = useQuery<AlertRule[]>({
-    queryKey: ["/api/alert-rules"],
-    queryFn: async () => (await apiRequest("GET", "/api/alert-rules")).json(),
+    queryKey: [API_ALERT_RULES],
+    queryFn: async () => (await apiRequest("GET", API_ALERT_RULES)).json(),
   });
 
   const toggle = useMutation({
     mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) =>
       (await apiRequest("PATCH", `/api/alert-rules/${id}`, { enabled })).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] }),
   });
 
   const del = useMutation({
     mutationFn: async (id: number) => (await apiRequest("DELETE", `/api/alert-rules/${id}`)).json(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] }),
   });
 
   const evaluateNow = useMutation({
-    mutationFn: async () => (await apiRequest("POST", "/api/alerts/evaluate-now")).json(),
+    mutationFn: async () => (await apiRequest("POST", API_ALERTS_EVALUATE_NOW)).json(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/alerts"] }),
   });
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <HelpBlock title="How Alerts work">
-        <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
-        <p><b className="text-foreground">Rule types:</b></p>
-        <ul className="list-disc pl-4 space-y-1">
-          <li><b className="text-foreground">Scanner verdict change</b> — fires when Scanner 2.0 flips a ticker into verdicts you pick (GO ↑/↓, SET ↑/↓, READY ↑/↓, PULLBACK). Deduped so you only get one alert per change.</li>
-          <li><b className="text-foreground">Price target hit</b> — fires when an open position crosses its target price. Pulled from the trade’s own target field.</li>
-          <li><b className="text-foreground">Price stop hit</b> — fires when price crosses the stop you configured.</li>
-          <li><b className="text-foreground">Earnings within N days</b> — fires when an open position has an earnings report scheduled within your window (default 7 days).</li>
-        </ul>
-        <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
-        <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
-      </HelpBlock>
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Bell className="h-5 w-5" /> Alerts
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above.
-          </p>
-        </div>
+    <PageTemplate
+      maxWidth="max-w-5xl"
+      icon={Bell}
+      title="Alerts"
+      subtitle="Rules are evaluated every 30 minutes during market hours. In-app delivery via the bell icon above."
+      headerRight={
         <div className="flex items-center gap-2">
           <button
             onClick={() => evaluateNow.mutate()}
@@ -83,18 +67,33 @@ export default function AlertsPage() {
             onClick={() => setShowCreate(true)}
             className="h-8 px-3 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5"
           >
-            <Plus className="h-3.5 w-3.5" /> New rule
+            <Plus className="h-3.5 w-3.5" />
+            New Alert
           </button>
         </div>
-      </div>
-
+      }
+      howItWorks={
+        <>
+          <p><b className="text-foreground">What it does:</b> Create rules that fire notifications when something you care about happens. A cron runs every 30 minutes during market hours, evaluates your rules against live data, and drops new alerts into the bell icon in the header.</p>
+          <p><b className="text-foreground">Rule types:</b></p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li><b className="text-foreground">Scanner verdict change</b> — fires when Scanner 2.0 flips a ticker into verdicts you pick (GO ↑/↓, SET ↑/↓, READY ↑/↓, PULLBACK). Deduped so you only get one alert per change.</li>
+            <li><b className="text-foreground">Price target hit</b> — fires when an open position crosses its target price. Pulled from the trade’s own target field.</li>
+            <li><b className="text-foreground">Price stop hit</b> — fires when price crosses the stop you configured.</li>
+            <li><b className="text-foreground">Earnings within N days</b> — fires when an open position has an earnings report scheduled within your window (default 7 days).</li>
+          </ul>
+          <p><b className="text-foreground">Delivery:</b> Today, all alerts land in the in-app bell (top-right). Email, SMS, and push are coming soon — your rules will keep working and start using those channels automatically when they ship.</p>
+          <p><b className="text-foreground">Evaluate now</b> button forces an immediate rule sweep if you don’t want to wait for the next 30-minute tick.</p>
+        </>
+      }
+    >
       {/* Coming-soon channels */}
       <div className="mb-6 p-3 bg-muted/30 border border-card-border rounded-lg">
         <p className="text-xs font-semibold text-foreground mb-1">Delivery channels</p>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-500/15 text-green-400">In-app ✓</span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">Email — coming soon</span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">SMS / Push — coming soon</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-bull/15 text-bull-light">In-app ✓</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">Email — coming soon</span>
+          <span className="text-micro font-bold px-2 py-0.5 rounded bg-muted text-muted-foreground">SMS / Push — coming soon</span>
         </div>
       </div>
 
@@ -123,9 +122,9 @@ export default function AlertsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-foreground">{meta.label}</p>
-                    {r.ticker && <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-foreground">{r.ticker}</span>}
+                    {r.ticker && <span className="text-micro font-mono font-bold px-1.5 py-0.5 rounded bg-muted text-foreground">{r.ticker}</span>}
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-2xs text-muted-foreground mt-0.5">
                     {r.kind === "SCANNER_VERDICT" && (cfg.verdicts?.length ? `Watching: ${cfg.verdicts.join(", ")}` : "Watching: GO, SET, PULLBACK")}
                     {r.kind === "EARNINGS" && `${cfg.daysBefore ?? 7} days before earnings`}
                     {r.kind === "PRICE_TARGET" && (r.tradeId ? `Trade #${r.tradeId} target` : "Any open position target")}
@@ -143,7 +142,7 @@ export default function AlertsPage() {
                 </label>
                 <button
                   onClick={() => { if (confirm("Delete this alert rule?")) del.mutate(r.id); }}
-                  className="p-1.5 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-400 shrink-0"
+                  className="p-1.5 rounded-md hover:bg-bear/10 text-muted-foreground hover:text-bear-light shrink-0"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -154,7 +153,7 @@ export default function AlertsPage() {
       </div>
 
       {showCreate && <CreateRuleModal onClose={() => setShowCreate(false)} />}
-    </div>
+    </PageTemplate>
   );
 }
 
@@ -165,9 +164,9 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
   const [daysBefore, setDaysBefore] = useState("7");
 
   const create = useMutation({
-    mutationFn: async (body: any) => (await apiRequest("POST", "/api/alert-rules", body)).json(),
+    mutationFn: async (body: any) => (await apiRequest("POST", API_ALERT_RULES, body)).json(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/alert-rules"] });
+      queryClient.invalidateQueries({ queryKey: [API_ALERT_RULES] });
       onClose();
     },
   });
@@ -199,13 +198,13 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
             >
               {availableKinds.map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
-            <p className="text-[10px] text-muted-foreground mt-1">{KIND_META[kind]?.desc}</p>
+            <p className="text-micro text-muted-foreground mt-1">{KIND_META[kind]?.desc}</p>
           </div>
 
           {(kind === "SCANNER_VERDICT" || kind === "EARNINGS" || kind === "PRICE_TARGET" || kind === "PRICE_STOP") && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                Ticker <span className="text-[10px]">(optional — leave blank to apply to watchlist + open positions)</span>
+                Ticker <span className="text-micro">(optional — leave blank to apply to watchlist + open positions)</span>
               </label>
               <input
                 type="text"
@@ -222,7 +221,7 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Verdicts to watch</label>
               <div className="flex flex-wrap gap-1.5">
                 {["GO ↑", "GO ↓", "SET ↑", "SET ↓", "READY ↑", "READY ↓", "PULLBACK"].map(v => (
-                  <label key={v} className={`px-2 py-1 text-[11px] font-semibold rounded border cursor-pointer transition-colors ${verdicts.includes(v) ? "bg-primary/20 border-primary text-primary" : "bg-muted border-card-border text-muted-foreground"}`}>
+                  <label key={v} className={`px-2 py-1 text-2xs font-semibold rounded border cursor-pointer transition-colors ${verdicts.includes(v) ? "bg-primary/20 border-primary text-primary" : "bg-muted border-card-border text-muted-foreground"}`}>
                     <input
                       type="checkbox"
                       checked={verdicts.includes(v)}
@@ -251,7 +250,7 @@ function CreateRuleModal({ onClose }: { onClose: () => void }) {
           )}
 
           {(kind === "PRICE_TARGET" || kind === "PRICE_STOP") && (
-            <p className="text-[10px] text-amber-400">
+            <p className="text-micro text-amber-400">
               Note: Per-position rules work best created from the trade row itself (coming soon — for now this rule will match any open position's target/stop on that ticker).
             </p>
           )}

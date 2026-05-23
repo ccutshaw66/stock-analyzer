@@ -48,7 +48,7 @@ const ADMIN_EMAILS = ["awisper@me.com", "christopher.cutshaw@gmail.com", "admin@
 function TierBadge({ tier }: { tier: string }) {
   const colors = TIER_COLORS[tier] || TIER_COLORS.free;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${colors.bg} ${colors.text} ring-1 ${colors.ring}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase tracking-wider ${colors.bg} ${colors.text} ring-1 ${colors.ring}`}>
       {tier === "elite" && <Crown className="h-2.5 w-2.5" />}
       {tier === "pro" && <Zap className="h-2.5 w-2.5" />}
       {tier}
@@ -128,10 +128,10 @@ function KpiCard({ icon: Icon, label, value, sub, color = "text-primary" }: {
     <div className="bg-card border border-card-border rounded-xl p-4" data-testid={`kpi-${label.toLowerCase().replace(/\s/g, "-")}`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`h-4 w-4 ${color}`} />
-        <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
+        <span className="text-2xs text-muted-foreground uppercase tracking-wider font-medium">{label}</span>
       </div>
       <div className="text-2xl font-bold text-foreground tabular-nums">{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -142,11 +142,11 @@ function UsageBar({ used, limit, label }: { used: number; limit: number; label: 
   const pct = limit === Infinity || limit === 0 ? 0 : Math.min(100, (used / limit) * 100);
   const isUnlimited = limit >= 9999;
   return (
-    <div className="flex items-center gap-2 text-[10px]">
+    <div className="flex items-center gap-2 text-micro">
       <span className="text-muted-foreground w-12 shrink-0">{label}</span>
       <div className="flex-1 h-1.5 bg-muted/30 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${pct > 80 ? "bg-red-400" : pct > 50 ? "bg-amber-400" : "bg-primary"}`}
+          className={`h-full rounded-full transition-all ${pct > 80 ? "bg-bear-light" : pct > 50 ? "bg-amber-400" : "bg-primary"}`}
           style={{ width: isUnlimited ? "0%" : `${pct}%` }}
         />
       </div>
@@ -234,7 +234,7 @@ export default function AdminPage() {
           <ShieldCheck className="h-5 w-5 text-primary" />
           <h1 className="text-xl font-bold text-foreground">Admin</h1>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-micro text-muted-foreground">
           {dataUpdatedAt > 0 && (
             <span>Updated {relativeTime(new Date(dataUpdatedAt).toISOString())}</span>
           )}
@@ -254,16 +254,16 @@ export default function AdminPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard icon={Users} label="Total Users" value={stats?.users.total ?? users.length} sub={`${paidUsers} paid`} />
-        <KpiCard icon={Activity} label="Active Today" value={stats?.users.activeToday ?? 0} sub={`${stats?.users.activeThisWeek ?? 0} this week`} color="text-green-400" />
+        <KpiCard icon={Activity} label="Active Today" value={stats?.users.activeToday ?? 0} sub={`${stats?.users.activeThisWeek ?? 0} this week`} color="text-bull-light" />
         <KpiCard icon={Crown} label="Elite" value={stats?.users.elite ?? 0} color="text-amber-400" />
         <KpiCard icon={Zap} label="Pro" value={stats?.users.pro ?? 0} color="text-blue-400" />
-        <KpiCard icon={Server} label="Uptime" value={stats?.system.uptime ?? "—"} sub={`Memory: ${stats?.system.memoryMB ?? 0}MB`} color="text-emerald-400" />
+        <KpiCard icon={Server} label="Uptime" value={stats?.system.uptime ?? "—"} sub={`Memory: ${stats?.system.memoryMB ?? 0}MB`} color="text-bull-light" />
         <KpiCard
           icon={Database}
           label="Cache"
           value={stats?.cache.size ?? 0}
           sub={`Queue: ${stats?.queue.active ?? 0} active, ${stats?.queue.queued ?? 0} waiting`}
-          color={stats?.queue.circuitBroken ? "text-red-400" : "text-cyan-400"}
+          color={stats?.queue.circuitBroken ? "text-bear-light" : "text-cyan-400"}
         />
       </div>
 
@@ -274,22 +274,22 @@ export default function AdminPage() {
             <h2 className="text-sm font-bold text-foreground">System Health</h2>
             <div className="flex items-center gap-3">
               {stats.queue.circuitBroken ? (
-                <span className="flex items-center gap-1 text-[10px] text-red-400 font-semibold">
+                <span className="flex items-center gap-1 text-micro text-bear-light font-semibold">
                   <XCircle className="h-3 w-3" /> Circuit Breaker OPEN
                 </span>
               ) : stats.queue.consecutive429s > 0 ? (
-                <span className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold">
+                <span className="flex items-center gap-1 text-micro text-amber-400 font-semibold">
                   <Activity className="h-3 w-3" /> {stats.queue.consecutive429s} consecutive 429s
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[10px] text-green-400 font-semibold">
+                <span className="flex items-center gap-1 text-micro text-bull-light font-semibold">
                   <CheckCircle2 className="h-3 w-3" /> All Systems Normal
                 </span>
               )}
               <button
                 onClick={() => clearCacheMutation.mutate()}
                 disabled={clearCacheMutation.isPending}
-                className="text-[10px] text-muted-foreground hover:text-foreground border border-card-border rounded px-2 py-1 hover:bg-muted/30 transition-colors"
+                className="text-micro text-muted-foreground hover:text-foreground border border-card-border rounded px-2 py-1 hover:bg-muted/30 transition-colors"
                 data-testid="clear-cache-btn"
               >
                 {clearCacheMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Clear Cache"}
@@ -346,7 +346,7 @@ export default function AdminPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="users-table">
               <thead>
-                <tr className="border-b border-card-border text-left text-[10px] text-muted-foreground uppercase tracking-wider">
+                <tr className="border-b border-card-border text-left text-micro text-muted-foreground uppercase tracking-wider">
                   <th className="px-4 py-2.5">User</th>
                   <th className="px-4 py-2.5">Tier</th>
                   <th className="px-4 py-2.5">Today's Usage</th>
@@ -367,7 +367,7 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
                         <span className="font-medium text-foreground text-xs">{u.displayName || "—"}</span>
-                        <span className="text-muted-foreground font-mono text-[10px]">{u.email}</span>
+                        <span className="text-muted-foreground font-mono text-micro">{u.email}</span>
                       </div>
                     </td>
 
@@ -390,7 +390,7 @@ export default function AdminPage() {
 
                     {/* Last Active */}
                     <td className="px-4 py-3">
-                      <span className={`text-xs ${u.lastLoginAt && (Date.now() - new Date(u.lastLoginAt).getTime()) < 24 * 60 * 60 * 1000 ? "text-green-400" : "text-muted-foreground"}`}>
+                      <span className={`text-xs ${u.lastLoginAt && (Date.now() - new Date(u.lastLoginAt).getTime()) < 24 * 60 * 60 * 1000 ? "text-bull-light" : "text-muted-foreground"}`}>
                         {relativeTime(u.lastLoginAt)}
                       </span>
                     </td>
@@ -404,17 +404,17 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {u.isAdmin && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary ring-1 ring-primary/20">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-mini font-bold bg-primary/10 text-primary ring-1 ring-primary/20">
                             <ShieldCheck className="h-2.5 w-2.5" /> ADMIN
                           </span>
                         )}
                         {u.stripeCustomerId && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-500/10 text-green-400 ring-1 ring-green-500/20">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-mini font-bold bg-bull/10 text-bull-light ring-1 ring-bull/20">
                             <CreditCard className="h-2.5 w-2.5" /> STRIPE
                           </span>
                         )}
                         {u.email === "ottertrader@stockotter.ai" && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-mini font-bold bg-purple-500/10 text-purple-400 ring-1 ring-purple-500/20">
                             DEMO
                           </span>
                         )}
@@ -424,25 +424,25 @@ export default function AdminPage() {
                     {/* Actions */}
                     <td className="px-4 py-3 text-right">
                       {u.isAdmin || u.email === "ottertrader@stockotter.ai" ? (
-                        <span className="text-[10px] text-muted-foreground/50">Protected</span>
+                        <span className="text-micro text-muted-foreground/50">Protected</span>
                       ) : deleteConfirm === u.id ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => deleteMutation.mutate(u.id)}
                             disabled={deleteMutation.isPending}
-                            className="text-[10px] text-red-400 hover:text-red-300 font-bold"
+                            className="text-micro text-bear-light hover:text-bear-light font-bold"
                             data-testid={`confirm-delete-${u.id}`}
                           >
                             {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Confirm"}
                           </button>
-                          <button onClick={() => setDeleteConfirm(null)} className="text-[10px] text-muted-foreground hover:text-foreground">
+                          <button onClick={() => setDeleteConfirm(null)} className="text-micro text-muted-foreground hover:text-foreground">
                             Cancel
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => setDeleteConfirm(u.id)}
-                          className="text-muted-foreground/50 hover:text-red-400 transition-colors"
+                          className="text-muted-foreground/50 hover:text-bear-light transition-colors"
                           data-testid={`delete-user-${u.id}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

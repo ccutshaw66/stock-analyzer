@@ -77,6 +77,45 @@
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* ─── Design tokens — compartmentalized colors ───────────────────────────
+   * These are the canonical CSS values. The matching TypeScript constants
+   * live in `client/src/lib/design-tokens.ts`. If you change one, change
+   * the other. `verify-work` enforces no new hardcoded hex/rgb in code.
+   *
+   * Signal & brand colors are space-separated RGB triplets so Tailwind
+   * classes (bg-bull, text-brand-text-muted, bg-bull/10) can apply alpha
+   * via `rgb(var(--name) / <alpha-value>)`.
+   */
+
+  /* Brand surfaces (navy palette) */
+  --brand-bg: 4 13 34;                /* #040d22 */
+  --brand-bg-elevated: 10 22 40;      /* #0a1628 */
+  --brand-bg-card: 20 24 41;          /* #141829 */
+  --brand-bg-card-alt: 12 18 37;      /* #0c1225 */
+  --brand-surface-raised: 42 47 69;   /* #2a2f45 */
+  --brand-border: 30 34 53;           /* #1e2235 */
+  --brand-border-strong: 30 41 59;    /* #1e293b */
+  --brand-border-subtle: 58 63 85;    /* #3a3f55 */
+  --brand-text-bright: 196 199 212;   /* #c4c7d4 — body text bright */
+  --brand-text-muted: 139 143 163;    /* #8b8fa3 */
+  --brand-text-faded: 107 112 132;    /* #6b7084 */
+  --brand-text-dim: 74 79 101;        /* #4a4f65 */
+  --brand-accent: 99 102 241;         /* #6366f1 indigo accent */
+  --brand-accent-deep: 85 88 230;     /* #5558e6 deeper indigo */
+  --accent-violet: 139 92 246;        /* #8b5cf6 gradient accent */
+
+  /* Semantic signals (charts, badges, verdict labels) */
+  --signal-bull: 34 197 94;           /* #22c55e long/win/positive */
+  --signal-bear: 239 68 68;           /* #ef4444 short/loss/negative */
+  --signal-watch: 234 179 8;          /* #eab308 caution/WATCH_BUY */
+  --signal-watch-short: 249 115 22;   /* #f97316 WATCH_SELL */
+  --signal-reduce: 20 184 166;        /* #14b8a6 profit-take/teal */
+  --signal-trend-exit: 148 163 184;   /* #94a3b8 clean exit/slate */
+  --signal-short-add: 217 70 239;     /* #d946ef magenta */
+  --signal-bull-light: 74 222 128;    /* #4ade80 verdict score >=70 */
+  --signal-bear-light: 248 113 113;   /* #f87171 verdict score <40 */
+  --signal-watch-light: 250 204 21;   /* #facc15 verdict score 40-69 */
 }
 
 .dark {
