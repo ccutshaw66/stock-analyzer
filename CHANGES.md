@@ -19,6 +19,8 @@ during the prior Perplexity/Claude session).
 - New: `client/src/components/DividendCalculator.tsx`
 - Modified: `client/src/pages/dividend-portfolio.tsx` (one import + one render line above the summary cards)
 
+**Follow-up fix (same day):** the panel header AND every comparison-row label silently rendered without the ticker symbol — the component was reading `data.symbol` but the API returns `ticker`, not `symbol`. Switched all display paths to use the user's submitted ticker (the value they typed, already uppercased, always present when the panel/row renders) so the UI is robust to whatever shape the API hands back. Also reworded the delta line from `"KO by $95.00"` → `"KO leads by $95.00"` and made the comparison header explicit (`KO vs DELL` instead of just `vs`).
+
 ---
 ## 2026-05-23 — Big-session sweep: Experimental compartments, Markov deploy pipeline, books library, rules consolidation
 

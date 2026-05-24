@@ -8,7 +8,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { dividendsPath } from "@shared/api/endpoints";
 
 interface DividendData {
-  symbol: string;
+  // NOTE: the server returns this as `ticker`, not `symbol`. We don't rely
+  // on either for display — the user's input value is used as the source
+  // of truth for which ticker the panel/comparison refers to.
+  ticker?: string;
   companyName?: string;
   dividendYield: number;
   dividendRate: number;
@@ -143,10 +146,10 @@ export function DividendCalculator() {
       )}
 
       {/* Comparison row — only when BOTH have valid dividend data */}
-      {numbersA && numbersB && queryA.data && queryB.data && (
+      {numbersA && numbersB && queryA.data && queryB.data && submittedA && submittedB && (
         <ComparisonRow
-          a={{ data: queryA.data, numbers: numbersA }}
-          b={{ data: queryB.data, numbers: numbersB }}
+          a={{ symbol: submittedA, data: queryA.data, numbers: numbersA }}
+          b={{ symbol: submittedB, data: queryB.data, numbers: numbersB }}
         />
       )}
 
@@ -251,13 +254,13 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
     return (
       <div className="bg-card border border-card-border rounded-lg p-4 space-y-2">
         <div className="flex flex-wrap items-center gap-2 text-2xs">
-          <span className="font-mono font-bold text-foreground text-xs">{data.symbol}</span>
+          <span className="font-mono font-bold text-foreground text-xs">{submitted}</span>
           {data.companyName && <span className="text-muted-foreground">— {data.companyName}</span>}
         </div>
         <div className="flex items-start gap-2 text-xs text-watch-light">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           <span>
-            Sorry — <span className="font-mono font-bold">{data.symbol}</span>'s greedy bastards don't like to share. No dividends here.
+            Sorry — <span className="font-mono font-bold">{submitted}</span>'s greedy bastards don't like to share. No dividends here.
           </span>
         </div>
       </div>
@@ -272,7 +275,7 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
     <div className="bg-card border border-card-border rounded-lg p-3 space-y-3" data-testid={`div-calc-panel-${slot}`}>
       {/* Header strip — symbol, name, frequency badge */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono font-bold text-foreground text-xs">{data.symbol}</span>
+        <span className="font-mono font-bold text-foreground text-xs">{submitted}</span>
         {data.companyName && <span className="text-2xs text-muted-foreground truncate max-w-[200px]">— {data.companyName}</span>}
         <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-mini font-semibold">{data.frequency}</span>
         <span className="text-2xs text-muted-foreground">· {shares.toLocaleString()} shares</span>
@@ -344,8 +347,8 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
 // ─── Comparison row ───────────────────────────────────────────────────────────
 
 function ComparisonRow({ a, b }: {
-  a: { data: DividendData; numbers: ComputedNumbers };
-  b: { data: DividendData; numbers: ComputedNumbers };
+  a: { symbol: string; data: DividendData; numbers: ComputedNumbers };
+  b: { symbol: string; data: DividendData; numbers: ComputedNumbers };
 }) {
   const perDistDelta = a.numbers.perDistribution - b.numbers.perDistribution;
   const yearlyDelta = a.numbers.yearly - b.numbers.yearly;
@@ -356,13 +359,13 @@ function ComparisonRow({ a, b }: {
       <div className="flex items-center gap-2">
         <BarChart3 className="h-3.5 w-3.5 text-primary" />
         <h4 className="text-2xs font-bold text-foreground uppercase tracking-wider">
-          {a.data.symbol} vs {b.data.symbol}
+          <span className="font-mono">{a.symbol}</span> vs <span className="font-mono">{b.symbol}</span>
         </h4>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <DeltaRow label="Yield" aSym={a.data.symbol} bSym={b.data.symbol} delta={yieldDelta} format={v => `${v.toFixed(2)}%`} />
-        <DeltaRow label="Per Distribution" aSym={a.data.symbol} bSym={b.data.symbol} delta={perDistDelta} format={v => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-        <DeltaRow label="Yearly Total" aSym={a.data.symbol} bSym={b.data.symbol} delta={yearlyDelta} format={v => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+        <DeltaRow label="Yield" aSym={a.symbol} bSym={b.symbol} delta={yieldDelta} format={v => `${v.toFixed(2)}%`} />
+        <DeltaRow label="Per Distribution" aSym={a.symbol} bSym={b.symbol} delta={perDistDelta} format={v => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+        <DeltaRow label="Yearly Total" aSym={a.symbol} bSym={b.symbol} delta={yearlyDelta} format={v => `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
       </div>
     </div>
   );
@@ -392,7 +395,7 @@ function DeltaRow({ label, aSym, bSym, delta, format }: {
         <span className="text-xs font-bold text-foreground">Even — same amount</span>
       ) : (
         <span className="text-xs font-bold text-foreground">
-          <span className={color}>{winner}</span> by <span className="font-mono">{format(Math.abs(delta))}</span>
+          <span className={`${color} font-mono`}>{winner}</span> leads by <span className="font-mono">{format(Math.abs(delta))}</span>
         </span>
       )}
     </div>
