@@ -50,7 +50,7 @@ export function MarkovFullView() {
         </div>
       )}
 
-      <HelpBlock title="How the model works" defaultOpen>
+      <HelpBlock title="How the model works">
         <p>
           The Hidden Markov Model treats the market as moving between a small
           number of unobservable <strong>regimes</strong> (calm bull, choppy
