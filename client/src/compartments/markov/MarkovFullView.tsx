@@ -6,10 +6,20 @@
  * exposes `runBacktest`; this view will wire results in without changing
  * the page chrome.
  */
-import { useState } from "react";
-import { FlaskConical, Play, AlertTriangle, Info } from "lucide-react";
+import { useState, useMemo } from "react";
+import {
+  FlaskConical, Play, AlertTriangle, Info, BarChart3, TrendingUp,
+  Activity, Loader2,
+} from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  ReferenceLine, Legend,
+} from "recharts";
 import { HelpBlock, Example } from "@/components/HelpBlock";
-import { useMarkov, DEFAULT_PARAMS, type MarkovParams } from "./useMarkov";
+import {
+  useMarkov, DEFAULT_PARAMS,
+  type MarkovParams, type MarkovBacktestResult, type MarkovPerformance,
+} from "./useMarkov";
 
 export function MarkovFullView() {
   const M = useMarkov();
@@ -102,18 +112,240 @@ export function MarkovFullView() {
         )}
       </section>
 
-      <section className="bg-card border border-card-border rounded-xl p-4">
-        <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
-          <FlaskConical className="h-4 w-4 text-primary" /> Expected output
-        </h2>
-        <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
-          <li><strong>Regime table</strong> — per-state mean return and volatility (in original units), so each regime is readable as "bull / chop / drawdown".</li>
-          <li><strong>OOS performance</strong> — CAGR, Sharpe, Sortino, max drawdown, hit rate. Reported three ways: net of costs, gross, and buy &amp; hold for the same window.</li>
-          <li><strong>Equity curve</strong> — strategy vs buy &amp; hold.</li>
-          <li><strong>Position trace</strong> — sized position over time, including shorts when enabled.</li>
-        </ul>
-      </section>
+      {/* ── Backtest results — only renders after a successful run ─────────── */}
+      {M.runBacktest.isPending && (
+        <section className="bg-card border border-card-border rounded-xl p-4 flex items-center gap-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <span>Running backtest — fetching price history from FMP and fitting the HMM…</span>
+        </section>
+      )}
+
+      {M.runBacktest.data && !M.runBacktest.isPending && (
+        <BacktestResults result={M.runBacktest.data} />
+      )}
+
+      {!M.runBacktest.data && !M.runBacktest.isPending && !M.runBacktest.error && (
+        <section className="bg-card border border-card-border rounded-xl p-4">
+          <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+            <FlaskConical className="h-4 w-4 text-primary" /> Expected output
+          </h2>
+          <ul className="text-xs text-muted-foreground space-y-1.5 list-disc list-inside">
+            <li><strong>Regime table</strong> — per-state mean return and volatility (in original units), so each regime is readable as "bull / chop / drawdown".</li>
+            <li><strong>OOS performance</strong> — CAGR, Sharpe, Sortino, max drawdown, hit rate. Reported three ways: net of costs, gross, and buy &amp; hold for the same window.</li>
+            <li><strong>Equity curve</strong> — strategy vs buy &amp; hold.</li>
+            <li><strong>Position trace</strong> — sized position over time, including shorts when enabled.</li>
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+// ─── Backtest results ──────────────────────────────────────────────────────────
+
+function BacktestResults({ result }: { result: MarkovBacktestResult }) {
+  return (
+    <>
+      <RegimeStatsCard stats={result.regime_stats} />
+      <PerformanceCard performance={result.performance} />
+      <EquityCurveCard equity={result.equity_curve} />
+      <PositionTraceCard positions={result.positions} />
+    </>
+  );
+}
+
+function RegimeStatsCard({ stats }: { stats: MarkovBacktestResult["regime_stats"] }) {
+  // Label each state by sign of expected return so it reads as "bull / chop / drawdown".
+  const labeled = stats.map((s) => ({
+    ...s,
+    label: s.mean_return > 0.0005 ? "bullish" : s.mean_return < -0.0005 ? "drawdown" : "chop",
+  }));
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+        <Activity className="h-4 w-4 text-primary" /> Regime stats (training)
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-2 pr-3 font-semibold">State</th>
+              <th className="py-2 pr-3 font-semibold">Read as</th>
+              <th className="py-2 pr-3 font-semibold text-right">Mean daily return</th>
+              <th className="py-2 pr-3 font-semibold text-right">Daily volatility</th>
+            </tr>
+          </thead>
+          <tbody>
+            {labeled.map((s) => (
+              <tr key={s.state} className="border-t border-card-border/40">
+                <td className="py-2 pr-3 font-mono font-bold">{s.state}</td>
+                <td className="py-2 pr-3">
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                    s.label === "bullish" ? "bg-green-500/15 text-green-400"
+                    : s.label === "drawdown" ? "bg-red-500/15 text-red-400"
+                    : "bg-amber-500/15 text-amber-400"
+                  }`}>{s.label}</span>
+                </td>
+                <td className={`py-2 pr-3 text-right tabular-nums ${s.mean_return >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {(s.mean_return * 100).toFixed(3)}%
+                </td>
+                <td className="py-2 pr-3 text-right tabular-nums text-foreground">
+                  {(s.volatility * 100).toFixed(3)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function PerformanceCard({ performance }: { performance: MarkovBacktestResult["performance"] }) {
+  const rows: { key: keyof MarkovPerformance; label: string; pct: boolean }[] = [
+    { key: "cagr",         label: "CAGR",          pct: true  },
+    { key: "sharpe",       label: "Sharpe",        pct: false },
+    { key: "sortino",      label: "Sortino",       pct: false },
+    { key: "max_drawdown", label: "Max drawdown",  pct: true  },
+    { key: "hit_rate",     label: "Hit rate",      pct: true  },
+  ];
+
+  const cols: { key: keyof MarkovBacktestResult["performance"]; label: string; tone: string }[] = [
+    { key: "net",   label: "Net (after costs)", tone: "text-foreground font-bold" },
+    { key: "gross", label: "Gross",             tone: "text-muted-foreground" },
+    { key: "bh",    label: "Buy & Hold",        tone: "text-muted-foreground" },
+  ];
+
+  const fmt = (v: number, pct: boolean) =>
+    pct ? `${(v * 100).toFixed(2)}%` : v.toFixed(2);
+
+  // Color the net row based on whether it beats buy & hold.
+  const colorize = (v: number, bh: number, isReturn: boolean) => {
+    if (!isReturn) return "";
+    return v > bh ? "text-green-400" : v < bh ? "text-red-400" : "";
+  };
+
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+        <BarChart3 className="h-4 w-4 text-primary" /> Out-of-sample performance
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-2 pr-3 font-semibold">Metric</th>
+              {cols.map((c) => (
+                <th key={c.key} className="py-2 pr-3 font-semibold text-right">{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const isReturn = r.key === "cagr" || r.key === "hit_rate";
+              const bhVal = performance.bh[r.key];
+              return (
+                <tr key={r.key} className="border-t border-card-border/40">
+                  <td className="py-2 pr-3 font-semibold">{r.label}</td>
+                  {cols.map((c) => {
+                    const v = performance[c.key][r.key];
+                    const extra = c.key === "net" ? colorize(v, bhVal, isReturn) : "";
+                    return (
+                      <td key={c.key} className={`py-2 pr-3 text-right tabular-nums ${c.tone} ${extra}`}>
+                        {fmt(v, r.pct)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-muted-foreground/70 mt-2 italic">
+        Net = after transaction costs you set. Gross = before costs. Buy &amp; Hold = same window, no strategy.
+        Green/red on the Net column shows whether the strategy beat buy &amp; hold on that metric.
+      </p>
+    </section>
+  );
+}
+
+function EquityCurveCard({ equity }: { equity: MarkovBacktestResult["equity_curve"] }) {
+  const data = useMemo(() => equity, [equity]);
+  const end = data[data.length - 1];
+  const stratPct = end ? (end.strategy - 1) * 100 : 0;
+  const bhPct = end ? (end.bh - 1) * 100 : 0;
+
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" /> Equity curve
+        </h2>
+        <div className="flex items-center gap-3 text-[11px] tabular-nums">
+          <span><span className="inline-block h-2 w-2 rounded-full bg-purple-400 mr-1.5"></span>Strategy: {stratPct >= 0 ? "+" : ""}{stratPct.toFixed(1)}%</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-gray-400 mr-1.5"></span>B&amp;H: {bhPct >= 0 ? "+" : ""}{bhPct.toFixed(1)}%</span>
+        </div>
+      </div>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+              minTickGap={50} />
+            <YAxis tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+              tickFormatter={(v) => v.toFixed(2)} width={50} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "rgb(var(--card))",
+                border: "1px solid rgb(var(--card-border))",
+                borderRadius: 6, fontSize: 11,
+              }}
+              formatter={(value: number, name: string) => [
+                value.toFixed(3),
+                name === "strategy" ? "Strategy" : "Buy & Hold",
+              ]} />
+            <Line type="monotone" dataKey="strategy" stroke="#a78bfa" strokeWidth={2} dot={false} isAnimationActive={false} />
+            <Line type="monotone" dataKey="bh" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
+function PositionTraceCard({ positions }: { positions: MarkovBacktestResult["positions"] }) {
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+        <Activity className="h-4 w-4 text-primary" /> Position trace
+      </h2>
+      <p className="text-[10px] text-muted-foreground/70 mb-3 italic">
+        Vol-targeted position size over time. Positive = long, negative = short (when allowed). Flat lines = min-hold filter holding the position steady.
+      </p>
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={positions} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+              minTickGap={50} />
+            <YAxis tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+              tickFormatter={(v) => v.toFixed(2)} width={50} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "rgb(var(--card))",
+                border: "1px solid rgb(var(--card-border))",
+                borderRadius: 6, fontSize: 11,
+              }}
+              formatter={(value: number) => [value.toFixed(3), "Position"]} />
+            <ReferenceLine y={0} stroke="rgb(var(--muted-foreground))" strokeDasharray="2 2" />
+            <Line type="monotone" dataKey="position" stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
   );
 }
 
