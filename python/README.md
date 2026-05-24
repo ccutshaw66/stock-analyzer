@@ -21,20 +21,22 @@ mirrors how HERMES is integrated.
 
 ## Current contents
 
-| File | Strategy | Page that consumes it |
+| Path | Strategy | Page that consumes it |
 |---|---|---|
-| `markov_trading_v2.py` | Gaussian-HMM regime detection with vol-targeted sizing, transaction costs, and a min-hold filter. Outputs an OOS backtest vs buy & hold. | `/markov` (Experimental) |
+| `markov/` | Gaussian-HMM regime detection with vol-targeted sizing, transaction costs, and a min-hold filter. FastAPI service (`app.py`) wrapping the original strategy module (`markov_trading_v2.py`). Deployable to Railway via the included `Dockerfile`. | `/markov` (Experimental) |
+| `hermes/` | Self-improving multi-asset trading agent. FastAPI dashboard (`dashboard_web.py`) + trading loop (`hermes_trading/loop.py`) with reflection (`reflect.py`), volatility-targeted sizing, and pluggable adapters (price / news / macro / on-chain). Deployed to Railway as a standalone service. | `/hermes` (Experimental) |
 
 ## Deploying
 
-Each script needs to be wrapped in a small HTTP layer (FastAPI/Flask) before it
-can serve the web app. The minimum surface the `/markov` page expects is:
+The Markov directory already includes its FastAPI wrapper, requirements, and
+Dockerfile — see `markov/README.md` for the deploy steps. Once Railway (or
+your host of choice) gives you a URL, set it in
+`client/src/compartments/markov/useMarkov.ts` (constant near the top, same
+pattern as `HERMES_API` in `hermes/useHermes.ts`):
 
-```
-POST /api/backtest
-body: { ticker, start, end, states, train_frac, target_vol, cost_bps, min_hold_days, allow_short }
-→ { regime_stats, performance: { net, gross, bh }, equity_curve, positions }
+```ts
+export const MARKOV_API: string | null = "https://...up.railway.app";
 ```
 
-Once deployed, set the endpoint URL inside `client/src/pages/markov.tsx`
-(constant near the top, same pattern as `HERMES_API` in `hermes.tsx`).
+The page checks `MARKOV_API !== null` and flips from "Pending Deploy" to
+"Live" automatically.

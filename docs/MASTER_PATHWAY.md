@@ -1,12 +1,16 @@
 # Stock Otter — Master Pathway (MP)
 
 **Owner:** Chris Cutshaw
-**Last updated:** 2026-04-30
+**Last updated:** 2026-05-23
 **Status:** Living document. Single reference point for next steps.
 
 > **Mission:** Ship a foundationally reliable, commercially licensed, tier-gated
 > SaaS that validates stock market claims with backtested confluence. The MP is
 > the only document that answers "what do I work on next?"
+
+> **Project rules** — workflow, build/structure, auto-deploy, backups — live in
+> `docs/RULES.md` (the single source of truth, per the one-file-one-location
+> rule). The compartment contract referenced below is also catalogued there.
 
 **Status legend:** ✅ done · 🟨 partial / in progress · ⬜ not started · 🚫 dropped/deprecated
 

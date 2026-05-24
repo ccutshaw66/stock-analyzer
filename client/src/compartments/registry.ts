@@ -21,6 +21,10 @@ import { confluencePulseCompartment } from "./confluence-pulse";
 import { positionInsidersCompartment } from "./position-insiders";
 import { insiderClustersCompartment } from "./insider-clusters";
 import { insiderRatioCompartment } from "./insider-ratio";
+// Experimental group — research surfaces, opt-in widgets.
+import { hermesCompartment } from "./hermes";
+import { markovCompartment } from "./markov";
+import { wheelCompartment } from "./wheel";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   // Dashboard rebuild v1 — the new curated default layout uses these nine.
@@ -40,6 +44,10 @@ const clientCompartments: ClientCompartmentEntry[] = [
   tradesCompartment,
   confluenceChartCompartment,
   htfScannerCompartment,
+  // Experimental — registered so dashboard widgets can opt-in.
+  hermesCompartment,
+  markovCompartment,
+  wheelCompartment,
 ];
 
 export function listClientCompartments(): readonly ClientCompartmentEntry[] {

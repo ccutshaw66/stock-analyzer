@@ -1,0 +1,27 @@
+# Markov strategy FastAPI service.
+#
+# Install:    sudo cp markov.service /etc/systemd/system/markov.service
+# Reload:     sudo systemctl daemon-reload
+# Enable:     sudo systemctl enable --now markov
+# Status:     systemctl status markov
+# Logs:       journalctl -u markov -f
+#
+# Restart after a code update is fired by the deploy hook
+# (see python/markov/deploy/markov-deploy.sh).
+
+[Unit]
+Description=Markov Strategy FastAPI service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/stock-analyzer/python/markov
+Environment="PATH=/opt/markov/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-/etc/markov.env
+ExecStart=/opt/markov/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

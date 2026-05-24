@@ -9,6 +9,87 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-23 — Big-session sweep: Experimental compartments, Markov deploy pipeline, books library, rules consolidation
+
+**Why:** Single working session that pulled a lot of disparate threads together. Chris's two driving themes: (1) every page on the site must follow the compartment contract — "this is a non-negotiable rule"; (2) every rule that governs the project should live in one file, one location, not scattered across CHANGES entries and per-skill notes.
+
+**What — Experimental compartments (HERMES, Markov, Wheel) refactored to the 4-guarantee contract:**
+
+Before this session, `/hermes` was one 720-line page with 5 raw `fetch()` calls and 3 inline mutations to the Railway API; `/markov` and `/wheel` had similar inline-everything shape. All three now follow the compartment pattern:
+
+```
+client/src/compartments/<name>/
+  use<Name>.ts          ← canonical hook (one source for status/stats/trades/equity/goal queries + every mutation)
+  <Name>FullView.tsx    ← the actual UI, reads via the hook
+  <Name>Widget.tsx      ← compact dashboard tile
+  index.ts              ← manifest registered in compartments/registry.ts
+```
+
+Pages reduce to thin wrappers around `<PageTemplate>` + the Full view (`pages/hermes.tsx` 720 → 34 lines; `pages/markov.tsx` 305 → 30; `pages/wheel.tsx` 520 → 61). Wheel also gets `wheelLogic.ts` as a separate pure-functions file per contract guarantee #2.
+
+`compartments/registry.ts` now imports and registers `hermesCompartment`, `markovCompartment`, `wheelCompartment` — same line-and-a-half pattern as every other compartment. The dashboard widget catalog picks them up automatically.
+
+**What — Markov service ready for one-step deploy to the LTS server:**
+
+The `/markov` page has been showing "Awaiting Python service deployment" because the strategy code is Python and the Node app can't run it. Built the FastAPI wrapper + complete LTS-server deploy pipeline:
+
+- `python/markov/app.py` — FastAPI wrapper exposing `POST /api/backtest` that calls into the existing `markov_trading_v2.py`. JSON contract matches `useMarkov.ts` exactly. NaN/Inf sanitization so the browser never chokes. CORS lockable via `MARKOV_ALLOWED_ORIGINS`. Health endpoint at `/health` for uptime probes.
+- `python/markov/requirements.txt` — pinned (fastapi 0.115.5, uvicorn 0.32.1, pydantic 2.10.3, numpy 2.1.3, pandas 2.2.3, yfinance 0.2.50, hmmlearn 0.3.3, scikit-learn 1.5.2).
+- `python/markov/Dockerfile` — present but not the chosen deploy path; LTS server is.
+- `python/markov/deploy/markov.service` — systemd unit. Runs uvicorn under a venv at `/opt/markov/venv`, working dir at `/opt/stock-analyzer/python/markov`, port 8001 localhost-only.
+- `python/markov/deploy/nginx-markov.conf` — reverse-proxy snippet that exposes `https://stockotter.ai/markov-api/` → `127.0.0.1:8001`. Same-origin, so no CORS.
+- `python/markov/deploy/markov-setup.sh` — one-shot setup script. Creates venv, installs deps, drops the systemd unit, brings the service up, hits /health to confirm. Idempotent enough to re-run if something goes sideways.
+- `python/markov/deploy/markov-deploy.sh` — re-deploy script. Hooks into the existing Stockotter webhook flow. Hashes requirements.txt; only reinstalls pip deps when the hash changes. Then `systemctl restart markov` + health check.
+- `python/markov/deploy/README.md` — full step-by-step for the human.
+
+To go live: SSH the server, run `markov-setup.sh`, paste the nginx snippet, add one line to the existing Stockotter deploy hook, flip `MARKOV_API` in `useMarkov.ts` from `null` to `"https://stockotter.ai/markov-api"`. That last line-change is the "Pending → Live" flip on the page.
+
+**Decision:** Skip Railway for Markov. Chris's stated preference: GitHub → his LTS server. HERMES will follow the same path eventually (currently still on Railway as the temporary host).
+
+**What — HERMES source archived in repo:**
+
+The HERMES trading bot lived at `C:/Hermes/hermes-trading/` on disk, deployed to Railway, but was not in any GitHub repo. Source archived into `python/hermes/` (dashboard_web.py, dashboard.py, export_csv.py, hermes_trading/ module, hermes_trading/adapters/*, Dockerfile, pyproject.toml). Skipped: `.env`, `state/`, `__pycache__/`. This is the same archival pattern as `python/markov_trading_v2.py` was using.
+
+Migrating HERMES off Railway onto its own GitHub repo + the LTS server is logged in `docs/TODO.md` as a follow-up.
+
+**What — sidebar Experimental group + accordion behavior:**
+
+Three Experimental pages (HERMES, Markov, Wheel) added to `client/src/lib/page-registry.ts` under a new "Experimental" group. NavGroup union type and `NAV_GROUP_ORDER` updated. Wheel moved out of Calculators per Chris's commit `50e71d7`.
+
+`AppLayout.tsx` sidebar now uses accordion behavior (only one group open at a time) with brightened group-header styling — also from `50e71d7`, preserved through the big merge with origin/main earlier in the session.
+
+**What — reference library: 18 trading PDFs added to the repo at `docs/books/`:**
+
+Chris noted he had ~16 trading books that should be reference material; actually 18 (Bulkowski's Encyclopedia of Chart Patterns, O'Neil's How to Make Money in Stocks, Wyckoff's Day Trader's Bible, Chan's Quantitative Trading, Aziz & Baehr Mastering Trading Psychology, Bennett Trading Volatility, plus the swing/day/divergence/price-action set). Each entry indexed in `~/.claude/projects/C--Stockotter/memory/trading_books.md` with per-book "when to consult this" notes and a feature-to-book cross-reference table. Repo size grew ~54 MB; tracked-as-followup migration to Git LFS in `docs/TODO.md`.
+
+**Privacy invariant logged in RULES.md and TODO.md:** these are commercial books. The Stockotter repo MUST remain private. Flipping public requires removing `docs/books/` first.
+
+**What — `docs/RULES.md` is now the single source of truth for project rules:**
+
+Five sections: Working with Chris (non-coder, cut-and-paste-one-step, just-do-it, backup-before-deploy); Build & structure (universal-structure rule, compartment contract, backend layer rule, vendor-name rule); Auto-deploy (Stockotter webhook flow, the new Markov flow, HERMES target, branch policy with the atomic main+tag push lesson from `2026-05-15`); Backups (pointer to BACKUP.md); Reference library (pointer to books).
+
+Pulled content from four scattered Claude-memory files (`user_non_coder.md`, `workflow_cut_and_paste.md`, `feedback_just_do_it.md`, `feedback_backup_before_deploy.md`) — those are now two-line pointers back to RULES.md sections. `MEMORY.md` updated to be a short index pointing at RULES.md as authoritative. `MASTER_PATHWAY.md` gets a one-line cross-reference at the top.
+
+Net: anyone (Chris, a Claude session, a future hire) reading the repo cold opens `docs/RULES.md` and sees the whole game.
+
+**What — `docs/TODO.md` consolidated 35+ open items:**
+
+Sourced from `MASTER_PATHWAY.md` ⬜ rows, every CHANGES.md "follow-up" flag from the last month, code-level `TODO` comments, and items Chris flagged in past sessions that were re-mined from local session transcripts. Sections: Deployment, Compartment refactors continuation, Quality & verification, GA blockers, Code cleanup (Yahoo / Polygon kill, palette migration, SEC N-PORT), Mechanical migration sweeps, Stub implementations, Past-session items, Reference library (with the LFS migration), Resolved (kept for reference).
+
+**What — permission-mode setup actually works on Claude Desktop:**
+
+First attempt set `defaultMode: "bypassPermissions"` + `skipDangerousModePermissionPrompt: true` at user level — works on the CLI, silently fails on Claude Desktop (`CLAUDE_CODE_ENTRYPOINT=claude-desktop`) which restricts full bypass for safety. The correct mode for Desktop is `auto` + `skipAutoPermissionPrompt: true`. Settings updated, SessionStart hook added that prints `[OK] Auto mode active...` or a `[WARN]` at every session start so this can't silently drift again. Resolved-with-reference lesson logged in `docs/TODO.md`.
+
+**Files touched — summary:**
+
+- New: `docs/RULES.md`, `docs/TODO.md`, `docs/books/*` (18 PDFs + README), `python/markov/{app.py,requirements.txt,Dockerfile,README.md,deploy/*}`, `python/hermes/*` (full archive), `client/src/compartments/{hermes,markov,wheel}/*`.
+- Renamed: `python/markov_trading_v2.py` → `python/markov/markov_trading_v2.py`.
+- Modified: `client/src/components/AppLayout.tsx` (sidebar accordion + Experimental group hookup), `client/src/lib/page-registry.ts` (Experimental group + entries), `client/src/compartments/registry.ts` (3 new compartment registrations), `client/src/pages/{hermes,markov,wheel}.tsx` (collapsed to thin wrappers), `docs/MASTER_PATHWAY.md` (RULES.md cross-reference), `python/README.md` (Markov + HERMES path updates), `.claude/settings.json` (cleared — moved to user-level).
+- Memory: `MEMORY.md` redirected to RULES.md; four rule files collapsed to pointers; `trading_books.md` written with full 18-book index.
+
+**Rollback tag:** `safe/2026-05-23-pre-mega-session` points at the pre-commit HEAD. Reverting is a single `git reset --hard safe/2026-05-23-pre-mega-session` away on the local; on the server, the deploy webhook would need a manual override to pull that tag.
+
+---
 ## 2026-05-22 — Dashboard v2 rebuild (5-minute morning workspace) + Markov experimental strategy
 
 **Why:** Chris's verdict on the old `/dashboard`: "stupid, just repeats the pages — and the only 'customization' is moving 5 boxes around, who cares." Confluence widget too big for the info it gave; My Trades too wide. Rebuilt as the 5-minute morning workspace: open at 8:55am, in 5 seconds know if anything needs attention today, see fresh overnight triggers, log the daily routine. Anchored to the project north-star ("unified inputs across all pages → premium everything-in-one-page feature"). Plan: `~/.claude/plans/i-just-found-on-imperative-finch.md`.

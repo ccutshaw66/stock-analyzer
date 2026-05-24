@@ -1,0 +1,10 @@
+# Markov FastAPI service — pinned for reproducible deploys.
+# Bumps go via PR + ship; see python/markov/README.md.
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+numpy==2.1.3
+pandas==2.2.3
+yfinance==0.2.50
+hmmlearn==0.3.3
+scikit-learn==1.5.2
