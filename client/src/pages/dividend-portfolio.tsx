@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DividendCalculator } from "@/components/DividendCalculator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { API_DIVIDEND_PORTFOLIO } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
@@ -197,6 +198,9 @@ export default function DividendPortfolio() {
         </>
       }
     >
+      {/* Dividend Calculator — pure lookup tool, works regardless of held positions */}
+      <DividendCalculator />
+
       {/* Portfolio Summary Cards */}
       {positions.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="portfolio-summary">

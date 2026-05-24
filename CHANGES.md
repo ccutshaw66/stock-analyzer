@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-24 — Dividend Calculator + side-by-side comparison on /dividend-portfolio
+
+**Why:** Chris wanted a pure-lookup tool that doesn't depend on his open positions, and — driven by his earlier workflow pain of "had to flip back and forth and change actual positions to figure out which payer was better" — a two-ticker comparison mode so he can spec Ticker A vs Ticker B at chosen share counts and see the distribution-income delta directly.
+
+**What:** New `client/src/components/DividendCalculator.tsx` — single card with two ticker+share input pairs and a single Calculate button. Each ticker fetches `/api/dividends/:ticker` (existing `extractDividendData` route) into its own React Query, then renders into a panel that mirrors the EXACT 3-row × 4-col MiniStat grid the Position expand-view uses below on the same page (Yield, Div Rate, Payout Ratio, Frequency, Payouts/Year, Ex-Div, Distribution, 5Y Avg, Last Dividend, Quality Score, Per Distribution total, Yearly Total). Same layout = nothing new for the user to read. Below both panels, a comparison row highlights which ticker wins on Yield, Per Distribution, and Yearly Total (with the dollar delta). Friendly "greedy bastards don't like to share" message when a ticker pays no dividend. Single-ticker use still works — second slot shows a dashed placeholder until used.
+
+**Files:**
+- New: `client/src/components/DividendCalculator.tsx`
+- Modified: `client/src/pages/dividend-portfolio.tsx` (one import + one render line above the summary cards)
+
+---
 ## 2026-05-23 — Big-session sweep: Experimental compartments, Markov deploy pipeline, books library, rules consolidation
 
 **Why:** Single working session that pulled a lot of disparate threads together. Chris's two driving themes: (1) every page on the site must follow the compartment contract — "this is a non-negotiable rule"; (2) every rule that governs the project should live in one file, one location, not scattered across CHANGES entries and per-skill notes.
