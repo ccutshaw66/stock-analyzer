@@ -14,7 +14,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 /** Base URL once deployed. Null until then. */
-export const MARKOV_API: string | null = null;
+export const MARKOV_API: string | null = "https://stockotter.ai/markov-api";
 
 export interface MarkovParams {
   ticker: string;
