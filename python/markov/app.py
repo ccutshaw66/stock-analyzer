@@ -49,12 +49,71 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from markov_trading_v2 import backtest, perf
+
+
+# ─── Price-history fetcher (FMP, not yfinance — Yahoo is killed) ────────────
+#
+# Reads FMP_API_KEY from env. The systemd unit sources both
+# /etc/markov.env (Markov-specific) and /opt/stock-analyzer/.env
+# (Stockotter's, where FMP_API_KEY already lives).
+FMP_BASE = "https://financialmodelingprep.com/stable"
+FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
+
+
+def fetch_close_series(ticker: str, start: str, end: str | None) -> pd.Series:
+    """Return a daily close `pd.Series` indexed by date for [start, end].
+
+    Uses FMP's stable `/historical-price-eod/full` endpoint. Returns the
+    series in ascending date order (FMP returns descending). Raises
+    `HTTPException` for any user-visible failure mode.
+    """
+    if not FMP_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="FMP_API_KEY not set on this service. Add it to /etc/markov.env or /opt/stock-analyzer/.env.",
+        )
+    url = f"{FMP_BASE}/historical-price-eod/full"
+    params = {"symbol": ticker, "apikey": FMP_KEY}
+    if start:
+        params["from"] = start
+    if end:
+        params["to"] = end
+
+    try:
+        r = requests.get(url, params=params, timeout=30)
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"FMP request failed: {e}") from e
+
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"FMP {r.status_code} for {ticker}: {r.text[:200]}",
+        )
+
+    payload = r.json()
+    # FMP returns either a bare list of bars, or {"symbol": ..., "historical": [...]}.
+    bars = payload if isinstance(payload, list) else payload.get("historical", [])
+    if not bars:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No price history returned by FMP for {ticker} between {start} and {end or 'today'}.",
+        )
+
+    df = pd.DataFrame(bars)
+    if "date" not in df.columns or "close" not in df.columns:
+        raise HTTPException(
+            status_code=502,
+            detail=f"FMP payload missing 'date' or 'close' fields. Got: {list(df.columns)[:8]}",
+        )
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").set_index("date")
+    return df["close"].astype(float)
 
 
 # ─── App + CORS ─────────────────────────────────────────────────────────────
@@ -130,25 +189,8 @@ def health() -> dict[str, str]:
 
 @app.post("/api/backtest")
 def run_backtest(req: BacktestRequest) -> dict[str, Any]:
-    # ── Pull price history ──
-    try:
-        data = yf.download(
-            req.ticker,
-            start=req.start,
-            end=req.end or None,
-            auto_adjust=True,
-            progress=False,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"yfinance download failed: {e}") from e
-
-    if data is None or data.empty:
-        raise HTTPException(status_code=404, detail=f"No price data returned for {req.ticker}.")
-
-    close = data["Close"].squeeze()
-    if not isinstance(close, pd.Series):
-        # Multi-column response (e.g. when yfinance returns a frame) — pick the ticker col.
-        close = pd.Series(data["Close"].iloc[:, 0])
+    # ── Pull price history via FMP (Yahoo/yfinance is dead per the project rules) ──
+    close = fetch_close_series(req.ticker, req.start, req.end)
 
     # ── Run the existing backtest ──
     try:

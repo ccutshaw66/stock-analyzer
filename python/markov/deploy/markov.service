@@ -18,6 +18,9 @@ Type=simple
 User=root
 WorkingDirectory=/opt/stock-analyzer/python/markov
 Environment="PATH=/opt/markov/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Source FMP_API_KEY (and anything else) from Stockotter's env first,
+# then let Markov-specific overrides in /etc/markov.env win on conflicts.
+EnvironmentFile=-/opt/stock-analyzer/.env
 EnvironmentFile=-/etc/markov.env
 ExecStart=/opt/markov/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8001
 Restart=on-failure

@@ -20,10 +20,11 @@ import argparse
 import warnings
 import numpy as np
 import pandas as pd
-import yfinance as yf
-import matplotlib.pyplot as plt
 from hmmlearn.hmm import GaussianHMM
 from sklearn.preprocessing import StandardScaler
+
+# yfinance + matplotlib are imported lazily inside main() / plot() so the
+# FastAPI service (which uses FMP and never plots) doesn't need them.
 
 warnings.filterwarnings("ignore")
 
@@ -169,6 +170,8 @@ def perf(rets: pd.Series, freq: int = 252) -> dict:
 
 
 def plot(df: pd.DataFrame, ticker: str) -> None:
+    import matplotlib.pyplot as plt  # lazy: not needed by the FastAPI service
+
     eq_strat = (1 + df["net_ret"].fillna(0)).cumprod()
     eq_gross = (1 + df["gross_ret"].fillna(0)).cumprod()
     eq_bh = (1 + df["bh_ret"].fillna(0)).cumprod()
@@ -207,6 +210,9 @@ def main():
     p.add_argument("--min-hold", type=int, default=2)
     p.add_argument("--long-only", action="store_true")
     args = p.parse_args()
+
+    # Lazy: only the script needs yfinance — the FastAPI service uses FMP.
+    import yfinance as yf
 
     print(f"Downloading {args.ticker}...")
     data = yf.download(args.ticker, start=args.start, end=args.end,

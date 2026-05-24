@@ -17,6 +17,8 @@ MARKOV=$REPO/python/markov
 VENV=/opt/markov/venv
 REQS=$MARKOV/requirements.txt
 HASH_FILE=/opt/markov/.requirements.sha256
+UNIT_SRC=$MARKOV/deploy/markov.service
+UNIT_DST=/etc/systemd/system/markov.service
 
 # Cheap change detection — only run pip install if reqs changed.
 NEW_HASH=$(sha256sum "$REQS" | awk '{print $1}')
@@ -28,6 +30,14 @@ if [ "$NEW_HASH" != "$OLD_HASH" ]; then
   echo "$NEW_HASH" > "$HASH_FILE"
 else
   echo "[markov-deploy] requirements unchanged — skipping pip install"
+fi
+
+# Re-copy the systemd unit if the repo version differs. Daemon-reload
+# only if we actually changed it.
+if ! cmp -s "$UNIT_SRC" "$UNIT_DST"; then
+  echo "[markov-deploy] systemd unit changed — reinstalling"
+  cp "$UNIT_SRC" "$UNIT_DST"
+  systemctl daemon-reload
 fi
 
 echo "[markov-deploy] restarting service"
