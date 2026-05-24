@@ -263,15 +263,15 @@ function EquityCurve({
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
-              <XAxis dataKey="i" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-                tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }} />
-              <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-                tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+              <XAxis dataKey="i" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }} />
+              <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
                 tickFormatter={(v) => v.toFixed(2)} width={50} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "rgb(var(--card))",
-                  border: "1px solid rgb(var(--card-border))",
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--card-border))",
                   borderRadius: 6, fontSize: 11,
                 }}
                 labelFormatter={(label) => `Trade ${label}`}

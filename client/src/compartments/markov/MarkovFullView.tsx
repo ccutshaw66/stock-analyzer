@@ -290,16 +290,16 @@ function EquityCurveCard({ equity }: { equity: MarkovBacktestResult["equity_curv
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
-            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
               minTickGap={50} />
-            <YAxis tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
               tickFormatter={(v) => v.toFixed(2)} width={50} />
             <Tooltip
               contentStyle={{
-                backgroundColor: "rgb(var(--card))",
-                border: "1px solid rgb(var(--card-border))",
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--card-border))",
                 borderRadius: 6, fontSize: 11,
               }}
               formatter={(value: number, name: string) => [
@@ -327,20 +327,20 @@ function PositionTraceCard({ positions }: { positions: MarkovBacktestResult["pos
       <div className="h-48 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={positions} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
-            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
               minTickGap={50} />
-            <YAxis tick={{ fontSize: 10, fill: "rgb(var(--muted-foreground))" }}
-              tickLine={false} axisLine={{ stroke: "rgb(var(--card-border))" }}
+            <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
               tickFormatter={(v) => v.toFixed(2)} width={50} />
             <Tooltip
               contentStyle={{
-                backgroundColor: "rgb(var(--card))",
-                border: "1px solid rgb(var(--card-border))",
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--card-border))",
                 borderRadius: 6, fontSize: 11,
               }}
               formatter={(value: number) => [value.toFixed(3), "Position"]} />
-            <ReferenceLine y={0} stroke="rgb(var(--muted-foreground))" strokeDasharray="2 2" />
+            <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="2 2" />
             <Line type="monotone" dataKey="position" stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
