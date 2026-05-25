@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-25 — HERMES: expose per-asset RSI in dashboard + Open-position badge
+
+**Why:** The bot's actual entry trigger is RSI per asset (oversold < threshold → long), but the dashboard widget showed only volatility + position-size. Chris's quote: "the whole trade is based on the RSI of the chart" — and you couldn't see it. Also fixed: asset cards didn't surface which asset had an open position.
+
+**What:**
+- **HERMES side (NOT in this repo — lives on Chris's laptop OneDrive + the wazuh VM):** patched `hermes_trading/loop.py` to write `self.last_rsi[asset] = rsi` every iteration (was previously only set inside the entry-evaluation path), and patched `write_heartbeat` to include `"rsi_values": self.last_rsi` in the JSON. Patched `dashboard_web.py` `/api/status` route to expose `"rsi_values": h.get("rsi_values", {})`. Both containers rebuilt + restarted via `docker compose up --build -d`. Edits also need to be applied to Chris's laptop OneDrive master copy of `Hermes/hermes-trading/` so source-of-truth stays in sync — flagged for the v2-into-git cleanup.
+- **Stockotter side (in this repo):** added `rsi_values?: Record<string, number>` to the `HermesStatus` interface and updated the asset cards in `HermesFullView.tsx`: from 2-column (Vol + Size) to 3-column (RSI + Vol + Size). RSI value colored bull-light when oversold (<30, entry trigger), bear-light when overbought (>70), neutral otherwise. Added an "Open" badge to the corner of any asset that's currently in `status.positions` so position is visible at a glance per asset, not just as a total count up top.
+
+**Files:**
+- Modified: `client/src/compartments/hermes/useHermes.ts` (HermesStatus type)
+- Modified: `client/src/compartments/hermes/HermesFullView.tsx` (asset card grid)
+
+**Open follow-up:** add `goal.yaml` auto-reload in `loop.py` so the bot picks up new assets from the dashboard's "Add asset" without needing a restart. Currently the bot only reads goal.yaml at startup — workaround: `docker compose restart bot` after adding assets.
+
+---
 ## 2026-05-24 — HERMES migration: Railway → self-hosted via Stockotter Express proxy
 
 **Why:** Get HERMES (the auto-trading FastAPI dashboard) off Railway to eliminate the paid hosting. Chris repurposed a Ubuntu 24.04 VM on his internal network that was previously running WAZUH (security monitoring). HERMES now lives on a private VM at `10.209.32.8:8080` — same internal subnet as the Stockotter server at `10.209.32.9`.

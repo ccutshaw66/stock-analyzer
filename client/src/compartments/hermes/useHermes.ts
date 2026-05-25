@@ -26,6 +26,10 @@ export interface HermesStatus {
   positions: unknown[];
   volatilities: Record<string, number>;
   position_sizes: Record<string, number>;
+  // RSI per asset, written by the bot's loop every iteration (loop.py
+  // patched 2026-05-25). Optional because older HERMES builds may not
+  // emit this field — UI handles missing values gracefully.
+  rsi_values?: Record<string, number>;
   strategy_version: string;
 }
 

@@ -137,13 +137,33 @@ function StatusCard({
             {status.assets.map((a) => {
               const vol = status.volatilities[a];
               const size = status.position_sizes[a];
+              const rsi = status.rsi_values?.[a];
+              const hasPosition = status.positions.includes(a as unknown as never);
+              const rsiColor =
+                rsi == null ? "text-muted-foreground"
+                : rsi < 30 ? "text-bull-light"
+                : rsi > 70 ? "text-bear-light"
+                : "text-foreground";
               return (
                 <div key={a} className="rounded-lg border border-card-border/60 bg-background/40 p-3">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-sm text-foreground">{a}</span>
-                    <CircleDot className="h-3 w-3 text-green-400" />
+                    <div className="flex items-center gap-1.5">
+                      {hasPosition && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-bull-light/15 text-bull-light">
+                          Open
+                        </span>
+                      )}
+                      <CircleDot className="h-3 w-3 text-bull-light" />
+                    </div>
                   </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                    <div>
+                      <p className="text-muted-foreground">RSI</p>
+                      <p className={`tabular-nums font-semibold ${rsiColor}`}>
+                        {rsi != null ? rsi.toFixed(1) : "—"}
+                      </p>
+                    </div>
                     <div>
                       <p className="text-muted-foreground">Volatility</p>
                       <p className="tabular-nums font-semibold text-foreground">
@@ -151,7 +171,7 @@ function StatusCard({
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Position size</p>
+                      <p className="text-muted-foreground">Size</p>
                       <p className="tabular-nums font-semibold text-foreground">
                         {size != null ? (size * 100).toFixed(1) + "%" : "—"}
                       </p>
