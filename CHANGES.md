@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-24 — HERMES migration: Railway → self-hosted via Stockotter Express proxy
+
+**Why:** Get HERMES (the auto-trading FastAPI dashboard) off Railway to eliminate the paid hosting. Chris repurposed a Ubuntu 24.04 VM on his internal network that was previously running WAZUH (security monitoring). HERMES now lives on a private VM at `10.209.32.8:8080` — same internal subnet as the Stockotter server at `10.209.32.9`.
+
+**Architecture:** instead of exposing HERMES publicly (port forward through Chris's router) we route browser traffic through Stockotter as the single public entry point. New Express middleware `server/hermes-proxy.ts` mounts at `/api/hermes/*` (inside the `/api` auth wall), strips the prefix, and forwards over the LAN to `process.env.HERMES_INTERNAL_URL` (defaults to `http://10.209.32.8:8080`). The HERMES VM stays private. Browser sees only HTTPS-to-stockotter.ai; cross-origin and CORS go away entirely. Same pattern reusable for any future internal service we move off paid hosts — one line per service.
+
+**Client side:** `HERMES_API` in `client/src/compartments/hermes/useHermes.ts` flipped from the Railway URL to relative `/api/hermes`. No other call-site changes — the hook contract is unchanged. Browser fetches are now same-origin so the Stockotter auth cookie flows automatically.
+
+**Bot side (HERMES VM, not in this repo):** Docker Compose stack with two containers — `hermes-dashboard` (FastAPI on :8080) and `hermes-bot` (the trading worker) sharing a `state/` volume. Seeded `state/goal.yaml` with a paper-trade BTC/USD config so the bot boots cleanly. Live and answering `/api/status` over the LAN as of this ship.
+
+**Status:** Railway URL is no longer referenced anywhere in the codebase. Railway subscription can be cancelled once Chris verifies the dashboard widget renders correctly post-deploy.
+
+**Files:**
+- New: `server/hermes-proxy.ts`
+- Modified: `server/routes.ts` (mounts proxy after the /api auth wall)
+- Modified: `client/src/compartments/hermes/useHermes.ts` (Railway URL → relative `/api/hermes`)
+
+---
 ## 2026-05-24 — Dividend Calculator + side-by-side comparison on /dividend-portfolio
 
 **Why:** Chris wanted a pure-lookup tool that doesn't depend on his open positions, and — driven by his earlier workflow pain of "had to flip back and forth and change actual positions to figure out which payer was better" — a two-ticker comparison mode so he can spec Ticker A vs Ticker B at chosen share counts and see the distribution-income delta directly.

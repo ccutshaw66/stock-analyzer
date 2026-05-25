@@ -3,15 +3,20 @@
  *
  * Every consumer (full-page HERMES dashboard, dashboard widget, future
  * alert preview, etc.) reads through this hook — never raw `fetch()` to
- * the Railway endpoints. One source of truth per the compartment contract.
+ * the upstream HERMES endpoints. One source of truth per the compartment contract.
  *
- * The HERMES backend is a standalone FastAPI service on Railway (archived
- * in `python/hermes/`). The base URL is the only hard-coded vendor detail
- * here; everything else is shape-typed.
+ * As of 2026-05-24 HERMES is self-hosted on Chris's internal network and
+ * reached through the Stockotter Express proxy at `/api/hermes/*` (see
+ * `server/hermes-proxy.ts`). HERMES itself is NOT publicly exposed — the
+ * proxy is the only entry, inherits Stockotter's auth wall, and runs over
+ * the LAN to the HERMES VM. Was previously a Railway URL — see
+ * `CHANGES.md` for the migration history.
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-export const HERMES_API = "https://hermes-dashboard-production-d0ee.up.railway.app";
+// Relative path — same-origin call to Stockotter's Express proxy. The
+// proxy strips this prefix and forwards the rest to the internal HERMES URL.
+export const HERMES_API = "/api/hermes";
 
 // ─── Shapes ────────────────────────────────────────────────────────────────────
 

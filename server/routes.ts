@@ -1614,6 +1614,14 @@ export async function registerRoutes(
     next();
   });
 
+  // ─── HERMES proxy ───────────────────────────────────────────────────────────
+  // Forwards /api/hermes/* to the HERMES FastAPI dashboard on the internal
+  // network (default http://10.209.32.8:8080). HERMES itself is not
+  // publicly exposed — this proxy is the only path in, and it inherits the
+  // /api auth wall above.
+  const { mountHermesProxy } = await import("./hermes-proxy");
+  mountHermesProxy(app);
+
   // ─── Feature Gating ─────────────────────────────────────────────────────────────
   // Implementation lives in server/middleware/tier.ts.
   // Imported: getDailyUsage, checkFeatureAccess, checkScanRateLimit, getUsageSnapshot.
