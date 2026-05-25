@@ -30,33 +30,40 @@ export default function WheelPage() {
           ? `Generate income via cash-secured puts → covered calls — currently analyzing ${activeTicker}.`
           : undefined /* registry subtitle is used when no ticker is active */
       }
-      howItWorksTitle="What is the Wheel Strategy?"
+      howItWorksTitle="How the Wheel earns income"
       howItWorks={
         <>
           <p>
-            The Wheel is a <strong className="text-foreground">neutral-to-bullish income strategy</strong> that combines
-            <strong className="text-foreground"> cash-secured puts (CSPs)</strong> and
-            <strong className="text-foreground"> covered calls (CCs)</strong> on a stock you'd be happy to own.
+            The Wheel is an <strong className="text-foreground">income strategy</strong> for stocks
+            you'd actually want to own. You sell puts, collect premium, and take shares if
+            the stock dips far enough. Then you sell calls on those shares, collecting more
+            premium until they get called away. Then start over. The whole point is
+            <strong className="text-foreground"> rent</strong> — generating cash from option
+            premium whether the stock moves or not.
           </p>
           <ol className="list-decimal list-inside space-y-1 text-2xs leading-relaxed">
-            <li><strong className="text-foreground">Phase 1 (CSP):</strong> Sell a put at a strike below current price. Set aside strike × 100 in cash per contract.</li>
-            <li><strong className="text-foreground">Expiry:</strong> If stock stays above strike, put expires worthless — keep the premium, sell another CSP.</li>
-            <li><strong className="text-foreground">Assignment:</strong> If stock drops below strike, you buy 100 shares per contract at the strike. Your cost basis is <em>strike − put premium</em>.</li>
-            <li><strong className="text-foreground">Phase 2 (CC):</strong> Now sell covered calls above your cost basis. Collect premium each cycle.</li>
-            <li><strong className="text-foreground">Called away:</strong> If stock rises above the call strike, shares are sold. Pocket the gain + call premium, then restart with a new CSP.</li>
+            <li><strong className="text-foreground">Sell a put</strong> at a strike below today's price. You need full cash collateral (strike × 100 per contract). Collect the premium up front.</li>
+            <li><strong className="text-foreground">If the stock stays above the strike:</strong> put expires worthless. Keep the premium. Sell another put. Repeat.</li>
+            <li><strong className="text-foreground">If the stock dips below the strike:</strong> you're assigned 100 shares per contract. Your real cost basis is <em>strike − premium</em> (so you're already up on the trade).</li>
+            <li><strong className="text-foreground">Sell calls against the shares</strong> at a strike above your cost basis. Collect premium each cycle.</li>
+            <li><strong className="text-foreground">If shares get called away:</strong> pocket the gain + premium. Start over with a new put.</li>
           </ol>
           <Example type="good">
-            <strong className="text-bull-light">Ideal setup:</strong> Stock at $100, sell 30 DTE $95 put for $1.50. Capital: $9,500.
-            Return if unassigned: 1.58% in 30 days ≈ 19.2% annualized. If assigned, cost basis = $93.50 and you start selling calls.
+            <strong className="text-bull-light">Clean cycle:</strong> KO at $58. Sell a 30-day
+            $55 put for $1.10. Capital tied up: $5,500. If KO stays above $55: keep $110 (2.0%
+            in 30 days ≈ 24% annualized). If assigned, cost basis $53.90 — already a discount
+            on a dividend-paying stock you wanted anyway.
           </Example>
           <Example type="bad">
-            <strong className="text-bear-light">Wheel trap:</strong> Stock crashes from $100 to $60. You're assigned at $95, stuck with
-            $35/share unrealized loss, and any call you sell above $95 barely covers the bleeding. Only wheel stocks you're
-            <em> genuinely willing to own through a drawdown</em>.
+            <strong className="text-bear-light">The trap:</strong> Wheeling NVDA at $140
+            because the premium looks great. Stock craters to $80 on a bad earnings cycle.
+            You're assigned at $135 (cost basis ~$132) holding shares 40% underwater. Any
+            covered call above $135 prints pennies and locks you out of the eventual rebound.
+            <em> Only wheel stocks you're willing to hold through a 30%+ drawdown.</em>
           </Example>
-          <ScoreRange label="Great candidate" range="IV Rank 30–60, stable price, quality business" color="green" description="High premium, limited tail risk" />
-          <ScoreRange label="OK candidate" range="IV Rank 15–30 or slight uptrend" color="yellow" description="Lower income, but safer" />
-          <ScoreRange label="Avoid" range="Biotech / earnings run-ups / meme stocks" color="red" description="Gap-down risk destroys the wheel" />
+          <ScoreRange label="Great fit" range="IV Rank 30-60" color="green" description="Quality dividend-payer, stable trend, premium worth the capital lock-up" />
+          <ScoreRange label="OK" range="IV Rank 15-30" color="yellow" description="Safer but lower income — works if you'd own it anyway" />
+          <ScoreRange label="Avoid" range="Earnings ≤14d, biotech, meme" color="red" description="Gap-down risk turns the wheel into a slow-bleed position" />
         </>
       }
     >

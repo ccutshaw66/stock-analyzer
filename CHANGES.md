@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-25 — Experimental section: rewrote all 3 "how it works" sections
+
+**Why:** Chris asked to rewrite "all the how to in the experimental area — they suck." Audit showed three different failures: HERMES referenced Railway hosting (out of date — just migrated off), Markov was academic jargon ("Hidden Markov Model" with no plain-English handhold), and Wheel was OK but over-academic. All three were also developer documentation (hooks, compartments, Python file paths) rather than user-facing guides for someone deciding whether to use the strategy.
+
+**What:** Rewrote each with the same shape so the experimental section reads as one coherent product:
+- **What the thing actually does** (1-2 sentences, plain English)
+- **Numbered "How it picks trades / How regime detection works / How the Wheel earns income"** (4-5 short steps, no jargon dumps)
+- **Good example** with real numbers (BTC oversold → +4% target hit; KO put cycle math; vol-spike regime sizing in Feb 2020)
+- **Bad example** with the specific failure mode (NVDA earnings gap blowing through HERMES stops; regime-detection lag; wheeling NVDA into a 40% drawdown)
+- **ScoreRange thresholds** for "when to use / when to avoid"
+
+HERMES copy updated to reflect new self-hosted reality (no more "Railway" mention). Markov copy acknowledges the Python engine is still pending without burying that in dev-speak. Wheel kept the same structure but tightened language and swapped the abstract $100 stock for KO (a real dividend payer Chris's users would actually wheel).
+
+**Files:**
+- Modified: `client/src/pages/hermes.tsx`
+- Modified: `client/src/pages/markov.tsx`
+- Modified: `client/src/pages/wheel.tsx`
+
+---
+## 2026-05-25 — HERMES: sync v2 patches into archived python/hermes (RSI + goal-reload)
+
+**Why:** PuTTY's heredoc hang made the inline-patch workflow unusable. Putting the patches in git lets the wazuh VM `curl` them directly instead of relying on chat-paste, and serves as a first step toward the larger HERMES-into-git cleanup ([[todo-hermes-into-git]]).
+
+**What:** Updated `python/hermes/hermes_trading/loop.py` with two additions: (1) `self.last_rsi[asset] = rsi` after volatility capture so RSI tracks for every asset every loop, not just on entry-eval; (2) `"rsi_values": self.last_rsi` in the `write_heartbeat` JSON dict; (3) goal.yaml auto-reload block at the top of each `run()` loop iteration so dashboard-added assets take effect without `docker compose restart bot`. Also updated `python/hermes/dashboard_web.py` `/api/status` to expose `"rsi_values": h.get("rsi_values", {})`. Same patches already live on the wazuh VM via earlier `sed`/manual edits — this commit makes them part of the canonical archive so they survive next time the v2 source is re-synced from the laptop.
+
+**Files:**
+- Modified: `python/hermes/hermes_trading/loop.py`
+- Modified: `python/hermes/dashboard_web.py`
+
+---
 ## 2026-05-25 — HERMES: expose per-asset RSI in dashboard + Open-position badge
 
 **Why:** The bot's actual entry trigger is RSI per asset (oversold < threshold → long), but the dashboard widget showed only volatility + position-size. Chris's quote: "the whole trade is based on the RSI of the chart" — and you couldn't see it. Also fixed: asset cards didn't surface which asset had an open position.
