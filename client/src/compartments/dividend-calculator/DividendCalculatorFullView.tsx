@@ -1,60 +1,30 @@
+/**
+ * Full view for the Dividend Calculator compartment.
+ *
+ * Two ticker+share input pairs, side-by-side panels rendered with the
+ * exact same MiniStat grid the position-expand view on /dividend-portfolio
+ * uses (Yield / Div Rate / Payout Ratio / Frequency on row 1, etc.) so
+ * the comparison reads like the active portfolio. Comparison row at the
+ * bottom highlights which ticker leads on Yield, Per Distribution, and
+ * Yearly Total — with the dollar delta and a "leads by" label so the
+ * meaning is unambiguous.
+ *
+ * Display ticker is sourced from the user's submitted input (not from
+ * `data.symbol`) so the panel header + comparison labels are robust to
+ * whatever shape the underlying provider returns.
+ */
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Calculator, DollarSign, PiggyBank, Calendar, Loader2, AlertTriangle,
   Percent, Clock, Activity, BarChart3, TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { dividendsPath } from "@shared/api/endpoints";
+import { useDividendLookup } from "./useDividendCalculator";
+import {
+  computeNumbers, yieldColor, scoreColor, payoutColor,
+  type DividendData, type ComputedNumbers,
+} from "./dividendCalcLogic";
 
-interface DividendData {
-  // NOTE: the server returns this as `ticker`, not `symbol`. We don't rely
-  // on either for display — the user's input value is used as the source
-  // of truth for which ticker the panel/comparison refers to.
-  ticker?: string;
-  companyName?: string;
-  dividendYield: number;
-  dividendRate: number;
-  frequency: string;
-  exDividendDate?: string | null;
-  distributionDate?: string | null;
-  payoutRatio?: number;
-  fiveYearAvgYield?: number | null;
-  lastDividendValue?: number | null;
-  lastDividendDate?: string | null;
-  score?: number;
-}
-
-interface ComputedNumbers {
-  perYear: number;
-  perSharePerDistribution: number;
-  perDistribution: number;
-  yearly: number;
-}
-
-function payoutsPerYear(frequency: string): number {
-  switch (frequency) {
-    case "Monthly":     return 12;
-    case "Quarterly":   return 4;
-    case "Semi-Annual": return 2;
-    case "Annual":      return 1;
-    default:            return 4;
-  }
-}
-
-function computeNumbers(data: DividendData | undefined, shares: number): ComputedNumbers | null {
-  if (!data || data.dividendRate <= 0 || shares <= 0) return null;
-  const perYear = payoutsPerYear(data.frequency);
-  const perSharePerDistribution = data.dividendRate / perYear;
-  const perDistribution = perSharePerDistribution * shares;
-  const yearly = data.dividendRate * shares;
-  return { perYear, perSharePerDistribution, perDistribution, yearly };
-}
-
-export function DividendCalculator() {
-  // Two independent tickers + share counts. The same input field can be edited
-  // at any time; only "Calculate" triggers the fetch (so you can type a typo
-  // and back-correct without firing a request mid-keystroke).
+export function DividendCalculatorFullView() {
   const [tickerInputA, setTickerInputA] = useState("");
   const [sharesA, setSharesA] = useState<number>(100);
   const [submittedA, setSubmittedA] = useState<string | null>(null);
@@ -63,18 +33,8 @@ export function DividendCalculator() {
   const [sharesB, setSharesB] = useState<number>(100);
   const [submittedB, setSubmittedB] = useState<string | null>(null);
 
-  const queryA = useQuery<DividendData>({
-    queryKey: ["dividend-calc", submittedA],
-    queryFn: async () => (await apiRequest("GET", dividendsPath(submittedA!))).json(),
-    enabled: !!submittedA,
-    retry: false,
-  });
-  const queryB = useQuery<DividendData>({
-    queryKey: ["dividend-calc", submittedB],
-    queryFn: async () => (await apiRequest("GET", dividendsPath(submittedB!))).json(),
-    enabled: !!submittedB,
-    retry: false,
-  });
+  const queryA = useDividendLookup(submittedA);
+  const queryB = useDividendLookup(submittedB);
 
   const numbersA = useMemo(() => computeNumbers(queryA.data, sharesA), [queryA.data, sharesA]);
   const numbersB = useMemo(() => computeNumbers(queryB.data, sharesB), [queryB.data, sharesB]);
@@ -125,27 +85,13 @@ export function DividendCalculator() {
         </div>
       </form>
 
-      {/* Side-by-side ticker panels */}
       {(submittedA || submittedB) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3" data-testid="div-calc-panels">
-          <TickerPanel
-            slot="A"
-            submitted={submittedA}
-            query={queryA}
-            shares={sharesA}
-            numbers={numbersA}
-          />
-          <TickerPanel
-            slot="B"
-            submitted={submittedB}
-            query={queryB}
-            shares={sharesB}
-            numbers={numbersB}
-          />
+          <TickerPanel slot="A" submitted={submittedA} query={queryA} shares={sharesA} numbers={numbersA} />
+          <TickerPanel slot="B" submitted={submittedB} query={queryB} shares={sharesB} numbers={numbersB} />
         </div>
       )}
 
-      {/* Comparison row — only when BOTH have valid dividend data */}
       {numbersA && numbersB && queryA.data && queryB.data && submittedA && submittedB && (
         <ComparisonRow
           a={{ symbol: submittedA, data: queryA.data, numbers: numbersA }}
@@ -153,7 +99,6 @@ export function DividendCalculator() {
         />
       )}
 
-      {/* Idle hint when nothing submitted */}
       {!submittedA && !submittedB && (
         <p className="text-2xs text-muted-foreground">
           Enter a ticker and share count, then optionally a second ticker to compare them side-by-side. The per-distribution and annual totals are calculated at each company's current dividend rate.
@@ -209,17 +154,17 @@ function TickerSharesInput({ label, idPrefix, ticker, onTickerChange, shares, on
   );
 }
 
-// ─── One ticker's full panel — header strip + portfolio-style grid ───────────
+// ─── One ticker's full panel ──────────────────────────────────────────────────
+
+type LookupQuery = ReturnType<typeof useDividendLookup>;
 
 function TickerPanel({ slot, submitted, query, shares, numbers }: {
   slot: "A" | "B";
   submitted: string | null;
-  query: ReturnType<typeof useQuery<DividendData>>;
+  query: LookupQuery;
   shares: number;
   numbers: ComputedNumbers | null;
 }) {
-  // Empty B slot before submission — show a subtle placeholder so the layout
-  // doesn't collapse and the user sees where the comparison will appear.
   if (!submitted) {
     return (
       <div className="bg-muted/10 border border-dashed border-card-border/50 rounded-lg p-6 flex items-center justify-center text-2xs text-muted-foreground">
@@ -249,7 +194,7 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
   const data = query.data;
   if (!data) return null;
 
-  // Greedy-bastards branch — ticker exists but pays nothing
+  // Greedy-bastards branch
   if (data.dividendRate <= 0) {
     return (
       <div className="bg-card border border-card-border rounded-lg p-4 space-y-2">
@@ -267,13 +212,10 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
     );
   }
 
-  // Full happy-path panel — header strip + 3-row × 4-col MiniStat grid that
-  // mirrors the layout you see when expanding an active position below.
   if (!numbers) return null;
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-3 space-y-3" data-testid={`div-calc-panel-${slot}`}>
-      {/* Header strip — symbol, name, frequency badge */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono font-bold text-foreground text-xs">{submitted}</span>
         {data.companyName && <span className="text-2xs text-muted-foreground truncate max-w-[200px]">— {data.companyName}</span>}
@@ -281,12 +223,9 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
         <span className="text-2xs text-muted-foreground">· {shares.toLocaleString()} shares</span>
       </div>
 
-      {/* Row 1 — the same yield/rate/payout columns the portfolio uses */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <MiniStat label="Yield" value={`${data.dividendYield.toFixed(2)}%`}
-          color={yieldColor(data.dividendYield)} icon={<Percent className="h-3 w-3" />} />
-        <MiniStat label="Div Rate / Share" value={`$${data.dividendRate.toFixed(2)}`}
-          color="text-foreground" icon={<DollarSign className="h-3 w-3" />} />
+        <MiniStat label="Yield" value={`${data.dividendYield.toFixed(2)}%`} color={yieldColor(data.dividendYield)} icon={<Percent className="h-3 w-3" />} />
+        <MiniStat label="Div Rate / Share" value={`$${data.dividendRate.toFixed(2)}`} color="text-foreground" icon={<DollarSign className="h-3 w-3" />} />
         <MiniStat
           label="Payout Ratio"
           value={data.payoutRatio != null ? `${data.payoutRatio.toFixed(1)}%` : "N/A"}
@@ -296,7 +235,6 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
         <MiniStat label="Frequency" value={data.frequency} color="text-primary" icon={<Clock className="h-3 w-3" />} />
       </div>
 
-      {/* Row 2 — same set of columns the expanded position view shows */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat label="Payouts / Year" value={String(numbers.perYear)} color="text-foreground" icon={<Calendar className="h-3 w-3" />} />
         <MiniStat label="Ex-Dividend" value={data.exDividendDate || "N/A"} color="text-foreground" icon={<AlertTriangle className="h-3 w-3" />} />
@@ -310,7 +248,6 @@ function TickerPanel({ slot, submitted, query, shares, numbers }: {
         />
       </div>
 
-      {/* Row 3 — last dividend + quality score + the calculator totals */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <MiniStat
           label="Last Dividend"
@@ -402,17 +339,7 @@ function DeltaRow({ label, aSym, bSym, delta, format }: {
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function yieldColor(y: number): string {
-  return y > 3 ? "text-bull-light" : y >= 1 ? "text-watch-light" : "text-bear-light";
-}
-function scoreColor(s: number): string {
-  return s >= 60 ? "text-bull-light" : s >= 35 ? "text-watch-light" : "text-bear-light";
-}
-function payoutColor(p: number): string {
-  return p >= 20 && p <= 60 ? "text-bull-light" : p > 60 && p <= 80 ? "text-watch-light" : "text-bear-light";
-}
+// ─── MiniStat (page-style mini card; mirrors the position-detail grid) ───────
 
 function MiniStat({ label, value, color, icon, subtitle }: {
   label: string; value: string; color: string; icon?: React.ReactNode; subtitle?: string;

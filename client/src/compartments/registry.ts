@@ -25,6 +25,8 @@ import { insiderRatioCompartment } from "./insider-ratio";
 import { hermesCompartment } from "./hermes";
 import { markovCompartment } from "./markov";
 import { wheelCompartment } from "./wheel";
+// Page-embedded compartments (no dashboard widget yet).
+import { dividendCalculatorCompartment } from "./dividend-calculator";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   // Dashboard rebuild v1 — the new curated default layout uses these nine.
@@ -48,6 +50,8 @@ const clientCompartments: ClientCompartmentEntry[] = [
   hermesCompartment,
   markovCompartment,
   wheelCompartment,
+  // Page-embedded — registered for discovery but no dashboard tile today.
+  dividendCalculatorCompartment,
 ];
 
 export function listClientCompartments(): readonly ClientCompartmentEntry[] {

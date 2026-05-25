@@ -21,6 +21,8 @@ during the prior Perplexity/Claude session).
 
 **Follow-up fix (same day):** the panel header AND every comparison-row label silently rendered without the ticker symbol — the component was reading `data.symbol` but the API returns `ticker`, not `symbol`. Switched all display paths to use the user's submitted ticker (the value they typed, already uppercased, always present when the panel/row renders) so the UI is robust to whatever shape the API hands back. Also reworded the delta line from `"KO by $95.00"` → `"KO leads by $95.00"` and made the comparison header explicit (`KO vs DELL` instead of just `vs`).
 
+**Compartment promotion (same day, per universal-structure rule):** the calculator was initially shipped as a `client/src/components/DividendCalculator.tsx` regular component. Promoted to a proper compartment at `client/src/compartments/dividend-calculator/` following the wheel-style 4-guarantee contract: `dividendCalcLogic.ts` (pure math + color helpers), `useDividendCalculator.ts` (canonical React Query hook), `DividendCalculatorFullView.tsx` (the UI), and `index.ts` (manifest registered in `compartments/registry.ts`). No `WidgetView` yet — calculator needs editable inputs to be useful, doesn't shrink to a fixed dashboard tile cleanly. Page import updated, old `components/DividendCalculator.tsx` deleted. Also flagged: the underlying `/api/dividends/:ticker` route reads Polygon-via-Yahoo-shape — saved as `todo_dividend_data_fmp_migration` memory so the whole dividend data layer can be migrated to FMP in one targeted strike instead of one feature at a time.
+
 ---
 ## 2026-05-23 — Big-session sweep: Experimental compartments, Markov deploy pipeline, books library, rules consolidation
 
