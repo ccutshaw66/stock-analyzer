@@ -126,6 +126,7 @@ class TradingLoop:
             "positions": list(self.positions.keys()),
             "volatilities": self.volatilities,
             "position_sizes": self.position_sizes,
+            "rsi_values": self.last_rsi,
             "consecutive_failures": self.consecutive_failures
         }
         async with aiofiles.open(self.heartbeat_file, "w") as f:
@@ -140,6 +141,19 @@ class TradingLoop:
             try:
                 self.loop_count += 1
                 print(f"\n--- Loop {self.loop_count} at {datetime.now(timezone.utc).isoformat()} ---", flush=True)
+                _gpath = self.state_dir / "goal.yaml"
+                if _gpath.exists():
+                    try:
+                        with open(_gpath) as _f:
+                            _fresh = yaml.safe_load(_f) or {}
+                        if "assets" in _fresh:
+                            _new = [a["symbol"] for a in _fresh["assets"]]
+                            if _new != self.assets:
+                                print(f"[goal-reload] {self.assets} -> {_new}", flush=True)
+                                self.assets = _new
+                                self.goal = _fresh
+                    except Exception as _e:
+                        print(f"[goal-reload] failed: {_e}", flush=True)
                 strategy = self.load_strategy()
                 
                 for asset in self.assets:
@@ -155,6 +169,7 @@ class TradingLoop:
                     close = price_info.get("close", 0)
                     volatility = price_info.get("volatility", 0)
                     self.volatilities[asset] = volatility
+                    self.last_rsi[asset] = rsi
                     
                     asset_strategy = strategy.get("assets", {}).get(asset, {})
                     threshold = asset_strategy.get("entry", {}).get("threshold", 30)

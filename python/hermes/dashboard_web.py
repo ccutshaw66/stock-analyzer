@@ -73,7 +73,7 @@ def calc_stats(trades):
 def status():
     h = load_heartbeat()
     s = load_strategy()
-    return {"status": "online" if h else "offline", "assets": h.get("assets", []), "positions": h.get("positions", []), "volatilities": h.get("volatilities", {}), "position_sizes": h.get("position_sizes", {}), "strategy_version": s.get("version", "?")}
+    return {"status": "online" if h else "offline", "assets": h.get("assets", []), "positions": h.get("positions", []), "volatilities": h.get("volatilities", {}), "position_sizes": h.get("position_sizes", {}), "rsi_values": h.get("rsi_values", {}), "strategy_version": s.get("version", "?")}
 
 @app.get("/api/stats")
 def stats():
