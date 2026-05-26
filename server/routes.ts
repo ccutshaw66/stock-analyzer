@@ -1605,6 +1605,13 @@ export async function registerRoutes(
   app.post("/api/auth/reset-password", resetPasswordHandler);
   app.get("/api/auth/me", requireAuth, meHandler);
 
+  // ─── Bot-callable routes (X-Bot-Key auth, bypasses cookie auth wall) ─────
+  // Internal-only services (KAIROS bot, future ones) call /api/bot/* with a
+  // shared secret in the X-Bot-Key header. Must be mounted BEFORE the cookie-
+  // auth `app.use("/api", requireAuth)` below or they'd hit the cookie wall.
+  const { mountBotRoutes } = await import("./bot-routes");
+  mountBotRoutes(app);
+
   // ─── Protect all other API routes ─────────────────────────────────────────
   app.use("/api", requireAuth);
 
@@ -1614,13 +1621,15 @@ export async function registerRoutes(
     next();
   });
 
-  // ─── HERMES proxy ───────────────────────────────────────────────────────────
-  // Forwards /api/hermes/* to the HERMES FastAPI dashboard on the internal
-  // network (default http://10.209.32.8:8080). HERMES itself is not
-  // publicly exposed — this proxy is the only path in, and it inherits the
-  // /api auth wall above.
-  const { mountHermesProxy } = await import("./hermes-proxy");
+  // ─── HERMES + KAIROS internal proxies ───────────────────────────────────────
+  // Forward /api/hermes/* and /api/kairos/* to the matching FastAPI dashboards
+  // on superotter (10.209.32.8). Neither bot is publicly exposed — these
+  // proxies are the only paths in, and they inherit the /api auth wall above.
+  const { mountHermesProxy, mountInternalProxy } = await import("./hermes-proxy");
   mountHermesProxy(app);
+  const KAIROS_URL = process.env.KAIROS_INTERNAL_URL || "http://10.209.32.8:8082";
+  console.log(`[kairos-proxy] /api/kairos/* -> ${KAIROS_URL}`);
+  mountInternalProxy(app, "/api/kairos", KAIROS_URL);
 
   // ─── Feature Gating ─────────────────────────────────────────────────────────────
   // Implementation lives in server/middleware/tier.ts.

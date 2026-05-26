@@ -32,6 +32,7 @@ import DividendPortfolio from "@/pages/dividend-portfolio";
 import MMExposure from "@/pages/mm-exposure";
 import WheelCalculator from "@/pages/wheel";
 import HermesPage from "@/pages/hermes";
+import KairosPage from "@/pages/kairos";
 import MarkovPage from "@/pages/markov";
 import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
@@ -130,6 +131,7 @@ function AuthenticatedApp() {
             <Route path="/mm-exposure" component={MMExposure} />
             <Route path="/wheel" component={WheelCalculator} />
             <Route path="/hermes" component={HermesPage} />
+            <Route path="/kairos" component={KairosPage} />
             <Route path="/markov" component={MarkovPage} />
             <Route path="/account" component={AccountPage} />
             <Route path="/admin" component={AdminPage} />

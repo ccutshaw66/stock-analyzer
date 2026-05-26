@@ -17,7 +17,7 @@ import {
   Activity, Award, BarChart3, Bell, BookOpen, Bot, Building2, Calculator,
   Calendar, CheckCircle2, ClipboardList, Compass, Crosshair, DollarSign,
   Flag, FlaskConical, Grid3X3, Landmark, Layers, LayoutDashboard, Microscope,
-  Network, Percent, PieChart, Plus, Radar, RefreshCw, Scale, Sigma, Spline, Trophy,
+  Network, Percent, PieChart, Plus, Radar, RefreshCw, Rocket, Scale, Sigma, Spline, Trophy,
 } from "lucide-react";
 
 export interface PageEntry {
@@ -94,7 +94,8 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/kelly",               label: "Kelly Criterion",       icon: Percent,         group: "Calculators", subtitle: "Position sizing from edge, win rate, and bankroll." },
 
   // ─── Experimental ──────────────────────────────────────────────────────
-  { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Experimental", subtitle: "Live status, stats, and trades from the Railway dashboard." },
+  { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Experimental", subtitle: "Live status, stats, and trades from the self-hosted HERMES service." },
+  { path: "/kairos",              label: "KAIROS Auto Trader",    icon: Rocket,          group: "Experimental", subtitle: "Experimental HTF + BBTC paper trader. Conviction-tagged entries (HTF / BBTC / BOTH)." },
   { path: "/wheel",               label: "Wheel Strategy",        icon: RefreshCw,       group: "Experimental", subtitle: "Cash-secured puts → covered calls — the wheel mechanics." },
   { path: "/markov",              label: "Markov Strategy",       icon: Network,         group: "Experimental", subtitle: "Markov-chain regime model — Python stub awaiting implementation." },
 

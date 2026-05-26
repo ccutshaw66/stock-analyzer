@@ -9,6 +9,43 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS bot — Milestone 1 (stockotter-side scaffolding)
+
+**Why:** Chris asked for "fun" — a second experimental auto-trader that runs his HTF (High Tight Flag) breakout detector and BBTC (state-based trend follower) natively. Modeled on HERMES architecture so it's only as much new infrastructure as the proxy pattern + a new compartment. Phase 1 ships the stockotter-side scaffolding so the `/kairos` page exists in the Experimental nav and the bot has a place to land when it's deployed. Phases 2–5 (Python bot, HTF port, BBTC port, position management, superotter deploy) queued — too risky to land all at 1am the same night.
+
+**What — stockotter side:**
+- **New: `server/bot-routes.ts`** — `GET /api/bot/htf-watchlist` endpoint with `X-Bot-Key` header auth (against `BOT_API_KEY` env var). Returns top-N actionable HTF setups from `htfScannerData.getSetups()` so the KAIROS bot can refresh its watchlist hourly without simulating a cookie session.
+- **Modified: `server/hermes-proxy.ts`** — exported `mountInternalProxy()` so it's reusable. KAIROS uses the same one-liner pattern HERMES does.
+- **Modified: `server/routes.ts`** — mounted bot-routes BEFORE the `/api` auth wall (they have their own auth); added `mountInternalProxy(app, "/api/kairos", "http://10.209.32.8:8082")` AFTER the auth wall (page calls still gate behind Chris's stockotter login).
+- **New compartment: `client/src/compartments/kairos/`** — 4 files following the wheel-style 4-guarantee contract: `useKairos.ts` (canonical hook, mirror of useHermes shape with KAIROS-specific types for HTF/BBTC/BOTH conviction tags), `KairosFullView.tsx` (page UI: header strip + watchlist table + open positions + trade log), `KairosWidget.tsx` (dashboard tile), `index.ts` (manifest with `widgetDefaultSize: TILE_SM`). Registered in `compartments/registry.ts`.
+- **New page: `client/src/pages/kairos.tsx`** — thin wrapper with a strong `howItWorks` block following the recent experimental rewrite style (HTF + BBTC plain-English explanation, conviction-tagging concept, good/bad examples, score ranges).
+- **Modified: `client/src/lib/page-registry.ts`** — Rocket icon import + `/kairos` entry in Experimental group. Also updated HERMES subtitle from "Railway dashboard" → "self-hosted HERMES service" (Railway killed yesterday).
+- **Modified: `client/src/App.tsx`** — `<Route path="/kairos" component={KairosPage} />`.
+- **Modified: `.env.example`** — documented `BOT_API_KEY`, `KAIROS_INTERNAL_URL`, `HERMES_INTERNAL_URL`.
+
+**Visible result after deploy:** `/kairos` appears under Experimental in the sidebar. Page renders the final UI shape with all sections — Engine status + watchlist + open positions + trade log. Bot offline → status pill says "offline" + a friendly "Bot not deployed yet, Milestone 2" note. Everything's wired and waiting.
+
+**Queued for tomorrow (Milestones 2–5):**
+- M2: Python KAIROS scaffolding under `python/kairos/` (Dockerfile, Dockerfile.bot, dashboard_web.py, run.py, loop.py shell, FMP price adapter, watchlist adapter)
+- M3: HTF Python port + parity test against `server/signals/strategies/htf.ts` (TypeScript is the spec)
+- M4: BBTC Python port + parity test against `server/signals/strategies/bbtc.ts`
+- M5: Position management + trade loop integration; deploy to superotter; end-to-end verify
+
+**Files:**
+- New: `server/bot-routes.ts`
+- New: `client/src/compartments/kairos/useKairos.ts`
+- New: `client/src/compartments/kairos/KairosFullView.tsx`
+- New: `client/src/compartments/kairos/KairosWidget.tsx`
+- New: `client/src/compartments/kairos/index.ts`
+- New: `client/src/pages/kairos.tsx`
+- Modified: `server/hermes-proxy.ts`
+- Modified: `server/routes.ts`
+- Modified: `client/src/compartments/registry.ts`
+- Modified: `client/src/lib/page-registry.ts`
+- Modified: `client/src/App.tsx`
+- Modified: `.env.example`
+
+---
 ## 2026-05-25 — Experimental section: rewrote all 3 "how it works" sections
 
 **Why:** Chris asked to rewrite "all the how to in the experimental area — they suck." Audit showed three different failures: HERMES referenced Railway hosting (out of date — just migrated off), Markov was academic jargon ("Hidden Markov Model" with no plain-English handhold), and Wheel was OK but over-academic. All three were also developer documentation (hooks, compartments, Python file paths) rather than user-facing guides for someone deciding whether to use the strategy.

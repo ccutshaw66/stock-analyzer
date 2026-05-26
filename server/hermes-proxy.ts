@@ -28,9 +28,11 @@ export function mountHermesProxy(app: Express): void {
 /**
  * Generic forward-everything proxy. Mounts at `prefix` and pipes every
  * request through to `upstreamBase` (preserving method, headers worth
- * keeping, body, query string).
+ * keeping, body, query string). Exported so any internal bot/service
+ * (KAIROS, future ones) can wire its own proxy with one line in
+ * `routes.ts`.
  */
-function mountInternalProxy(app: Express, prefix: string, upstreamBase: string): void {
+export function mountInternalProxy(app: Express, prefix: string, upstreamBase: string): void {
   app.use(prefix, async (req: Request, res: Response) => {
     // Express strips the mount prefix from req.url, so for a request to
     // `/api/hermes/api/status` we see req.url = `/api/status`.
