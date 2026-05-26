@@ -13,7 +13,7 @@
  * When the bot isn't running, every query returns an error — handled
  * gracefully by surfaces with an "offline" pill.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const KAIROS_API = "/api/kairos";
 
@@ -71,10 +71,15 @@ export interface KairosGoal {
    * the field is removed — the page falls back to DEFAULT_STARTING_EQUITY.
    */
   starting_equity?: number;
+  /** Fraction of equity per trade (0.02 = 2%). */
   position_size_pct?: number;
   watchlist_refresh_hours?: number;
   loop_interval_minutes?: number;
+  /** Minimum HTF quality score the bot will act on (0-100). */
+  min_score?: number;
+  /** Target 30-day return as decimal (0.05 = 5%). */
   target_return_30d?: number;
+  /** Max drawdown guardrail as decimal (0.10 = 10%). */
   max_drawdown?: number;
   min_sharpe?: number;
 }
@@ -88,7 +93,7 @@ export interface KairosWatchlistRow {
   last_evaluated?: string;
 }
 
-// ─── Internal fetch helper ─────────────────────────────────────────────────────
+// ─── Internal fetch helpers ────────────────────────────────────────────────────
 
 async function kairosFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${KAIROS_API}${path}`, { credentials: "include" });
@@ -96,9 +101,26 @@ async function kairosFetch<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function kairosPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${KAIROS_API}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = JSON.stringify(await res.json()); } catch { /* ignore */ }
+    throw new Error(`KAIROS PUT ${path} → ${res.status} ${detail}`);
+  }
+  return res.json();
+}
+
 // ─── The canonical hook ────────────────────────────────────────────────────────
 
 export function useKairos() {
+  const qc = useQueryClient();
+
   const status = useQuery<KairosStatus>({
     queryKey: ["kairos", "status"],
     queryFn: () => kairosFetch<KairosStatus>("/api/status"),
@@ -130,9 +152,20 @@ export function useKairos() {
     retry: 1,
   });
 
+  /**
+   * Patch goal.yaml on the bot. Bot's loop hot-reloads goal.yaml each tick,
+   * so changes land within at most `loop_interval_minutes` minutes.
+   * Send only the fields you want to change; the server merges.
+   */
+  const updateGoal = useMutation({
+    mutationFn: (patch: Partial<KairosGoal>) =>
+      kairosPut<KairosGoal>("/api/goal", patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["kairos", "goal"] }),
+  });
+
   const offline = !!status.error && !!trades.error;
 
-  return { status, trades, equity, goal, watchlist, offline };
+  return { status, trades, equity, goal, watchlist, updateGoal, offline };
 }
 
 // ─── Pure helpers (no React, no fetch) ─────────────────────────────────────────

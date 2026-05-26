@@ -5,10 +5,13 @@ stockotter Express proxy at /api/kairos/*.
 Endpoint shapes are dictated by client/src/compartments/kairos/useKairos.ts —
 do not change them without updating the hook.
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional
 import json
 import yaml
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -121,10 +124,53 @@ def goal():
         "position_size_pct": float(g.get("position_size_pct", 0.02)),
         "watchlist_refresh_hours": float(g.get("watchlist_refresh_hours", 1)),
         "loop_interval_minutes": float(g.get("loop_interval_minutes", 30)),
+        "min_score": int(g.get("min_score", 70)),
         "target_return_30d": g.get("target_return_30d"),
         "max_drawdown": g.get("max_drawdown"),
         "min_sharpe": g.get("min_sharpe"),
     }
+
+
+# ─── Writable goal config ─────────────────────────────────────────────────────
+# Bot's loop hot-reloads state/goal.yaml at the top of each iteration, so a
+# PUT here lands in the live bot within at most one tick (loop_interval_minutes).
+# Validation bounds are deliberately wide — Chris is the only operator and
+# wants override freedom; we reject obvious typos (negative position size,
+# 500% drawdown) but otherwise stay out of the way.
+
+class GoalUpdate(BaseModel):
+    """Partial update; only fields present are touched."""
+    starting_equity: Optional[float] = Field(None, gt=0, le=10_000_000)
+    # position_size_pct is a fraction (0.02 = 2%). Cap at 50% per trade
+    # so a fat-finger 50.0 (intending "50%") gets rejected, not interpreted
+    # as "5000% of equity per trade".
+    position_size_pct: Optional[float] = Field(None, gt=0, le=0.5)
+    watchlist_refresh_hours: Optional[float] = Field(None, gt=0, le=24)
+    loop_interval_minutes: Optional[float] = Field(None, gt=0, le=240)
+    min_score: Optional[int] = Field(None, ge=0, le=100)
+    # target_return_30d / max_drawdown are decimals (0.05 = 5%). Same fat-finger
+    # protection — cap at 100% drawdown and 1000% target.
+    target_return_30d: Optional[float] = Field(None, ge=-1.0, le=10.0)
+    max_drawdown: Optional[float] = Field(None, gt=0, le=1.0)
+    min_sharpe: Optional[float] = Field(None, ge=-5.0, le=10.0)
+
+
+@app.put("/api/goal")
+def update_goal(update: GoalUpdate):
+    patch = update.model_dump(exclude_unset=True)
+    if not patch:
+        raise HTTPException(status_code=400, detail="empty_update")
+    current = load_goal()
+    new = {**current, **patch}
+
+    # Atomic write — write to temp then rename so the bot's hot-reload never
+    # sees a half-written file.
+    f = STATE_DIR / "goal.yaml"
+    tmp = STATE_DIR / "goal.yaml.tmp"
+    tmp.write_text(yaml.safe_dump(new, default_flow_style=False, sort_keys=False))
+    os.replace(tmp, f)
+
+    return goal()  # round-trip — client sees the actual stored values
 
 
 @app.get("/health")

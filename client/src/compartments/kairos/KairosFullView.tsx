@@ -12,16 +12,18 @@
  * sections show their empty-state placeholders. Layout is the final shape;
  * just nothing in it yet.
  */
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Activity, Loader2, AlertCircle, CircleDot, Wallet, Percent, Award,
-  TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank,
+  TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank, Settings, Save,
+  CheckCircle2,
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import {
   useKairos, equityTotalPct, winRatePct,
   equityDollars, currentEquityDollars, totalPnlDollars, DEFAULT_STARTING_EQUITY,
   type KairosStatus, type KairosTrade, type KairosWatchlistRow, type KairosEquity,
+  type KairosGoal,
 } from "./useKairos";
 
 export function KairosFullView() {
@@ -47,7 +49,152 @@ export function KairosFullView() {
       <WatchlistSection rows={K.watchlist.data} loading={K.watchlist.isLoading} offline={K.offline} />
       <PositionsSection status={K.status.data} offline={K.offline} />
       <TradesSection trades={K.trades.data} loading={K.trades.isLoading} offline={K.offline} />
+      <GoalEditor
+        goal={K.goal.data}
+        loading={K.goal.isLoading}
+        offline={K.offline}
+        onSave={(patch) => K.updateGoal.mutate(patch)}
+        pending={K.updateGoal.isPending}
+        error={K.updateGoal.error}
+      />
     </div>
+  );
+}
+
+// ─── Goal editor — override the self-learning bot's params from the page ─────
+
+function GoalEditor({
+  goal, loading, offline, onSave, pending, error,
+}: {
+  goal: KairosGoal | undefined;
+  loading: boolean;
+  offline: boolean;
+  onSave: (patch: Partial<KairosGoal>) => void;
+  pending: boolean;
+  error: unknown;
+}) {
+  // Form holds USER-FRIENDLY units (percents as 2.0 not 0.02). Conversion to
+  // bot's decimal format happens at submit.
+  const [startingEquity, setStartingEquity] = useState<number>(10_000);
+  const [positionSizePct, setPositionSizePct] = useState<number>(2.0);
+  const [minScore, setMinScore] = useState<number>(70);
+  const [watchlistRefreshHours, setWatchlistRefreshHours] = useState<number>(1);
+  const [loopIntervalMinutes, setLoopIntervalMinutes] = useState<number>(30);
+  const [targetReturnPct, setTargetReturnPct] = useState<number>(5);
+  const [maxDrawdownPct, setMaxDrawdownPct] = useState<number>(10);
+  const [minSharpe, setMinSharpe] = useState<number>(1.0);
+  const [saved, setSaved] = useState(false);
+
+  // Hydrate form from server values. Server stores fractions (0.02 = 2%);
+  // form shows percents.
+  useEffect(() => {
+    if (!goal) return;
+    if (typeof goal.starting_equity === "number") setStartingEquity(goal.starting_equity);
+    if (typeof goal.position_size_pct === "number") setPositionSizePct(goal.position_size_pct * 100);
+    if (typeof goal.min_score === "number") setMinScore(goal.min_score);
+    if (typeof goal.watchlist_refresh_hours === "number") setWatchlistRefreshHours(goal.watchlist_refresh_hours);
+    if (typeof goal.loop_interval_minutes === "number") setLoopIntervalMinutes(goal.loop_interval_minutes);
+    if (typeof goal.target_return_30d === "number") setTargetReturnPct(goal.target_return_30d * 100);
+    if (typeof goal.max_drawdown === "number") setMaxDrawdownPct(goal.max_drawdown * 100);
+    if (typeof goal.min_sharpe === "number") setMinSharpe(goal.min_sharpe);
+  }, [goal]);
+
+  const save = () => {
+    onSave({
+      starting_equity: startingEquity,
+      position_size_pct: positionSizePct / 100,
+      min_score: Math.round(minScore),
+      watchlist_refresh_hours: watchlistRefreshHours,
+      loop_interval_minutes: loopIntervalMinutes,
+      target_return_30d: targetReturnPct / 100,
+      max_drawdown: maxDrawdownPct / 100,
+      min_sharpe: minSharpe,
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Settings className="h-4 w-4 text-primary" /> Bot Configuration
+        </h2>
+      </div>
+
+      <p className="text-2xs text-muted-foreground mb-3 leading-relaxed">
+        KAIROS hot-reloads <code className="font-mono">goal.yaml</code> at the top of every loop
+        iteration. Save here and the bot picks up the new values within at most one tick
+        ({loopIntervalMinutes} min). Self-learning stays on — these are your override knobs.
+      </p>
+
+      {loading ? (
+        <SkeletonRow />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <ConfigField label="Starting equity ($)" value={startingEquity} step={100} min={1} max={10_000_000} onChange={setStartingEquity} hint="Display-only in paper mode" />
+            <ConfigField label="Position size (%)" value={positionSizePct} step={0.25} min={0.1} max={50} onChange={setPositionSizePct} hint="% of equity per trade" />
+            <ConfigField label="Min HTF score" value={minScore} step={1} min={0} max={100} onChange={setMinScore} hint="Quality floor for entries" />
+            <ConfigField label="Min Sharpe" value={minSharpe} step={0.1} min={-5} max={10} onChange={setMinSharpe} hint="Quality target" />
+            <ConfigField label="Target return / 30d (%)" value={targetReturnPct} step={0.5} min={-100} max={1000} onChange={setTargetReturnPct} hint="Informational" />
+            <ConfigField label="Max drawdown (%)" value={maxDrawdownPct} step={0.5} min={0.1} max={100} onChange={setMaxDrawdownPct} hint="Informational" />
+            <ConfigField label="Watchlist refresh (hours)" value={watchlistRefreshHours} step={0.5} min={0.1} max={24} onChange={setWatchlistRefreshHours} hint="HTF re-pull cadence" />
+            <ConfigField label="Loop interval (min)" value={loopIntervalMinutes} step={1} min={1} max={240} onChange={setLoopIntervalMinutes} hint="Bot tick rate" />
+          </div>
+
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {error instanceof Error && (
+              <span className="text-2xs text-bear-light mr-auto">{error.message}</span>
+            )}
+            {offline && !pending && !saved && (
+              <span className="text-2xs text-muted-foreground mr-auto italic">Bot offline — save will queue but won't apply until bot is back.</span>
+            )}
+            <button
+              onClick={save}
+              disabled={pending}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
+                saved
+                  ? "bg-bull-light/15 text-bull-light"
+                  : "bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40"
+              }`}
+              data-testid="button-save-kairos-goal"
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> :
+                saved ? <CheckCircle2 className="h-3 w-3" /> :
+                <Save className="h-3 w-3" />}
+              {pending ? "Saving" : saved ? "Saved" : "Save changes"}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function ConfigField({ label, value, step, min, max, onChange, hint }: {
+  label: string;
+  value: number;
+  step: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  hint?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+      <input
+        type="number"
+        value={value}
+        step={step}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        className="mt-1 w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+      />
+      {hint && <span className="block text-mini text-muted-foreground mt-0.5">{hint}</span>}
+    </label>
   );
 }
 

@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS: in-page bot configuration editor (manual override knobs)
+
+**Why:** Chris's quote: "Make sure that I can change the variables on the page, the bot is self learning but I want that freedom." KAIROS hot-reloads `goal.yaml` on every loop iteration so config changes are picked up within at most one tick — the missing piece was a UI to drive those edits without SSH'ing to superotter and nano'ing a file.
+
+**What — Python (bot side):**
+- **`python/kairos/dashboard_web.py`** — added `PUT /api/goal` endpoint with a `GoalUpdate` Pydantic model. Partial updates supported (send only the keys you want to change; server merges). Wide-but-safe validation bounds — Chris is the only operator and wants override freedom, so we reject obvious typos (negative position size, 500% drawdown) but otherwise stay out of the way. Atomic write (temp file + os.replace) so the bot's hot-reload never sees a half-written file mid-tick. Round-trips through `goal()` GET so the client sees the actual stored values, not the patch.
+- **GET /api/goal** now also includes `min_score` (was in goal.yaml but missing from the response — needed for the editor to round-trip).
+
+**What — TypeScript (client side):**
+- **`useKairos.ts`** — added `KairosGoal.min_score?`; added `kairosPut<T>()` helper that surfaces the API's 4xx detail in the thrown error; added `updateGoal` mutation hook that invalidates the `["kairos", "goal"]` query on success. Pattern mirrors HERMES's `updateGoal`.
+- **`KairosFullView.tsx`** — new `GoalEditor` section at the bottom of the page. Eight `ConfigField` inputs in a 4-col grid:
+  - Starting equity ($) · Position size (%) · Min HTF score · Min Sharpe
+  - Target return / 30d (%) · Max drawdown (%) · Watchlist refresh (hours) · Loop interval (min)
+- Form holds user-friendly units (percents as `2.0` not `0.02`); conversion to bot's decimal format happens at submit. Save button shows pending → saved ✓ → reset. Surfaces validation errors from the server. Notes the loop interval right above the save button so the user knows when their change will take effect.
+- Offline-aware: if bot is offline at save time, surfaces a "save will queue but won't apply until bot is back" hint.
+
+**Files:**
+- Modified: `python/kairos/dashboard_web.py` (PUT /api/goal + GoalUpdate model + min_score in GET)
+- Modified: `client/src/compartments/kairos/useKairos.ts` (kairosPut + updateGoal mutation + min_score in type)
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx` (GoalEditor section)
+
+**Deploy:** Python side needs a rebuild on superotter. RDP-Claude (or Chris) does `git pull && docker compose up --build -d` from `/home/administrator/kairos/` when convenient. Client side ships via the usual webhook → pm2.
+
+---
 ## 2026-05-26 — KAIROS: same warm-and-fuzzy Account card as HERMES
 
 **Why:** Chris's quote: "add the same warm and fuzzy on that one too please." HERMES got the Account card (Starting / Current / Total P/L in big dollar numbers) earlier today; KAIROS needed the same so both bots feel consistent and both surface real $ amounts the same way.
