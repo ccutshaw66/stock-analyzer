@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS bot-watchlist endpoint: broaden default (drop actionable-only gate)
+
+**Why:** Chris reported KAIROS picking up almost no HTF watchlist tickers (and zero HTF entries) while the `/htf` page was full of setups ≥75. Root cause: `/api/bot/htf-watchlist` hardcoded `actionableOnly: true`, which restricts to `breakoutDate ≤ 1 day old` AND `price hasn't run >10% past entry`. That's the right filter for "fire now" but the wrong filter for a watchlist — bots want to be tracking forming setups so when one breaks out tomorrow, they're already on it. The narrow gate left 0–2 tickers most ticks; everything else was "forming, not actionable yet" or "fired a few days ago, slightly extended."
+
+**What:**
+- **Default changed: `actionableOnly: false`** (was hardcoded true). Now returns ALL setups ≥minScore, including forming AND fired-but-no-longer-actionable. The bot's own loop already decides entry timing (KAIROS only enters when `hit.breakoutDate == latest bar`), so a broader watchlist doesn't change what trades fire — just gives the bot more tickers to evaluate each tick.
+- **Optional query params added:** `?actionableOnly=true|1` restores the old narrow behavior if a caller wants it. `?stage=fired|forming` filters to one stage only.
+- **Default `limit` raised from 25 → 50** — same reasoning: watchlists want headroom.
+- **Response payload adds `actionable` boolean per ticker** so the bot can use it for sizing decisions later without re-querying.
+
+**Files:**
+- Modified: `server/bot-routes.ts`
+
+**No bot-side changes required.** KAIROS's `watchlist.py` calls this endpoint with whatever params it does; the broader default takes effect on the next watchlist refresh (within `watchlist_refresh_hours`, default 1h). If you want it immediately, restart the bot or wait at most an hour. Once active, the watchlist should populate with however many tickers the universe currently has at score ≥ 70 (capped at 50).
+
+---
 ## 2026-05-26 — KAIROS — open positions persist across kairos-bot restarts
 
 **Why:** Chris caught it while we were verifying the live deploy: the dashboard "still shows the KALV position after a restart" only because the bot had been running continuously since the position opened. A real `docker compose restart kairos-bot` would have wiped `self.positions` and silently re-opened any tickers whose entry conditions still fired — orphaning the prior `entry_atr` and `highest_since_entry` that BBTC's trailing stop depends on. Harmless in paper, but a hard blocker for `KAIROS_MODE=live`.

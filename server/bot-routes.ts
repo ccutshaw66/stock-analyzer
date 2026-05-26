@@ -16,7 +16,8 @@ import { htfScannerData } from "./compartments/htf-scanner";
 import { DEFAULT_ACCOUNT_CONFIG, PortfolioState } from "./signals/risk/position-sizing";
 
 const HEADER_NAME = "x-bot-key";
-const MAX_WATCHLIST_DEFAULT = 25;
+// Wider default than original 25 — bot wants a watchlist, not just entries.
+const MAX_WATCHLIST_DEFAULT = 50;
 
 function requireBotKey(req: Request, res: Response, next: NextFunction): void {
   const expected = process.env.BOT_API_KEY;
@@ -41,13 +42,31 @@ export function mountBotRoutes(app: Express): void {
   }
 
   // GET /api/bot/htf-watchlist
-  //   Query: ?limit=N (default 25), ?minScore=N (default 70)
-  //   Returns the top N actionable HTF setups from the live scanner cache.
+  //   Query:
+  //     ?limit=N           (1..200, default 50) cap on result rows
+  //     ?minScore=N        (0..100, default 70) minimum HTF quality score
+  //     ?actionableOnly=1  (default 0)          ONLY entry-window-actionable hits
+  //     ?stage=fired|forming                    filter to one stage only
+  //
+  //   Default behavior is INTENTIONALLY broad — return all setups ≥minScore
+  //   including forming-but-not-fired-yet and fired-but-no-longer-actionable.
+  //   Bots want a WATCHLIST (tickers to keep evaluating each tick), not just
+  //   "fire entry now" candidates. The bot's own loop decides when to enter
+  //   (KAIROS: breakoutDate == latest bar). Defaulting to actionableOnly=true
+  //   gave too narrow a watchlist — only same-day breakouts that hadn't run
+  //   more than 10% past entry, which is typically 0-2 tickers and misses
+  //   all the forming setups that fire tomorrow.
+  //
   //   Bot calls this hourly to refresh its watchlist.
   app.get("/api/bot/htf-watchlist", requireBotKey, async (req: Request, res: Response) => {
     try {
       const limit = clampInt(req.query.limit, 1, 200, MAX_WATCHLIST_DEFAULT);
       const minScore = clampInt(req.query.minScore, 0, 100, 70);
+      const actionableOnly =
+        req.query.actionableOnly === "true" || req.query.actionableOnly === "1";
+      const stageParam = typeof req.query.stage === "string" ? req.query.stage : undefined;
+      const stage: "fired" | "forming" | undefined =
+        stageParam === "fired" || stageParam === "forming" ? stageParam : undefined;
 
       // Bot has no user context — use defaults so the scan runs against the
       // universe without user-specific portfolio caps filtering things out.
@@ -55,8 +74,9 @@ export function mountBotRoutes(app: Express): void {
       const portfolio = new PortfolioState();
 
       const result = await htfScannerData.getSetups({
-        actionableOnly: true,
+        actionableOnly,
         minScore,
+        stage,
         config,
         portfolio,
       });
@@ -68,6 +88,7 @@ export function mountBotRoutes(app: Express): void {
         targetPrice: r.targetPrice,
         stopPrice: r.stopPrice,
         stage: r.pattern === "HTF_Givens_Forming" ? "forming" : "fired",
+        actionable: r.actionable,
         breakoutDate: typeof r.breakoutDate === "string"
           ? r.breakoutDate
           : new Date(r.breakoutDate as any).toISOString(),
