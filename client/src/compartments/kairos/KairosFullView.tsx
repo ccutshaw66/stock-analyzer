@@ -21,9 +21,10 @@ import {
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import {
   useKairos, equityTotalPct, winRatePct,
-  equityDollars, currentEquityDollars, totalPnlDollars, DEFAULT_STARTING_EQUITY,
+  equityDollars, currentEquityDollars, totalPnlDollars,
+  totalInvestedDollars, totalUnrealizedPnlDollars, DEFAULT_STARTING_EQUITY,
   type KairosStatus, type KairosTrade, type KairosWatchlistRow, type KairosEquity,
-  type KairosGoal,
+  type KairosGoal, type KairosPosition,
 } from "./useKairos";
 
 export function KairosFullView() {
@@ -35,6 +36,7 @@ export function KairosFullView() {
         equity={K.equity.data}
         startingEquity={startingEquity}
         startingFromGoal={typeof K.goal.data?.starting_equity === "number"}
+        positions={K.status.data?.open_positions}
         loading={K.equity.isLoading}
         fetching={K.equity.isFetching}
       />
@@ -201,11 +203,12 @@ function ConfigField({ label, value, step, min, max, onChange, hint }: {
 // ─── Account card (warm-and-fuzzy dollar amounts) ─────────────────────────────
 
 function AccountCard({
-  equity, startingEquity, startingFromGoal, loading, fetching,
+  equity, startingEquity, startingFromGoal, positions, loading, fetching,
 }: {
   equity: KairosEquity | undefined;
   startingEquity: number;
   startingFromGoal: boolean;
+  positions: KairosPosition[] | undefined;
   loading: boolean;
   fetching: boolean;
 }) {
@@ -214,6 +217,20 @@ function AccountCard({
   const pnlPct = equityTotalPct(equity?.equity);
   const isUp = pnlDollars >= 0;
   const pnlColor = isUp ? "text-bull-light" : "text-bear-light";
+
+  const openCount = positions?.length ?? 0;
+  const invested = totalInvestedDollars(positions);
+  const unrealized = totalUnrealizedPnlDollars(positions);
+  const freeCash = Number((current - invested).toFixed(2));
+  const investedPct = current > 0 ? (invested / current) * 100 : 0;
+  const freeCashPct = current > 0 ? (freeCash / current) * 100 : 100;
+  // Color the "Invested" tile by deployment level so heavy exposure is visible
+  // at a glance (cool when light, warm when crowded, hot when near capacity).
+  const investedColor =
+    investedPct < 30 ? "text-foreground"
+    : investedPct < 70 ? "text-watch-light"
+    : "text-bear-light";
+  const unrealizedColor = unrealized >= 0 ? "text-bull-light" : "text-bear-light";
 
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
@@ -227,47 +244,85 @@ function AccountCard({
       {loading ? (
         <SkeletonRow />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
-            <div className="flex items-center gap-1 mb-1">
-              <PiggyBank className="h-3 w-3 text-muted-foreground" />
-              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Starting</span>
-            </div>
-            <p className="text-xl font-bold tabular-nums font-mono text-foreground">
-              ${startingEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            {!startingFromGoal && (
-              <p className="text-mini text-muted-foreground mt-0.5">
-                Default — add <code className="font-mono">starting_equity: 10000</code> to goal.yaml on the bot to change.
+        <div className="space-y-3">
+          {/* Headline row — Starting / Current / Total P/L */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+              <div className="flex items-center gap-1 mb-1">
+                <PiggyBank className="h-3 w-3 text-muted-foreground" />
+                <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Starting</span>
+              </div>
+              <p className="text-xl font-bold tabular-nums font-mono text-foreground">
+                ${startingEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
-            )}
+              {!startingFromGoal && (
+                <p className="text-mini text-muted-foreground mt-0.5">
+                  Default — add <code className="font-mono">starting_equity: 10000</code> to goal.yaml on the bot to change.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+              <div className="flex items-center gap-1 mb-1">
+                <DollarSign className={`h-3 w-3 ${pnlColor}`} />
+                <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Current value</span>
+              </div>
+              <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+                ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+              <div className="flex items-center gap-1 mb-1">
+                <TrendingUp className={`h-3 w-3 ${pnlColor}`} />
+                <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Total P/L</span>
+              </div>
+              <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+                {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className={`text-2xs font-mono tabular-nums mt-0.5 ${pnlColor}`}>
+                {isUp ? "+" : ""}{pnlPct.toFixed(2)}%
+              </p>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
-            <div className="flex items-center gap-1 mb-1">
-              <DollarSign className={`h-3 w-3 ${pnlColor}`} />
-              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Current value</span>
-            </div>
-            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
-              ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
-            <div className="flex items-center gap-1 mb-1">
-              <TrendingUp className={`h-3 w-3 ${pnlColor}`} />
-              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Total P/L</span>
-            </div>
-            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
-              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className={`text-2xs font-mono tabular-nums mt-0.5 ${pnlColor}`}>
-              {isUp ? "+" : ""}{pnlPct.toFixed(2)}%
-            </p>
+          {/* Allocation row — Open / Invested / Free cash / Unrealized */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <AllocTile label="Open positions" value={String(openCount)} color="text-foreground" sub={openCount === 1 ? "1 position" : `${openCount} positions`} />
+            <AllocTile
+              label="Invested"
+              value={`$${invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              color={investedColor}
+              sub={`${investedPct.toFixed(1)}% deployed`}
+            />
+            <AllocTile
+              label="Free cash"
+              value={`$${freeCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              color="text-foreground"
+              sub={`${freeCashPct.toFixed(1)}% available`}
+            />
+            <AllocTile
+              label="Unrealized P/L"
+              value={`${unrealized >= 0 ? "+" : ""}$${Math.abs(unrealized).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              color={unrealizedColor}
+              sub={openCount > 0 ? "across open positions" : "no positions open"}
+            />
           </div>
         </div>
       )}
     </section>
+  );
+}
+
+function AllocTile({ label, value, color, sub }: {
+  label: string; value: string; color: string; sub?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-card-border/60 bg-background/40 p-2.5">
+      <p className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className={`mt-0.5 text-sm font-bold tabular-nums font-mono ${color}`}>{value}</p>
+      {sub && <p className="text-mini text-muted-foreground mt-0.5">{sub}</p>}
+    </div>
   );
 }
 

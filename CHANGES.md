@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS: allocation row on Account card (Open / Invested / Free cash / Unrealized P/L)
+
+**Why:** Chris hit 18 paper positions and asked: "can we get a total funds allocated on the page so that warm and fuzzy doesn't turn into OH SHIT WHAT HAPPENED. I would like open position numbers and totals." Reasonable — current Account card showed equity totals (Starting / Current / Total P/L) but no view of how much capital was tied up vs free. With BBTC firing on lots of watchlist tickers post the watchlist-broadening fix, "how exposed am I right now?" became a real question.
+
+**What:**
+- **Second row of 4 smaller tiles** on the Account card, underneath the existing 3 headline tiles:
+  - **Open positions** — count + "N positions" sub-line
+  - **Invested** — `$X` tied up + `N% deployed` sub-line. **Color-graded** to surface heavy exposure at a glance: foreground when <30% deployed, watch-light at 30-70%, bear-light above 70% — so "warm and fuzzy" doesn't quietly turn into "92% deployed and I didn't notice."
+  - **Free cash** — `$X` available + `N% available` sub-line
+  - **Unrealized P/L** — sum of position-level unrealized P/L $ across all open positions (different from the equity-curve Total P/L which only includes CLOSED trades). Colored bull/bear by direction.
+- **`useKairos.ts`** — added two pure helpers: `totalInvestedDollars(positions)` (Σ entry × shares) and `totalUnrealizedPnlDollars(positions)` (Σ per-position unrealized $). All math client-side; no bot edits — KAIROS already exposes `entry_price`, `shares`, and `unrealized_pnl_dollars` per position via `/api/status.open_positions`.
+
+**Files:**
+- Modified: `client/src/compartments/kairos/useKairos.ts` (2 helpers)
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx` (allocation row + `AllocTile` component)
+
+**Not on HERMES yet** — HERMES's heartbeat exposes positions as bare ticker strings only (no entry_price / shares). Bringing the same allocation row to /hermes would need bot-side changes (loop.py writing position dicts to heartbeat the way KAIROS does). Easy follow-up if Chris wants symmetry.
+
+---
 ## 2026-05-26 — Scanner: fix Explosive-mode loading text (showed 250 stocks, scanning 2000)
 
 **Why:** Chris reported "the explosive scan is supposed to be scanning 2000-3000 tickers. It CLEARLY says on the bottom scanning 250 tickers to look for setups." Investigation: server-side scan was correct (2000 tickers actually pulled and processed); the LOADING-state text on the scanner page was hardcoded to `scanCount` (the 3strat/AMC default of 250) regardless of which scanner mode was active. So while V2/Explosive was running its full 2000-ticker scan, the spinner copy lied. The post-scan `Scanned X stocks` text (line 672, server-derived from `data.universeSize`) was already accurate.

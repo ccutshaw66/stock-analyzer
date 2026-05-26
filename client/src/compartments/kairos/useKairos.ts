@@ -215,3 +215,19 @@ export function currentEquityDollars(eq: number[] | undefined, startingEquity: n
 export function totalPnlDollars(eq: number[] | undefined, startingEquity: number): number {
   return Number((currentEquityDollars(eq, startingEquity) - startingEquity).toFixed(2));
 }
+
+/** Sum of (entry_price × shares) across all open positions — capital locked up. */
+export function totalInvestedDollars(positions: KairosPosition[] | undefined): number {
+  if (!positions || positions.length === 0) return 0;
+  return Number(
+    positions.reduce((sum, p) => sum + (p.entry_price ?? 0) * (p.shares ?? 0), 0).toFixed(2)
+  );
+}
+
+/** Sum of unrealized P/L $ across all open positions. */
+export function totalUnrealizedPnlDollars(positions: KairosPosition[] | undefined): number {
+  if (!positions || positions.length === 0) return 0;
+  return Number(
+    positions.reduce((sum, p) => sum + (p.unrealized_pnl_dollars ?? 0), 0).toFixed(2)
+  );
+}
