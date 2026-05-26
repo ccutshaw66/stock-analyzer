@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — HERMES: dollar amounts everywhere + Railway-stale copy fix
+
+**Why:** Chris's quote: "Can we stick a dollar amount on the page please it makes me feel all warm and fuzzy to see the dollars going up." HERMES page was showing % and trade counts only — no actual dollar value to look at. For a go-live decision, he needs to see real $ amounts daily.
+
+**What — pure client-side change, no Python redeploy needed:**
+- **New `Account` card** at the top of /hermes — three big tiles: Starting capital, Current value (colored by direction), Total P/L $ (with small % below). This is the warm-and-fuzzy section.
+- **Equity curve Y-axis switched to dollars** with `$X,XXX` tick labels and dollar-formatted tooltip. Line color now flips green/red based on direction. Stroke uses `rgb(var(--signal-bull-light))` / bear-light — proper design tokens, not the previous hex literals.
+- **Stats card Total P/L tile** now leads with the $ value and shows the % as a sub-line below (was % only). Other stat tiles unchanged.
+- **HermesWidget** swapped its big number from "+X.XX%" to "$X,XXX" (current account value) with a small P/L $ · % line underneath. Same visual weight, far more meaningful at a glance.
+- **`useHermes.ts` adds 4 pure helpers** — `DEFAULT_STARTING_EQUITY` ($10K fallback), `equityDollars()`, `currentEquityDollars()`, `totalPnlDollars()`. The bot's `/api/equity` returns a relative index starting at 100; the client multiplies by `goal.starting_equity` (read from goal.yaml on the bot) to surface dollar amounts. Falls back to $10K if goal.yaml hasn't set it yet — page works either way.
+- **Stale "Railway" copy fixed** — the experimental banner used to say "running outside Stock Otter on Railway"; the offline message used to mention a "CORS issue with the Railway service." Both updated to reflect the current self-hosted reality on superotter, behind Stockotter's Express proxy, with practical "container stopped / bot crash-looping / wrong proxy URL" troubleshooting in the offline copy.
+
+**To activate dollar mode on the bot:** SSH to superotter and `nano /home/administrator/hermes/hermes-trading/state/goal.yaml`, add one line: `starting_equity: 10000` (or whatever starting capital). Bot picks it up on next /api/goal poll (within ~5 min). Until then, page uses the $10K default — no error, just notes "Default — add starting_equity to goal.yaml to change."
+
+**Files:**
+- Modified: `client/src/compartments/hermes/useHermes.ts`
+- Modified: `client/src/compartments/hermes/HermesFullView.tsx`
+- Modified: `client/src/compartments/hermes/HermesWidget.tsx`
+
+---
 ## 2026-05-26 — KAIROS bot — Milestones 2–5 (Python bot, strategy ports, position management, deploy artifacts)
 
 **Why:** Picks up where Milestone 1 (commit 0a2a11b) stopped. M1 landed the stockotter-side scaffolding (`/api/bot/htf-watchlist` endpoint, `/api/kairos/*` proxy, the kairos compartment + page). M2–M5 land the Python bot half: the FastAPI dashboard the proxy talks to, the HTF + BBTC strategy ports, the trading loop with two-stop position management, the parity-test harness against the TypeScript references, and the Docker artifacts ready to scp to superotter. Built on the RDP server (IMTDT01) in a separate session so both halves can ship together without one side waiting on the other.

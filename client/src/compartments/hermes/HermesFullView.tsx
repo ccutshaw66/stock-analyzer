@@ -13,18 +13,20 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Activity, TrendingUp, AlertTriangle, RefreshCw, Save, Loader2,
   FlaskConical, CircleDot, ArrowUpRight, ArrowDownRight, Settings,
-  Plus, X, Target,
+  Plus, X, Target, Wallet, DollarSign, PiggyBank,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { HelpBlock, Example } from "@/components/HelpBlock";
 import {
-  useHermes, HERMES_API, equityTotalPct,
+  useHermes, equityTotalPct, equityDollars, currentEquityDollars,
+  totalPnlDollars, DEFAULT_STARTING_EQUITY,
   type HermesStatus, type HermesStats, type HermesTrade,
   type HermesEquity, type HermesGoal, type AssetParams,
 } from "./useHermes";
 
 export function HermesFullView() {
   const H = useHermes();
+  const startingEquity = H.goal.data?.starting_equity ?? DEFAULT_STARTING_EQUITY;
 
   return (
     <div className="space-y-4">
@@ -42,22 +44,30 @@ export function HermesFullView() {
       </div>
 
       {H.offline && (
-        <div className="border border-red-500/30 bg-red-500/5 rounded-lg p-3 flex items-start gap-2 text-xs text-red-300">
+        <div className="border border-bear/30 bg-bear/5 rounded-lg p-3 flex items-start gap-2 text-xs text-bear-light">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold">Cannot reach HERMES backend.</p>
             <p className="opacity-80 mt-0.5">
-              {HERMES_API} is unreachable from this browser. If the dashboard
-              is up, this is likely a CORS issue — the Railway service needs
-              to allow this origin.
+              The Python service on superotter isn't responding. Common causes:
+              container stopped (run <code className="font-mono">docker compose ps</code> on
+              the VM), bot in a crash loop (check <code className="font-mono">docker compose logs bot</code>),
+              or the internal proxy URL is wrong (Stockotter env <code className="font-mono">HERMES_INTERNAL_URL</code>).
             </p>
           </div>
         </div>
       )}
 
+      <AccountCard
+        equity={H.equity.data}
+        startingEquity={startingEquity}
+        startingFromGoal={typeof H.goal.data?.starting_equity === "number"}
+        loading={H.equity.isLoading}
+        fetching={H.equity.isFetching}
+      />
       <StatusCard status={H.status.data} loading={H.status.isLoading} error={H.status.error} fetching={H.status.isFetching} />
-      <StatsCard stats={H.stats.data} loading={H.stats.isLoading} error={H.stats.error} fetching={H.stats.isFetching} />
-      <EquityCurve equity={H.equity.data} loading={H.equity.isLoading} error={H.equity.error} fetching={H.equity.isFetching} />
+      <StatsCard stats={H.stats.data} loading={H.stats.isLoading} error={H.stats.error} fetching={H.stats.isFetching} startingEquity={startingEquity} equity={H.equity.data} />
+      <EquityCurve equity={H.equity.data} loading={H.equity.isLoading} error={H.equity.error} fetching={H.equity.isFetching} startingEquity={startingEquity} />
       <ManageAssets
         assets={H.status.data?.assets ?? []}
         addAsset={(p) => H.addAsset.mutate(p)}
@@ -91,15 +101,90 @@ export function HermesFullView() {
 
 function ExperimentalBanner() {
   return (
-    <div className="flex items-start gap-2 px-3 py-2 bg-purple-500/5 border border-purple-500/30 rounded-lg text-[11px] text-purple-200 leading-relaxed">
-      <FlaskConical className="h-3.5 w-3.5 mt-0.5 shrink-0 text-purple-400" />
+    <div className="flex items-start gap-2 px-3 py-2 bg-primary/5 border border-primary/30 rounded-lg text-[11px] text-foreground/80 leading-relaxed">
+      <FlaskConical className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
       <span>
-        <strong>Experimental.</strong> HERMES is a research auto-trader running
-        outside Stock Otter on Railway. The numbers here come from that service
-        in real time — they are not paper trades, not backtests, and may change
-        without warning. Use at your own risk.
+        <strong className="text-foreground">Experimental.</strong> HERMES is a
+        self-hosted research auto-trader running on the internal LAN, reached
+        through Stockotter's Express proxy. Currently in <strong className="text-foreground">paper
+        mode</strong> — no real money at risk. Numbers here are live from the
+        bot's state files and update every 15 seconds.
       </span>
     </div>
+  );
+}
+
+// ─── Account (dollar values — the warm-and-fuzzy section) ─────────────────────
+
+function AccountCard({
+  equity, startingEquity, startingFromGoal, loading, fetching,
+}: {
+  equity: HermesEquity | undefined;
+  startingEquity: number;
+  /** Whether the starting capital came from goal.yaml (vs the default fallback). */
+  startingFromGoal: boolean;
+  loading: boolean;
+  fetching: boolean;
+}) {
+  const current = currentEquityDollars(equity?.equity, startingEquity);
+  const pnlDollars = totalPnlDollars(equity?.equity, startingEquity);
+  const pnlPct = equityTotalPct(equity?.equity);
+  const isUp = pnlDollars >= 0;
+  const pnlColor = isUp ? "text-bull-light" : "text-bear-light";
+
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-primary" /> Account
+        </h2>
+        {fetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+
+      {loading ? (
+        <SkeletonRow />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <PiggyBank className="h-3 w-3 text-muted-foreground" />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Starting</span>
+            </div>
+            <p className="text-xl font-bold tabular-nums font-mono text-foreground">
+              ${startingEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            {!startingFromGoal && (
+              <p className="text-mini text-muted-foreground mt-0.5">
+                Default — add <code className="font-mono">starting_equity: 10000</code> to goal.yaml on the bot to change.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <DollarSign className={`h-3 w-3 ${pnlColor}`} />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Current value</span>
+            </div>
+            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+              ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <TrendingUp className={`h-3 w-3 ${pnlColor}`} />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Total P/L</span>
+            </div>
+            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className={`text-2xs font-mono tabular-nums mt-0.5 ${pnlColor}`}>
+              {isUp ? "+" : ""}{pnlPct.toFixed(2)}%
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -204,8 +289,18 @@ function StatusPill({ state }: { state: string }) {
 // ─── Stats ─────────────────────────────────────────────────────────────────────
 
 function StatsCard({
-  stats, loading, error, fetching,
-}: { stats: HermesStats | undefined; loading: boolean; error: unknown; fetching: boolean }) {
+  stats, loading, error, fetching, startingEquity, equity,
+}: {
+  stats: HermesStats | undefined;
+  loading: boolean;
+  error: unknown;
+  fetching: boolean;
+  startingEquity: number;
+  equity: HermesEquity | undefined;
+}) {
+  const pnlDollars = totalPnlDollars(equity?.equity, startingEquity);
+  const isUp = pnlDollars >= 0;
+
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
@@ -224,9 +319,12 @@ function StatsCard({
           <StatTile label="Total trades" value={stats.total_trades.toString()} />
           <StatTile label="Win rate" value={stats.win_rate.toFixed(1) + "%"}
             tone={stats.win_rate >= 50 ? "good" : "bad"} />
-          <StatTile label="Total P/L"
-            value={(stats.total_pnl >= 0 ? "+" : "") + stats.total_pnl.toFixed(2) + "%"}
-            tone={stats.total_pnl >= 0 ? "good" : "bad"} />
+          <StatTile
+            label="Total P/L"
+            value={`${isUp ? "+" : ""}$${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            sub={`${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl.toFixed(2)}%`}
+            tone={isUp ? "good" : "bad"}
+          />
           <StatTile label="Sharpe" value={stats.sharpe.toFixed(2)}
             tone={stats.sharpe >= 1 ? "good" : stats.sharpe >= 0 ? "neutral" : "bad"} />
           <StatTile label="Max drawdown" value={stats.max_drawdown.toFixed(2) + "%"} tone="bad" />
@@ -236,13 +334,16 @@ function StatsCard({
   );
 }
 
-function StatTile({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "good" | "bad" | "neutral" }) {
+function StatTile({ label, value, sub, tone = "neutral" }: {
+  label: string; value: string; sub?: string; tone?: "good" | "bad" | "neutral";
+}) {
   const color =
-    tone === "good" ? "text-green-400" : tone === "bad" ? "text-red-400" : "text-foreground";
+    tone === "good" ? "text-bull-light" : tone === "bad" ? "text-bear-light" : "text-foreground";
   return (
     <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="text-mini uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className={`mt-1 text-lg font-bold tabular-nums ${color}`}>{value}</p>
+      {sub && <p className={`text-2xs font-mono tabular-nums mt-0.5 ${color} opacity-80`}>{sub}</p>}
     </div>
   );
 }
@@ -250,13 +351,21 @@ function StatTile({ label, value, tone = "neutral" }: { label: string; value: st
 // ─── Equity Curve ──────────────────────────────────────────────────────────────
 
 function EquityCurve({
-  equity, loading, error, fetching,
-}: { equity: HermesEquity | undefined; loading: boolean; error: unknown; fetching: boolean }) {
-  const data = useMemo(
-    () => (equity?.equity ?? []).map((v, i) => ({ i, equity: v })),
-    [equity]
-  );
-  const totalPct = equityTotalPct(equity?.equity);
+  equity, loading, error, fetching, startingEquity,
+}: {
+  equity: HermesEquity | undefined;
+  loading: boolean;
+  error: unknown;
+  fetching: boolean;
+  startingEquity: number;
+}) {
+  const data = useMemo(() => {
+    const dollars = equityDollars(equity?.equity, startingEquity);
+    return dollars.map((v, i) => ({ i, equity: v }));
+  }, [equity, startingEquity]);
+  const pnlDollars = totalPnlDollars(equity?.equity, startingEquity);
+  const isUp = pnlDollars >= 0;
+  const lineColor = isUp ? "rgb(var(--signal-bull-light))" : "rgb(var(--signal-bear-light))";
 
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
@@ -266,9 +375,8 @@ function EquityCurve({
         </h2>
         <div className="flex items-center gap-3">
           {data.length > 0 && (
-            <span className={`text-[11px] font-bold tabular-nums ${totalPct >= 0 ? "text-green-400" : "text-red-400"}`}>
-              {totalPct >= 0 ? "+" : ""}
-              {totalPct.toFixed(2)}%
+            <span className={`text-2xs font-bold tabular-nums font-mono ${isUp ? "text-bull-light" : "text-bear-light"}`}>
+              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           )}
           {fetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
@@ -278,25 +386,26 @@ function EquityCurve({
       {loading ? (
         <SkeletonRow />
       ) : error || data.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No equity history yet.</p>
+        <p className="text-xs text-muted-foreground">No equity history yet — equity curve fills in once the bot logs its first trade.</p>
       ) : (
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
+            <LineChart data={data} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
               <XAxis dataKey="i" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                 tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }} />
               <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                 tickLine={false} axisLine={{ stroke: "hsl(var(--card-border))" }}
-                tickFormatter={(v) => v.toFixed(2)} width={50} />
+                tickFormatter={(v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                width={70} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",
                   border: "1px solid hsl(var(--card-border))",
                   borderRadius: 6, fontSize: 11,
                 }}
-                labelFormatter={(label) => `Trade ${label}`}
-                formatter={(value: number) => [value.toFixed(2), "Equity"]} />
-              <Line type="monotone" dataKey="equity" stroke="#a78bfa" strokeWidth={2} dot={false} isAnimationActive={false} />
+                labelFormatter={(label) => `After trade ${label}`}
+                formatter={(value: number) => [`$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, "Account"]} />
+              <Line type="monotone" dataKey="equity" stroke={lineColor} strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

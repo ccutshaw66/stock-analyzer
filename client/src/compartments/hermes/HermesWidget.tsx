@@ -9,19 +9,26 @@ import { Link } from "wouter";
 import { Bot, Loader2 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { useMemo } from "react";
-import { useHermes, equityTotalPct } from "./useHermes";
+import {
+  useHermes, equityTotalPct, equityDollars, currentEquityDollars,
+  totalPnlDollars, DEFAULT_STARTING_EQUITY,
+} from "./useHermes";
 
 export function HermesWidget() {
   const H = useHermes();
+  const startingEquity = H.goal.data?.starting_equity ?? DEFAULT_STARTING_EQUITY;
 
   const sparkData = useMemo(
-    () => (H.equity.data?.equity ?? []).map((v, i) => ({ i, v })),
-    [H.equity.data]
+    () => equityDollars(H.equity.data?.equity, startingEquity).map((v, i) => ({ i, v })),
+    [H.equity.data, startingEquity]
   );
   const totalPct = equityTotalPct(H.equity.data?.equity);
+  const pnlDollars = totalPnlDollars(H.equity.data?.equity, startingEquity);
+  const currentValue = currentEquityDollars(H.equity.data?.equity, startingEquity);
   const stats = H.stats.data;
   const statusText = H.status.data?.status ?? "unknown";
   const isOnline = statusText.toLowerCase() === "online";
+  const isUp = pnlDollars >= 0;
 
   return (
     <div className="flex flex-col h-full p-2" data-testid="hermes-widget">
@@ -46,17 +53,22 @@ export function HermesWidget() {
       </Link>
 
       <div className="flex-1 flex flex-col justify-center px-1 py-2 gap-1.5">
-        {/* Total P/L */}
-        <div className="flex items-baseline justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Total P/L</span>
-          <span
-            className={`text-lg font-bold tabular-nums ${
-              totalPct >= 0 ? "text-green-400" : "text-red-400"
-            }`}
-          >
-            {totalPct >= 0 ? "+" : ""}
-            {totalPct.toFixed(2)}%
-          </span>
+        {/* Account value + P/L (dollars first — that's the warm-and-fuzzy view) */}
+        <div className="space-y-0.5">
+          <div className="flex items-baseline justify-between">
+            <span className="text-mini uppercase tracking-wider text-muted-foreground">Account</span>
+            <span className={`text-lg font-bold tabular-nums font-mono ${isUp ? "text-bull-light" : "text-bear-light"}`}>
+              ${currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-mini uppercase tracking-wider text-muted-foreground">P/L</span>
+            <span className={`text-2xs font-bold tabular-nums font-mono ${isUp ? "text-bull-light" : "text-bear-light"}`}>
+              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {" · "}
+              {isUp ? "+" : ""}{totalPct.toFixed(2)}%
+            </span>
+          </div>
         </div>
 
         {/* Equity sparkline */}
@@ -67,7 +79,7 @@ export function HermesWidget() {
                 <Line
                   type="monotone"
                   dataKey="v"
-                  stroke={totalPct >= 0 ? "#4ade80" : "#f87171"}
+                  stroke={isUp ? "rgb(var(--signal-bull-light))" : "rgb(var(--signal-bear-light))"}
                   strokeWidth={1.5}
                   dot={false}
                   isAnimationActive={false}
