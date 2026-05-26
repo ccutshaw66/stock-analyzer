@@ -99,6 +99,7 @@ class TradingLoop:
         self.heartbeat_file = state_dir / "heartbeat.json"
         self.equity_file = state_dir / "equity.json"
         self.watchlist_file = state_dir / "watchlist.json"
+        self.positions_file = state_dir / "positions.json"
         self.goal_file = state_dir / "goal.yaml"
 
         self._load_state()
@@ -126,6 +127,24 @@ class TradingLoop:
                     self.equity = float(self.equity_curve[-1])
             except Exception:
                 pass
+        # Positions: restore from positions.json so bot restarts don't
+        # orphan open positions (heartbeat.json is the UI-shape dump and
+        # drops BBTC trailing-stop internals; positions.json is the full
+        # dataclass dump for round-trip).
+        if self.positions_file.exists():
+            try:
+                data = json.loads(self.positions_file.read_text())
+                for p_dict in data.get("positions", []):
+                    pos = Position(**p_dict)
+                    self.positions[pos.symbol] = pos
+                if self.positions:
+                    print(
+                        f"[state] restored {len(self.positions)} open position(s) "
+                        f"from positions.json: {', '.join(self.positions.keys())}",
+                        flush=True,
+                    )
+            except Exception as e:
+                print(f"[state] positions.json load failed: {e} — starting flat", flush=True)
 
     async def _write_heartbeat(self, current_prices: Dict[str, float]):
         open_positions = [
@@ -148,6 +167,14 @@ class TradingLoop:
     async def _write_watchlist(self):
         async with aiofiles.open(self.watchlist_file, "w") as f:
             await f.write(json.dumps(self.watchlist_rows, indent=2))
+
+    async def _write_positions(self):
+        payload = {
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "positions": [asdict(p) for p in self.positions.values()],
+        }
+        async with aiofiles.open(self.positions_file, "w") as f:
+            await f.write(json.dumps(payload, indent=2))
 
     async def _write_equity(self):
         ts = datetime.now(timezone.utc).isoformat()
@@ -420,6 +447,7 @@ class TradingLoop:
                 await self._write_heartbeat(current_prices)
                 await self._write_watchlist()
                 await self._write_equity()
+                await self._write_positions()
 
                 self.consecutive_failures = 0
                 interval_min = float(self.goal.get("loop_interval_minutes", 30))

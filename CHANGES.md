@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS — open positions persist across kairos-bot restarts
+
+**Why:** Chris caught it while we were verifying the live deploy: the dashboard "still shows the KALV position after a restart" only because the bot had been running continuously since the position opened. A real `docker compose restart kairos-bot` would have wiped `self.positions` and silently re-opened any tickers whose entry conditions still fired — orphaning the prior `entry_atr` and `highest_since_entry` that BBTC's trailing stop depends on. Harmless in paper, but a hard blocker for `KAIROS_MODE=live`.
+
+**What:**
+- `kairos_trading/loop.py` — new `state/positions.json` written each tick alongside heartbeat. Uses `dataclasses.asdict()` on each `Position` so the full dataclass shape (including `entry_atr` and `highest_since_entry`) round-trips, not the UI-only `to_status_dict()`. Loaded from inside `_load_state()` on construct; reconstructs `Position(**p_dict)` directly so `entry_atr`-driven trailing stops resume exactly where they left off. A `[state] restored N open position(s) from positions.json: <symbols>` log line on startup confirms it fired.
+- heartbeat.json still holds the UI-shape positions for the dashboard; positions.json is the persistence-shape file the bot reads. Two files because the UI dict drops internal trailing-stop state.
+
+**Verified:** restarted `kairos-bot` on superotter — both live paper positions (KALV BBTC entered 17:29:36 + TALK BBTC entered 17:29:36) survived intact with the same entry_times, original `entry_atr`, and `highest_since_entry`. Without the fix, the same restart re-opened them with fresh entry_times and reset trail state.
+
+**Files touched:**
+- Modified: `python/kairos/kairos_trading/loop.py`
+
+---
 ## 2026-05-26 — KAIROS — live deploy on superotter + parity-test gap closed
 
 **Why:** Picking up Milestones 2–5 (committed earlier today — see the M2-5 entry further down): bot was scaffolded but never deployed. Got SSH onto superotter (10.209.32.8) and stockotter (10.209.32.9), scp'd `python/kairos/` to superotter, set up `.env`, brought the containers up. First tick opened a real paper BBTC position on KALV (one HTF setup in the live watchlist) — bot is live in paper mode. While doing the deploy two dependency drifts surfaced and the parity-test gap the M2-5 entry flagged became a real regression, so all three are closed in this change.
