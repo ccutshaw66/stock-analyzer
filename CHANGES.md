@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — Scanner: fix Explosive-mode loading text (showed 250 stocks, scanning 2000)
+
+**Why:** Chris reported "the explosive scan is supposed to be scanning 2000-3000 tickers. It CLEARLY says on the bottom scanning 250 tickers to look for setups." Investigation: server-side scan was correct (2000 tickers actually pulled and processed); the LOADING-state text on the scanner page was hardcoded to `scanCount` (the 3strat/AMC default of 250) regardless of which scanner mode was active. So while V2/Explosive was running its full 2000-ticker scan, the spinner copy lied. The post-scan `Scanned X stocks` text (line 672, server-derived from `data.universeSize`) was already accurate.
+
+**What:**
+- **`client/src/pages/scanner.tsx`** line 693 — loading text now mode-aware:
+  - V2/Explosive → `Scanning {v2UniverseSize} stocks for explosive setups...` (shows 2000 or whatever button is selected)
+  - AMC → `Scanning {scanCount} stocks for AMC setups...`
+  - 3strat (default) → `Scanning {scanCount} stocks for gate-ready setups...` (unchanged)
+- v2UniverseSize formatted with `.toLocaleString()` so it reads `2,000` not `2000`.
+
+**No backend changes.** The server was always scanning the right number. This is purely a UI honesty fix.
+
+**Files:**
+- Modified: `client/src/pages/scanner.tsx`
+
+---
 ## 2026-05-26 — KAIROS bot-watchlist endpoint: broaden default (drop actionable-only gate)
 
 **Why:** Chris reported KAIROS picking up almost no HTF watchlist tickers (and zero HTF entries) while the `/htf` page was full of setups ≥75. Root cause: `/api/bot/htf-watchlist` hardcoded `actionableOnly: true`, which restricts to `breakoutDate ≤ 1 day old` AND `price hasn't run >10% past entry`. That's the right filter for "fire now" but the wrong filter for a watchlist — bots want to be tracking forming setups so when one breaks out tomorrow, they're already on it. The narrow gate left 0–2 tickers most ticks; everything else was "forming, not actionable yet" or "fired a few days ago, slightly extended."

@@ -690,7 +690,11 @@ export default function Scanner() {
               </div>
             ))}
             <p className="text-center text-sm text-muted-foreground animate-pulse">
-              Scanning {scanCount} stocks for gate-ready setups...
+              {scanMode === "v2"
+                ? `Scanning ${v2UniverseSize.toLocaleString()} stocks for explosive setups...`
+                : scanMode === "amc"
+                  ? `Scanning ${scanCount} stocks for AMC setups...`
+                  : `Scanning ${scanCount} stocks for gate-ready setups...`}
             </p>
           </div>
         )}
