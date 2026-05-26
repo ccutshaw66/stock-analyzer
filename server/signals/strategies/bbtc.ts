@@ -45,6 +45,9 @@ export interface BBTCInput {
   adx14?: number[];
   /** Optional RSI(14). Used as a soft chase-filter (see entry conditions). */
   rsi14?: number[];
+  /** Optional SMA(200). Used for regime check (long entries above/rising,
+   *  short entries below/falling). Computed inline from closes if not passed. */
+  sma200?: number[];
 }
 
 export interface BBTCResult {
@@ -161,12 +164,27 @@ function computeSMA(data: number[], period: number): number[] {
   return out;
 }
 
+// Canonical TS indicator stack BBTC reads from. Exposed so parity-baseline
+// generation can feed Python the same TS-computed values BBTC sees, eliminating
+// pandas-ta-vs-Wilder-implementation drift from the strategy-logic parity test.
+export function computeBBTCIndicators(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+): { adx14: number[]; rsi14: number[]; sma200: number[] } {
+  return {
+    adx14: computeADX(highs, lows, closes, ADX_PERIOD),
+    rsi14: computeRSISeries(closes, RSI_PERIOD),
+    sma200: computeSMA(closes, 200),
+  };
+}
+
 // ─── Main strategy ─────────────────────────────────────────────────────
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
   const rsi14 = input.rsi14 ?? computeRSISeries(closes, RSI_PERIOD);
-  const sma200 = computeSMA(closes, 200);
+  const sma200 = input.sma200 ?? computeSMA(closes, 200);
   const signals: BBTCSignal[] = new Array(closes.length).fill(null);
   const signalSides: BBTCSignalSide[] = new Array(closes.length).fill(null);
 

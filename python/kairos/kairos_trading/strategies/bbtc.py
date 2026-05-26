@@ -45,8 +45,8 @@ def _nan_arr(n: int) -> List[float]:
     return [float("nan")] * n
 
 
-def _isnan(x: float) -> bool:
-    return x != x
+def _isnan(x) -> bool:
+    return x is None or x != x
 
 
 def compute_indicators(highs: List[float], lows: List[float], closes: List[float]) -> Dict[str, List[float]]:

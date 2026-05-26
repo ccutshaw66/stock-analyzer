@@ -2,7 +2,7 @@
 name = "kairos-trading"
 version = "0.1.0"
 description = "KAIROS — HTF + BBTC auto-trader (paper-mode default)"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
@@ -10,7 +10,7 @@ dependencies = [
     "httpx>=0.25.0",
     "aiofiles>=23.0.0",
     "pandas>=2.0.0",
-    "numpy>=1.24.0,<2.0",
+    "numpy>=1.24.0",
     "pandas-ta>=0.3.14b0",
 ]
 

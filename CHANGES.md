@@ -9,6 +9,50 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS — live deploy on superotter + parity-test gap closed
+
+**Why:** Picking up Milestones 2–5 (committed earlier today — see the M2-5 entry further down): bot was scaffolded but never deployed. Got SSH onto superotter (10.209.32.8) and stockotter (10.209.32.9), scp'd `python/kairos/` to superotter, set up `.env`, brought the containers up. First tick opened a real paper BBTC position on KALV (one HTF setup in the live watchlist) — bot is live in paper mode. While doing the deploy two dependency drifts surfaced and the parity-test gap the M2-5 entry flagged became a real regression, so all three are closed in this change.
+
+**What — dep drift fixes in `python/kairos/`:**
+- `pyproject.toml` — dropped `numpy<2.0` upper bound. `pandas-ta` was updated to require `numpy>=2.2.6`; the old cap made `uv sync` unsatisfiable. The kairos code uses pandas-ta for indicator math and pandas wraps numpy internally, so the cap was load-bearing on nothing.
+- `pyproject.toml` — bumped `requires-python` from `>=3.11` to `>=3.12`. Same root cause: `pandas-ta` now requires Python 3.12+.
+- `Dockerfile` and `Dockerfile.bot` — bumped base from `python:3.11-slim` to `python:3.12-slim` to match.
+
+**What — bbtc.py None-guard (real bug):**
+- `kairos_trading/strategies/bbtc.py` — `_isnan(x)` was `return x != x`, the NaN-self-not-equal trick. Catches `float('nan')` but returns `False` for Python `None`. The line-126 guard then failed to skip rows where indicators were `None`, and line 159 hit `None > None → TypeError`. Fix: `_isnan = x is None or x != x`. Surfaced by running the parity test for the first time (see next section).
+- Caught by the parity test, not by live runs — FMP-sourced data has no nulls in the warm range, so the live bot never tripped it.
+
+**What — parity-test gap closed (the one flagged in the M2-5 entry's Risks):**
+- The M2-5 entry noted: *"if a future regression introduces a wider gap, extend the baseline to dump ADX/RSI/SMA200 too and tighten the test."* That gap was already real — `test_bbtc_parity` had never actually passed end-to-end (the `None` crash hid the underlying indicator-drift mismatch). Closing it now.
+- `server/signals/strategies/bbtc.ts` — added optional `sma200?: number[]` to `BBTCInput` (mirrors how `adx14` and `rsi14` already work); `computeBBTC` now reads it from input when provided. Exported a new helper `computeBBTCIndicators(highs, lows, closes)` returning `{adx14, rsi14, sma200}` so the parity-baseline generator feeds Python the exact same TS-computed Wilder series BBTC sees.
+- `scripts/kairos-baseline.ts` — imports `computeBBTCIndicators`, dumps the three series alongside the existing EMA9/21/50/ATR14, passes them into `computeBBTC`. Updated the JSON's `comment` field to reflect that the test now measures pure strategy-logic parity with the full TS-computed stack.
+- `python/kairos/tests/test_bbtc_parity.py` — no longer passes `None` for adx14/rsi14/sma200; feeds them through from the baseline. Removed the obsolete TODO comment about extending baseline.
+- `python/kairos/tests/baseline/bbtc_baseline.json` — regenerated with the new indicator set. 5 signals as before; the test now matches the TS reference exactly.
+- Verified inside the deployed kairos-bot container on superotter: 4/4 parity tests pass.
+
+**What — live infra on superotter and stockotter (operator notes, no committed artifact):**
+- SSH key + `~/.ssh/config` alias set up for `stockotter` (.9), to match the existing `superotter` (.8) alias. NOPASSWD sudo granted to `administrator` on both boxes (`/etc/sudoers.d/admin-nopw`) so future bot deploys don't strand on a manual paste cycle.
+- UFW on stockotter (.9): `5000/tcp ALLOW from 10.209.32.8` (LAN-scoped — port 5000 is not exposed publicly). Required so kairos-bot on .8 can `GET /api/bot/htf-watchlist` over the LAN.
+- Stockotter `.env` (`/opt/stock-analyzer/.env`) gained `BOT_API_KEY` (32-byte hex via `openssl rand -hex 32`). Mirrored into `kairos/.env` on superotter. Backed up to `.env.bak.<ts>` first per the backup-before-deploys rule. `pm2 restart stock-analyzer` picked up the new env via dotenv's per-startup `.env` reload; startup log confirms `[bot-routes] /api/bot/* endpoints active (X-Bot-Key auth)`.
+- Kairos paper-trading on superotter: `kairos-dashboard` on :8082, `kairos-bot` in paper mode. HERMES (:8080) and portainer (:9000) untouched.
+
+**Risks / follow-ups:**
+- The parity baseline now relies on `computeBBTCIndicators` being called from `kairos-baseline.ts`. If someone touches `bbtc.ts`'s indicator helpers without regenerating the baseline, the test will flag the drift on the next run — that's the intended invariant, not a risk, but worth knowing.
+- `computeSMA` is now duplicated 7+ times across `server/` (bbtc.ts, signal-engine.ts, routes.ts, diag/*). Out of scope here but flagged for a future consolidation pass under `server/indicators/sma.ts`.
+- `test_bbtc_parity.py` and `test_htf_parity.py` are not yet wired into CI. They run if you `pytest tests/` inside the kairos-bot container; CI doesn't.
+- Chris's `PUT /api/goal` endpoint (commit 4cffadf, entry directly below) added to `dashboard_web.py` after this session's kairos image was built — that container needs a rebuild before the in-page editor can land server-side. Will do next.
+
+**Files touched:**
+- Modified: `server/signals/strategies/bbtc.ts`
+- Modified: `scripts/kairos-baseline.ts`
+- Modified: `python/kairos/pyproject.toml`
+- Modified: `python/kairos/Dockerfile`
+- Modified: `python/kairos/Dockerfile.bot`
+- Modified: `python/kairos/kairos_trading/strategies/bbtc.py`
+- Modified: `python/kairos/tests/test_bbtc_parity.py`
+- Regenerated: `python/kairos/tests/baseline/bbtc_baseline.json`
+
+---
 ## 2026-05-26 — KAIROS: in-page bot configuration editor (manual override knobs)
 
 **Why:** Chris's quote: "Make sure that I can change the variables on the page, the bot is self learning but I want that freedom." KAIROS hot-reloads `goal.yaml` on every loop iteration so config changes are picked up within at most one tick — the missing piece was a UI to drive those edits without SSH'ing to superotter and nano'ing a file.

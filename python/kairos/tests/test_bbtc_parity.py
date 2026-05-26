@@ -42,19 +42,15 @@ def test_bbtc_matches_typescript_baseline():
     highs = [b["high"] for b in bars]
     lows = [b["low"] for b in bars]
 
-    # NOTE: feed the TS-side indicator series so we test strategy logic only.
-    # adx14/rsi14/sma200 default to pandas-ta when omitted; for an apples-to-
-    # apples logic parity check we'd need TS-side ADX/RSI/SMA200 in the
-    # baseline as well. The current baseline emits only the four indicators
-    # the old bbtc-parity.ts established. Pass None for the rest — compute_bbtc
-    # will fill them via pandas-ta. Tolerance below covers minor smoothing drift
-    # on the entry-bar selection. If a regression introduces a wider gap,
-    # extend baseline to dump ADX/RSI/SMA200 too.
+    # Feed the full TS-computed indicator stack. The baseline now emits
+    # adx14/rsi14/sma200 from BBTC's canonical TS Wilder helpers, so this
+    # test measures pure strategy-logic parity — pandas-ta-vs-Wilder
+    # smoothing drift is excluded by design.
     actual = compute_bbtc(
         closes=closes, highs=highs, lows=lows,
         ema9=ind["ema9"], ema21=ind["ema21"], ema50=ind["ema50"],
         atr14=ind["atr14"],
-        adx14=None, rsi14=None, sma200=None,
+        adx14=ind["adx14"], rsi14=ind["rsi14"], sma200=ind["sma200"],
     )
 
     assert actual["trend"] == expected["trend"], f"trend mismatch: py={actual['trend']} ts={expected['trend']}"
