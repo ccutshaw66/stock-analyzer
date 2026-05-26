@@ -12,10 +12,14 @@ import { Link } from "wouter";
 import { Bot, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { useKairos, equityTotalPct, winRatePct } from "./useKairos";
+import {
+  useKairos, equityTotalPct, winRatePct,
+  equityDollars, currentEquityDollars, totalPnlDollars, DEFAULT_STARTING_EQUITY,
+} from "./useKairos";
 
 export function KairosWidget() {
   const K = useKairos();
+  const startingEquity = K.goal.data?.starting_equity ?? DEFAULT_STARTING_EQUITY;
   const totalPct = equityTotalPct(K.equity.data?.equity);
   const winRate = winRatePct(K.trades.data);
   const tradeCount = K.trades.data?.length ?? 0;
@@ -23,9 +27,13 @@ export function KairosWidget() {
   const statusText = K.status.data?.status ?? "unknown";
   const isOnline = !K.offline && statusText.toLowerCase() === "online";
 
+  const currentValue = currentEquityDollars(K.equity.data?.equity, startingEquity);
+  const pnlDollars = totalPnlDollars(K.equity.data?.equity, startingEquity);
+  const isUp = pnlDollars >= 0;
+
   const sparkData = useMemo(
-    () => (K.equity.data?.equity ?? []).map((v, i) => ({ i, v })),
-    [K.equity.data]
+    () => equityDollars(K.equity.data?.equity, startingEquity).map((v, i) => ({ i, v })),
+    [K.equity.data, startingEquity]
   );
 
   return (
@@ -51,16 +59,21 @@ export function KairosWidget() {
       </Link>
 
       <div className="flex-1 flex flex-col justify-center px-1 py-2 gap-1.5">
-        <div className="flex items-baseline justify-between">
-          <span className="text-mini uppercase tracking-wider text-muted-foreground">Total P/L</span>
-          <span
-            className={`text-lg font-bold tabular-nums ${
-              totalPct >= 0 ? "text-bull-light" : "text-bear-light"
-            }`}
-          >
-            {totalPct >= 0 ? "+" : ""}
-            {totalPct.toFixed(2)}%
-          </span>
+        <div className="space-y-0.5">
+          <div className="flex items-baseline justify-between">
+            <span className="text-mini uppercase tracking-wider text-muted-foreground">Account</span>
+            <span className={`text-lg font-bold tabular-nums font-mono ${isUp ? "text-bull-light" : "text-bear-light"}`}>
+              ${currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-mini uppercase tracking-wider text-muted-foreground">P/L</span>
+            <span className={`text-2xs font-bold tabular-nums font-mono ${isUp ? "text-bull-light" : "text-bear-light"}`}>
+              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {" · "}
+              {isUp ? "+" : ""}{totalPct.toFixed(2)}%
+            </span>
+          </div>
         </div>
 
         {sparkData.length >= 2 && (
@@ -70,8 +83,7 @@ export function KairosWidget() {
                 <Line
                   type="monotone"
                   dataKey="v"
-                  stroke="currentColor"
-                  className={totalPct >= 0 ? "text-bull-light" : "text-bear-light"}
+                  stroke={isUp ? "rgb(var(--signal-bull-light))" : "rgb(var(--signal-bear-light))"}
                   strokeWidth={1.5}
                   dot={false}
                   isAnimationActive={false}

@@ -15,21 +15,31 @@
 import { useMemo } from "react";
 import {
   Activity, Loader2, AlertCircle, CircleDot, Wallet, Percent, Award,
-  TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank,
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import {
   useKairos, equityTotalPct, winRatePct,
-  type KairosStatus, type KairosTrade, type KairosWatchlistRow,
+  equityDollars, currentEquityDollars, totalPnlDollars, DEFAULT_STARTING_EQUITY,
+  type KairosStatus, type KairosTrade, type KairosWatchlistRow, type KairosEquity,
 } from "./useKairos";
 
 export function KairosFullView() {
   const K = useKairos();
+  const startingEquity = K.goal.data?.starting_equity ?? DEFAULT_STARTING_EQUITY;
   return (
     <div className="space-y-4">
+      <AccountCard
+        equity={K.equity.data}
+        startingEquity={startingEquity}
+        startingFromGoal={typeof K.goal.data?.starting_equity === "number"}
+        loading={K.equity.isLoading}
+        fetching={K.equity.isFetching}
+      />
       <HeaderStrip
         status={K.status.data}
         equity={K.equity.data?.equity}
+        startingEquity={startingEquity}
         trades={K.trades.data}
         loading={K.status.isLoading}
         offline={K.offline}
@@ -41,11 +51,85 @@ export function KairosFullView() {
   );
 }
 
+// ─── Account card (warm-and-fuzzy dollar amounts) ─────────────────────────────
+
+function AccountCard({
+  equity, startingEquity, startingFromGoal, loading, fetching,
+}: {
+  equity: KairosEquity | undefined;
+  startingEquity: number;
+  startingFromGoal: boolean;
+  loading: boolean;
+  fetching: boolean;
+}) {
+  const current = currentEquityDollars(equity?.equity, startingEquity);
+  const pnlDollars = totalPnlDollars(equity?.equity, startingEquity);
+  const pnlPct = equityTotalPct(equity?.equity);
+  const isUp = pnlDollars >= 0;
+  const pnlColor = isUp ? "text-bull-light" : "text-bear-light";
+
+  return (
+    <section className="bg-card border border-card-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-primary" /> Account
+        </h2>
+        {fetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+
+      {loading ? (
+        <SkeletonRow />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <PiggyBank className="h-3 w-3 text-muted-foreground" />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Starting</span>
+            </div>
+            <p className="text-xl font-bold tabular-nums font-mono text-foreground">
+              ${startingEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            {!startingFromGoal && (
+              <p className="text-mini text-muted-foreground mt-0.5">
+                Default — add <code className="font-mono">starting_equity: 10000</code> to goal.yaml on the bot to change.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <DollarSign className={`h-3 w-3 ${pnlColor}`} />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Current value</span>
+            </div>
+            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+              ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-card-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <TrendingUp className={`h-3 w-3 ${pnlColor}`} />
+              <span className="text-mini font-semibold text-muted-foreground uppercase tracking-wider">Total P/L</span>
+            </div>
+            <p className={`text-xl font-bold tabular-nums font-mono ${pnlColor}`}>
+              {isUp ? "+" : ""}${Math.abs(pnlDollars).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className={`text-2xs font-mono tabular-nums mt-0.5 ${pnlColor}`}>
+              {isUp ? "+" : ""}{pnlPct.toFixed(2)}%
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Header strip ─────────────────────────────────────────────────────────────
 
-function HeaderStrip({ status, equity, trades, loading, offline }: {
+function HeaderStrip({ status, equity, startingEquity, trades, loading, offline }: {
   status: KairosStatus | undefined;
   equity: number[] | undefined;
+  startingEquity: number;
   trades: KairosTrade[] | undefined;
   loading: boolean;
   offline: boolean;
@@ -55,8 +139,8 @@ function HeaderStrip({ status, equity, trades, loading, offline }: {
   const tradeCount = trades?.length ?? 0;
 
   const sparkData = useMemo(
-    () => (equity ?? []).map((v, i) => ({ i, v })),
-    [equity]
+    () => equityDollars(equity, startingEquity).map((v, i) => ({ i, v })),
+    [equity, startingEquity]
   );
 
   return (
@@ -78,13 +162,7 @@ function HeaderStrip({ status, equity, trades, loading, offline }: {
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-        <Stat
-          icon={<Wallet className="h-3 w-3" />}
-          label="Total return"
-          value={`${totalPct >= 0 ? "+" : ""}${totalPct.toFixed(2)}%`}
-          color={totalPct >= 0 ? "text-bull-light" : "text-bear-light"}
-        />
+      <div className="grid grid-cols-3 gap-2 mb-3">
         <Stat
           icon={<Award className="h-3 w-3" />}
           label="Win rate"
@@ -114,8 +192,7 @@ function HeaderStrip({ status, equity, trades, loading, offline }: {
               <Line
                 type="monotone"
                 dataKey="v"
-                stroke="currentColor"
-                className={totalPct >= 0 ? "text-bull-light" : "text-bear-light"}
+                stroke={totalPct >= 0 ? "rgb(var(--signal-bull-light))" : "rgb(var(--signal-bear-light))"}
                 strokeWidth={1.5}
                 dot={false}
                 isAnimationActive={false}

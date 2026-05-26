@@ -65,10 +65,15 @@ export interface KairosEquity {
 }
 
 export interface KairosGoal {
-  starting_equity: number;
-  position_size_pct: number;
-  watchlist_refresh_hours: number;
-  loop_interval_minutes: number;
+  /**
+   * Starting paper-trading capital, in dollars. Read from goal.yaml on the
+   * KAIROS VM. Optional so the UI doesn't break when the bot is offline or
+   * the field is removed — the page falls back to DEFAULT_STARTING_EQUITY.
+   */
+  starting_equity?: number;
+  position_size_pct?: number;
+  watchlist_refresh_hours?: number;
+  loop_interval_minutes?: number;
   target_return_30d?: number;
   max_drawdown?: number;
   min_sharpe?: number;
@@ -132,6 +137,12 @@ export function useKairos() {
 
 // ─── Pure helpers (no React, no fetch) ─────────────────────────────────────────
 
+/**
+ * Default starting capital when goal.yaml hasn't set one. Same value HERMES
+ * uses — keeps dollar UI alive even if the bot is offline.
+ */
+export const DEFAULT_STARTING_EQUITY = 10_000;
+
 /** Total % gain from the first equity sample to the last. Returns 0 for empty input. */
 export function equityTotalPct(eq: number[] | undefined): number {
   if (!eq || eq.length < 2) return 0;
@@ -146,4 +157,28 @@ export function winRatePct(trades: KairosTrade[] | undefined): number {
   if (!trades || trades.length === 0) return 0;
   const wins = trades.filter(t => t.pnl_pct > 0).length;
   return (wins / trades.length) * 100;
+}
+
+/**
+ * Convert the relative equity series (indexed at first sample) to absolute
+ * dollar values by multiplying by the configured starting equity. Mirrors
+ * the HERMES helper so both bots compute the same way.
+ */
+export function equityDollars(eq: number[] | undefined, startingEquity: number): number[] {
+  if (!eq || eq.length === 0) return [];
+  const base = eq[0] || startingEquity;
+  return eq.map((v) => Number(((v / base) * startingEquity).toFixed(2)));
+}
+
+/** Current account value in dollars (last equity sample × starting / first). */
+export function currentEquityDollars(eq: number[] | undefined, startingEquity: number): number {
+  if (!eq || eq.length === 0) return startingEquity;
+  const base = eq[0] || startingEquity;
+  const last = eq[eq.length - 1];
+  return Number(((last / base) * startingEquity).toFixed(2));
+}
+
+/** Total dollar P/L since starting (current − starting). */
+export function totalPnlDollars(eq: number[] | undefined, startingEquity: number): number {
+  return Number((currentEquityDollars(eq, startingEquity) - startingEquity).toFixed(2));
 }

@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS: same warm-and-fuzzy Account card as HERMES
+
+**Why:** Chris's quote: "add the same warm and fuzzy on that one too please." HERMES got the Account card (Starting / Current / Total P/L in big dollar numbers) earlier today; KAIROS needed the same so both bots feel consistent and both surface real $ amounts the same way.
+
+**What:**
+- **`useKairos.ts`** — added the same 4 helpers HERMES uses (`DEFAULT_STARTING_EQUITY`, `equityDollars`, `currentEquityDollars`, `totalPnlDollars`). Made `KairosGoal.starting_equity` optional (was required) so the page renders cleanly when the bot is offline or the field hasn't been set. KAIROS's seeded goal.yaml already has `starting_equity: 10000`, so the typical path stays unchanged. Duplicated rather than shared from useHermes — 15 lines, premature DRY would tangle two compartments per the no-premature-abstraction rule.
+- **`KairosFullView.tsx`** — new `AccountCard` at the top, identical visual shape to HERMES's: three large tiles for Starting / Current value (colored) / Total P/L $ with % below. Dropped the "Total return" stat tile from `HeaderStrip` since AccountCard owns it now (HeaderStrip becomes a clean 3-tile row: Win rate, Open positions, Watchlist count). HeaderStrip sparkline switched to dollar values using `equityDollars()` and the proper `rgb(var(--signal-bull-light))` / bear-light strokes.
+- **`KairosWidget.tsx`** — swapped lead number from "Total P/L %" to current account dollar value with a P/L `$ · %` line beneath. Sparkline also uses dollars.
+
+**Files:**
+- Modified: `client/src/compartments/kairos/useKairos.ts`
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx`
+- Modified: `client/src/compartments/kairos/KairosWidget.tsx`
+
+**No bot edits required.** KAIROS's `state/goal.yaml` (seeded by RDP-Claude in commit 8873a81) already includes `starting_equity: 10000`. Once the bot's `/api/goal` returns data, dollar amounts populate live just like HERMES.
+
+---
 ## 2026-05-26 — HERMES: dollar amounts everywhere + Railway-stale copy fix
 
 **Why:** Chris's quote: "Can we stick a dollar amount on the page please it makes me feel all warm and fuzzy to see the dollars going up." HERMES page was showing % and trade counts only — no actual dollar value to look at. For a go-live decision, he needs to see real $ amounts daily.
