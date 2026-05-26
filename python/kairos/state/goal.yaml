@@ -1,0 +1,13 @@
+# KAIROS configuration. Hot-reloaded at the top of each loop iteration —
+# edits land on the next tick without a container restart.
+
+starting_equity: 10000.0
+position_size_pct: 0.02        # 2% of paper equity per trade
+watchlist_refresh_hours: 1     # how often to re-pull HTF watchlist from stockotter
+loop_interval_minutes: 30      # tick interval
+min_score: 70                  # HTF watchlist minimum quality score
+
+# Optional goal-tracking (informational; not enforced)
+target_return_30d: 0.05
+max_drawdown: 0.10
+min_sharpe: 1.0

@@ -1,0 +1,28 @@
+[project]
+name = "kairos-trading"
+version = "0.1.0"
+description = "KAIROS — HTF + BBTC auto-trader (paper-mode default)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "pyyaml>=6.0",
+    "httpx>=0.25.0",
+    "aiofiles>=23.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0,<2.0",
+    "pandas-ta>=0.3.14b0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kairos_trading"]

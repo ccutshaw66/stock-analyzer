@@ -9,6 +9,97 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-26 — KAIROS bot — Milestones 2–5 (Python bot, strategy ports, position management, deploy artifacts)
+
+**Why:** Picks up where Milestone 1 (commit 0a2a11b) stopped. M1 landed the stockotter-side scaffolding (`/api/bot/htf-watchlist` endpoint, `/api/kairos/*` proxy, the kairos compartment + page). M2–M5 land the Python bot half: the FastAPI dashboard the proxy talks to, the HTF + BBTC strategy ports, the trading loop with two-stop position management, the parity-test harness against the TypeScript references, and the Docker artifacts ready to scp to superotter. Built on the RDP server (IMTDT01) in a separate session so both halves can ship together without one side waiting on the other.
+
+**What — M2 infrastructure (`python/kairos/`):**
+- `pyproject.toml` — fastapi/uvicorn/pyyaml/httpx/aiofiles/pandas/numpy/pandas-ta + pytest optional-extra. Mirrors the python/hermes/ layout so superotter's Docker + uv workflow is identical.
+- `Dockerfile` (dashboard, port 8082) + `Dockerfile.bot` (uv-managed trading loop). Same shape as HERMES.
+- `dashboard_web.py` — read-only FastAPI exposing `/api/{status,positions,trades,equity,watchlist,goal}` + `/health`. Endpoint shapes are dictated by `client/src/compartments/kairos/useKairos.ts` — do not drift.
+- `kairos_trading/run.py` + `kairos_trading/loop.py` — entry point + the async loop (see M5 below).
+- `kairos_trading/adapters/price.py` — FMP `/stable/historical-price-eod/full` fetcher, normalizes to chronological OHLCV.
+- `kairos_trading/adapters/watchlist.py` — calls stockotter's `/api/bot/htf-watchlist` with the `X-Bot-Key` header. Configurable via `STOCKOTTER_INTERNAL_URL` (defaults to `http://10.209.32.9:5000`).
+- `state/goal.yaml` — seed config (10k paper equity, 2% position size, 1 h watchlist refresh, 30 min loop interval, min_score 70). Hot-reloaded at the top of each loop iteration.
+
+**What — M3 HTF port (`kairos_trading/strategies/htf.py`):**
+- 1:1 hand port of `server/signals/strategies/htf.ts` — same constants (POLE_MIN_GAIN 0.3, FLAG_MAX_PULLBACK 0.25, MIN_BREAKOUT_VOL_RATIO 1.0, HTF_VOL_AVG_WINDOW 30, BREAKOUT_PAD 0.001) and same algorithm (rolling-window flag search, longest-flag-wins, pole = lowest low before flag, measure-rule target, flag_low × 0.98 stop, identical scoring rubric, info-only overhead-resistance detection). `scan_htf()` returns dicts matching `HtfHit`; `scan_forming_htf()` returns the hypothetical-trigger variant.
+- Accepts both shapes: FMP-style (`date/open/high/low/close/volume`) and TS-style (`t/o/h/l/c/v`).
+
+**What — M4 BBTC port (`kairos_trading/strategies/bbtc.py`):**
+- Port of `server/signals/strategies/bbtc.ts`. Indicator math sourced from pandas-ta (Wilder smoothing for RSI/ADX/ATR; pandas EMA/SMA) per the brief — *not* hand-ported — to keep the port small.
+- Same tunables as TS (ATR_STOP_MULT 2.5, ATR_TRAIL_MULT 3.0, MIN_ADX_FOR_ENTRY 20, RSI ceilings/floors, SMA200 slope check). Same long-only execution, same info-only short-edge emission, same two-stop framework (hard stop locked at entry-bar ATR, trailing stop ratchets up with new highs using current ATR).
+- `compute_indicators()` helper computes the full indicator stack from highs/lows/closes; caller may pass pre-computed series for deterministic testing.
+
+**What — parity-test harness:**
+- New: `scripts/kairos-baseline.ts` (TS) — synthesizes deterministic seeded OHLCV (260 bars with an embedded pole+flag+breakout setup), runs `scanHtf()` + `computeBBTC()`, emits both inputs and outputs to `python/kairos/tests/baseline/{htf_baseline,bbtc_baseline}.json`. Wired as `npm run kairos:baseline`.
+- New: `python/kairos/tests/test_htf_parity.py` — loads the baseline, runs `scan_htf()` on the same bars, asserts every hit matches the TS reference (numeric fields within 1e-6, integer fields exact, date prefixes exact).
+- New: `python/kairos/tests/test_bbtc_parity.py` — feeds the TS-side EMA/ATR into `compute_bbtc()` so the parity check measures strategy logic only, not indicator-math drift. Allows ±1 bar tolerance on signal position (Wilder initialization can differ by one bar across implementations).
+- New: `python/kairos/tests/test_synthetic_setups.py` — additive smoke tests that don't need the TS baseline. Useful in environments without Node.
+- Baseline generated and committed: 20 HTF hits + 5 BBTC signals (BUY→STOP_HIT→SHORT-edge→BUY→STOP_HIT, trend=UP, top=SELL).
+
+**What — M5 position management + deploy artifacts:**
+- `kairos_trading/loop.py` — full trading loop. Each tick: hot-reload goal.yaml → refresh watchlist if stale → fetch EOD bars per symbol → evaluate HTF (treat as fresh fire only when hit's breakoutDate == latest bar) + BBTC → close before considering open. Entry rules:
+  - **HTF**: stop = `flag_low × 0.98`, target = `entry + 0.5 × (flag_high − pole_low)` (already on the hit).
+  - **BBTC**: hard stop = `entry − 2.5 × entry_ATR`, trailing stop = `highest_since_entry − 3.0 × current_ATR`, exit on whichever is higher OR state-based exit when topSignal flips to SELL.
+  - **BOTH**: when both fire on the same bar, conviction tag = "BOTH", HTF target/stop takes priority for exits, BBTC trail layers in if HTF stop hasn't fired.
+- Position sizing: fixed % of paper equity (default 2 %, from goal.yaml). Writes `state/{heartbeat,equity,watchlist}.json` + appends to `state/trades.jsonl` each tick.
+- **Live-mode safety gate**: both `KAIROS_MODE=live` AND `KAIROS_I_ACCEPT_RISK=true` required to leave paper. Single-flag flips stay in paper.
+- `docker-compose.yml` — kairos-dashboard (:8082) + kairos-bot sharing the `./state` volume. Healthcheck on /health.
+- `.env.example` documents FMP_API_KEY + BOT_API_KEY + STOCKOTTER_INTERNAL_URL + the two live-mode flags.
+- `README.md` covers local dev, parity-test workflow, and the deploy steps.
+
+**Deploy (queued — SSH key not yet authorized from this RDP session):**
+
+```bash
+# From the repo root:
+scp -r python/kairos administrator@10.209.32.8:/home/administrator/
+ssh administrator@10.209.32.8
+cd /home/administrator/kairos
+cp .env.example .env
+# Fill: FMP_API_KEY, BOT_API_KEY (must match stockotter's value)
+docker compose up --build -d
+docker compose logs -f kairos-bot
+```
+
+Then verify from stockotter: open `/kairos` in browser — the offline pill should flip to "online" within ~15 s, watchlist populates on the next tick.
+
+**Visible result once deployed:** `/kairos` shows live status, real watchlist rows with HTF + BBTC state, open positions with conviction tag, and the trade log fills as paper trades close.
+
+**Risks / follow-ups:**
+- Parity tests not run in this session — no Python interpreter on RDP. They will run on superotter (or wherever Chris first executes `uv run pytest tests/`).
+- pandas-ta vs TS Wilder smoothing may differ by 1 bar on entry-signal initialization. The BBTC parity test allows ±1 bar drift on signal positions; if a future regression introduces a wider gap, extend the baseline to dump ADX/RSI/SMA200 too and tighten the test.
+- HTF baseline produced 20 hits on the synthetic series (deliberately broad — pole+flag+breakout shape repeats inside the rolling window). Comprehensive but sensitive — any TS edit that shifts even one hit will fail the test.
+
+**Files:**
+- New: `python/kairos/pyproject.toml`
+- New: `python/kairos/Dockerfile`
+- New: `python/kairos/Dockerfile.bot`
+- New: `python/kairos/docker-compose.yml`
+- New: `python/kairos/.env.example`
+- New: `python/kairos/README.md`
+- New: `python/kairos/dashboard_web.py`
+- New: `python/kairos/state/goal.yaml`
+- New: `python/kairos/kairos_trading/__init__.py`
+- New: `python/kairos/kairos_trading/run.py`
+- New: `python/kairos/kairos_trading/loop.py`
+- New: `python/kairos/kairos_trading/adapters/__init__.py`
+- New: `python/kairos/kairos_trading/adapters/price.py`
+- New: `python/kairos/kairos_trading/adapters/watchlist.py`
+- New: `python/kairos/kairos_trading/strategies/__init__.py`
+- New: `python/kairos/kairos_trading/strategies/htf.py`
+- New: `python/kairos/kairos_trading/strategies/bbtc.py`
+- New: `python/kairos/tests/__init__.py`
+- New: `python/kairos/tests/conftest.py`
+- New: `python/kairos/tests/test_htf_parity.py`
+- New: `python/kairos/tests/test_bbtc_parity.py`
+- New: `python/kairos/tests/test_synthetic_setups.py`
+- New: `python/kairos/tests/baseline/htf_baseline.json`
+- New: `python/kairos/tests/baseline/bbtc_baseline.json`
+- New: `scripts/kairos-baseline.ts`
+- Modified: `package.json` (add `kairos:baseline` npm script)
+
+---
 ## 2026-05-26 — KAIROS bot — Milestone 1 (stockotter-side scaffolding)
 
 **Why:** Chris asked for "fun" — a second experimental auto-trader that runs his HTF (High Tight Flag) breakout detector and BBTC (state-based trend follower) natively. Modeled on HERMES architecture so it's only as much new infrastructure as the proxy pattern + a new compartment. Phase 1 ships the stockotter-side scaffolding so the `/kairos` page exists in the Experimental nav and the bot has a place to land when it's deployed. Phases 2–5 (Python bot, HTF port, BBTC port, position management, superotter deploy) queued — too risky to land all at 1am the same night.

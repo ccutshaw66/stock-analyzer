@@ -1,0 +1,50 @@
+# KAIROS Docker Compose — runs on superotter (10.209.32.8).
+#
+# Two services share the state/ volume:
+#   - kairos-dashboard (port 8082): read-only FastAPI exposed to the
+#     stockotter Express proxy at /api/kairos/*.
+#   - kairos-bot: trading loop. Reads bars, evaluates HTF + BBTC, writes
+#     heartbeat / trades / equity / watchlist into state/.
+#
+# Required env (place in .env beside this file):
+#   FMP_API_KEY=<your FMP key>
+#   BOT_API_KEY=<must match stockotter's BOT_API_KEY>
+#   STOCKOTTER_INTERNAL_URL=http://10.209.32.9:5000  (optional override)
+#
+# Live mode (Phase 2+, OFF by default):
+#   KAIROS_MODE=live
+#   KAIROS_I_ACCEPT_RISK=true   (BOTH flags required — single-flag flips stay in paper)
+
+services:
+  kairos-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kairos-dashboard
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./state:/app/state
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8082/health',timeout=3); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  kairos-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: kairos-bot
+    restart: unless-stopped
+    environment:
+      KAIROS_MODE: ${KAIROS_MODE:-paper}
+      KAIROS_I_ACCEPT_RISK: ${KAIROS_I_ACCEPT_RISK:-false}
+      FMP_API_KEY: ${FMP_API_KEY}
+      BOT_API_KEY: ${BOT_API_KEY}
+      STOCKOTTER_INTERNAL_URL: ${STOCKOTTER_INTERNAL_URL:-http://10.209.32.9:5000}
+    volumes:
+      - ./state:/app/state
+    depends_on:
+      - kairos-dashboard
