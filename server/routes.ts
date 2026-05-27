@@ -22,14 +22,13 @@ import { computeBBTC, computeVER, computeAMC, scoreAMC } from "./signals";
 import {
   getPolygonQuoteSummary,
   getPolygonChart,
-  polygonSearch,
   getPolygonOptionsChain,
   getPolygonUniverse,
   polygonScreener,
   polygonHasOptions,
   getPolygonEarningsRow,
 } from "./polygon";
-import { fmpAdapter, getFmpProfileBeta } from "./data/providers/fmp.adapter";
+import { fmpAdapter, fmpSearchTickers, getFmpProfileBeta } from "./data/providers/fmp.adapter";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
@@ -2764,14 +2763,46 @@ export async function registerRoutes(
 
   // ─── Ticker Search / Autocomplete ─────────────────────────────────────
 
+  // Ticker autocomplete — FMP only (Polygon is on the kill list). Fan-out to
+  // /search-symbol + /search-name happens inside fmpSearchTickers; this
+  // route re-ranks locally so an exact symbol match always lands first
+  // (typing "TSLA" must surface Tesla before name-substring hits).
   app.get("/api/search", async (req, res) => {
     const q = (req.query.q as string || "").trim();
     if (!q || q.length < 1) return res.json([]);
     try {
-      const results = await polygonSearch(q);
-      res.json(results);
+      const candidates = await fmpSearchTickers(q, 50);
+      const upper = q.toUpperCase();
+      const score = (r: { symbol: string; name: string }): number => {
+        const sym = r.symbol.toUpperCase();
+        const name = r.name.toUpperCase();
+        const words = name.split(/[\s,.]+/).filter(Boolean);
+        if (sym === upper) return 0;
+        if (sym.startsWith(upper)) return 1;
+        if (words[0] === upper) return 2;
+        if (words.some(w => w === upper)) return 3;
+        if (name.startsWith(upper)) return 4;
+        if (words.some(w => w.startsWith(upper))) return 5;
+        if (sym.includes(upper)) return 6;
+        if (name.includes(upper)) return 7;
+        return 8;
+      };
+      const ranked = [...candidates].sort((a, b) => {
+        const sa = score(a);
+        const sb = score(b);
+        if (sa !== sb) return sa - sb;
+        return a.symbol.localeCompare(b.symbol);
+      });
+      res.json(
+        ranked.slice(0, 8).map(r => ({
+          symbol: r.symbol,
+          name: r.name,
+          type: "EQUITY",
+          exchange: r.exchange ?? "",
+        })),
+      );
     } catch (err: any) {
-      console.log(`[search] Polygon failed for "${q}":`, err.message);
+      console.log(`[search] FMP failed for "${q}":`, err.message);
       res.json([]);
     }
   });

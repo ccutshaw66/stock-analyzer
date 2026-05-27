@@ -29,7 +29,10 @@ export const providerChain: Record<Capability, DataProvider[]> = {
   // an FMP upgrade.
   institutional_holdings:  [yahooAdapter /*, secEdgarAdapter */],
   beta:                    [inHouseAdapter],
-  search:                  [polygonAdapter],
+  // FMP owns search (kill-Polygon directive 2026-05-27). `/search-symbol` +
+  // `/search-name` get fanned out by fmp.adapter; the /api/search route
+  // applies local symbol/name ranking on top.
+  search:                  [fmpAdapter],
   dividends:               [polygonAdapter],
   splits:                  [polygonAdapter],
 };

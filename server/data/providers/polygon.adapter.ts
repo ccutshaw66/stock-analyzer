@@ -101,10 +101,6 @@ interface PolyFinancialsResp {
   }>;
 }
 
-interface PolyTickerSearchResp {
-  results?: Array<{ ticker?: string; name?: string }>;
-}
-
 // ─── Translators ────────────────────────────────────────────────────────────
 
 async function getQuote(symbol: Sym): Promise<Quote> {
@@ -228,21 +224,11 @@ async function getFinancials(symbol: Sym, limit = 8): Promise<FinancialSnapshot[
   });
 }
 
-async function searchTickers(
-  query: string,
-  limit = 10
-): Promise<Array<{ symbol: Sym; name: string }>> {
-  const json = await pget<PolyTickerSearchResp>(`/v3/reference/tickers`, {
-    search: query,
-    active: "true",
-    market: "stocks",
-    limit,
-  });
-  const rows = json.results ?? [];
-  return rows
-    .filter((r) => r.ticker && r.name)
-    .map((r) => ({ symbol: r.ticker as string, name: r.name as string }));
-}
+// `searchTickers` intentionally NOT implemented here — search is FMP-owned
+// (see fmp.adapter.ts + data/registry.ts). Polygon's /v3/reference/tickers
+// returns search hits in an unranked order that frequently buries the
+// requested symbol; that, plus the kill-Polygon directive, is why this
+// adapter no longer claims the `search` capability.
 
 // ─── Provider export ────────────────────────────────────────────────────────
 
@@ -251,7 +237,6 @@ const CAPABILITIES: Capability[] = [
   "aggregates",
   "options",
   "financials",
-  "search",
   "dividends",
   "splits",
 ];
@@ -263,5 +248,4 @@ export const polygonAdapter: DataProvider = {
   getAggregates,
   getOptionsChain,
   getFinancials,
-  searchTickers,
 };

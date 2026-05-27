@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Ticker search migrated off Polygon onto FMP
+
+**Why:** Chris's reaction after the earlier search-ranking fix shipped: "Polygon?!?! That is a dirty word around here. First get rid of it." Polygon is on the kill list (see `yahoo_architectural_role.md` + `plan_yahoo_polygon_kill.md`); leaving the `/api/search` route on `polygonSearch` was a regression on that directive.
+
+**What:**
+- **`fmpSearchTickers`** added to `server/data/providers/fmp.adapter.ts` — fans out in parallel to FMP stable `/search-symbol` (ticker-side) and `/search-name` (company-name-side), then dedupes by symbol. Two endpoints because FMP splits the search index, and either side alone misses obvious hits (e.g. `/search-name?query=TSLA` doesn't return Tesla — it's keyed by name; conversely `/search-symbol?query=Tesla` returns nothing).
+- **`fmpAdapter.searchTickers`** now wired in so the `search` capability flows through the data facade.
+- **`server/data/registry.ts`** — `search: [fmpAdapter]` (was `[polygonAdapter]`).
+- **`/api/search`** rewritten to call `fmpSearchTickers` and apply the same local re-ranking added earlier today (exact symbol → symbol prefix → first-word match → name prefix → contains). FMP's own ordering isn't great either, so the local rank is still the load-bearing piece.
+- **Polygon search removed**:
+  - `polygonSearch` deleted from `server/polygon.ts`
+  - `searchTickers` + the `PolyTickerSearchResp` interface + `"search"` capability removed from `server/data/providers/polygon.adapter.ts`. Polygon now only claims `quotes / aggregates / options / financials / dividends / splits` — search is one less wire in the kill-Polygon execution plan.
+- **`/api/search/v2`** (the strangler-pattern route) automatically inherits the FMP path via the data facade — no separate change needed.
+
+**Files:**
+- Modified: `server/data/providers/fmp.adapter.ts` (added fmpSearchTickers + wired into adapter)
+- Modified: `server/data/registry.ts` (search → fmp)
+- Modified: `server/routes.ts` (rewrote /api/search; dropped polygonSearch import)
+- Modified: `server/polygon.ts` (deleted polygonSearch)
+- Modified: `server/data/providers/polygon.adapter.ts` (dropped searchTickers + capability)
+
+---
 ## 2026-05-27 — Site-wide table standards + global search fixes (sortable cols, score filter, refresh, dropdown dismiss, ranking)
 
 **Why:** Chris's pass over the site: tables don't have any of the standards a fintech UI should have. Specifically: "Need to make all columns sortable by clicking the column title… any table that has our score should be able to filter by minimum score… any page that has a watchlist should not have a ticker in the watchlist and the active trade list… any table with prices in them should have a refresh button… The global analyze ticker at the top of the page gets stuck and the find scroll window won't go away even after you have already hit analyze… spelled out tesla and Tesla is the 3rd or 4th down." Five separate template-level gaps; foundation work fixes them across the site instead of patch-per-page.

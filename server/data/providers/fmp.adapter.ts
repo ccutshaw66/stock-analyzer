@@ -332,6 +332,51 @@ export const fmpAdapter: DataProvider = {
  * Endpoint cost: 1 call to /profile per ticker. Comfortably inside the
  * Premium plan's 750 req/min budget.
  */
+/**
+ * Ticker search via FMP stable endpoints. Polygon's /v3/reference/tickers
+ * is on the kill list (see Yahoo/Polygon-kill plan); search lives on FMP
+ * going forward. FMP splits ticker vs. company-name lookups, so we fan out
+ * to both `/search-symbol` and `/search-name` and merge the results,
+ * de-duplicated by symbol. Caller is expected to apply its own ranking
+ * (exact symbol → prefix → first-word → contains) on top.
+ */
+export async function fmpSearchTickers(
+  query: string,
+  limit = 20,
+): Promise<Array<{ symbol: string; name: string; exchange?: string }>> {
+  if (!query || !query.trim()) return [];
+  const q = query.trim();
+  const per = Math.max(5, Math.min(50, limit));
+  const safeArr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+  const [bySymbol, byName] = await Promise.all([
+    fmpGet<any[]>(`/search-symbol`, { query: q, limit: per }).then(safeArr).catch(() => []),
+    fmpGet<any[]>(`/search-name`, { query: q, limit: per }).then(safeArr).catch(() => []),
+  ]);
+  const seen = new Set<string>();
+  const out: Array<{ symbol: string; name: string; exchange?: string }> = [];
+  for (const row of [...bySymbol, ...byName]) {
+    const sym = String(row?.symbol || "").toUpperCase();
+    const name = String(row?.name || "");
+    if (!sym || !name) continue;
+    if (seen.has(sym)) continue;
+    seen.add(sym);
+    out.push({
+      symbol: sym,
+      name,
+      exchange: row?.exchangeShortName || row?.exchange || row?.exchangeFullName || undefined,
+    });
+  }
+  return out;
+}
+
+// Wire fmpSearchTickers into the fmpAdapter object so the data facade can
+// route the `search` capability through FMP (see server/data/registry.ts).
+fmpAdapter.searchTickers = async (query: string, limit = 10) => {
+  const rows = await fmpSearchTickers(query, limit);
+  return rows.map(r => ({ symbol: r.symbol, name: r.name }));
+};
+fmpAdapter.capabilities = [...fmpAdapter.capabilities, "search"];
+
 export async function getFmpProfileBeta(symbol: string): Promise<number | null> {
   try {
     const rows = await fmpGet<any[]>(`/profile`, { symbol });
