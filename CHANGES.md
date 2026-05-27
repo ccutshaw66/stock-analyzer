@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — DataTable migration wave 2: KAIROS / HERMES / institutional / dividends / trade-tracker
+
+**Why:** Chris's directive: "PLEASE, standardize ALL the table headers no matter where they are. Just like the Page headers these should all sort, all same font, all same color etc..." Previous round only migrated /insiders + /htf-setups; the rest of the site was still inconsistent (different padding, no sort icons, no click-to-sort behavior).
+
+**What:**
+- **DataTable extended**: column accessor now receives `(row, index)` instead of just `(row)` so rank-style columns ("#") work natively. Backward-compatible — existing callers ignore the second arg.
+- **`KairosFullView`** — all three sections (`WatchlistSection`, `PositionsSection`, `TradesSection`) migrated to DataTable. Open positions defaults to P/L % desc. Removed the local `RefreshButton` helper (DataTable's built-in does the job).
+- **`HermesFullView` TradesTable** — migrated. Defaults to Exit time desc.
+- **`/institutional`** — all four tables migrated: Top Institutions, Top Funds, Insiders, and the Recent Transactions table inside `TransactionsTable`. Extracted `institutionLikeColumns()` helper because Top Institutions and Top Funds share the same column shape — same schema, only "Institution" vs "Fund" header changes.
+- **`/dividends`** — scan-results table and all three quarterly calendar tables (Jan/Apr/Jul/Oct, Feb/May/Aug/Nov, Mar/Jun/Sep/Dec) migrated. Scan results gets the score filter since it has a Score column.
+- **`/trade-tracker`** — Performance by Type table migrated (the simple summary table). The per-strategy Open Positions tables and the Closed Trades flat table are deferred — they need DataTable extensions for per-strategy column manifests and don't fit the current schema cleanly.
+
+**Still to migrate** (next pass): /sector-heatmap, /track-record (2 tables), /mm-exposure, /conviction, /verdict, /chart, /admin, /earnings-calendar, /BacktestPanel (2), MarkovFullView (2), /dividend-portfolio (needs expandable-row support), and the remaining /trade-tracker tables.
+
+**Files:**
+- Modified: `client/src/components/DataTable.tsx` (accessor signature)
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx`
+- Modified: `client/src/compartments/hermes/HermesFullView.tsx`
+- Modified: `client/src/pages/institutional.tsx`
+- Modified: `client/src/pages/dividends.tsx`
+- Modified: `client/src/pages/trade-tracker.tsx`
+
+---
 ## 2026-05-27 — KAIROS watchlist drops tickers that are already open positions
 
 **Why:** Chris reported "the watch lists are still showing the active positions" after the earlier server-side `/api/favorites/watchlist` filter shipped. That filter only covers the dashboard `WatchlistWidget`. KAIROS has its own separate watchlist that comes from the python bot via `/api/kairos/api/watchlist` (proxied through Express) — completely different data path, no server-side filter touches it.

@@ -13,6 +13,7 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { PageTemplate } from "@/components/PageTemplate";
 import { useTimeframe } from "@/contexts/TimeframeContext";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 // ─── Scanner Pip ──────────────────────────────────────────────────────────────
 // Lightweight badge that calls /api/scanner-v2/quick/:ticker and shows
@@ -1230,35 +1231,41 @@ export default function TradeTracker() {
       )}
 
       {/* Performance by Type */}
-      {summary && Object.keys(summary.byType).length > 0 && (
-        <div className="bg-card border border-card-border rounded-lg p-4">
-          <h3 className="text-sm font-bold text-foreground mb-3">Performance by Type</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead><tr className="text-muted-foreground border-b border-card-border">
-                <th className="text-left pb-2 pr-4">Type</th><th className="text-right pb-2 px-3">Trades</th><th className="text-right pb-2 px-3">Win %</th>
-                <th className="text-right pb-2 px-3">Profit</th><th className="text-right pb-2 px-3">Loss</th><th className="text-right pb-2 px-3">Net</th><th className="text-right pb-2 px-3">ROI</th>
-              </tr></thead>
-              <tbody>{Object.entries(summary.byType).map(([type, d]) => {
-                const net = d.profit + d.loss;
-                const winPct = d.count > 0 ? (d.wins / d.count * 100) : 0;
-                const roi = d.investment > 0 ? (net / d.investment * 100) : 0;
-                return (
-                  <tr key={type} className="border-b border-card-border/50">
-                    <td className="py-1.5 pr-4 font-semibold text-foreground">{TRADE_TYPES[type as TradeTypeCode]?.label || type}</td>
-                    <td className="text-right px-3 tabular-nums">{d.count}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${winPct >= 55 ? "text-bull-light" : winPct >= 45 ? "text-watch-light" : "text-bear-light"}`}>{winPct.toFixed(1)}%</td>
-                    <td className="text-right px-3 text-bull-light tabular-nums">{formatCurrency(d.profit)}</td>
-                    <td className="text-right px-3 text-bear-light tabular-nums">{formatCurrency(d.loss)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${net >= 0 ? "text-bull-light" : "text-bear-light"}`}>{formatCurrency(net)}</td>
-                    <td className={`text-right px-3 font-semibold tabular-nums ${roi >= 0 ? "text-bull-light" : "text-bear-light"}`}>{roi.toFixed(1)}%</td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
+      {summary && Object.keys(summary.byType).length > 0 && (() => {
+        type PerfRow = { type: string; count: number; wins: number; profit: number; loss: number; net: number; winPct: number; roi: number };
+        const perfRows: PerfRow[] = Object.entries(summary.byType).map(([type, d]) => {
+          const net = d.profit + d.loss;
+          const winPct = d.count > 0 ? (d.wins / d.count * 100) : 0;
+          const roi = d.investment > 0 ? (net / d.investment * 100) : 0;
+          return { type, count: d.count, wins: d.wins, profit: d.profit, loss: d.loss, net, winPct, roi };
+        });
+        return (
+          <div className="bg-card border border-card-border rounded-lg p-4">
+            <DataTable<PerfRow>
+              title="Performance by Type"
+              columns={[
+                { key: "type", header: "Type", sortValue: r => r.type, accessor: r => <span className="font-semibold text-foreground">{TRADE_TYPES[r.type as TradeTypeCode]?.label || r.type}</span> },
+                { key: "count", header: "Trades", type: "number", sortValue: r => r.count, accessor: r => r.count },
+                { key: "winPct", header: "Win %", type: "number", sortValue: r => r.winPct, accessor: r => (
+                  <span className={`font-semibold ${r.winPct >= 55 ? "text-bull-light" : r.winPct >= 45 ? "text-watch-light" : "text-bear-light"}`}>{r.winPct.toFixed(1)}%</span>
+                )},
+                { key: "profit", header: "Profit", type: "number", sortValue: r => r.profit, accessor: r => <span className="text-bull-light">{formatCurrency(r.profit)}</span> },
+                { key: "loss", header: "Loss", type: "number", sortValue: r => r.loss, accessor: r => <span className="text-bear-light">{formatCurrency(r.loss)}</span> },
+                { key: "net", header: "Net", type: "number", sortValue: r => r.net, accessor: r => (
+                  <span className={`font-semibold ${r.net >= 0 ? "text-bull-light" : "text-bear-light"}`}>{formatCurrency(r.net)}</span>
+                )},
+                { key: "roi", header: "ROI", type: "number", sortValue: r => r.roi, accessor: r => (
+                  <span className={`font-semibold ${r.roi >= 0 ? "text-bull-light" : "text-bear-light"}`}>{r.roi.toFixed(1)}%</span>
+                )},
+              ]}
+              data={perfRows}
+              getRowKey={r => r.type}
+              defaultSort={{ key: "net", direction: "desc" }}
+              dense
+            />
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 flex-wrap">

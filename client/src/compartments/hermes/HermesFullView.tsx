@@ -23,6 +23,7 @@ import {
   type HermesStatus, type HermesStats, type HermesTrade,
   type HermesEquity, type HermesGoal, type AssetParams,
 } from "./useHermes";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 export function HermesFullView() {
   const H = useHermes();
@@ -92,7 +93,7 @@ export function HermesFullView() {
         pending={H.updateGoal.isPending}
         error={H.updateGoal.error}
       />
-      <TradesTable trades={H.trades.data} loading={H.trades.isLoading} error={H.trades.error} fetching={H.trades.isFetching} />
+      <TradesTable trades={H.trades.data} loading={H.trades.isLoading} error={H.trades.error} fetching={H.trades.isFetching} onRefresh={H.refresh} />
     </div>
   );
 }
@@ -662,72 +663,104 @@ function GoalSettings({
 // ─── Trades ────────────────────────────────────────────────────────────────────
 
 function TradesTable({
-  trades, loading, error, fetching,
-}: { trades: HermesTrade[] | undefined; loading: boolean; error: unknown; fetching: boolean }) {
-  const sorted = useMemo(() => {
-    const list = trades ?? [];
-    return [...list].sort((a, b) => (b.exit_time || "").localeCompare(a.exit_time || ""));
-  }, [trades]);
+  trades, loading, error, fetching, onRefresh,
+}: { trades: HermesTrade[] | undefined; loading: boolean; error: unknown; fetching: boolean; onRefresh?: () => void }) {
+  const data = useMemo(() => trades ?? [], [trades]);
+
+  const columns: DataTableColumn<HermesTrade>[] = [
+    {
+      key: "id",
+      header: "ID",
+      sortValue: t => t.id,
+      accessor: t => <span className="font-mono text-muted-foreground">{t.id}</span>,
+    },
+    {
+      key: "asset",
+      header: "Asset",
+      sortValue: t => t.asset,
+      accessor: t => <span className="font-mono font-bold text-foreground">{t.asset}</span>,
+    },
+    {
+      key: "side",
+      header: "Side",
+      sortValue: t => t.direction,
+      accessor: t => (
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-mini font-bold uppercase ${
+          t.direction === "long" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"
+        }`}>
+          {t.direction === "long" ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+          {t.direction}
+        </span>
+      ),
+    },
+    {
+      key: "entry",
+      header: "Entry",
+      type: "price",
+      sortValue: t => t.entry_price,
+      accessor: t => <span>{t.entry_price.toLocaleString()}</span>,
+    },
+    {
+      key: "exit",
+      header: "Exit",
+      type: "price",
+      sortValue: t => t.exit_price,
+      accessor: t => <span>{t.exit_price.toLocaleString()}</span>,
+    },
+    {
+      key: "pnlPct",
+      header: "P/L %",
+      type: "number",
+      sortValue: t => t.pnl_pct,
+      accessor: t => (
+        <span className={`font-bold ${t.pnl_pct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+          {t.pnl_pct >= 0 ? "+" : ""}{t.pnl_pct.toFixed(2)}%
+        </span>
+      ),
+    },
+    {
+      key: "exitTime",
+      header: "Exit time",
+      sortValue: t => t.exit_time ?? "",
+      accessor: t => (
+        <span className="text-muted-foreground">{t.exit_time ? new Date(t.exit_time).toLocaleString() : "—"}</span>
+      ),
+    },
+  ];
 
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" /> Recent Trades
-        </h2>
-        {fetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      </div>
-
       {loading ? (
-        <SkeletonRow />
-      ) : error ? (
-        <p className="text-xs text-muted-foreground">No trades available.</p>
-      ) : sorted.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No trades yet.</p>
+        <>
+          <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-primary" /> Recent Trades
+          </h2>
+          <SkeletonRow />
+        </>
+      ) : error || data.length === 0 ? (
+        <>
+          <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-primary" /> Recent Trades
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {error ? "No trades available." : "No trades yet."}
+          </p>
+        </>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-muted-foreground">
-                <th className="py-2 pr-3 font-semibold">ID</th>
-                <th className="py-2 pr-3 font-semibold">Asset</th>
-                <th className="py-2 pr-3 font-semibold">Side</th>
-                <th className="py-2 pr-3 font-semibold text-right">Entry</th>
-                <th className="py-2 pr-3 font-semibold text-right">Exit</th>
-                <th className="py-2 pr-3 font-semibold text-right">P/L %</th>
-                <th className="py-2 pr-3 font-semibold">Exit time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.slice(0, 50).map((t) => {
-                const isWin = t.pnl_pct >= 0;
-                return (
-                  <tr key={t.id} className="border-t border-card-border/40">
-                    <td className="py-2 pr-3 font-mono text-muted-foreground">{t.id}</td>
-                    <td className="py-2 pr-3 font-mono font-bold text-foreground">{t.asset}</td>
-                    <td className="py-2 pr-3">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          t.direction === "long" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
-                        }`}>
-                        {t.direction === "long" ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                        {t.direction}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-foreground">{t.entry_price.toLocaleString()}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-foreground">{t.exit_price.toLocaleString()}</td>
-                    <td className={`py-2 pr-3 text-right tabular-nums font-bold ${isWin ? "text-green-400" : "text-red-400"}`}>
-                      {isWin ? "+" : ""}
-                      {t.pnl_pct.toFixed(2)}%
-                    </td>
-                    <td className="py-2 pr-3 text-muted-foreground tabular-nums">
-                      {t.exit_time ? new Date(t.exit_time).toLocaleString() : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          title={
+            <span className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" /> Recent Trades
+            </span>
+          }
+          columns={columns}
+          data={data.slice(0, 50)}
+          getRowKey={t => t.id}
+          defaultSort={{ key: "exitTime", direction: "desc" }}
+          onRefresh={onRefresh}
+          isRefreshing={fetching}
+          dense
+        />
       )}
     </section>
   );

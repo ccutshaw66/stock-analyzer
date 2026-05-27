@@ -16,7 +16,7 @@ import { useMemo, useState, useEffect } from "react";
 import {
   Activity, Loader2, AlertCircle, CircleDot, Wallet, Percent, Award,
   TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank, Settings, Save,
-  CheckCircle2, RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import {
@@ -26,6 +26,7 @@ import {
   type KairosStatus, type KairosTrade, type KairosWatchlistRow, type KairosEquity,
   type KairosGoal, type KairosPosition,
 } from "./useKairos";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 export function KairosFullView() {
   const K = useKairos();
@@ -444,22 +445,6 @@ function HeaderStrip({ status, equity, startingEquity, trades, loading, offline 
   );
 }
 
-// Shared refresh affordance for sections that aren't yet migrated to DataTable.
-function RefreshButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={loading}
-      className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      aria-label="Refresh"
-    >
-      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-      <span>Refresh</span>
-    </button>
-  );
-}
-
 // ─── Watchlist section ────────────────────────────────────────────────────────
 
 function WatchlistSection({ rows, loading, offline, onRefresh, isRefreshing }: {
@@ -469,53 +454,80 @@ function WatchlistSection({ rows, loading, offline, onRefresh, isRefreshing }: {
   onRefresh: () => void;
   isRefreshing: boolean;
 }) {
+  const columns: DataTableColumn<KairosWatchlistRow>[] = [
+    {
+      key: "ticker",
+      header: "Ticker",
+      sortValue: r => r.ticker,
+      accessor: r => <span className="font-mono font-bold text-foreground">{r.ticker}</span>,
+    },
+    {
+      key: "price",
+      header: "Price",
+      type: "price",
+      sortValue: r => r.current_price ?? -1,
+      accessor: r => (
+        <span className="font-mono">
+          {r.current_price != null ? `$${r.current_price.toFixed(2)}` : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "rsi",
+      header: "RSI",
+      type: "number",
+      sortValue: r => r.current_rsi ?? -1,
+      accessor: r => (
+        <span className="font-mono">{r.current_rsi != null ? r.current_rsi.toFixed(1) : "—"}</span>
+      ),
+    },
+    {
+      key: "htf",
+      header: "HTF",
+      align: "center",
+      sortValue: r => r.htf_state,
+      accessor: r => <StateBadge state={r.htf_state} />,
+    },
+    {
+      key: "bbtc",
+      header: "BBTC",
+      align: "center",
+      sortValue: r => r.bbtc_state,
+      accessor: r => <StateBadge state={r.bbtc_state} />,
+    },
+    {
+      key: "lastEval",
+      header: "Last eval",
+      sortValue: r => r.last_evaluated ?? "",
+      accessor: r => (
+        <span className="text-muted-foreground">
+          {r.last_evaluated ? new Date(r.last_evaluated).toLocaleTimeString() : "—"}
+        </span>
+      ),
+    },
+  ];
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-foreground">Watchlist</h3>
-        <RefreshButton onClick={onRefresh} loading={isRefreshing} />
-      </div>
       {loading ? (
-        <SkeletonRow />
+        <>
+          <h3 className="text-sm font-bold text-foreground mb-3">Watchlist</h3>
+          <SkeletonRow />
+        </>
       ) : offline || !rows || rows.length === 0 ? (
-        <EmptyState text="Auto-populated from HTF setups once the bot connects." />
+        <>
+          <h3 className="text-sm font-bold text-foreground mb-3">Watchlist</h3>
+          <EmptyState text="Auto-populated from HTF setups once the bot connects." />
+        </>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-muted-foreground">
-              <tr className="border-b border-card-border/40">
-                <th className="text-left py-1.5 px-2 font-semibold">Ticker</th>
-                <th className="text-right py-1.5 px-2 font-semibold">Price</th>
-                <th className="text-right py-1.5 px-2 font-semibold">RSI</th>
-                <th className="text-center py-1.5 px-2 font-semibold">HTF</th>
-                <th className="text-center py-1.5 px-2 font-semibold">BBTC</th>
-                <th className="text-right py-1.5 px-2 font-semibold hidden md:table-cell">Last eval</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.ticker} className="border-b border-card-border/20">
-                  <td className="py-1.5 px-2 font-mono font-bold text-foreground">{r.ticker}</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">
-                    {r.current_price != null ? `$${r.current_price.toFixed(2)}` : "—"}
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">
-                    {r.current_rsi != null ? r.current_rsi.toFixed(1) : "—"}
-                  </td>
-                  <td className="py-1.5 px-2 text-center">
-                    <StateBadge state={r.htf_state} />
-                  </td>
-                  <td className="py-1.5 px-2 text-center">
-                    <StateBadge state={r.bbtc_state} />
-                  </td>
-                  <td className="py-1.5 px-2 text-right text-muted-foreground hidden md:table-cell">
-                    {r.last_evaluated ? new Date(r.last_evaluated).toLocaleTimeString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          title="Watchlist"
+          columns={columns}
+          data={rows}
+          getRowKey={r => r.ticker}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
+          dense
+        />
       )}
     </section>
   );
@@ -530,51 +542,93 @@ function PositionsSection({ status, offline, onRefresh, isRefreshing }: {
   isRefreshing: boolean;
 }) {
   const positions = status?.open_positions ?? [];
+  const columns: DataTableColumn<KairosPosition>[] = [
+    {
+      key: "symbol",
+      header: "Ticker",
+      sortValue: p => p.symbol,
+      accessor: p => <span className="font-mono font-bold text-foreground">{p.symbol}</span>,
+    },
+    {
+      key: "trigger",
+      header: "Trigger",
+      align: "center",
+      sortValue: p => p.entry_strategy,
+      accessor: p => <ConvictionBadge tag={p.entry_strategy} />,
+    },
+    {
+      key: "entry",
+      header: "Entry",
+      type: "price",
+      sortValue: p => p.entry_price,
+      accessor: p => <span className="font-mono">${p.entry_price.toFixed(2)}</span>,
+    },
+    {
+      key: "current",
+      header: "Current",
+      type: "price",
+      sortValue: p => p.current_price,
+      accessor: p => <span className="font-mono">${p.current_price.toFixed(2)}</span>,
+    },
+    {
+      key: "pnlPct",
+      header: "P/L %",
+      type: "number",
+      sortValue: p => p.unrealized_pnl_pct,
+      accessor: p => (
+        <span className={`font-mono font-bold ${p.unrealized_pnl_pct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+          {p.unrealized_pnl_pct >= 0 ? "+" : ""}{p.unrealized_pnl_pct.toFixed(2)}%
+        </span>
+      ),
+    },
+    {
+      key: "pnlDollars",
+      header: "P/L $",
+      type: "number",
+      sortValue: p => p.unrealized_pnl_dollars,
+      accessor: p => (
+        <span className={`font-mono ${p.unrealized_pnl_dollars >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+          {p.unrealized_pnl_dollars >= 0 ? "+" : ""}${p.unrealized_pnl_dollars.toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: "stop",
+      header: "Stop",
+      type: "price",
+      sortValue: p => p.stop_price,
+      accessor: p => <span className="font-mono text-muted-foreground">${p.stop_price.toFixed(2)}</span>,
+    },
+    {
+      key: "target",
+      header: "Target",
+      type: "price",
+      sortValue: p => p.target_price ?? -1,
+      accessor: p => (
+        <span className="font-mono text-muted-foreground">
+          {p.target_price != null ? `$${p.target_price.toFixed(2)}` : "—"}
+        </span>
+      ),
+    },
+  ];
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-foreground">Open positions</h3>
-        <RefreshButton onClick={onRefresh} loading={isRefreshing} />
-      </div>
       {offline || positions.length === 0 ? (
-        <EmptyState text={offline ? "Open positions will appear when bot is live." : "No positions open — bot waiting for entry triggers."} />
+        <>
+          <h3 className="text-sm font-bold text-foreground mb-3">Open positions</h3>
+          <EmptyState text={offline ? "Open positions will appear when bot is live." : "No positions open — bot waiting for entry triggers."} />
+        </>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-muted-foreground">
-              <tr className="border-b border-card-border/40">
-                <th className="text-left py-1.5 px-2 font-semibold">Ticker</th>
-                <th className="text-center py-1.5 px-2 font-semibold">Trigger</th>
-                <th className="text-right py-1.5 px-2 font-semibold">Entry</th>
-                <th className="text-right py-1.5 px-2 font-semibold">Current</th>
-                <th className="text-right py-1.5 px-2 font-semibold">P/L %</th>
-                <th className="text-right py-1.5 px-2 font-semibold">P/L $</th>
-                <th className="text-right py-1.5 px-2 font-semibold hidden md:table-cell">Stop</th>
-                <th className="text-right py-1.5 px-2 font-semibold hidden md:table-cell">Target</th>
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map(p => (
-                <tr key={`${p.symbol}-${p.entry_time}`} className="border-b border-card-border/20">
-                  <td className="py-1.5 px-2 font-mono font-bold text-foreground">{p.symbol}</td>
-                  <td className="py-1.5 px-2 text-center">
-                    <ConvictionBadge tag={p.entry_strategy} />
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">${p.entry_price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">${p.current_price.toFixed(2)}</td>
-                  <td className={`py-1.5 px-2 text-right font-mono font-bold ${p.unrealized_pnl_pct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                    {p.unrealized_pnl_pct >= 0 ? "+" : ""}{p.unrealized_pnl_pct.toFixed(2)}%
-                  </td>
-                  <td className={`py-1.5 px-2 text-right font-mono ${p.unrealized_pnl_dollars >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                    {p.unrealized_pnl_dollars >= 0 ? "+" : ""}${p.unrealized_pnl_dollars.toFixed(2)}
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-muted-foreground hidden md:table-cell">${p.stop_price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-muted-foreground hidden md:table-cell">{p.target_price != null ? `$${p.target_price.toFixed(2)}` : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          title="Open positions"
+          columns={columns}
+          data={positions}
+          getRowKey={p => `${p.symbol}-${p.entry_time}`}
+          defaultSort={{ key: "pnlPct", direction: "desc" }}
+          onRefresh={onRefresh}
+          isRefreshing={isRefreshing}
+          dense
+        />
       )}
     </section>
   );
@@ -587,48 +641,84 @@ function TradesSection({ trades, loading, offline }: {
   loading: boolean;
   offline: boolean;
 }) {
+  const columns: DataTableColumn<KairosTrade>[] = [
+    {
+      key: "symbol",
+      header: "Ticker",
+      sortValue: t => t.symbol,
+      accessor: t => <span className="font-mono font-bold text-foreground">{t.symbol}</span>,
+    },
+    {
+      key: "trigger",
+      header: "Trigger",
+      align: "center",
+      sortValue: t => t.entry_strategy,
+      accessor: t => <ConvictionBadge tag={t.entry_strategy} />,
+    },
+    {
+      key: "entry",
+      header: "Entry",
+      type: "price",
+      sortValue: t => t.entry_price,
+      accessor: t => <span className="font-mono">${t.entry_price.toFixed(2)}</span>,
+    },
+    {
+      key: "exit",
+      header: "Exit",
+      type: "price",
+      sortValue: t => t.exit_price,
+      accessor: t => <span className="font-mono">${t.exit_price.toFixed(2)}</span>,
+    },
+    {
+      key: "pnlPct",
+      header: "P/L %",
+      type: "number",
+      sortValue: t => t.pnl_pct,
+      accessor: t => (
+        <span className={`font-mono font-bold ${t.pnl_pct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+          {t.pnl_pct >= 0 ? "+" : ""}{t.pnl_pct.toFixed(2)}%
+        </span>
+      ),
+    },
+    {
+      key: "pnlDollars",
+      header: "P/L $",
+      type: "number",
+      sortValue: t => t.pnl_dollars,
+      accessor: t => (
+        <span className={`font-mono ${t.pnl_dollars >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+          {t.pnl_dollars >= 0 ? "+" : ""}${t.pnl_dollars.toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      align: "center",
+      sortValue: t => t.exit_reason,
+      accessor: t => <span className="text-mini text-muted-foreground">{t.exit_reason}</span>,
+    },
+  ];
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <h3 className="text-sm font-bold text-foreground mb-3">Recent trades</h3>
       {loading ? (
-        <SkeletonRow />
+        <>
+          <h3 className="text-sm font-bold text-foreground mb-3">Recent trades</h3>
+          <SkeletonRow />
+        </>
       ) : offline || !trades || trades.length === 0 ? (
-        <EmptyState text="Trade log will populate once the bot starts paper-trading." />
+        <>
+          <h3 className="text-sm font-bold text-foreground mb-3">Recent trades</h3>
+          <EmptyState text="Trade log will populate once the bot starts paper-trading." />
+        </>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-muted-foreground">
-              <tr className="border-b border-card-border/40">
-                <th className="text-left py-1.5 px-2 font-semibold">Ticker</th>
-                <th className="text-center py-1.5 px-2 font-semibold">Trigger</th>
-                <th className="text-right py-1.5 px-2 font-semibold">Entry</th>
-                <th className="text-right py-1.5 px-2 font-semibold">Exit</th>
-                <th className="text-right py-1.5 px-2 font-semibold">P/L %</th>
-                <th className="text-right py-1.5 px-2 font-semibold">P/L $</th>
-                <th className="text-center py-1.5 px-2 font-semibold">Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.slice(0, 20).map(t => (
-                <tr key={t.id} className="border-b border-card-border/20">
-                  <td className="py-1.5 px-2 font-mono font-bold text-foreground">{t.symbol}</td>
-                  <td className="py-1.5 px-2 text-center">
-                    <ConvictionBadge tag={t.entry_strategy} />
-                  </td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">${t.entry_price.toFixed(2)}</td>
-                  <td className="py-1.5 px-2 text-right font-mono text-foreground">${t.exit_price.toFixed(2)}</td>
-                  <td className={`py-1.5 px-2 text-right font-mono font-bold ${t.pnl_pct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                    {t.pnl_pct >= 0 ? "+" : ""}{t.pnl_pct.toFixed(2)}%
-                  </td>
-                  <td className={`py-1.5 px-2 text-right font-mono ${t.pnl_dollars >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                    {t.pnl_dollars >= 0 ? "+" : ""}${t.pnl_dollars.toFixed(2)}
-                  </td>
-                  <td className="py-1.5 px-2 text-center text-mini text-muted-foreground">{t.exit_reason}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          title="Recent trades"
+          columns={columns}
+          data={trades.slice(0, 20)}
+          getRowKey={t => t.id}
+          dense
+        />
       )}
     </section>
   );

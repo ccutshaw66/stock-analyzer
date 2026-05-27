@@ -10,6 +10,7 @@ import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -377,65 +378,28 @@ export default function Dividends() {
         )}
 
         {scanResults && scanResults.length > 0 && !isScanLoading && (
-          <div className="overflow-x-auto" data-testid="dividend-scan-results">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-card-border text-muted-foreground">
-                  <th className="text-left py-2 px-2 font-semibold">#</th>
-                  <th className="text-left py-2 px-2 font-semibold">Ticker</th>
-                  <th className="text-left py-2 px-2 font-semibold hidden sm:table-cell">Company</th>
-                  <th className="text-right py-2 px-2 font-semibold">Price</th>
-                  <th className="text-right py-2 px-2 font-semibold">Yield</th>
-                  <th className="text-right py-2 px-2 font-semibold hidden md:table-cell">Div Rate</th>
-                  <th className="text-right py-2 px-2 font-semibold hidden md:table-cell">Payout</th>
-                  <th className="text-center py-2 px-2 font-semibold hidden lg:table-cell">Freq</th>
-                  <th className="text-center py-2 px-2 font-semibold hidden lg:table-cell">Ex-Div</th>
-                  <th className="text-center py-2 px-2 font-semibold hidden lg:table-cell">Dist Date</th>
-                  <th className="text-right py-2 px-2 font-semibold hidden lg:table-cell">5Y Avg</th>
-                  <th className="text-right py-2 px-2 font-semibold">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scanResults.map((stock, index) => (
-                  <tr
-                    key={stock.ticker}
-                    className="border-b border-card-border/30 hover:bg-muted/30 cursor-pointer transition-colors"
-                    onClick={() => setActiveTicker(stock.ticker)}
-                    data-testid={`dividend-row-${stock.ticker}`}
-                  >
-                    <td className="py-2 px-2 text-muted-foreground font-mono">{index + 1}</td>
-                    <td className="py-2 px-2 font-bold font-mono text-foreground">{stock.ticker}</td>
-                    <td className="py-2 px-2 text-muted-foreground truncate max-w-[140px] hidden sm:table-cell">{stock.companyName}</td>
-                    <td className="py-2 px-2 text-right font-mono text-foreground">${stock.price.toFixed(2)}</td>
-                    <td className={`py-2 px-2 text-right font-mono font-bold ${yieldColor(stock.dividendYield)}`}>
-                      {stock.dividendYield.toFixed(2)}%
-                    </td>
-                    <td className="py-2 px-2 text-right font-mono text-foreground hidden md:table-cell">${stock.dividendRate.toFixed(2)}</td>
-                    <td className={`py-2 px-2 text-right font-mono hidden md:table-cell ${payoutColor(stock.payoutRatio)}`}>
-                      {stock.payoutRatio.toFixed(1)}%
-                    </td>
-                    <td className="py-2 px-2 text-center hidden lg:table-cell">
-                      <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                        {stock.frequency}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell">
-                      {stock.exDividendDate || "—"}
-                    </td>
-                    <td className="py-2 px-2 text-center font-mono text-muted-foreground hidden lg:table-cell">
-                      {stock.distributionDate || "—"}
-                    </td>
-                    <td className="py-2 px-2 text-right font-mono text-muted-foreground hidden lg:table-cell">
-                      {stock.fiveYearAvgYield != null ? `${stock.fiveYearAvgYield.toFixed(2)}%` : "—"}
-                    </td>
-                    <td className={`py-2 px-2 text-right font-mono font-bold ${scoreColor(stock.score)}`}>
-                      {stock.score}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<DividendData>
+            columns={[
+              { key: "rank", header: "#", sortable: false, accessor: (_, i) => <span className="text-muted-foreground font-mono">{i + 1}</span> },
+              { key: "ticker", header: "Ticker", sortValue: r => r.ticker, accessor: r => <span className="font-bold font-mono text-foreground">{r.ticker}</span> },
+              { key: "company", header: "Company", sortValue: r => r.companyName, accessor: r => <span className="text-muted-foreground truncate max-w-[140px] inline-block align-bottom">{r.companyName}</span> },
+              { key: "price", header: "Price", type: "price", sortValue: r => r.price, accessor: r => `$${r.price.toFixed(2)}` },
+              { key: "yield", header: "Yield", type: "number", sortValue: r => r.dividendYield, accessor: r => <span className={`font-bold ${yieldColor(r.dividendYield)}`}>{r.dividendYield.toFixed(2)}%</span> },
+              { key: "divRate", header: "Div Rate", type: "number", sortValue: r => r.dividendRate, accessor: r => `$${r.dividendRate.toFixed(2)}` },
+              { key: "payout", header: "Payout", type: "number", sortValue: r => r.payoutRatio, accessor: r => <span className={payoutColor(r.payoutRatio)}>{r.payoutRatio.toFixed(1)}%</span> },
+              { key: "freq", header: "Freq", align: "center", sortValue: r => r.frequency, accessor: r => <span className="text-micro font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{r.frequency}</span> },
+              { key: "exDiv", header: "Ex-Div", align: "center", sortValue: r => r.exDividendDate ?? "", accessor: r => <span className="font-mono text-muted-foreground">{r.exDividendDate || "—"}</span> },
+              { key: "distDate", header: "Dist Date", align: "center", sortValue: r => r.distributionDate ?? "", accessor: r => <span className="font-mono text-muted-foreground">{r.distributionDate || "—"}</span> },
+              { key: "fiveYear", header: "5Y Avg", type: "number", sortValue: r => r.fiveYearAvgYield ?? -1, accessor: r => <span className="text-muted-foreground">{r.fiveYearAvgYield != null ? `${r.fiveYearAvgYield.toFixed(2)}%` : "—"}</span> },
+              { key: "score", header: "Score", type: "score", sortValue: r => r.score, accessor: r => <span className={`font-bold ${scoreColor(r.score)}`}>{r.score}</span> },
+            ]}
+            data={scanResults}
+            getRowKey={r => r.ticker}
+            defaultSort={{ key: "score", direction: "desc" }}
+            showScoreFilter
+            onRowClick={r => setActiveTicker(r.ticker)}
+            dense
+          />
         )}
 
         {scanResults && scanResults.length === 0 && !isScanLoading && (
@@ -617,43 +581,34 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
           </div>
 
           {/* Quarterly Calendar */}
-          {[["Jan / Apr / Jul / Oct", q1, SIGNAL_BULL], ["Feb / May / Aug / Nov", q2, BRAND_ACCENT], ["Mar / Jun / Sep / Dec", q3, SIGNAL_WATCH_SHORT]] .map(([label, stocks, color]) => (
-            <div key={label as string}>
+          {([
+            ["Jan / Apr / Jul / Oct", q1, SIGNAL_BULL],
+            ["Feb / May / Aug / Nov", q2, BRAND_ACCENT],
+            ["Mar / Jun / Sep / Dec", q3, SIGNAL_WATCH_SHORT],
+          ] as Array<[string, WeeklyItem[], string]>).map(([label, stocks, color]) => (
+            <div key={label}>
               <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" style={{ color: color as string }} /> {label as string}
+                <Calendar className="h-3.5 w-3.5" style={{ color }} /> {label}
               </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-card-border text-muted-foreground">
-                      <th className="text-left py-1.5 px-2 font-semibold">Week</th>
-                      <th className="text-left py-1.5 px-2 font-semibold">Ticker</th>
-                      <th className="text-left py-1.5 px-2 font-semibold hidden sm:table-cell">Company</th>
-                      <th className="text-right py-1.5 px-2 font-semibold">Price</th>
-                      <th className="text-right py-1.5 px-2 font-semibold">Yield</th>
-                      <th className="text-right py-1.5 px-2 font-semibold hidden md:table-cell">Div Rate</th>
-                      <th className="text-center py-1.5 px-2 font-semibold hidden md:table-cell">Ex-Div</th>
-                      <th className="text-right py-1.5 px-2 font-semibold hidden lg:table-cell">Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(stocks as WeeklyItem[]).sort((a, b) => a.week - b.week).map(s => (
-                      <tr key={s.ticker} className="border-b border-card-border/30 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setActiveTicker(s.ticker)}>
-                        <td className="py-1.5 px-2">
-                          <span className="text-micro font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${color as string}15`, color: color as string }}>Wk {s.week}</span>
-                        </td>
-                        <td className="py-1.5 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
-                        <td className="py-1.5 px-2 text-muted-foreground truncate max-w-[120px] hidden sm:table-cell">{s.companyName}</td>
-                        <td className="py-1.5 px-2 text-right font-mono text-foreground">${s.price.toFixed(2)}</td>
-                        <td className={`py-1.5 px-2 text-right font-mono font-bold ${yieldColor(s.dividendYield)}`}>{s.dividendYield.toFixed(2)}%</td>
-                        <td className="py-1.5 px-2 text-right font-mono text-foreground hidden md:table-cell">${s.dividendRate.toFixed(2)}</td>
-                        <td className="py-1.5 px-2 text-center font-mono text-muted-foreground hidden md:table-cell">{s.exDividendDate || "—"}</td>
-                        <td className={`py-1.5 px-2 text-right font-mono font-bold hidden lg:table-cell ${scoreColor(s.score)}`}>{s.score}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable<WeeklyItem>
+                columns={[
+                  { key: "week", header: "Week", sortValue: r => r.week, accessor: r => (
+                    <span className="text-micro font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: `${color}15`, color }}>Wk {r.week}</span>
+                  )},
+                  { key: "ticker", header: "Ticker", sortValue: r => r.ticker, accessor: r => <span className="font-mono font-bold text-foreground">{r.ticker}</span> },
+                  { key: "company", header: "Company", sortValue: r => r.companyName, accessor: r => <span className="text-muted-foreground truncate max-w-[120px] inline-block align-bottom">{r.companyName}</span> },
+                  { key: "price", header: "Price", type: "price", sortValue: r => r.price, accessor: r => `$${r.price.toFixed(2)}` },
+                  { key: "yield", header: "Yield", type: "number", sortValue: r => r.dividendYield, accessor: r => <span className={`font-bold ${yieldColor(r.dividendYield)}`}>{r.dividendYield.toFixed(2)}%</span> },
+                  { key: "divRate", header: "Div Rate", type: "number", sortValue: r => r.dividendRate, accessor: r => `$${r.dividendRate.toFixed(2)}` },
+                  { key: "exDiv", header: "Ex-Div", align: "center", sortValue: r => r.exDividendDate ?? "", accessor: r => <span className="font-mono text-muted-foreground">{r.exDividendDate || "—"}</span> },
+                  { key: "score", header: "Score", type: "score", sortValue: r => r.score, accessor: r => <span className={`font-bold ${scoreColor(r.score)}`}>{r.score}</span> },
+                ]}
+                data={[...stocks].sort((a, b) => a.week - b.week)}
+                getRowKey={r => r.ticker}
+                defaultSort={{ key: "week", direction: "asc" }}
+                onRowClick={r => setActiveTicker(r.ticker)}
+                dense
+              />
             </div>
           ))}
 

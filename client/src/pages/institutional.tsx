@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,39 @@ interface InsiderHolder {
   sharesIndirect: number;
   latestTransaction: string | null;
   latestDate: string | null;
+}
+
+// Shared column set for the Top Institutions + Top Funds tables — same
+// schema, only the label changes ("Institution" vs "Fund").
+function institutionLikeColumns(nameHeader: string): DataTableColumn<Institution>[] {
+  return [
+    {
+      key: "rank",
+      header: "#",
+      sortable: false,
+      accessor: (_: Institution, i: number) => <span className="text-muted-foreground">{i + 1}</span>,
+    },
+    {
+      key: "name",
+      header: nameHeader,
+      sortValue: r => r.name,
+      accessor: r => <span className="font-semibold text-foreground max-w-[250px] truncate inline-block align-bottom">{r.name}</span>,
+    },
+    { key: "shares", header: "Shares", type: "number", sortValue: r => r.shares, accessor: r => formatCompact(r.shares) },
+    { key: "value", header: "Value", type: "number", sortValue: r => r.value, accessor: r => `$${formatCompact(r.value)}` },
+    { key: "pctHeld", header: "% Held", type: "number", sortValue: r => r.pctHeld, accessor: r => `${(r.pctHeld * 100).toFixed(2)}%` },
+    {
+      key: "changeQoQ",
+      header: "QoQ Change",
+      type: "number",
+      sortValue: r => r.changeQoQ,
+      accessor: r => (
+        <span className={`font-semibold ${r.changeQoQ > 0 ? "text-bull-light" : r.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
+          {r.changeQoQ > 0 ? "+" : ""}{r.changeQoQ.toFixed(1)}%
+        </span>
+      ),
+    },
+  ];
 }
 
 interface InstitutionalData {
@@ -218,58 +252,22 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
         {/* Table Content */}
         <div className="flex-1 overflow-y-auto px-4 pb-4">
           {tab === "institutions" && (
-            <table className="w-full text-xs">
-              <thead><tr className="text-muted-foreground border-b border-card-border">
-                <th className="text-left py-2 font-semibold">#</th>
-                <th className="text-left py-2 font-semibold">Institution</th>
-                <th className="text-right py-2 font-semibold">Shares</th>
-                <th className="text-right py-2 font-semibold">Value</th>
-                <th className="text-right py-2 font-semibold">% Held</th>
-                <th className="text-right py-2 font-semibold">QoQ Change</th>
-              </tr></thead>
-              <tbody>
-                {(data.topInstitutions ?? []).map((inst, i) => (
-                  <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                    <td className="py-1.5 text-muted-foreground">{i + 1}</td>
-                    <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{inst.name}</td>
-                    <td className="py-1.5 text-right tabular-nums">{formatCompact(inst.shares)}</td>
-                    <td className="py-1.5 text-right tabular-nums">${formatCompact(inst.value)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{(inst.pctHeld * 100).toFixed(2)}%</td>
-                    <td className={`py-1.5 text-right font-semibold tabular-nums ${inst.changeQoQ > 0 ? "text-bull-light" : inst.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
-                      {inst.changeQoQ > 0 ? "+" : ""}{inst.changeQoQ.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable<Institution>
+              columns={institutionLikeColumns("Institution")}
+              data={data.topInstitutions ?? []}
+              getRowKey={(_, i) => i}
+              dense
+            />
           )}
 
           {tab === "funds" && (
             (data.topFunds ?? []).length > 0 ? (
-              <table className="w-full text-xs">
-                <thead><tr className="text-muted-foreground border-b border-card-border">
-                  <th className="text-left py-2 font-semibold">#</th>
-                  <th className="text-left py-2 font-semibold">Fund</th>
-                  <th className="text-right py-2 font-semibold">Shares</th>
-                  <th className="text-right py-2 font-semibold">Value</th>
-                  <th className="text-right py-2 font-semibold">% Held</th>
-                  <th className="text-right py-2 font-semibold">QoQ Change</th>
-                </tr></thead>
-                <tbody>
-                  {(data.topFunds ?? []).map((fund, i) => (
-                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                      <td className="py-1.5 text-muted-foreground">{i + 1}</td>
-                      <td className="py-1.5 font-semibold text-foreground max-w-[250px] truncate">{fund.name}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatCompact(fund.shares)}</td>
-                      <td className="py-1.5 text-right tabular-nums">${formatCompact(fund.value)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{(fund.pctHeld * 100).toFixed(2)}%</td>
-                      <td className={`py-1.5 text-right font-semibold tabular-nums ${fund.changeQoQ > 0 ? "text-bull-light" : fund.changeQoQ < 0 ? "text-bear-light" : "text-muted-foreground"}`}>
-                        {fund.changeQoQ > 0 ? "+" : ""}{fund.changeQoQ.toFixed(1)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable<Institution>
+                columns={institutionLikeColumns("Fund")}
+                data={data.topFunds ?? []}
+                getRowKey={(_, i) => i}
+                dense
+              />
             ) : (
               <div className="text-center py-8 text-xs text-muted-foreground">
                 <Briefcase className="h-6 w-6 mx-auto mb-2 opacity-40" />
@@ -281,30 +279,23 @@ function DetailModal({ data, onClose }: { data: InstitutionalData; onClose: () =
 
           {tab === "insiders" && (
             (data.insiders ?? []).length > 0 ? (
-              <table className="w-full text-xs">
-                <thead><tr className="text-muted-foreground border-b border-card-border">
-                  <th className="text-left py-2 font-semibold">Name</th>
-                  <th className="text-left py-2 font-semibold">Role</th>
-                  <th className="text-right py-2 font-semibold">Direct Shares</th>
-                  <th className="text-right py-2 font-semibold">Indirect</th>
-                  <th className="text-left py-2 font-semibold">Last Action</th>
-                  <th className="text-right py-2 font-semibold">Date</th>
-                </tr></thead>
-                <tbody>
-                  {(data.insiders ?? []).map((ins, i) => (
-                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                      <td className="py-1.5 font-semibold text-foreground">{ins.name}</td>
-                      <td className="py-1.5 text-muted-foreground">{ins.relation}</td>
-                      <td className="py-1.5 text-right tabular-nums">{ins.shares > 0 ? formatCompact(ins.shares) : "—"}</td>
-                      <td className="py-1.5 text-right tabular-nums text-muted-foreground">{ins.sharesIndirect > 0 ? formatCompact(ins.sharesIndirect) : "—"}</td>
-                      <td className={`py-1.5 ${ins.latestTransaction === "Sale" ? "text-bear-light" : ins.latestTransaction === "Purchase" ? "text-bull-light" : "text-muted-foreground"}`}>
-                        {ins.latestTransaction || "—"}
-                      </td>
-                      <td className="py-1.5 text-right text-muted-foreground tabular-nums">{ins.latestDate || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable<InsiderHolder>
+                columns={[
+                  { key: "name", header: "Name", sortValue: (r: InsiderHolder) => r.name, accessor: (r: InsiderHolder) => <span className="font-semibold text-foreground">{r.name}</span> },
+                  { key: "role", header: "Role", sortValue: (r: InsiderHolder) => r.relation, accessor: (r: InsiderHolder) => <span className="text-muted-foreground">{r.relation}</span> },
+                  { key: "direct", header: "Direct Shares", type: "number", sortValue: (r: InsiderHolder) => r.shares, accessor: (r: InsiderHolder) => r.shares > 0 ? formatCompact(r.shares) : "—" },
+                  { key: "indirect", header: "Indirect", type: "number", sortValue: (r: InsiderHolder) => r.sharesIndirect, accessor: (r: InsiderHolder) => <span className="text-muted-foreground">{r.sharesIndirect > 0 ? formatCompact(r.sharesIndirect) : "—"}</span> },
+                  { key: "latestTx", header: "Last Action", sortValue: (r: InsiderHolder) => r.latestTransaction ?? "", accessor: (r: InsiderHolder) => (
+                    <span className={r.latestTransaction === "Sale" ? "text-bear-light" : r.latestTransaction === "Purchase" ? "text-bull-light" : "text-muted-foreground"}>
+                      {r.latestTransaction || "—"}
+                    </span>
+                  )},
+                  { key: "latestDate", header: "Date", align: "right", sortValue: (r: InsiderHolder) => r.latestDate ?? "", accessor: (r: InsiderHolder) => <span className="text-muted-foreground">{r.latestDate || "—"}</span> },
+                ]}
+                data={data.insiders ?? []}
+                getRowKey={(_, i) => i}
+                dense
+              />
             ) : (
               <div className="text-center py-8 text-xs text-muted-foreground">
                 <UserCheck className="h-6 w-6 mx-auto mb-2 opacity-40" />
@@ -369,65 +360,80 @@ function TransactionsTable({ txns }: { txns: InsiderTxn[] }) {
           )}
         </div>
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground border-b border-card-border">
-              <th className="py-2 pr-2">Date</th>
-              <th className="py-2 pr-2">Insider</th>
-              <th className="py-2 pr-2">Type</th>
-              <th className="py-2 pr-2 text-right">Shares</th>
-              <th className="py-2 pr-2 text-right">Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((tx, i) => {
-              const dirColor =
-                tx.direction === "buy" ? "text-bull-light"
-                : tx.direction === "sell" ? "text-bear-light"
-                : "text-muted-foreground";
-              const notable = isNotableRole(tx.relation);
-              const bigTicket = tx.value >= 10_000_000 && tx.meaningful;
-              return (
-                <tr
-                  key={i}
-                  className={`border-b border-card-border/40 ${bigTicket ? "bg-watch/5" : ""}`}
-                  data-testid={`insider-txn-row-${i}`}
-                >
-                  <td className="py-2 pr-2 text-muted-foreground tabular-nums">
-                    {tx.date ? new Date(tx.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "—"}
-                  </td>
-                  <td className="py-2 pr-2">
+        <DataTable<InsiderTxn>
+          columns={[
+            {
+              key: "date",
+              header: "Date",
+              sortValue: tx => tx.date ?? "",
+              accessor: tx => (
+                <span className="text-muted-foreground">
+                  {tx.date ? new Date(tx.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }) : "—"}
+                </span>
+              ),
+            },
+            {
+              key: "insider",
+              header: "Insider",
+              sortValue: tx => tx.insider,
+              accessor: tx => {
+                const notable = isNotableRole(tx.relation);
+                return (
+                  <div>
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{tx.insider}</span>
                       {notable && (
-                        <span className="text-mini px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold uppercase">
-                          Key
-                        </span>
+                        <span className="text-mini px-1 py-0.5 rounded bg-primary/20 text-primary font-semibold uppercase">Key</span>
                       )}
                     </div>
                     <span className="text-micro text-muted-foreground">{tx.relation}</span>
-                  </td>
-                  <td className="py-2 pr-2">
-                    <div className="flex items-center gap-1.5" title={tx.explain || ""}>
-                      <span className={`font-medium ${dirColor}`}>{tx.type}</span>
-                      {tx.typeCode && (
-                        <span className="text-mini px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">
-                          {tx.typeCode}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className={`py-2 pr-2 text-right tabular-nums ${dirColor}`}>
-                    {formatCompact(tx.shares)}
-                  </td>
-                  <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${dirColor}`}>
-                    {tx.value > 0 ? `$${formatCompact(tx.value)}` : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "type",
+              header: "Type",
+              sortValue: tx => tx.type,
+              accessor: tx => {
+                const dirColor = tx.direction === "buy" ? "text-bull-light" : tx.direction === "sell" ? "text-bear-light" : "text-muted-foreground";
+                return (
+                  <div className="flex items-center gap-1.5" title={tx.explain || ""}>
+                    <span className={`font-medium ${dirColor}`}>{tx.type}</span>
+                    {tx.typeCode && (
+                      <span className="text-mini px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono">{tx.typeCode}</span>
+                    )}
+                  </div>
+                );
+              },
+            },
+            {
+              key: "shares",
+              header: "Shares",
+              type: "number",
+              sortValue: tx => tx.shares,
+              accessor: tx => {
+                const dirColor = tx.direction === "buy" ? "text-bull-light" : tx.direction === "sell" ? "text-bear-light" : "text-muted-foreground";
+                return <span className={dirColor}>{formatCompact(tx.shares)}</span>;
+              },
+            },
+            {
+              key: "value",
+              header: "Value",
+              type: "number",
+              sortValue: tx => tx.value,
+              accessor: tx => {
+                const dirColor = tx.direction === "buy" ? "text-bull-light" : tx.direction === "sell" ? "text-bear-light" : "text-muted-foreground";
+                return <span className={`font-semibold ${dirColor}`}>{tx.value > 0 ? `$${formatCompact(tx.value)}` : "—"}</span>;
+              },
+            },
+          ]}
+          data={filtered}
+          getRowKey={(_, i) => i}
+          defaultSort={{ key: "date", direction: "desc" }}
+          rowClassName={tx => (tx.value >= 10_000_000 && tx.meaningful ? "bg-watch/5" : "")}
+          dense
+        />
       )}
     </div>
   );

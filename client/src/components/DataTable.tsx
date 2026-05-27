@@ -12,7 +12,7 @@ export type DataTableColumnType = "score" | "price" | "number" | "text";
 export type DataTableColumn<T> = {
   key: string;
   header: React.ReactNode;
-  accessor: (row: T) => React.ReactNode;
+  accessor: (row: T, index: number) => React.ReactNode;
   // Returns a comparable primitive for sorting. Defaults to the accessor's
   // result coerced to string/number. Provide this when the rendered cell
   // is JSX (e.g. a colored badge) but you want to sort by an underlying value.
@@ -271,7 +271,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
                           c.cellClassName,
                         )}
                       >
-                        {c.accessor(row)}
+                        {c.accessor(row, i)}
                       </td>
                     );
                   })}
