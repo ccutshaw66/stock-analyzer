@@ -30,6 +30,23 @@ import {
 export function KairosFullView() {
   const K = useKairos();
   const startingEquity = K.goal.data?.starting_equity ?? DEFAULT_STARTING_EQUITY;
+  // Watchlist is pre-trade observation only — once a ticker is an open KAIROS
+  // position it stops competing for attention on the watch table. Source of
+  // truth for "open" lives on the python bot's /api/status; we just intersect.
+  const openSymbols = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of K.status.data?.open_positions ?? []) {
+      if (p?.symbol) set.add(String(p.symbol).toUpperCase());
+    }
+    return set;
+  }, [K.status.data?.open_positions]);
+  const watchlistRows = useMemo(() => {
+    if (!K.watchlist.data) return K.watchlist.data;
+    if (openSymbols.size === 0) return K.watchlist.data;
+    return K.watchlist.data.filter(
+      r => !openSymbols.has(String(r.ticker || "").toUpperCase()),
+    );
+  }, [K.watchlist.data, openSymbols]);
   return (
     <div className="space-y-4">
       <AccountCard
@@ -49,7 +66,7 @@ export function KairosFullView() {
         offline={K.offline}
       />
       <WatchlistSection
-        rows={K.watchlist.data}
+        rows={watchlistRows}
         loading={K.watchlist.isLoading}
         offline={K.offline}
         onRefresh={() => K.watchlist.refetch()}

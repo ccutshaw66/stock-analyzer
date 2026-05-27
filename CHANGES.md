@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — KAIROS watchlist drops tickers that are already open positions
+
+**Why:** Chris reported "the watch lists are still showing the active positions" after the earlier server-side `/api/favorites/watchlist` filter shipped. That filter only covers the dashboard `WatchlistWidget`. KAIROS has its own separate watchlist that comes from the python bot via `/api/kairos/api/watchlist` (proxied through Express) — completely different data path, no server-side filter touches it.
+
+**What:**
+- **`KairosFullView.tsx`** — derive `openSymbols` from `K.status.data.open_positions` and filter `K.watchlist.data` before passing it to `WatchlistSection`. Same rule as the favorites version: watchlist is pre-trade only; once it's open it leaves the table. Client-side filter because the bot owns the upstream and we don't want to touch the python heartbeat shape for a UI rule.
+
+**Files:**
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx`
+
+---
 ## 2026-05-27 — Ticker search migrated off Polygon onto FMP
 
 **Why:** Chris's reaction after the earlier search-ranking fix shipped: "Polygon?!?! That is a dirty word around here. First get rid of it." Polygon is on the kill list (see `yahoo_architectural_role.md` + `plan_yahoo_polygon_kill.md`); leaving the `/api/search` route on `polygonSearch` was a regression on that directive.
