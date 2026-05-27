@@ -4333,28 +4333,6 @@ export async function registerRoutes(
     }
   });
 
-  // Scanner 2.0 — Signal Pulse: 60-day composite oscillator from all 12 detectors
-  app.get("/api/scanner-v2/pulse/:ticker", async (req, res) => {
-    try {
-      await ensureReady();
-      const ticker = String(req.params.ticker || "").toUpperCase().trim();
-      if (!ticker) return res.status(400).json({ error: "ticker required" });
-
-      const key = `v2:pulse:${ticker}`;
-      const cached = getCached(key);
-      if (cached) return res.json({ ...cached, cached: true });
-
-      const { runSignalPulse } = await import("./signal-pulse");
-      const result = await runSignalPulse(ticker);
-      if (!result) return res.json({ ticker, days: [], reason: "insufficient-bars" });
-      setCache(key, result, TTL.watchlist);
-      res.json({ ...result, cached: false });
-    } catch (err: any) {
-      console.error("[pulse] failed:", err?.message || err);
-      res.status(500).json({ error: err?.message || "Failed to compute signal pulse" });
-    }
-  });
-
   // Scanner 2.0 — indicator oscillator series (MACD histogram + RSI) for a ticker (last ~60 bars)
   app.get("/api/scanner-v2/indicators/:ticker", async (req, res) => {
     try {
@@ -6629,16 +6607,24 @@ export async function registerRoutes(
     }
   });
 
-  // Initialize track record cron (daily at 4:30 PM ET = market close + 30 min)
+  // Initialize track record cron — runs daily after market close.
+  //
+  // Trigger window is 20:30–23:30 UTC (4:30–7:30 PM ET) on weekdays. Wide
+  // window because pm2 restarts shift the setInterval tick alignment; a
+  // 5-minute window meant any restart between, say, 19:31 UTC and the
+  // window-open could push the next tick past the window and skip a day.
+  // The wider window survives any single same-day restart.
+  //
+  // logSignals() has an "already logged today" guard at the top, so multiple
+  // setInterval ticks landing inside the window are no-ops after the first.
   const { logSignals, checkOutcomes } = await import("./track-record");
-  // Run signal logger daily at 16:30 ET (20:30 UTC)
   setInterval(async () => {
     const now = new Date();
     const hour = now.getUTCHours();
-    const min = now.getUTCMinutes();
     const day = now.getUTCDay();
-    // Only weekdays at ~20:30 UTC (4:30 PM ET)
-    if (day >= 1 && day <= 5 && hour === 20 && min >= 30 && min <= 35) {
+    // Weekdays, between 20:30 and 23:30 UTC. Idempotent: only writes if
+    // signal_log has no rows for today.
+    if (day >= 1 && day <= 5 && hour >= 20 && hour <= 23) {
       try {
         await logSignals(getQuote, screenStocks, computeEMA, getChart, ensureReady);
         await checkOutcomes(getQuote, ensureReady);
@@ -6646,7 +6632,7 @@ export async function registerRoutes(
         console.error("[track-record] Cron error:", err.message);
       }
     }
-  }, 5 * 60 * 1000); // Check every 5 minutes
+  }, 5 * 60 * 1000); // Check every 5 minutes — first tick inside the 3-hour window does the work, rest are no-ops.
 
   // ─── Demo Account Idle Reset Timer ────────────────────────────────────────
   // Check every 5 minutes. If demo was active and is now idle for 60 min, reset.

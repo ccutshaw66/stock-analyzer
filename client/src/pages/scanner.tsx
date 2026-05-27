@@ -10,7 +10,6 @@ import {
   SlidersHorizontal, Eye, EyeOff, Flame
 } from "lucide-react";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
-import { SignalPulse } from "@/components/SignalPulse";
 import { PageTemplate } from "@/components/PageTemplate";
 
 const SECTORS = [
@@ -390,7 +389,6 @@ export default function Scanner() {
   const [v2UniverseSize, setV2UniverseSize] = useState(2000);
   const [signalFilter, setSignalFilter] = useState<"both" | "buy" | "sell">("both");
   const [filtersOpen, setFiltersOpen] = useState(true);
-  const [pulseTicker, setPulseTicker] = useState<string | null>(null);
 
   const priceConfig = PRICE_RANGES.find(p => p.value === priceRange) || PRICE_RANGES[0];
   const queryParams = new URLSearchParams({
@@ -490,11 +488,6 @@ export default function Scanner() {
     navigate("/trade");
   };
 
-  // Click ticker on card → load it into the Signal Pulse oscillator at top of page
-  const handlePulseSelect = (ticker: string) => {
-    setPulseTicker(ticker);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -514,9 +507,6 @@ export default function Scanner() {
           </>
         }
       >
-        {/* Signal Pulse — proprietary oscillator */}
-        <SignalPulse ticker={pulseTicker} />
-
         {/* Scan Mode Tabs */}
         <div className="flex border-b border-card-border">
           <button
@@ -712,7 +702,7 @@ export default function Scanner() {
                 </span>
               </div>
               {data.results.map((result: any, idx: number) => (
-                <ExplosionCard key={result.symbol} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.symbol)} onAnalyze={() => handleTickerClick(result.symbol)} />
+                <ExplosionCard key={result.symbol} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.symbol)} onAnalyze={() => handleTickerClick(result.symbol)} />
               ))}
             </div>
           ) : (
@@ -750,9 +740,9 @@ export default function Scanner() {
               </div>
               {filtered.map((result: any, idx: number) => (
                 scanMode === "amc" ? (
-                  <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
+                  <AMCCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
                 ) : (
-                  <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handlePulseSelect(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
+                  <ThreeStrategyCard key={result.ticker} result={result} rank={idx + 1} onClick={() => handleTickerClick(result.ticker)} onAnalyze={() => handleTickerClick(result.ticker)} />
                 )
               ))}
             </div>

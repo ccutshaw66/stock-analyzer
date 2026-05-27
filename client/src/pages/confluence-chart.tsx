@@ -10,7 +10,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
-import { SignalPulse } from "@/components/SignalPulse";
 import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { PageTemplate } from "@/components/PageTemplate";
 import { CandlePane, emaOverlays, EmaToggleStrip, type EmaToggleState } from "@/components/chart";
@@ -149,11 +148,6 @@ export default function ConfluenceChartPage() {
               testId="confluence-candle-pane"
             />
           )}
-        </div>
-
-        {/* Signal Pulse — drop-in existing component */}
-        <div className="border-t border-border px-2 py-1">
-          <SignalPulse ticker={activeTicker} />
         </div>
 
         {/* How to read this chart — collapsible explainer */}

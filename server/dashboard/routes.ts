@@ -13,22 +13,19 @@ import { registerMorningBriefRoute } from "./morning-brief";
 import { registerPositionNewsRoute } from "./news-routes";
 import { registerChecklistRoutes } from "./checklist-routes";
 import { registerAskOtterRoutes } from "./ask-otter-routes";
-import { registerConfluencePulseRoute } from "./confluence-pulse";
 import { registerPositionInsidersRoute, registerInsiderClustersRoute } from "./insider-routes";
 import { registerInsiderRatioRoute } from "./insider-ratio";
 import { registerForm4Routes } from "./form4-routes";
 
 export function registerDashboardRoutes(app: Express): void {
   // Dashboard rebuild v1 routes — each compartment gets its own server module
-  // (action-queue / morning-brief / news / checklist / ask-otter /
-  // confluence-pulse / insiders) registered here so adding a new compartment
-  // is one import + one call.
+  // (action-queue / morning-brief / news / checklist / ask-otter / insiders)
+  // registered here so adding a new compartment is one import + one call.
   registerActionQueueRoute(app);
   registerMorningBriefRoute(app);
   registerPositionNewsRoute(app);
   registerChecklistRoutes(app);
   registerAskOtterRoutes(app);
-  registerConfluencePulseRoute(app);
   registerPositionInsidersRoute(app);
   registerInsiderClustersRoute(app);
   registerInsiderRatioRoute(app);

@@ -9,6 +9,42 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — 4 indicators audit: Track Record fix, Signal Pulse + Confluence Pulse removed, Conviction Compass kept
+
+**Why:** Chris's quote (going-to-bed brief): *"the 4 indicators we built NONE of them work. Track Record shows nothing... the Conviction Compass is fucking stupid... Signal Pulse is the worst, it has no coherence... ALL of them are either broke or not initiative."* Directive: fix or remove, don't ask.
+
+**Track Record — FIXED:**
+- The setInterval cron in `server/routes.ts` only fired during a 5-minute window (20:30–20:35 UTC). pm2 restarts shift the tick alignment; one restart between 19:31 and 20:30 UTC pushes the next tick past the window and skips that day entirely. Hence "nothing has been logged since it was made."
+- Widened the window to 20:30–23:30 UTC (3 hours). The existing "already logged today" guard in `logSignals()` makes the wider window idempotent — only the first tick inside the window does work, the rest are no-ops.
+- Deleted two duplicate stub scheduler jobs (`platform/jobs/jobs/log-daily-signals.ts` and `check-outcomes.ts`) — they registered with the scheduler but their handlers threw `NotImplemented`. The setInterval in routes.ts was the actual cron; the scheduler stubs were dead code throwing every day at 16:30 server time.
+
+**Signal Pulse — REMOVED:**
+- The 60-day composite oscillator that ran 6 independent technical detectors and counted bullish vs bearish triggers. Chris's critique was the fundamental design flaw: counting independent detectors that aren't designed to agree produces incoherent output. Fixing it would mean redesigning the feature; Chris explicitly wanted it gone.
+- Deleted: `server/signal-pulse.ts`, `client/src/components/SignalPulse.tsx`, and the `GET /api/scanner-v2/pulse/:ticker` route.
+- Removed `<SignalPulse>` mounts from `/scanner` and `/chart/confluence`. The scanner card click handler (`handlePulseSelect` — which scrolled to the now-removed pulse component) was consolidated into `handleTickerClick`, so clicking a scanner result now goes straight to Trade Analysis instead.
+
+**Confluence Pulse — REMOVED:**
+- The 5-spoke dashboard radar widget pulled from `compassSnapshots`. Showed nulls when snapshots were sparse — same symptom Chris flagged.
+- Deleted: `server/dashboard/confluence-pulse.ts`, `client/src/compartments/confluence-pulse/*`, the `GET /api/dashboard/confluence-pulse/:ticker` route, and the import + array entry in `client/src/compartments/registry.ts`.
+- Updated `buildDefaultDashboardLayout()` to fill the row 3 slot with Ask Otter at full width (was Confluence Pulse 8 cols + Ask Otter 4 cols).
+- Existing users with saved dashboard layouts pointing at `compartmentId: "confluence-pulse"` will see that slot disappear (compartment registry returns undefined → renderer skips). No migration needed.
+
+**Conviction Compass — KEPT, unchanged tonight:**
+- The page has a thoughtful design (radar of 4 orthogonal axes — smart money / dealer / technical / fundamental) and the live per-ticker reading runs instantly via `/api/conviction/:ticker`. The "doesn't tell me anything" complaint is most likely runtime data sparsity (axes returning `null` because the data sources are missing for that ticker) or the empty-state placeholder when no ticker is active.
+- Without classifier access I couldn't query the live API to confirm which. Better to leave the working bits alone than risk a half-blind "fix." Chris: give a specific symptom in the morning (which ticker? what does the radar look like? error or just empty?) and we'll either fix the data path or pull it.
+
+**Files touched:**
+- Modified: `server/routes.ts` (Track Record cron window widened, /api/scanner-v2/pulse/:ticker removed)
+- Modified: `client/src/pages/scanner.tsx` (Signal Pulse removed, click handler consolidated)
+- Modified: `client/src/pages/confluence-chart.tsx` (Signal Pulse removed)
+- Modified: `client/src/compartments/registry.ts` (confluence-pulse removed)
+- Modified: `server/dashboard/routes.ts` (confluence-pulse route un-registered)
+- Modified: `server/dashboard/layout.ts` (default layout reflowed)
+- Deleted: `server/signal-pulse.ts`, `client/src/components/SignalPulse.tsx`
+- Deleted: `server/dashboard/confluence-pulse.ts`, `client/src/compartments/confluence-pulse/{index.ts,ConfluencePulseWidget.tsx}`
+- Deleted: `server/platform/jobs/jobs/log-daily-signals.ts`, `server/platform/jobs/jobs/check-outcomes.ts`
+
+---
 ## 2026-05-26 — KAIROS: allocation row on Account card (Open / Invested / Free cash / Unrealized P/L)
 
 **Why:** Chris hit 18 paper positions and asked: "can we get a total funds allocated on the page so that warm and fuzzy doesn't turn into OH SHIT WHAT HAPPENED. I would like open position numbers and totals." Reasonable — current Account card showed equity totals (Starting / Current / Total P/L) but no view of how much capital was tied up vs free. With BBTC firing on lots of watchlist tickers post the watchlist-broadening fix, "how exposed am I right now?" became a real question.

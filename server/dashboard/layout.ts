@@ -8,7 +8,7 @@
  *
  *   Row 1: Morning Brief (full width banner)
  *   Row 2: Action Queue (8 cols) | Morning Checklist (4 cols)
- *   Row 3: Confluence Pulse (8 cols) | Ask Otter (4 cols)
+ *   Row 3: Ask Otter (12 cols)
  *   Row 4: Position News (full width)
  *
  * Legacy widgets stay in the registry as opt-in (Customize layout reveals
@@ -33,9 +33,8 @@ export function buildDefaultDashboardLayout(): DashboardLayout {
           // Row 2: Action Queue + Checklist
           { compartmentId: "action-queue",      visible: true, x: 0, y: 2,  w: 8,  h: 6 },
           { compartmentId: "morning-checklist", visible: true, x: 8, y: 2,  w: 4,  h: 6 },
-          // Row 3: Confluence Pulse + Ask Otter
-          { compartmentId: "confluence-pulse",  visible: true, x: 0, y: 8,  w: 8,  h: 6 },
-          { compartmentId: "ask-otter",         visible: true, x: 8, y: 8,  w: 4,  h: 6 },
+          // Row 3: Ask Otter (full width — Confluence Pulse removed 2026-05-27)
+          { compartmentId: "ask-otter",         visible: true, x: 0, y: 8,  w: 12, h: 6 },
           // Row 4: Position News + Position Insiders side by side
           { compartmentId: "position-news",     visible: true, x: 0, y: 14, w: 6,  h: 6 },
           { compartmentId: "position-insiders", visible: true, x: 6, y: 14, w: 6,  h: 6 },
