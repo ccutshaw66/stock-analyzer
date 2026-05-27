@@ -3025,7 +3025,10 @@ export async function registerRoutes(
   // Favorites API
   // ============================================================
 
-  // Get all favorites for a list type
+  // Get all favorites for a list type.
+  // Watchlist is "pre-trade observation only" — once a ticker becomes an open
+  // trade it drops out of the list, so both WatchlistWidget and FavoritesPanel
+  // see the same canonical filter without duplicating logic on the client.
   app.get("/api/favorites/:listType", async (req, res) => {
     try {
       const listType = req.params.listType;
@@ -3033,6 +3036,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "listType must be 'watchlist' or 'portfolio'" });
       }
       const items = await storage.getFavorites(req.user!.id, listType);
+      if (listType === "watchlist") {
+        const trades = await storage.getAllTrades(req.user!.id);
+        const openSymbols = new Set(
+          trades
+            .filter((t: any) => t.closeDate === null || t.closeDate === undefined)
+            .map((t: any) => String(t.symbol || "").toUpperCase()),
+        );
+        const filtered = items.filter(
+          (f: any) => !openSymbols.has(String(f.ticker || "").toUpperCase()),
+        );
+        return res.json(filtered);
+      }
       res.json(items);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch favorites" });

@@ -18,6 +18,7 @@ import { Flag, AlertTriangle, Play, RefreshCw, Activity, Flame, Eye, Plus } from
 import { PageTemplate } from "@/components/PageTemplate";
 import { BrandedLoader } from "@/components/BrandedLoader";
 import { BrandedEmptyState } from "@/components/BrandedEmptyState";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import { ScoreRange } from "@/components/HelpBlock";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,17 @@ function seedTradeFromHtfRow(r: HtfSetupRow) {
   sessionStorage.setItem("htf-add-seed", JSON.stringify(seed));
 }
 
-function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: boolean }) {
+function SetupsTable({
+  rows,
+  showBlocked,
+  onRefresh,
+  isRefreshing,
+}: {
+  rows: HtfSetupRow[];
+  showBlocked: boolean;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}) {
   const [, navigate] = useLocation();
   const openChart = (symbol: string) => {
     navigate(`/htf/${symbol}`);
@@ -180,98 +191,171 @@ function SetupsTable({ rows, showBlocked }: { rows: HtfSetupRow[]; showBlocked: 
       />
     );
   }
+  const columns: DataTableColumn<HtfSetupRow>[] = [
+    {
+      key: "symbol",
+      header: "Symbol",
+      sortValue: r => r.symbol,
+      accessor: r => (
+        <span className="font-bold text-foreground underline decoration-dotted underline-offset-2">{r.symbol}</span>
+      ),
+    },
+    {
+      key: "qualityScore",
+      header: "Score",
+      type: "score",
+      sortValue: r => r.qualityScore,
+      accessor: r => (
+        <span className={`px-2 py-0.5 rounded border font-bold ${scoreColor(r.qualityScore)} ${scoreBg(r.qualityScore)}`}>
+          {r.qualityScore}
+        </span>
+      ),
+    },
+    {
+      key: "currentPrice",
+      header: "Current",
+      type: "price",
+      sortValue: r => r.currentPrice ?? -1,
+      accessor: r => <span className="font-semibold text-foreground">{fmt$(r.currentPrice)}</span>,
+    },
+    {
+      key: "breakoutPrice",
+      header: "Entry / Trigger",
+      type: "price",
+      sortValue: r => r.breakoutPrice ?? -1,
+      accessor: r => fmt$(r.breakoutPrice),
+    },
+    {
+      key: "pctFromEntry",
+      header: "vs entry",
+      type: "number",
+      sortValue: r => r.pctFromEntry,
+      accessor: r => (
+        <span
+          className={`text-xs ${r.pctFromEntry > 0 ? "text-bull-light" : r.pctFromEntry < 0 ? "text-watch-light" : "text-muted-foreground"}`}
+          title={r.pattern === "HTF_Givens_Forming"
+            ? "Negative = price below the trigger (good — still in flag). Positive = already broke out."
+            : "Positive = trade has run since breakout (chase risk). Negative = pulled back below the breakout close."}
+        >
+          {r.pctFromEntry > 0 ? "+" : ""}{r.pctFromEntry.toFixed(1)}%
+        </span>
+      ),
+    },
+    {
+      key: "targetPrice",
+      header: "Target",
+      type: "price",
+      sortValue: r => r.targetPrice ?? -1,
+      accessor: r => <span className="text-bull-light">{fmt$(r.targetPrice)}</span>,
+    },
+    {
+      key: "stopPrice",
+      header: "Stop",
+      type: "price",
+      sortValue: r => r.stopPrice ?? -1,
+      accessor: r => <span className="text-bear-light">{fmt$(r.stopPrice)}</span>,
+    },
+    {
+      key: "rewardRiskRatio",
+      header: "R/R",
+      type: "number",
+      sortValue: r => r.rewardRiskRatio,
+      accessor: r => r.rewardRiskRatio.toFixed(1),
+    },
+    {
+      key: "recommendedShares",
+      header: "Shares",
+      type: "number",
+      sortValue: r => r.recommendedShares,
+      accessor: r => r.recommendedShares.toLocaleString(),
+    },
+    {
+      key: "positionValue",
+      header: "$ Position",
+      type: "price",
+      sortValue: r => r.positionValue,
+      accessor: r => fmt$0(r.positionValue),
+    },
+    {
+      key: "actualRisk",
+      header: "$ Risk",
+      type: "number",
+      sortValue: r => r.actualRisk,
+      accessor: r => fmt$0(r.actualRisk),
+    },
+    {
+      key: "pole",
+      header: "Pole",
+      type: "number",
+      sortValue: r => r.poleGainPct,
+      accessor: r => (
+        <span className="text-xs text-muted-foreground">+{r.poleGainPct.toFixed(0)}% / {r.poleDays}d</span>
+      ),
+    },
+    {
+      key: "flag",
+      header: "Flag",
+      type: "number",
+      sortValue: r => r.flagDays,
+      accessor: r => (
+        <span className="text-xs text-muted-foreground">{r.flagDays}d / -{r.flagPullbackPct.toFixed(1)}%</span>
+      ),
+    },
+    {
+      key: "vol",
+      header: "Vol",
+      type: "number",
+      sortValue: r => r.breakoutVolRatio,
+      accessor: r => <span className="text-xs text-muted-foreground">{r.breakoutVolRatio.toFixed(1)}×</span>,
+    },
+    {
+      key: "add",
+      header: "Add",
+      sortable: false,
+      align: "center",
+      width: "w-12",
+      accessor: r => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            addAsTrade(r);
+          }}
+          title="Add as a tracked trade — pre-fills strategy, stop, target, pole/flag data from this row"
+          data-testid={`htf-add-trade-${r.symbol}`}
+          className="p-1 rounded hover:bg-bull/20 text-bull-light hover:text-bull transition-colors"
+          aria-label={`Add ${r.symbol} as a tracked trade`}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      ),
+    },
+    ...(showBlocked
+      ? [
+          {
+            key: "blockedReason",
+            header: "Why blocked",
+            sortable: false,
+            align: "left" as const,
+            accessor: (r: HtfSetupRow) => <span className="text-xs text-bear-light">{r.blockedReason ?? "—"}</span>,
+          } satisfies DataTableColumn<HtfSetupRow>,
+        ]
+      : []),
+  ];
+
+  // Score filter is owned by the parent tabs (server-side `minScore` query
+  // param so the payload is small) — don't double-up with the DataTable's
+  // client-side score filter.
   return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 text-left">Symbol</th>
-            <th className="px-3 py-2 text-right">Score</th>
-            <th className="px-3 py-2 text-right">Current</th>
-            <th className="px-3 py-2 text-right">Entry / Trigger</th>
-            <th className="px-3 py-2 text-right">vs entry</th>
-            <th className="px-3 py-2 text-right">Target</th>
-            <th className="px-3 py-2 text-right">Stop</th>
-            <th className="px-3 py-2 text-right">R/R</th>
-            <th className="px-3 py-2 text-right">Shares</th>
-            <th className="px-3 py-2 text-right">$ Position</th>
-            <th className="px-3 py-2 text-right">$ Risk</th>
-            <th className="px-3 py-2 text-right">Pole</th>
-            <th className="px-3 py-2 text-right">Flag</th>
-            <th className="px-3 py-2 text-right">Vol</th>
-            <th className="px-3 py-2 text-center w-12">Add</th>
-            {showBlocked && <th className="px-3 py-2 text-left">Why blocked</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr
-              key={r.symbol}
-              onClick={() => openChart(r.symbol)}
-              className="cursor-pointer border-t border-border hover:bg-muted/30 transition-colors"
-              data-testid={`htf-row-${r.symbol}`}
-              title="Open the HTF pattern chart"
-            >
-              <td className="px-3 py-2 font-bold text-foreground underline decoration-dotted underline-offset-2">
-                {r.symbol}
-              </td>
-              <td className={`px-3 py-2 text-right font-bold ${scoreColor(r.qualityScore)}`}>
-                <span className={`px-2 py-0.5 rounded border ${scoreBg(r.qualityScore)}`}>
-                  {r.qualityScore}
-                </span>
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums font-semibold text-foreground">
-                {fmt$(r.currentPrice)}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt$(r.breakoutPrice)}</td>
-              <td
-                className={`px-3 py-2 text-right tabular-nums text-xs ${
-                  r.pctFromEntry > 0 ? "text-bull-light" : r.pctFromEntry < 0 ? "text-watch-light" : "text-muted-foreground"
-                }`}
-                title={r.pattern === "HTF_Givens_Forming"
-                  ? "Negative = price below the trigger (good — still in flag). Positive = already broke out."
-                  : "Positive = trade has run since breakout (chase risk). Negative = pulled back below the breakout close."}
-              >
-                {r.pctFromEntry > 0 ? "+" : ""}{r.pctFromEntry.toFixed(1)}%
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums text-bull-light">{fmt$(r.targetPrice)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-bear-light">{fmt$(r.stopPrice)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.rewardRiskRatio.toFixed(1)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.recommendedShares.toLocaleString()}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt$0(r.positionValue)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmt$0(r.actualRisk)}</td>
-              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                +{r.poleGainPct.toFixed(0)}% / {r.poleDays}d
-              </td>
-              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                {r.flagDays}d / -{r.flagPullbackPct.toFixed(1)}%
-              </td>
-              <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                {r.breakoutVolRatio.toFixed(1)}×
-              </td>
-              <td className="px-3 py-2 text-center">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();           // don't open the chart
-                    addAsTrade(r);
-                  }}
-                  title="Add as a tracked trade — pre-fills strategy, stop, target, pole/flag data from this row"
-                  data-testid={`htf-add-trade-${r.symbol}`}
-                  className="p-1 rounded hover:bg-bull/20 text-bull-light hover:text-bull transition-colors"
-                  aria-label={`Add ${r.symbol} as a tracked trade`}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </td>
-              {showBlocked && (
-                <td className="px-3 py-2 text-xs text-bear-light">{r.blockedReason ?? "—"}</td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={rows}
+      getRowKey={r => r.symbol}
+      defaultSort={{ key: "qualityScore", direction: "desc" }}
+      onRowClick={r => openChart(r.symbol)}
+      onRefresh={onRefresh}
+      isRefreshing={isRefreshing}
+    />
   );
 }
 
@@ -327,7 +411,12 @@ function LiveTab() {
           />
         </div>
       </div>
-      <SetupsTable rows={data.rows} showBlocked={false} />
+      <SetupsTable
+        rows={data.rows}
+        showBlocked={false}
+        onRefresh={() => q.refetch()}
+        isRefreshing={q.isFetching}
+      />
     </div>
   );
 }
@@ -394,7 +483,12 @@ function WatchTab() {
           description="The watch list surfaces stocks with a 30%+ pole and a tight flag that's still consolidating. Refresh in a few hours, or widen the score floor."
         />
       ) : (
-        <SetupsTable rows={data.rows} showBlocked={false} />
+        <SetupsTable
+          rows={data.rows}
+          showBlocked={false}
+          onRefresh={() => q.refetch()}
+          isRefreshing={q.isFetching}
+        />
       )}
     </div>
   );

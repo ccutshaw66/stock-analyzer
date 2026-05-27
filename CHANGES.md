@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Site-wide table standards + global search fixes (sortable cols, score filter, refresh, dropdown dismiss, ranking)
+
+**Why:** Chris's pass over the site: tables don't have any of the standards a fintech UI should have. Specifically: "Need to make all columns sortable by clicking the column title… any table that has our score should be able to filter by minimum score… any page that has a watchlist should not have a ticker in the watchlist and the active trade list… any table with prices in them should have a refresh button… The global analyze ticker at the top of the page gets stuck and the find scroll window won't go away even after you have already hit analyze… spelled out tesla and Tesla is the 3rd or 4th down." Five separate template-level gaps; foundation work fixes them across the site instead of patch-per-page.
+
+**What:**
+- **Shared `DataTable` component** (`client/src/components/DataTable.tsx`) — the template every page now reuses. Column schema with `sortable` / `type` / `align` hints; click-header to cycle asc → desc → none; built-in **min-score filter** that auto-renders when a column is typed `"score"`; built-in **refresh button** in the header that wires to a `onRefresh` callback. Uses design tokens for colors / spacing / typography — clears the professional-fintech bar.
+- **Watchlist filter** (server-side, canonical) — `GET /api/favorites/watchlist` now joins against open trades and drops any ticker that has an open position. Both `WatchlistWidget` and `FavoritesPanel` see the filtered list with no client changes. Server is the right place — one rule, one filter, no client drift. Watchlist is "pre-trade observation only"; once it becomes a trade it stops competing for attention.
+- **Global ticker search fixes** (`client/src/components/AppLayout.tsx` + `server/polygon.ts`):
+  - **Dropdown dismiss race fixed** — the autocomplete used to stay open after clicking Analyze because a pending fetch (or a fetch that completed AFTER submit) would re-set `setShowSearch(true)`. Added a request-generation counter so any in-flight fetch is invalidated by submit, and `searchResults` is cleared so re-focus can't re-open the dropdown either.
+  - **Ranking fixed** — Polygon's `/v3/reference/tickers?search=…` returns matches anywhere in the company name in whatever order Polygon feels like, which is why typing "tesla" returned 8 unrelated tickers with Tesla 3rd or 4th. Now pulls 50 candidates and post-ranks locally by: exact symbol → symbol prefix → first-word match → any-word match → name prefix → word prefix → symbol contains → name contains. TSLA → exact match → rank 0. "tesla" → first-word of "Tesla, Inc." → rank 2. Slice to 8 after the sort.
+- **Page migrations to DataTable** (first wave — the template is now proven on real surfaces):
+  - **`/insiders`** — both tables: Conviction Buy Clusters (score column, score filter, refresh) and Ranked Tickers (sortable columns, refresh, retains the dollar-activity filter as a separate page control since that's not a score). Removed the bespoke 3-mode sort selector; column headers do the work now.
+  - **`/htf-setups`** — `SetupsTable` (Live + Watch tabs) — all 15 columns sortable, defaults to Score desc, refresh button per tab. The page already had a server-side `minScore` query parameter so we don't double-up with DataTable's client-side score filter.
+- **Refresh buttons added to remaining price tables** (lighter touch — full DataTable migration deferred):
+  - **KAIROS Watchlist + Open Positions** sections (`KairosFullView.tsx`) — section header now carries a `RefreshButton` wired to the relevant React Query `refetch`. Was previously auto-poll-only with no manual trigger.
+
+**Foundation note (per universal-structure rule):** `DataTable` is the canonical surface for tabular data going forward. Remaining tables (`/institutional`, `/scanner`, `/trade-tracker`, `/dividend-portfolio`, Hermes trades widget) are next — they get the same migration on a follow-up pass. Adding columns to existing pages now uses DataTable's column schema instead of hand-rolled `<thead>` markup.
+
+**Files:**
+- Added: `client/src/components/DataTable.tsx`
+- Modified: `client/src/components/AppLayout.tsx` (search dismiss race + helper)
+- Modified: `server/polygon.ts` (post-rank polygonSearch results)
+- Modified: `server/routes.ts` (favorites watchlist excludes open trades)
+- Modified: `client/src/pages/insiders.tsx` (Conviction Clusters + Ranked Tickers → DataTable; dropped bespoke sort selector)
+- Modified: `client/src/pages/htf-setups.tsx` (SetupsTable → DataTable; wired refresh to React Query refetch)
+- Modified: `client/src/compartments/kairos/KairosFullView.tsx` (RefreshButton on Watchlist + Open Positions sections)
+
+---
 ## 2026-05-27 — 4 indicators audit: Track Record fix, Signal Pulse + Confluence Pulse removed, Conviction Compass kept
 
 **Why:** Chris's quote (going-to-bed brief): *"the 4 indicators we built NONE of them work. Track Record shows nothing... the Conviction Compass is fucking stupid... Signal Pulse is the worst, it has no coherence... ALL of them are either broke or not initiative."* Directive: fix or remove, don't ask.

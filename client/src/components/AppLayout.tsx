@@ -77,30 +77,44 @@ function StickyHeader({
 
   // Debounced search — triggers when user types 2+ chars that look like a name (not a pure ticker)
   const searchTimerRef = useRef<any>(null);
+  // Request-generation counter — invalidates stale in-flight fetches so a
+  // late response can't re-open the dropdown after the user hit Analyze.
+  const searchGenRef = useRef(0);
   const handleInputChange = (val: string) => {
     setInput(val);
-    // If it looks like a company name (has lowercase, or 5+ chars), search
     const isName = val.length >= 2 && (/[a-z]/.test(val) || val.length >= 4);
     if (isName) {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      const myGen = ++searchGenRef.current;
       searchTimerRef.current = setTimeout(async () => {
         try {
           const res = await apiRequest("GET", `/api/search?q=${encodeURIComponent(val)}`);
           const data = await res.json();
+          if (myGen !== searchGenRef.current) return;
           setSearchResults(data);
           setShowSearch(data.length > 0);
-        } catch { setSearchResults([]); setShowSearch(false); }
+        } catch {
+          if (myGen !== searchGenRef.current) return;
+          setSearchResults([]);
+          setShowSearch(false);
+        }
       }, 300);
     } else {
       setShowSearch(false);
     }
   };
 
+  const dismissSearch = () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchGenRef.current++;
+    setSearchResults([]);
+    setShowSearch(false);
+  };
+
   const selectResult = (symbol: string) => {
     setActiveTicker(symbol);
     setInput("");
-    setShowSearch(false);
-    setSearchResults([]);
+    dismissSearch();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -109,7 +123,7 @@ function StickyHeader({
     if (trimmed) {
       setActiveTicker(trimmed);
       setInput("");
-      setShowSearch(false);
+      dismissSearch();
     }
   };
 

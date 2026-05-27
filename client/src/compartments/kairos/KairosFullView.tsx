@@ -16,7 +16,7 @@ import { useMemo, useState, useEffect } from "react";
 import {
   Activity, Loader2, AlertCircle, CircleDot, Wallet, Percent, Award,
   TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank, Settings, Save,
-  CheckCircle2,
+  CheckCircle2, RefreshCw,
 } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import {
@@ -48,8 +48,19 @@ export function KairosFullView() {
         loading={K.status.isLoading}
         offline={K.offline}
       />
-      <WatchlistSection rows={K.watchlist.data} loading={K.watchlist.isLoading} offline={K.offline} />
-      <PositionsSection status={K.status.data} offline={K.offline} />
+      <WatchlistSection
+        rows={K.watchlist.data}
+        loading={K.watchlist.isLoading}
+        offline={K.offline}
+        onRefresh={() => K.watchlist.refetch()}
+        isRefreshing={K.watchlist.isFetching}
+      />
+      <PositionsSection
+        status={K.status.data}
+        offline={K.offline}
+        onRefresh={() => K.status.refetch()}
+        isRefreshing={K.status.isFetching}
+      />
       <TradesSection trades={K.trades.data} loading={K.trades.isLoading} offline={K.offline} />
       <GoalEditor
         goal={K.goal.data}
@@ -416,16 +427,37 @@ function HeaderStrip({ status, equity, startingEquity, trades, loading, offline 
   );
 }
 
+// Shared refresh affordance for sections that aren't yet migrated to DataTable.
+function RefreshButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md bg-muted text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      aria-label="Refresh"
+    >
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+      <span>Refresh</span>
+    </button>
+  );
+}
+
 // ─── Watchlist section ────────────────────────────────────────────────────────
 
-function WatchlistSection({ rows, loading, offline }: {
+function WatchlistSection({ rows, loading, offline, onRefresh, isRefreshing }: {
   rows: KairosWatchlistRow[] | undefined;
   loading: boolean;
   offline: boolean;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }) {
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <h3 className="text-sm font-bold text-foreground mb-3">Watchlist</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-foreground">Watchlist</h3>
+        <RefreshButton onClick={onRefresh} loading={isRefreshing} />
+      </div>
       {loading ? (
         <SkeletonRow />
       ) : offline || !rows || rows.length === 0 ? (
@@ -474,14 +506,19 @@ function WatchlistSection({ rows, loading, offline }: {
 
 // ─── Positions section ────────────────────────────────────────────────────────
 
-function PositionsSection({ status, offline }: {
+function PositionsSection({ status, offline, onRefresh, isRefreshing }: {
   status: KairosStatus | undefined;
   offline: boolean;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }) {
   const positions = status?.open_positions ?? [];
   return (
     <section className="bg-card border border-card-border rounded-xl p-4">
-      <h3 className="text-sm font-bold text-foreground mb-3">Open positions</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-foreground">Open positions</h3>
+        <RefreshButton onClick={onRefresh} loading={isRefreshing} />
+      </div>
       {offline || positions.length === 0 ? (
         <EmptyState text={offline ? "Open positions will appear when bot is live." : "No positions open — bot waiting for entry triggers."} />
       ) : (

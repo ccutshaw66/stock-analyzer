@@ -455,22 +455,48 @@ export async function getPolygonChart(
 
 export async function polygonSearch(query: string): Promise<Array<{ symbol: string; name: string; type: string; exchange: string }>> {
   if (!query) return [];
+  // Pull a wider page from Polygon so we have enough candidates to re-rank
+  // before slicing to 8. Polygon's "search" param matches anywhere in the name,
+  // so without local ranking Tesla (TSLA) lands behind unrelated tickers when
+  // you type "TSLA" or "tesla".
   const data = await pget(`/v3/reference/tickers`, {
     search: query,
     active: "true",
     market: "stocks",
-    limit: 20,
+    limit: 50,
   });
-  const results = data?.results || [];
-  return results
-    .filter((r: any) => r.type === "CS" || r.type === "ETF" || r.type === "ETV")
-    .slice(0, 8)
-    .map((r: any) => ({
-      symbol: r.ticker,
-      name: r.name,
-      type: r.type === "CS" ? "EQUITY" : r.type,
-      exchange: r.primary_exchange || r.market || "",
-    }));
+  const candidates = (data?.results || []).filter(
+    (r: any) => r.type === "CS" || r.type === "ETF" || r.type === "ETV",
+  );
+
+  const q = query.trim().toUpperCase();
+  const score = (r: any): number => {
+    const sym = String(r.ticker || "").toUpperCase();
+    const name = String(r.name || "").toUpperCase();
+    const words = name.split(/[\s,.]+/).filter(Boolean);
+    if (sym === q) return 0;
+    if (sym.startsWith(q)) return 1;
+    if (words[0] === q) return 2;
+    if (words.some((w: string) => w === q)) return 3;
+    if (name.startsWith(q)) return 4;
+    if (words.some((w: string) => w.startsWith(q))) return 5;
+    if (sym.includes(q)) return 6;
+    if (name.includes(q)) return 7;
+    return 8;
+  };
+  candidates.sort((a: any, b: any) => {
+    const sa = score(a);
+    const sb = score(b);
+    if (sa !== sb) return sa - sb;
+    return String(a.ticker || "").localeCompare(String(b.ticker || ""));
+  });
+
+  return candidates.slice(0, 8).map((r: any) => ({
+    symbol: r.ticker,
+    name: r.name,
+    type: r.type === "CS" ? "EQUITY" : r.type,
+    exchange: r.primary_exchange || r.market || "",
+  }));
 }
 
 // ────────────────────────────────────────────────────────────
