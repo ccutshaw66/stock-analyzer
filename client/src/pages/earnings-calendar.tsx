@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -183,57 +184,33 @@ export default function EarningsCalendar() {
                       <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
                         Quarterly Earnings History
                       </span>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="text-muted-foreground border-b border-card-border/50">
-                              <th className="text-left pb-1.5 text-micro font-semibold uppercase tracking-wider">Quarter</th>
-                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Actual</th>
-                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Estimate</th>
-                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Surprise</th>
-                              <th className="text-right pb-1.5 text-micro font-semibold uppercase tracking-wider">Result</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {entry.history.slice(-4).map((q, i) => {
-                              const isBeat = q.surprise != null && q.surprise > 0;
-                              const isMiss = q.surprise != null && q.surprise < 0;
-                              return (
-                                <tr key={i} className="border-b border-card-border/20">
-                                  <td className="py-1.5 font-medium text-foreground">{q.quarter || "—"}</td>
-                                  <td className="py-1.5 text-right font-mono tabular-nums text-foreground">
-                                    {q.actual != null ? `$${q.actual.toFixed(2)}` : "—"}
-                                  </td>
-                                  <td className="py-1.5 text-right font-mono tabular-nums text-muted-foreground">
-                                    {q.estimate != null ? `$${q.estimate.toFixed(2)}` : "—"}
-                                  </td>
-                                  <td className={`py-1.5 text-right font-mono tabular-nums ${
-                                    isBeat ? "text-bull-light" : isMiss ? "text-bear-light" : "text-muted-foreground"
-                                  }`}>
-                                    {q.surprisePct != null ? `${q.surprisePct >= 0 ? "+" : ""}${q.surprisePct.toFixed(1)}%` : "—"}
-                                  </td>
-                                  <td className="py-1.5 text-right">
-                                    {isBeat && (
-                                      <span className="inline-flex items-center gap-0.5 text-bull-light font-semibold">
-                                        <TrendingUp className="h-3 w-3" /> Beat
-                                      </span>
-                                    )}
-                                    {isMiss && (
-                                      <span className="inline-flex items-center gap-0.5 text-bear-light font-semibold">
-                                        <TrendingDown className="h-3 w-3" /> Miss
-                                      </span>
-                                    )}
-                                    {!isBeat && !isMiss && q.actual != null && (
-                                      <span className="text-watch-light font-semibold">In-line</span>
-                                    )}
-                                    {q.actual == null && <span className="text-muted-foreground">—</span>}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <DataTable<EarningsQuarter>
+                        columns={[
+                          { key: "quarter", header: "Quarter", sortValue: q => q.quarter, accessor: q => <span className="font-medium">{q.quarter || "—"}</span> },
+                          { key: "actual", header: "Actual", type: "number", sortValue: q => q.actual ?? Number.NEGATIVE_INFINITY, accessor: q => q.actual != null ? `$${q.actual.toFixed(2)}` : "—" },
+                          { key: "estimate", header: "Estimate", type: "number", sortValue: q => q.estimate ?? Number.NEGATIVE_INFINITY, accessor: q => <span className="text-muted-foreground">{q.estimate != null ? `$${q.estimate.toFixed(2)}` : "—"}</span> },
+                          { key: "surprise", header: "Surprise", type: "number", sortValue: q => q.surprisePct ?? Number.NEGATIVE_INFINITY, accessor: q => {
+                            const isBeat = q.surprise != null && q.surprise > 0;
+                            const isMiss = q.surprise != null && q.surprise < 0;
+                            return (
+                              <span className={isBeat ? "text-bull-light" : isMiss ? "text-bear-light" : "text-muted-foreground"}>
+                                {q.surprisePct != null ? `${q.surprisePct >= 0 ? "+" : ""}${q.surprisePct.toFixed(1)}%` : "—"}
+                              </span>
+                            );
+                          }},
+                          { key: "result", header: "Result", align: "right", sortValue: q => q.surprise ?? Number.NEGATIVE_INFINITY, accessor: q => {
+                            const isBeat = q.surprise != null && q.surprise > 0;
+                            const isMiss = q.surprise != null && q.surprise < 0;
+                            if (isBeat) return <span className="inline-flex items-center gap-0.5 text-bull-light font-semibold"><TrendingUp className="h-3 w-3" /> Beat</span>;
+                            if (isMiss) return <span className="inline-flex items-center gap-0.5 text-bear-light font-semibold"><TrendingDown className="h-3 w-3" /> Miss</span>;
+                            if (q.actual != null) return <span className="text-watch-light font-semibold">In-line</span>;
+                            return <span className="text-muted-foreground">—</span>;
+                          }},
+                        ]}
+                        data={entry.history.slice(-4)}
+                        getRowKey={(_, i) => i}
+                        dense
+                      />
                     </div>
                   )}
                 </div>

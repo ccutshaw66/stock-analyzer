@@ -14,6 +14,7 @@ import { LimitReached } from "@/components/LimitReached";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import {
   Shield, TrendingUp, TrendingDown, Activity, BarChart3,
   Zap, AlertTriangle, DollarSign, Target,
@@ -526,56 +527,36 @@ export default function Verdict() {
             </p>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-t border-b border-card-border text-muted-foreground">
-                  <th className="text-left py-2.5 px-6 font-semibold">Event</th>
-                  <th className="text-left py-2.5 px-3 font-semibold">Period</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">{data.ticker}</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">S&amp;P 500</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Nasdaq 100</th>
-                  <th className="text-right py-2.5 px-3 font-semibold">Gold</th>
-                  <th className="text-right py-2.5 px-6 font-semibold">Silver</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.stressTests.map((test, i) => {
-                  const noData = test.hasData === false;
-                  const beatSpy = !noData && test.ticker > test.spy;
-                  return (
-                    <tr
-                      key={i}
-                      className={`border-b border-card-border/40 transition-colors ${
-                        noData ? "opacity-40" : beatSpy ? "bg-bull/[0.04]" : "hover:bg-muted/20"
-                      }`}
-                      title={test.desc}
-                    >
-                      <td className="py-2.5 px-6">
-                        <div className="font-semibold text-foreground">{test.name}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">{test.period}</td>
-                      <td className={`py-2.5 px-3 text-right font-bold tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.ticker)}`}>
-                        {noData ? "N/A" : formatPct(test.ticker)}
-                      </td>
-                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.spy)}`}>
-                        {noData ? "N/A" : formatPct(test.spy)}
-                      </td>
-                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData || test.nasdaq == null ? "text-muted-foreground" : pctColor(test.nasdaq)}`}>
-                        {noData || test.nasdaq == null ? "N/A" : formatPct(test.nasdaq)}
-                      </td>
-                      <td className={`py-2.5 px-3 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.gold)}`}>
-                        {noData ? "N/A" : formatPct(test.gold)}
-                      </td>
-                      <td className={`py-2.5 px-6 text-right tabular-nums ${noData ? "text-muted-foreground" : pctColor(test.silver)}`}>
-                        {noData ? "N/A" : formatPct(test.silver)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<StressTest>
+            columns={[
+              { key: "name", header: "Event", sortValue: t => t.name, accessor: t => <span className="font-semibold text-foreground">{t.name}</span> },
+              { key: "period", header: "Period", sortValue: t => t.period, accessor: t => <span className="text-muted-foreground whitespace-nowrap">{t.period}</span> },
+              { key: "ticker", header: data.ticker, type: "number", sortValue: t => t.hasData === false ? Number.NEGATIVE_INFINITY : t.ticker, accessor: t => {
+                const noData = t.hasData === false;
+                return <span className={`font-bold ${noData ? "text-muted-foreground" : pctColor(t.ticker)}`}>{noData ? "N/A" : formatPct(t.ticker)}</span>;
+              }},
+              { key: "spy", header: "S&P 500", type: "number", sortValue: t => t.hasData === false ? Number.NEGATIVE_INFINITY : t.spy, accessor: t => {
+                const noData = t.hasData === false;
+                return <span className={noData ? "text-muted-foreground" : pctColor(t.spy)}>{noData ? "N/A" : formatPct(t.spy)}</span>;
+              }},
+              { key: "nasdaq", header: "Nasdaq 100", type: "number", sortValue: t => t.hasData === false || t.nasdaq == null ? Number.NEGATIVE_INFINITY : t.nasdaq, accessor: t => {
+                const noData = t.hasData === false || t.nasdaq == null;
+                return <span className={noData ? "text-muted-foreground" : pctColor(t.nasdaq)}>{noData ? "N/A" : formatPct(t.nasdaq)}</span>;
+              }},
+              { key: "gold", header: "Gold", type: "number", sortValue: t => t.hasData === false ? Number.NEGATIVE_INFINITY : t.gold, accessor: t => {
+                const noData = t.hasData === false;
+                return <span className={noData ? "text-muted-foreground" : pctColor(t.gold)}>{noData ? "N/A" : formatPct(t.gold)}</span>;
+              }},
+              { key: "silver", header: "Silver", type: "number", sortValue: t => t.hasData === false ? Number.NEGATIVE_INFINITY : t.silver, accessor: t => {
+                const noData = t.hasData === false;
+                return <span className={noData ? "text-muted-foreground" : pctColor(t.silver)}>{noData ? "N/A" : formatPct(t.silver)}</span>;
+              }},
+            ]}
+            data={data.stressTests}
+            getRowKey={(_, i) => i}
+            rowClassName={t => t.hasData === false ? "opacity-40" : (t.ticker > t.spy ? "bg-bull/[0.04]" : "")}
+            dense
+          />
 
           <div className="px-6 py-2.5 border-t border-card-border/40 text-micro text-muted-foreground flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm bg-bull/[0.08] border border-bull/20" />

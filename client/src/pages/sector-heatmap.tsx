@@ -7,6 +7,7 @@ import { PageTemplate } from "@/components/PageTemplate";
 import { formatCompact } from "@/lib/format";
 import { useTicker } from "@/contexts/TickerContext";
 import { SIGNAL_BULL, SIGNAL_BEAR, hexToRgb } from "@/lib/design-tokens";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -284,52 +285,39 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
             <div className="text-center py-8 text-xs text-muted-foreground">No leaders found for this sector right now.</div>
           )}
           {data && data.leaders.length > 0 && (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b border-card-border">
-                  <th className="py-2 pr-2">#</th>
-                  <th className="py-2 pr-2">Ticker</th>
-                  <th className="py-2 pr-2 text-right">Price</th>
-                  <th className="py-2 pr-2 text-right">1D</th>
-                  <th className="py-2 pr-2 text-right">1M</th>
-                  <th className="py-2 pr-2 text-right">Vol Surge</th>
-                  <th className="py-2 pr-2 text-right">Mkt Cap</th>
-                  <th className="py-2 pr-1"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.leaders.map((l, i) => (
-                  <tr
-                    key={l.ticker}
-                    className="border-b border-card-border/40 hover:bg-muted/30 cursor-pointer"
-                    onClick={() => goToTicker(l.ticker)}
-                    data-testid={`sector-leader-${l.ticker}`}
-                  >
-                    <td className="py-2 pr-2 text-muted-foreground">{i + 1}</td>
-                    <td className="py-2 pr-2">
-                      <div className="font-semibold">{l.ticker}</div>
-                      <div className="text-micro text-muted-foreground truncate max-w-[180px]">{l.companyName}</div>
-                    </td>
-                    <td className="py-2 pr-2 text-right tabular-nums">${l.price.toFixed(2)}</td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.changePct >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                      {l.changePct >= 0 ? "+" : ""}{l.changePct.toFixed(2)}%
-                    </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums font-semibold ${l.return1m >= 0 ? "text-bull-light" : "text-bear-light"}`}>
-                      {l.return1m >= 0 ? "+" : ""}{l.return1m.toFixed(1)}%
-                    </td>
-                    <td className={`py-2 pr-2 text-right tabular-nums ${l.volSurge >= 1.5 ? "text-watch-light font-semibold" : "text-muted-foreground"}`}>
-                      {l.volSurge.toFixed(2)}x
-                    </td>
-                    <td className="py-2 pr-2 text-right tabular-nums text-muted-foreground">
-                      ${formatCompact(l.marketCap)}
-                    </td>
-                    <td className="py-2 pr-1">
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable<SectorLeader>
+              columns={[
+                { key: "rank", header: "#", sortable: false, accessor: (_, i) => <span className="text-muted-foreground">{i + 1}</span> },
+                { key: "ticker", header: "Ticker", sortValue: r => r.ticker, accessor: r => (
+                  <div>
+                    <div className="font-semibold">{r.ticker}</div>
+                    <div className="text-micro text-muted-foreground truncate max-w-[180px]">{r.companyName}</div>
+                  </div>
+                )},
+                { key: "price", header: "Price", type: "price", sortValue: r => r.price, accessor: r => `$${r.price.toFixed(2)}` },
+                { key: "changePct", header: "1D", type: "number", sortValue: r => r.changePct, accessor: r => (
+                  <span className={r.changePct >= 0 ? "text-bull-light" : "text-bear-light"}>
+                    {r.changePct >= 0 ? "+" : ""}{r.changePct.toFixed(2)}%
+                  </span>
+                )},
+                { key: "return1m", header: "1M", type: "number", sortValue: r => r.return1m, accessor: r => (
+                  <span className={`font-semibold ${r.return1m >= 0 ? "text-bull-light" : "text-bear-light"}`}>
+                    {r.return1m >= 0 ? "+" : ""}{r.return1m.toFixed(1)}%
+                  </span>
+                )},
+                { key: "volSurge", header: "Vol Surge", type: "number", sortValue: r => r.volSurge, accessor: r => (
+                  <span className={r.volSurge >= 1.5 ? "text-watch-light font-semibold" : "text-muted-foreground"}>
+                    {r.volSurge.toFixed(2)}x
+                  </span>
+                )},
+                { key: "marketCap", header: "Mkt Cap", type: "number", sortValue: r => r.marketCap, accessor: r => <span className="text-muted-foreground">${formatCompact(r.marketCap)}</span> },
+              ]}
+              data={data.leaders}
+              getRowKey={r => r.ticker}
+              defaultSort={{ key: "return1m", direction: "desc" }}
+              onRowClick={r => goToTicker(r.ticker)}
+              dense
+            />
           )}
           <p className="text-micro text-muted-foreground mt-3 italic">Tip: click any row to open the ticker in Scanner.</p>
         </div>

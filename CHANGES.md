@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — DataTable migration wave 3: sector-heatmap, mm-exposure, conviction, verdict, track-record, earnings-calendar, BacktestPanel, Markov
+
+**Why:** Continued the "standardize ALL tables" sweep. Wave 2 hit the high-traffic pages; wave 3 covers the remaining pages a user lands on regularly so the entire site has the same header look, sort behavior, and styling.
+
+**What:**
+- **`/sector-heatmap`** — sector leaders table.
+- **`/mm-exposure`** — Unusual Options Activity table. Defaults to V/OI ratio desc (biggest fresh positioning at top).
+- **`/conviction`** — Live Forward-Tracking table including the SPY baseline row (rendered as a regular row with `isBaseline` flag + `rowClassName` for the divider line — the data model is now uniform).
+- **`/verdict`** — Stress Tests table (How $ticker performed vs S&P 500 / Gold / Silver during historical events).
+- **`/track-record`** — both tables: Performance by Signal Strength + Recent Signals. Recent Signals defaults to Date desc.
+- **`/earnings-calendar`** — Quarterly Earnings History tables (one per expanded ticker card).
+- **`BacktestPanel`** (used by /track-record's Backtest tab) — both tables: Technical signal performance + Top 20 fires by 20-day return.
+- **`MarkovFullView`** — both tables: Regime stats + Out-of-sample performance.
+
+**Still pending** (these need DataTable extensions or have complex inline UI):
+- `/dividend-portfolio` — expandable detail rows (needs DataTable `expandedRow` support).
+- `/trade-tracker` per-strategy Open Positions tables (dynamic columns per strategy manifest).
+- `/trade-tracker` Closed flat table.
+- `/chart` — needs an audit.
+- `/admin` — complex inline mutations per row (TierDropdown, delete confirmation flow).
+- `/options-calculator`, `/greeks-calculator`, `/help`, `/LimitReached` — minor / rarely-used surfaces.
+
+**Files:**
+- Modified: `client/src/pages/sector-heatmap.tsx`
+- Modified: `client/src/pages/mm-exposure.tsx`
+- Modified: `client/src/pages/conviction.tsx`
+- Modified: `client/src/pages/verdict.tsx`
+- Modified: `client/src/pages/track-record.tsx`
+- Modified: `client/src/pages/earnings-calendar.tsx`
+- Modified: `client/src/components/BacktestPanel.tsx`
+- Modified: `client/src/compartments/markov/MarkovFullView.tsx`
+
+---
 ## 2026-05-27 — DataTable migration wave 2: KAIROS / HERMES / institutional / dividends / trade-tracker
 
 **Why:** Chris's directive: "PLEASE, standardize ALL the table headers no matter where they are. Just like the Page headers these should all sort, all same font, all same color etc..." Previous round only migrated /insiders + /htf-setups; the rest of the site was still inconsistent (different padding, no sort icons, no click-to-sort behavior).

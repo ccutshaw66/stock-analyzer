@@ -20,6 +20,7 @@ import {
   useMarkov, DEFAULT_PARAMS,
   type MarkovParams, type MarkovBacktestResult, type MarkovPerformance,
 } from "./useMarkov";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 export function MarkovFullView() {
   const M = useMarkov();
@@ -165,38 +166,25 @@ function RegimeStatsCard({ stats }: { stats: MarkovBacktestResult["regime_stats"
       <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
         <Activity className="h-4 w-4 text-primary" /> Regime stats (training)
       </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-2 pr-3 font-semibold">State</th>
-              <th className="py-2 pr-3 font-semibold">Read as</th>
-              <th className="py-2 pr-3 font-semibold text-right">Mean daily return</th>
-              <th className="py-2 pr-3 font-semibold text-right">Daily volatility</th>
-            </tr>
-          </thead>
-          <tbody>
-            {labeled.map((s) => (
-              <tr key={s.state} className="border-t border-card-border/40">
-                <td className="py-2 pr-3 font-mono font-bold">{s.state}</td>
-                <td className="py-2 pr-3">
-                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                    s.label === "bullish" ? "bg-green-500/15 text-green-400"
-                    : s.label === "drawdown" ? "bg-red-500/15 text-red-400"
-                    : "bg-amber-500/15 text-amber-400"
-                  }`}>{s.label}</span>
-                </td>
-                <td className={`py-2 pr-3 text-right tabular-nums ${s.mean_return >= 0 ? "text-green-400" : "text-red-400"}`}>
-                  {(s.mean_return * 100).toFixed(3)}%
-                </td>
-                <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                  {(s.volatility * 100).toFixed(3)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<typeof labeled[number]>
+        columns={[
+          { key: "state", header: "State", sortValue: s => s.state, accessor: s => <span className="font-mono font-bold">{s.state}</span> },
+          { key: "label", header: "Read as", sortValue: s => s.label, accessor: s => (
+            <span className={`inline-flex px-1.5 py-0.5 rounded text-mini font-bold uppercase ${
+              s.label === "bullish" ? "bg-bull/15 text-bull-light"
+              : s.label === "drawdown" ? "bg-bear/15 text-bear-light"
+              : "bg-watch/15 text-watch-light"
+            }`}>{s.label}</span>
+          )},
+          { key: "mean_return", header: "Mean daily return", type: "number", sortValue: s => s.mean_return, accessor: s => (
+            <span className={s.mean_return >= 0 ? "text-bull-light" : "text-bear-light"}>{(s.mean_return * 100).toFixed(3)}%</span>
+          )},
+          { key: "volatility", header: "Daily volatility", type: "number", sortValue: s => s.volatility, accessor: s => `${(s.volatility * 100).toFixed(3)}%` },
+        ]}
+        data={labeled}
+        getRowKey={s => s.state}
+        dense
+      />
     </section>
   );
 }
@@ -230,38 +218,27 @@ function PerformanceCard({ performance }: { performance: MarkovBacktestResult["p
       <h2 className="text-sm font-bold text-foreground flex items-center gap-2 mb-3">
         <BarChart3 className="h-4 w-4 text-primary" /> Out-of-sample performance
       </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-2 pr-3 font-semibold">Metric</th>
-              {cols.map((c) => (
-                <th key={c.key} className="py-2 pr-3 font-semibold text-right">{c.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
+      <DataTable<typeof rows[number]>
+        columns={[
+          { key: "metric", header: "Metric", sortValue: r => r.label, accessor: r => <span className="font-semibold">{r.label}</span> },
+          ...cols.map(c => ({
+            key: c.key,
+            header: c.label,
+            type: "number" as const,
+            sortValue: (r: typeof rows[number]) => performance[c.key][r.key],
+            accessor: (r: typeof rows[number]) => {
               const isReturn = r.key === "cagr" || r.key === "hit_rate";
+              const v = performance[c.key][r.key];
               const bhVal = performance.bh[r.key];
-              return (
-                <tr key={r.key} className="border-t border-card-border/40">
-                  <td className="py-2 pr-3 font-semibold">{r.label}</td>
-                  {cols.map((c) => {
-                    const v = performance[c.key][r.key];
-                    const extra = c.key === "net" ? colorize(v, bhVal, isReturn) : "";
-                    return (
-                      <td key={c.key} className={`py-2 pr-3 text-right tabular-nums ${c.tone} ${extra}`}>
-                        {fmt(v, r.pct)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              const extra = c.key === "net" ? colorize(v, bhVal, isReturn) : "";
+              return <span className={`${c.tone} ${extra}`}>{fmt(v, r.pct)}</span>;
+            },
+          } as DataTableColumn<typeof rows[number]>)),
+        ]}
+        data={rows}
+        getRowKey={r => r.key}
+        dense
+      />
       <p className="text-[10px] text-muted-foreground/70 mt-2 italic">
         Net = after transaction costs you set. Gross = before costs. Buy &amp; Hold = same window, no strategy.
         Green/red on the Net column shows whether the strategy beat buy &amp; hold on that metric.

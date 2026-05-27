@@ -29,6 +29,7 @@ import { API_DIAG_CONVICTION_BACKTEST } from "@shared/api/endpoints";
 import { useTicker } from "@/contexts/TickerContext";
 import { HelpBlock } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 import {
   Compass, TrendingUp, TrendingDown, Minus, Loader2,
   Building2, Activity, LineChart, BarChart3,
@@ -375,44 +376,61 @@ function BacktestPanel() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-muted-foreground border-b border-card-border">
-              <th className="text-left py-2 font-semibold">Verdict</th>
-              <th className="text-right py-2 font-semibold">N</th>
-              <th className="text-right py-2 font-semibold">1d</th>
-              <th className="text-right py-2 font-semibold">5d</th>
-              <th className="text-right py-2 font-semibold">30d</th>
-              <th className="text-right py-2 font-semibold">90d</th>
-              <th className="text-right py-2 font-semibold">Win 30d</th>
-            </tr>
-          </thead>
-          <tbody>
-            {verdictRows.map((r) => (
-              <tr key={r.verdict} className="border-b border-card-border/30">
-                <td className="py-1.5 font-mono text-2xs text-foreground">{r.verdict.replace(/_/g, " ")}</td>
-                <td className="py-1.5 text-right text-muted-foreground tabular-nums">{r.count}</td>
-                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn1d, r.count)}`}>{fmtPct(r.avgReturn1d, r.count)}</td>
-                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn5d, r.count)}`}>{fmtPct(r.avgReturn5d, r.count)}</td>
-                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn30d, r.count)}`}>{fmtPct(r.avgReturn30d, r.count)}</td>
-                <td className={`py-1.5 text-right tabular-nums font-semibold ${pctTone(r.avgReturn90d, r.count)}`}>{fmtPct(r.avgReturn90d, r.count)}</td>
-                <td className="py-1.5 text-right tabular-nums text-muted-foreground">{r.winRate30d !== null && r.count >= MIN_SAMPLES_FOR_DISPLAY ? `${(r.winRate30d * 100).toFixed(0)}%` : "—"}</td>
-              </tr>
-            ))}
-            {/* SPY baseline row */}
-            <tr className="border-t-2 border-card-border">
-              <td className="py-1.5 font-mono text-2xs text-muted-foreground italic">SPY (baseline)</td>
-              <td className="py-1.5 text-right text-muted-foreground tabular-nums">—</td>
-              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn1d, MIN_SAMPLES_FOR_DISPLAY)}</td>
-              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn5d, MIN_SAMPLES_FOR_DISPLAY)}</td>
-              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn30d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn30d, MIN_SAMPLES_FOR_DISPLAY)}</td>
-              <td className={`py-1.5 text-right tabular-nums ${pctTone(data.spy.avgReturn90d, MIN_SAMPLES_FOR_DISPLAY)}`}>{fmtPct(data.spy.avgReturn90d, MIN_SAMPLES_FOR_DISPLAY)}</td>
-              <td className="py-1.5 text-right text-muted-foreground">—</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {(() => {
+        type Row = {
+          verdict: string;
+          count: number | null;
+          avgReturn1d: number | null;
+          avgReturn5d: number | null;
+          avgReturn30d: number | null;
+          avgReturn90d: number | null;
+          winRate30d: number | null;
+          isBaseline?: boolean;
+        };
+        const rows: Row[] = [
+          ...verdictRows.map(r => ({ ...r, isBaseline: false } as Row)),
+          {
+            verdict: "SPY (baseline)",
+            count: null,
+            avgReturn1d: data.spy.avgReturn1d,
+            avgReturn5d: data.spy.avgReturn5d,
+            avgReturn30d: data.spy.avgReturn30d,
+            avgReturn90d: data.spy.avgReturn90d,
+            winRate30d: null,
+            isBaseline: true,
+          },
+        ];
+        const samples = (r: Row) => r.isBaseline ? MIN_SAMPLES_FOR_DISPLAY : (r.count ?? 0);
+        return (
+          <DataTable<Row>
+            columns={[
+              { key: "verdict", header: "Verdict", sortValue: r => r.verdict, accessor: r => (
+                <span className={`font-mono text-2xs ${r.isBaseline ? "text-muted-foreground italic" : "text-foreground"}`}>{r.verdict.replace(/_/g, " ")}</span>
+              )},
+              { key: "count", header: "N", type: "number", sortValue: r => r.count ?? -1, accessor: r => <span className="text-muted-foreground">{r.count ?? "—"}</span> },
+              { key: "r1d", header: "1d", type: "number", sortValue: r => r.avgReturn1d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                <span className={`font-semibold ${pctTone(r.avgReturn1d, samples(r))}`}>{fmtPct(r.avgReturn1d, samples(r))}</span>
+              )},
+              { key: "r5d", header: "5d", type: "number", sortValue: r => r.avgReturn5d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                <span className={`font-semibold ${pctTone(r.avgReturn5d, samples(r))}`}>{fmtPct(r.avgReturn5d, samples(r))}</span>
+              )},
+              { key: "r30d", header: "30d", type: "number", sortValue: r => r.avgReturn30d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                <span className={`font-semibold ${pctTone(r.avgReturn30d, samples(r))}`}>{fmtPct(r.avgReturn30d, samples(r))}</span>
+              )},
+              { key: "r90d", header: "90d", type: "number", sortValue: r => r.avgReturn90d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                <span className={`font-semibold ${pctTone(r.avgReturn90d, samples(r))}`}>{fmtPct(r.avgReturn90d, samples(r))}</span>
+              )},
+              { key: "win30", header: "Win 30d", type: "number", sortValue: r => r.winRate30d ?? -1, accessor: r => (
+                <span className="text-muted-foreground">{r.winRate30d !== null && (r.count ?? 0) >= MIN_SAMPLES_FOR_DISPLAY ? `${(r.winRate30d * 100).toFixed(0)}%` : "—"}</span>
+              )},
+            ]}
+            data={rows}
+            getRowKey={r => r.verdict}
+            rowClassName={r => r.isBaseline ? "border-t-2 border-card-border" : ""}
+            dense
+          />
+        );
+      })()}
 
       {(data.pendingForwardReturns.d30 > 0 || data.pendingForwardReturns.d90 > 0) && (
         <div className="text-2xs text-amber-400/80">

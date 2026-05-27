@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { API_TRACK_RECORD_BACKTEST } from "@shared/api/endpoints";
 import { Loader2, Play, Info } from "lucide-react";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 interface SignalStats {
   id: string;
@@ -148,52 +149,37 @@ export function BacktestPanel() {
           </div>
 
           {/* Per-signal table */}
-          <div className="bg-card border border-card-border rounded-xl p-4 overflow-x-auto">
-            <h3 className="text-sm font-bold text-foreground mb-3">Technical signal performance</h3>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-micro text-muted-foreground uppercase border-b border-card-border/50">
-                  <th className="text-left py-2 pr-2">Signal</th>
-                  <th className="text-right py-2 px-2">Fires</th>
-                  <th className="text-right py-2 px-2">Hit% 1d / Avg</th>
-                  <th className="text-right py-2 px-2">Hit% 5d / Avg</th>
-                  <th className="text-right py-2 px-2">Hit% 10d / Avg</th>
-                  <th className="text-right py-2 px-2">Hit% 20d / Avg</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.technical.map(s => {
-                  const cell = (b: { hits: number; avg: number; samples: number }) => {
-                    const wr = winRate(b.hits, b.samples);
-                    return (
-                      <td className="text-right py-2 px-2 tabular-nums">
-                        {wr == null ? (
-                          <span className="text-muted-foreground">—</span>
-                        ) : (
-                          <>
-                            <span className={wr >= 55 ? "text-bull-light" : wr <= 45 ? "text-bear-light" : "text-foreground"}>
-                              {wr}%
-                            </span>
-                            <span className="text-muted-foreground"> / </span>
-                            <span className={pctColor(b.avg)}>{b.avg > 0 ? "+" : ""}{b.avg.toFixed(2)}%</span>
-                          </>
-                        )}
-                      </td>
-                    );
-                  };
-                  return (
-                    <tr key={s.id} className="border-b border-card-border/30 hover:bg-background/30">
-                      <td className="py-2 pr-2 font-medium text-foreground">{s.label}</td>
-                      <td className="text-right py-2 px-2 tabular-nums">{s.fires}</td>
-                      {cell(s.hit1)}
-                      {cell(s.hit5)}
-                      {cell(s.hit10)}
-                      {cell(s.hit20)}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="bg-card border border-card-border rounded-xl p-4">
+            {(() => {
+              const cellNode = (b: { hits: number; avg: number; samples: number }) => {
+                const wr = winRate(b.hits, b.samples);
+                if (wr == null) return <span className="text-muted-foreground">—</span>;
+                return (
+                  <>
+                    <span className={wr >= 55 ? "text-bull-light" : wr <= 45 ? "text-bear-light" : "text-foreground"}>{wr}%</span>
+                    <span className="text-muted-foreground"> / </span>
+                    <span className={pctColor(b.avg)}>{b.avg > 0 ? "+" : ""}{b.avg.toFixed(2)}%</span>
+                  </>
+                );
+              };
+              return (
+                <DataTable<SignalStats>
+                  title="Technical signal performance"
+                  columns={[
+                    { key: "label", header: "Signal", sortValue: s => s.label, accessor: s => <span className="font-medium">{s.label}</span> },
+                    { key: "fires", header: "Fires", type: "number", sortValue: s => s.fires, accessor: s => s.fires },
+                    { key: "hit1", header: "Hit% 1d / Avg", align: "right", sortValue: s => s.hit1.samples > 0 ? s.hit1.hits / s.hit1.samples : -1, accessor: s => cellNode(s.hit1) },
+                    { key: "hit5", header: "Hit% 5d / Avg", align: "right", sortValue: s => s.hit5.samples > 0 ? s.hit5.hits / s.hit5.samples : -1, accessor: s => cellNode(s.hit5) },
+                    { key: "hit10", header: "Hit% 10d / Avg", align: "right", sortValue: s => s.hit10.samples > 0 ? s.hit10.hits / s.hit10.samples : -1, accessor: s => cellNode(s.hit10) },
+                    { key: "hit20", header: "Hit% 20d / Avg", align: "right", sortValue: s => s.hit20.samples > 0 ? s.hit20.hits / s.hit20.samples : -1, accessor: s => cellNode(s.hit20) },
+                  ]}
+                  data={data.technical}
+                  getRowKey={s => s.id}
+                  defaultSort={{ key: "fires", direction: "desc" }}
+                  dense
+                />
+              );
+            })()}
           </div>
 
           {/* Catalyst note */}
@@ -215,44 +201,24 @@ export function BacktestPanel() {
 
           {/* Top fires */}
           {data.bestFires.length > 0 && (
-            <div className="bg-card border border-card-border rounded-xl p-4 overflow-x-auto">
-              <h3 className="text-sm font-bold text-foreground mb-3">Top 20 fires by |20d return|</h3>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-micro text-muted-foreground uppercase border-b border-card-border/50">
-                    <th className="text-left py-2 pr-2">Signal</th>
-                    <th className="text-left py-2 px-2">Ticker</th>
-                    <th className="text-left py-2 px-2">Date</th>
-                    <th className="text-right py-2 px-2">Entry</th>
-                    <th className="text-right py-2 px-2">+1d</th>
-                    <th className="text-right py-2 px-2">+5d</th>
-                    <th className="text-right py-2 px-2">+10d</th>
-                    <th className="text-right py-2 px-2">+20d</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.bestFires.map((f, i) => (
-                    <tr key={i} className="border-b border-card-border/30 hover:bg-background/30">
-                      <td className="py-2 pr-2 text-muted-foreground">{f.signalId}</td>
-                      <td className="py-2 px-2 font-mono font-semibold">{f.symbol}</td>
-                      <td className="py-2 px-2 text-muted-foreground">{f.date}</td>
-                      <td className="text-right py-2 px-2 tabular-nums">${f.entryClose.toFixed(2)}</td>
-                      <td className={`text-right py-2 px-2 tabular-nums ${pctColor(f.ret1 ?? 0)}`}>
-                        {f.ret1 != null ? `${f.ret1 > 0 ? "+" : ""}${f.ret1.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className={`text-right py-2 px-2 tabular-nums ${pctColor(f.ret5 ?? 0)}`}>
-                        {f.ret5 != null ? `${f.ret5 > 0 ? "+" : ""}${f.ret5.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className={`text-right py-2 px-2 tabular-nums ${pctColor(f.ret10 ?? 0)}`}>
-                        {f.ret10 != null ? `${f.ret10 > 0 ? "+" : ""}${f.ret10.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className={`text-right py-2 px-2 tabular-nums font-semibold ${pctColor(f.ret20 ?? 0)}`}>
-                        {f.ret20 != null ? `${f.ret20 > 0 ? "+" : ""}${f.ret20.toFixed(1)}%` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <DataTable<BestFire>
+                title="Top 20 fires by |20d return|"
+                columns={[
+                  { key: "signalId", header: "Signal", sortValue: f => f.signalId, accessor: f => <span className="text-muted-foreground">{f.signalId}</span> },
+                  { key: "symbol", header: "Ticker", sortValue: f => f.symbol, accessor: f => <span className="font-mono font-semibold">{f.symbol}</span> },
+                  { key: "date", header: "Date", sortValue: f => f.date, accessor: f => <span className="text-muted-foreground">{f.date}</span> },
+                  { key: "entry", header: "Entry", type: "price", sortValue: f => f.entryClose, accessor: f => `$${f.entryClose.toFixed(2)}` },
+                  { key: "r1", header: "+1d", type: "number", sortValue: f => f.ret1 ?? 0, accessor: f => <span className={pctColor(f.ret1 ?? 0)}>{f.ret1 != null ? `${f.ret1 > 0 ? "+" : ""}${f.ret1.toFixed(1)}%` : "—"}</span> },
+                  { key: "r5", header: "+5d", type: "number", sortValue: f => f.ret5 ?? 0, accessor: f => <span className={pctColor(f.ret5 ?? 0)}>{f.ret5 != null ? `${f.ret5 > 0 ? "+" : ""}${f.ret5.toFixed(1)}%` : "—"}</span> },
+                  { key: "r10", header: "+10d", type: "number", sortValue: f => f.ret10 ?? 0, accessor: f => <span className={pctColor(f.ret10 ?? 0)}>{f.ret10 != null ? `${f.ret10 > 0 ? "+" : ""}${f.ret10.toFixed(1)}%` : "—"}</span> },
+                  { key: "r20", header: "+20d", type: "number", sortValue: f => f.ret20 ?? 0, accessor: f => <span className={`font-semibold ${pctColor(f.ret20 ?? 0)}`}>{f.ret20 != null ? `${f.ret20 > 0 ? "+" : ""}${f.ret20.toFixed(1)}%` : "—"}</span> },
+                ]}
+                data={data.bestFires}
+                getRowKey={(_, i) => i}
+                defaultSort={{ key: "r20", direction: "desc" }}
+                dense
+              />
             </div>
           )}
         </>

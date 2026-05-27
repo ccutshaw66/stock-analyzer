@@ -25,6 +25,19 @@ import { apiRequest } from "@/lib/queryClient";
 import mascotUrl from "@/assets/mascot.jpg";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
+
+type UnusualActivityRow = {
+  type: string;
+  strike: number;
+  volume: number;
+  openInterest: number;
+  ratio: number;
+  iv: number;
+  expiry: string;
+  bid: number;
+  ask: number;
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -366,40 +379,24 @@ export default function MMExposure() {
                 <h3 className="text-sm font-bold text-foreground">Unusual Options Activity</h3>
                 <span className="text-micro text-muted-foreground">Volume/OI ratio &gt; 2.0 = fresh positioning</span>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-card-border text-muted-foreground">
-                      <th className="text-left py-2 px-2 font-semibold">Type</th>
-                      <th className="text-right py-2 px-2 font-semibold">Strike</th>
-                      <th className="text-right py-2 px-2 font-semibold">Volume</th>
-                      <th className="text-right py-2 px-2 font-semibold">OI</th>
-                      <th className="text-right py-2 px-2 font-semibold">V/OI</th>
-                      <th className="text-right py-2 px-2 font-semibold hidden sm:table-cell">IV</th>
-                      <th className="text-right py-2 px-2 font-semibold hidden sm:table-cell">Bid/Ask</th>
-                      <th className="text-left py-2 px-2 font-semibold hidden md:table-cell">Expiry</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.unusualActivity.map((u, i) => (
-                      <tr key={i} className="border-b border-card-border/30 hover:bg-muted/30">
-                        <td className="py-2 px-2">
-                          <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${u.type === "CALL" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>
-                            {u.type}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-right font-mono font-bold text-foreground">${u.strike}</td>
-                        <td className="py-2 px-2 text-right font-mono text-watch-light font-bold">{u.volume.toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right font-mono text-foreground">{u.openInterest.toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right font-mono font-bold text-watch-light">{u.ratio}x</td>
-                        <td className="py-2 px-2 text-right font-mono text-muted-foreground hidden sm:table-cell">{u.iv}%</td>
-                        <td className="py-2 px-2 text-right font-mono text-muted-foreground hidden sm:table-cell">${u.bid}/{u.ask}</td>
-                        <td className="py-2 px-2 font-mono text-muted-foreground hidden md:table-cell">{u.expiry}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable<UnusualActivityRow>
+                columns={[
+                  { key: "type", header: "Type", sortValue: r => r.type, accessor: r => (
+                    <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${r.type === "CALL" ? "bg-bull/15 text-bull-light" : "bg-bear/15 text-bear-light"}`}>{r.type}</span>
+                  )},
+                  { key: "strike", header: "Strike", type: "price", sortValue: r => r.strike, accessor: r => <span className="font-bold">${r.strike}</span> },
+                  { key: "volume", header: "Volume", type: "number", sortValue: r => r.volume, accessor: r => <span className="text-watch-light font-bold">{r.volume.toLocaleString()}</span> },
+                  { key: "oi", header: "OI", type: "number", sortValue: r => r.openInterest, accessor: r => r.openInterest.toLocaleString() },
+                  { key: "ratio", header: "V/OI", type: "number", sortValue: r => r.ratio, accessor: r => <span className="font-bold text-watch-light">{r.ratio}x</span> },
+                  { key: "iv", header: "IV", type: "number", sortValue: r => r.iv, accessor: r => <span className="text-muted-foreground">{r.iv}%</span> },
+                  { key: "bidAsk", header: "Bid/Ask", align: "right", sortValue: r => r.bid, accessor: r => <span className="text-muted-foreground">${r.bid}/{r.ask}</span> },
+                  { key: "expiry", header: "Expiry", sortValue: r => r.expiry, accessor: r => <span className="text-muted-foreground">{r.expiry}</span> },
+                ]}
+                data={data.unusualActivity}
+                getRowKey={(_, i) => i}
+                defaultSort={{ key: "ratio", direction: "desc" }}
+                dense
+              />
             </div>
           )}
 

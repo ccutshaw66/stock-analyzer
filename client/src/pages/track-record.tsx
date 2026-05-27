@@ -17,6 +17,10 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLin
 import { BacktestPanel } from "@/components/BacktestPanel";
 import { HelpBlock } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, type DataTableColumn } from "@/components/DataTable";
+
+type ScoreBracketRow = { label: string; count: number; avgReturn: number; winRate: number };
+type RecentSignalRow = { ticker: string; date: string; signal: string; score: number; price: number; return7d: number | null; return30d: number | null; return90d: number | null };
 import mascotUrl from "@/assets/mascot.jpg";
 
 interface TrackRecordData {
@@ -174,26 +178,21 @@ export default function TrackRecord() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-card-border text-muted-foreground">
-                    <th className="text-left py-2 px-2 font-semibold">Signal Strength</th>
-                    <th className="text-right py-2 px-2 font-semibold">Signals</th>
-                    <th className="text-right py-2 px-2 font-semibold">Avg Return</th>
-                    <th className="text-right py-2 px-2 font-semibold">Win Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byScoreBracket.day30.filter(b => b.count > 0).map((b, i) => (
-                    <tr key={i} className="border-b border-card-border/30">
-                      <td className="py-2 px-2 text-foreground font-medium">{b.label}</td>
-                      <td className="py-2 px-2 text-right font-mono text-foreground">{b.count}</td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.avgReturn >= 0 ? "text-bull-light" : "text-bear-light"}`}>{b.avgReturn >= 0 ? "+" : ""}{b.avgReturn}%</td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${b.winRate >= 55 ? "text-bull-light" : b.winRate >= 45 ? "text-watch-light" : "text-bear-light"}`}>{b.winRate}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable<ScoreBracketRow>
+                columns={[
+                  { key: "label", header: "Signal Strength", sortValue: r => r.label, accessor: r => <span className="font-medium">{r.label}</span> },
+                  { key: "count", header: "Signals", type: "number", sortValue: r => r.count, accessor: r => r.count },
+                  { key: "avgReturn", header: "Avg Return", type: "number", sortValue: r => r.avgReturn, accessor: r => (
+                    <span className={`font-bold ${r.avgReturn >= 0 ? "text-bull-light" : "text-bear-light"}`}>{r.avgReturn >= 0 ? "+" : ""}{r.avgReturn}%</span>
+                  )},
+                  { key: "winRate", header: "Win Rate", type: "number", sortValue: r => r.winRate, accessor: r => (
+                    <span className={`font-bold ${r.winRate >= 55 ? "text-bull-light" : r.winRate >= 45 ? "text-watch-light" : "text-bear-light"}`}>{r.winRate}%</span>
+                  )},
+                ]}
+                data={data.byScoreBracket.day30.filter(b => b.count > 0)}
+                getRowKey={(_, i) => i}
+                dense
+              />
             </div>
           )}
 
@@ -238,46 +237,30 @@ export default function TrackRecord() {
             <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" /> Recent Signals
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-card-border text-muted-foreground">
-                    <th className="text-left py-2 px-2 font-semibold">Date</th>
-                    <th className="text-left py-2 px-2 font-semibold">Ticker</th>
-                    <th className="text-center py-2 px-2 font-semibold">Signal</th>
-                    <th className="text-right py-2 px-2 font-semibold">Score</th>
-                    <th className="text-right py-2 px-2 font-semibold">Price</th>
-                    <th className="text-right py-2 px-2 font-semibold">7d</th>
-                    <th className="text-right py-2 px-2 font-semibold">30d</th>
-                    <th className="text-right py-2 px-2 font-semibold">90d</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recentSignals.map((s, i) => (
-                    <tr key={i} className="border-b border-card-border/30 hover:bg-muted/20">
-                      <td className="py-2 px-2 text-muted-foreground font-mono">{s.date.substring(5)}</td>
-                      <td className="py-2 px-2 font-mono font-bold text-foreground">{s.ticker}</td>
-                      <td className="py-2 px-2 text-center">
-                        <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${signalBg(s.signal)} ${signalColor(s.signal)}`}>
-                          {s.signal.replace("_", " ")}
-                        </span>
-                      </td>
-                      <td className="py-2 px-2 text-right font-mono text-foreground">{s.score}</td>
-                      <td className="py-2 px-2 text-right font-mono text-foreground">${s.price?.toFixed(2)}</td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${retColor(s.return7d)}`}>
-                        {s.return7d != null ? `${s.return7d >= 0 ? "+" : ""}${s.return7d}%` : "—"}
-                      </td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${retColor(s.return30d)}`}>
-                        {s.return30d != null ? `${s.return30d >= 0 ? "+" : ""}${s.return30d}%` : "—"}
-                      </td>
-                      <td className={`py-2 px-2 text-right font-mono font-bold ${retColor(s.return90d)}`}>
-                        {s.return90d != null ? `${s.return90d >= 0 ? "+" : ""}${s.return90d}%` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<RecentSignalRow>
+              columns={[
+                { key: "date", header: "Date", sortValue: r => r.date, accessor: r => <span className="text-muted-foreground font-mono">{r.date.substring(5)}</span> },
+                { key: "ticker", header: "Ticker", sortValue: r => r.ticker, accessor: r => <span className="font-mono font-bold text-foreground">{r.ticker}</span> },
+                { key: "signal", header: "Signal", align: "center", sortValue: r => r.signal, accessor: r => (
+                  <span className={`text-micro font-bold px-1.5 py-0.5 rounded ${signalBg(r.signal)} ${signalColor(r.signal)}`}>{r.signal.replace("_", " ")}</span>
+                )},
+                { key: "score", header: "Score", type: "score", sortValue: r => r.score, accessor: r => r.score },
+                { key: "price", header: "Price", type: "price", sortValue: r => r.price, accessor: r => `$${r.price?.toFixed(2)}` },
+                { key: "r7d", header: "7d", type: "number", sortValue: r => r.return7d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                  <span className={`font-bold ${retColor(r.return7d)}`}>{r.return7d != null ? `${r.return7d >= 0 ? "+" : ""}${r.return7d}%` : "—"}</span>
+                )},
+                { key: "r30d", header: "30d", type: "number", sortValue: r => r.return30d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                  <span className={`font-bold ${retColor(r.return30d)}`}>{r.return30d != null ? `${r.return30d >= 0 ? "+" : ""}${r.return30d}%` : "—"}</span>
+                )},
+                { key: "r90d", header: "90d", type: "number", sortValue: r => r.return90d ?? Number.NEGATIVE_INFINITY, accessor: r => (
+                  <span className={`font-bold ${retColor(r.return90d)}`}>{r.return90d != null ? `${r.return90d >= 0 ? "+" : ""}${r.return90d}%` : "—"}</span>
+                )},
+              ]}
+              data={data.recentSignals}
+              getRowKey={(_, i) => i}
+              defaultSort={{ key: "date", direction: "desc" }}
+              dense
+            />
           </div>
 
           {/* Methodology */}
