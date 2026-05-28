@@ -9,6 +9,35 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — /help rebuilt as a searchable, indexed knowledge base
+
+**Why:** Chris: "create a comprehensive HOW TO and WHAT IT MEANS so we can add this to the help menu. Make it searchable and indexed… make sure when you make a statement that it is true and how it works." Previous /help was an accordion of FAQ-style copy with no search, no deep-linking, and some statements that didn't match the current code (e.g. Yahoo Finance as data source, scanner "10 results" limit, "no user login" — all wrong now).
+
+**What:**
+- **New content file `client/src/data/help-content.tsx`** — 70+ entries split into two document types:
+  - `how-to` — task-oriented instructions ("Analyze a ticker end-to-end", "Use the HTF Setups page", "Tune KAIROS bot config", etc.)
+  - `what-it-means` — glossary definitions ("BBTC — trend follower", "Insider conviction score (0–100)", "GEX — Gamma Exposure", etc.)
+- **Verified against code** — strategies, scoring thresholds, verdict logic, and per-page behavior were surveyed via three parallel code reads (`server/signals/strategies/`, `server/conviction/`, `server/snapshot/score.ts`, every page in `client/src/pages/`) before content was written. Numbers and rules in the help match what the code actually does: BBTC's 2.5×ATR hard / 3.0×ATR trail / ADX≥20 entry, HTF's 0.98 flag-low stop / 1.0× volume gate (down from 1.3× on 2026-05-20), Trigger Check's "fail with weight≥3 → NO" rule, insider conviction's concentration-penalty curve, etc.
+- **Page rewrite `client/src/pages/help.tsx`**:
+  - Sticky search bar — searches title, category, tags, AND body text.
+  - **Cmd/Ctrl-K** focuses the search box.
+  - Three filter pills: All / How To / What It Means.
+  - **Left rail TOC** (lg+) — categories grouped, entries clickable, smooth scroll to anchor.
+  - **Right column** — entries rendered as cards with a TYPE pill.
+  - **Deep-linkable** — every entry has a `#hash` URL. Clicking the # icon copies the link.
+  - Live "X of Y entries" counter in the filter strip.
+
+**Categories covered** (16 total):
+- How-To: Getting Started, Analyzing a Ticker, Watchlist & Portfolio, Tracking Trades, Finding Setups, Reading Verdicts, Calculators, Auto-Traders, Dashboard.
+- What-It-Means: Verdicts & Scores, Strategies, Indicators, Patterns, Insider & Institutional, Options Terminology, Market Mechanics.
+
+**Adding entries:** append to `HELP_ENTRIES` in `client/src/data/help-content.tsx` — the page renders it automatically. No registration step.
+
+**Files:**
+- Added: `client/src/data/help-content.tsx` (knowledge base)
+- Rewritten: `client/src/pages/help.tsx` (searchable UI)
+
+---
 ## 2026-05-27 — Backend tier enforcement (Round 1): Trigger Check + bot proxies + mm-exposure-raw
 
 **Why:** Followed up on the gap I called out in the tier-wire-up entry: sidebar hides Pro/Elite items, but a free user typing `/api/conviction/AAPL` got HTTP 200 back. Confirmed via the free@stockotter.ai test account that logged in cleanly. This Round 1 closes the highest-risk URL-bypass paths.
