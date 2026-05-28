@@ -12,7 +12,7 @@ import { AskOtterWidget } from "./AskOtterWidget";
 const meta: CompartmentMeta = {
   id: "ask-otter",
   name: "Ask Otter",
-  tier: "free",
+  tier: "pro",
   description: "Conversational trading-question agent (Claude). v1 ships the shell — pay-per-use, enable per account.",
 };
 
