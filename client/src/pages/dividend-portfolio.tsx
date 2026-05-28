@@ -10,7 +10,7 @@ import { PageTemplate } from "@/components/PageTemplate";
 import { DividendCalculatorFullView } from "@/compartments/dividend-calculator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { API_DIVIDEND_PORTFOLIO } from "@shared/api/endpoints";
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ function MiniStat({ label, value, color, icon, subtitle }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DividendPortfolio() {
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<string>("annualIncome");
 
@@ -318,7 +318,7 @@ export default function DividendPortfolio() {
                     pos={pos}
                     isExpanded={isExpanded}
                     onToggle={() => setExpandedSymbol(isExpanded ? null : pos.symbol)}
-                    onSelectTicker={() => setActiveTicker(pos.symbol)}
+                    onSelectTicker={() => tickerNavigate(pos.symbol)}
                   />
                 );
               })}

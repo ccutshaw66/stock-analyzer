@@ -1,13 +1,12 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { BarChart3, TrendingUp, TrendingDown, Activity, X, Loader2, ArrowRight, Grid3X3 } from "lucide-react";
 import { Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
 import { formatCompact } from "@/lib/format";
-import { useTicker } from "@/contexts/TickerContext";
 import { SIGNAL_BULL, SIGNAL_BEAR, hexToRgb } from "@/lib/design-tokens";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -237,8 +236,7 @@ export default function SectorHeatmap() {
 // ─── Sector Leaders Modal ────────────────────────────────────────────────────
 
 function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; sectorName: string; onClose: () => void }) {
-  const [, setLocation] = useLocation();
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
 
   const { data, isLoading, error } = useQuery<SectorLeadersResponse>({
     queryKey: [`/api/sectors/${symbol}/top`],
@@ -246,8 +244,7 @@ function SectorLeadersModal({ symbol, sectorName, onClose }: { symbol: string; s
   });
 
   const goToTicker = (t: string) => {
-    setActiveTicker(t);
-    setLocation("/scanner");
+    tickerNavigate(t);
     onClose();
   };
 

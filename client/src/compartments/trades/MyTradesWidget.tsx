@@ -7,7 +7,7 @@
  * shared `TickerContext` bus.
  */
 import { useMemo } from "react";
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { ClipboardList, TrendingUp, TrendingDown } from "lucide-react";
 import { useTrades, useTradesSummary } from "./useTrades";
 import { computeClosedTradeProfit } from "@shared/pnl";
@@ -27,7 +27,7 @@ function pnlColor(n: number): string {
 }
 
 export function MyTradesWidget() {
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const trades = useTrades();
   const summary = useTradesSummary();
 
@@ -84,7 +84,7 @@ export function MyTradesWidget() {
                 <div
                   key={t.id}
                   className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => setActiveTicker(t.symbol)}
+                  onClick={() => tickerNavigate(t.symbol)}
                   data-testid={`mytrades-row-${t.id}`}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">

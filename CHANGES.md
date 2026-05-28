@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Unified ticker-click navigation: always → /profile (unless on a Company Research page)
+
+**Why:** Chris reported the sector-heatmap bug — clicking a ticker set it as the global ticker but routed to `/scanner`. Plus a broader complaint: ticker-click behavior was inconsistent across the site (some places went to `/scanner`, some to `/institutional`, some just set the ticker and stayed put). The rule we agreed on: any ticker click should land on `/profile` so the Company Research nav group becomes the working context. Only exception: if the user is already on a per-ticker analysis page (the Company Research group), the click just swaps the ticker and stays.
+
+**What:**
+- **New shared hook `client/src/lib/useTickerNavigate.ts`** — single source of truth. `useTickerNavigate()` returns a function that sets the active ticker and routes to `/profile` (or stays if the current path matches one of the Company Research routes: `/profile`, `/trade`, `/chart/confluence`, `/chart`, `/mm-exposure`, `/institutional`, `/conviction`, `/verdict`). Also exports `isCompanyResearchRoute(path)` for any caller that needs the predicate.
+- **Sidebar auto-expand** (`client/src/components/AppLayout.tsx`) — a `useEffect` watches `location` and opens the "Company Research" nav group whenever the user lands on one of its pages. Matches the existing accordion behavior (opening CR closes other groups).
+- **Top-bar search** — both the autocomplete `selectResult` and the submit handler now use `useTickerNavigate`, so picking a result always lands on `/profile` (unless you're already on a CR page, in which case the ticker just swaps).
+- **Sector heatmap** — fixed the original bug. The sector-leader modal now navigates to `/profile` instead of `/scanner`.
+- **Migrated every ticker-click handler** across the site to use the hook: `/scanner` (result cards), `/insiders` (drillToTicker), `/dividends` (scan results + Weekly Strategy tiles + quarterly calendar), `/dividend-portfolio` (position rows), `WatchlistWidget`, `MyTradesWidget`, `BestOppsWidget`, `InsiderClustersWidget`, `EmptyState` (confluence-chart picker).
+- **Not changed** (per the rule): `/institutional` scanner cards still open the in-page modal, because `/institutional` IS a per-ticker Company Research page; the modal is its detail-view UX.
+
+**Files:**
+- Added: `client/src/lib/useTickerNavigate.ts`
+- Modified: `client/src/components/AppLayout.tsx` (sidebar auto-expand + search wiring)
+- Modified: `client/src/pages/sector-heatmap.tsx` (bug fix — was navigating to /scanner)
+- Modified: `client/src/pages/scanner.tsx`, `client/src/pages/insiders.tsx`, `client/src/pages/dividends.tsx`, `client/src/pages/dividend-portfolio.tsx`
+- Modified: `client/src/compartments/confluence-chart/EmptyState.tsx`, `client/src/compartments/insider-clusters/InsiderClustersWidget.tsx`, `client/src/compartments/favorites/WatchlistWidget.tsx`, `client/src/compartments/trades/MyTradesWidget.tsx`, `client/src/compartments/scanner/BestOppsWidget.tsx`
+
+---
 ## 2026-05-27 — Client-side route-level tier gating + HTF "Add" button hidden for Free
 
 **Why:** Chris reported as free@: *"I went to HTF page. Hit the + sign to add a trade and it went to current positions page but it is not in the menu."* Two leaks: (1) the HTF page's `+` button routes to `/tracker`, which the sidebar hides for Free but the React Router still mounts for any logged-in user — so Free users land on a page they're not paying for; (2) any other Pro/Elite page is reachable the same way by typing the URL. The Round-1 backend gate (the 402 from `/api/*`) blocks the data fetch, but the page UI still renders, which is a worse experience than just blocking access cleanly.

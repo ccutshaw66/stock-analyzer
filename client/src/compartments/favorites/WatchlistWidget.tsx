@@ -5,7 +5,7 @@
  * publishes the ticker to the shared `TickerContext` bus so other widgets on
  * the same dashboard tab can react. No direct prop coupling.
  */
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { getVerdictColor } from "@/lib/format";
 import { Star } from "lucide-react";
 import { useFavorites, type FavoriteItem } from "./useFavorites";
@@ -42,7 +42,7 @@ function Row({ item, onSelect }: { item: FavoriteItem; onSelect: () => void }) {
 
 export function WatchlistWidget() {
   const { data: items, isLoading, error } = useFavorites("watchlist");
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
 
   return (
     <div className="flex flex-col h-full p-2" data-testid="watchlist-widget">
@@ -57,7 +57,7 @@ export function WatchlistWidget() {
           <div className="text-xs text-muted-foreground p-2">Empty — add tickers from the Profile page.</div>
         )}
         {items?.map((item) => (
-          <Row key={item.id} item={item} onSelect={() => setActiveTicker(item.ticker)} />
+          <Row key={item.id} item={item} onSelect={() => tickerNavigate(item.ticker)} />
         ))}
       </div>
     </div>

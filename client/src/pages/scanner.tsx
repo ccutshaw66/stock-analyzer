@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useLocation } from "wouter";
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 import {
   Radar, Search, TrendingUp, TrendingDown, Minus,
@@ -377,9 +376,8 @@ function ExplosionCard({ result, rank, onClick, onAnalyze }: { result: any; rank
 // ─── Main Scanner ───
 
 export default function Scanner() {
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const { timeframe } = useTimeframe();
-  const [, navigate] = useLocation();
   const [scanMode, setScanMode] = useState<"3strategy" | "amc" | "v2">("3strategy");
   const [sector, setSector] = useState("All Sectors");
   const [priceRange, setPriceRange] = useState("all");
@@ -483,10 +481,10 @@ export default function Scanner() {
     }
   };
 
-  const handleTickerClick = (ticker: string) => {
-    setActiveTicker(ticker);
-    navigate("/trade");
-  };
+  // Per the site-wide rule (2026-05-27), any ticker click goes to /profile
+  // unless we're already on a Company Research page. /scanner is NOT in
+  // that group, so this always navigates.
+  const handleTickerClick = tickerNavigate;
 
 
   return (

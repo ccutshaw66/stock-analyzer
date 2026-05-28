@@ -7,7 +7,7 @@
  * away and back doesn't re-scan.
  */
 import { useState } from "react";
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { Flame, TrendingUp, TrendingDown, RefreshCw, Play } from "lucide-react";
 import { useScannerV2, type ScannerV2Filters, type ScannerV2Row } from "./useScannerV2";
 
@@ -48,7 +48,7 @@ function Row({ row, onSelect }: { row: ScannerV2Row; onSelect: () => void }) {
 
 export function BestOppsWidget() {
   const [enabled, setEnabled] = useState(false);
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const { data, isFetching, error, refetch } = useScannerV2(DEFAULT_FILTERS, { enabled });
 
   const hasResults = data?.results && data.results.length > 0;
@@ -97,7 +97,7 @@ export function BestOppsWidget() {
         )}
 
         {hasResults && data!.results.slice(0, 5).map((row) => (
-          <Row key={row.symbol} row={row} onSelect={() => setActiveTicker(row.symbol)} />
+          <Row key={row.symbol} row={row} onSelect={() => tickerNavigate(row.symbol)} />
         ))}
 
         {data && !hasResults && !isFetching && (

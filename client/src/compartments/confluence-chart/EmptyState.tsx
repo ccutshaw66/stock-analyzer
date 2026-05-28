@@ -4,17 +4,17 @@
  */
 import otterMascot from "@/assets/mascot.jpg";
 import { Search } from "lucide-react";
-import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { useState } from "react";
 
 export function EmptyState() {
-  const { setActiveTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const [tickerInput, setTickerInput] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const t = tickerInput.trim().toUpperCase();
-    if (t) setActiveTicker(t);
+    if (t) tickerNavigate(t);
   };
 
   const featured = ["AAPL", "NVDA", "TSLA", "SPY", "QQQ", "AMD"];
@@ -56,7 +56,7 @@ export function EmptyState() {
         {featured.map((t) => (
           <button
             key={t}
-            onClick={() => setActiveTicker(t)}
+            onClick={() => tickerNavigate(t)}
             className="px-2 py-1 rounded bg-card border border-border text-xs font-mono font-semibold text-foreground hover:bg-muted hover:border-primary/50 transition-colors"
             data-testid={`empty-state-featured-${t}`}
           >

@@ -27,6 +27,7 @@ import {
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
 import { getNavGroups } from "@/lib/page-registry";
+import { useTickerNavigate, isCompanyResearchRoute } from "@/lib/useTickerNavigate";
 import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
@@ -65,8 +66,7 @@ function StickyHeader({
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
 }) {
-  const { activeTicker, setActiveTicker, analysisData, isAnalysisLoading } =
-    useTicker();
+  const { activeTicker, analysisData, isAnalysisLoading } = useTicker();
   const { user, logout } = useAuth();
   const { tier } = useSubscription();
   const [input, setInput] = useState("");
@@ -74,6 +74,9 @@ function StickyHeader({
   const [searchResults, setSearchResults] = useState<{ symbol: string; name: string; type: string }[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [, navigate] = useLocation();
+  // Shared ticker-navigate hook: any pick lands on /profile (unless the
+  // user is already on a Company Research page).
+  const tickerNavigate = useTickerNavigate();
 
   // Debounced search — triggers when user types 2+ chars that look like a name (not a pure ticker)
   const searchTimerRef = useRef<any>(null);
@@ -112,7 +115,7 @@ function StickyHeader({
   };
 
   const selectResult = (symbol: string) => {
-    setActiveTicker(symbol);
+    tickerNavigate(symbol);
     setInput("");
     dismissSearch();
   };
@@ -121,7 +124,7 @@ function StickyHeader({
     e.preventDefault();
     const trimmed = input.trim().toUpperCase();
     if (trimmed) {
-      setActiveTicker(trimmed);
+      tickerNavigate(trimmed);
       setInput("");
       dismissSearch();
     }
@@ -514,8 +517,9 @@ function Sidebar({
     });
   };
 
+  const tickerNavigate = useTickerNavigate();
   const handleSelectTicker = (ticker: string) => {
-    setActiveTicker(ticker);
+    tickerNavigate(ticker);
     if (isMobile) onClose();
   };
 
@@ -539,6 +543,14 @@ function Sidebar({
   const toggleGroup = (label: string) => {
     setGroupOpen((prev) => (prev[label] ? {} : { [label]: true }));
   };
+  // Auto-expand the Company Research group whenever the user lands on one
+  // of its pages (either via a ticker click or direct navigation). Matches
+  // the accordion behavior — opening CR closes whatever else was open.
+  useEffect(() => {
+    if (isCompanyResearchRoute(location)) {
+      setGroupOpen({ "Company Research": true });
+    }
+  }, [location]);
 
   const sidebarWidth = expanded ? "w-64" : "w-14";
 

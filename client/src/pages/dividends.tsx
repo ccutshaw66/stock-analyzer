@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Example, ScoreRange } from "@/components/HelpBlock";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { PageTemplate } from "@/components/PageTemplate";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
@@ -36,7 +37,8 @@ interface DividendData {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dividends() {
-  const { activeTicker, setActiveTicker } = useTicker();
+  const { activeTicker } = useTicker();
+  const tickerNavigate = useTickerNavigate();
   const [customTickers, setCustomTickers] = useState("");
 
   // Filter state
@@ -397,7 +399,7 @@ export default function Dividends() {
             getRowKey={r => r.ticker}
             defaultSort={{ key: "score", direction: "desc" }}
             showScoreFilter
-            onRowClick={r => setActiveTicker(r.ticker)}
+            onRowClick={r => tickerNavigate(r.ticker)}
             dense
           />
         )}
@@ -421,7 +423,7 @@ export default function Dividends() {
       </div>
 
       {/* Weekly Dividend Strategy (Bowtie Nation) */}
-      <WeeklyStrategy setActiveTicker={setActiveTicker} />
+      <WeeklyStrategy setActiveTicker={tickerNavigate} />
     </PageTemplate>
   );
 }

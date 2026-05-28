@@ -8,11 +8,10 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
-import { useTicker } from "@/contexts/TickerContext";
 import { PageTemplate } from "@/components/PageTemplate";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
+import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { Loader2, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from "lucide-react";
 
 interface MarketRatio {
@@ -97,17 +96,10 @@ function ratioLabel(r: number): string {
 }
 
 export default function InsidersPage() {
-  const [, navigate] = useLocation();
-  const { setActiveTicker } = useTicker();
   const qc = useQueryClient();
-  // Set the global active ticker AND navigate to a research page. Without
-  // setActiveTicker, Profile / Trade Analysis / Confluence Pulse would all
-  // stay on whatever ticker the user had open before — the URL param alone
-  // doesn't reach those pages (they read from TickerContext, not the URL).
-  const drillToTicker = (symbol: string) => {
-    setActiveTicker(symbol);
-    navigate(`/institutional?ticker=${symbol}`);
-  };
+  // Shared ticker-navigate hook — sets the global ticker and routes to
+  // /profile (Company Research home) per the site-wide rule.
+  const drillToTicker = useTickerNavigate();
   // Chris rule (2026-05-22): only show high-signal rows — either ≥$1M
   // dollar activity OR ≥3 distinct insiders transacting in the window
   // (the latter mirrors the insider-cluster definition). Small isolated
