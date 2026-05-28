@@ -32,7 +32,7 @@ export interface PageEntry {
   /** Optional subtitle shown under the title in the PageHeader. */
   readonly subtitle?: string;
   /** If set, entry is only visible to users at or above this tier. */
-  readonly requiresTier?: "starter" | "premium";
+  readonly requiresTier?: "pro" | "elite";
   /** Pseudo-routes for sidebar-only actions (modals); not real pages. Skipped by PageHeader auto-match. */
   readonly action?: true;
   /**
@@ -71,7 +71,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "Company Research", subtitle: "Per-ticker signal walk-through with chart overlays." },
   { path: "/chart/confluence",    label: "Confluence Chart",      icon: Layers,          group: "Company Research", subtitle: "Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read." },
   { path: "/chart",               label: "Strategy Chart",        icon: FlaskConical,    group: "Company Research", subtitle: "Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes." },
-  { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Company Research", subtitle: "Dealer positioning, gamma exposure, max pain.", requiresTier: "starter" },
+  { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Company Research", subtitle: "Dealer positioning, gamma exposure, max pain.", requiresTier: "pro" },
   { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "Company Research", subtitle: "13F-tracked institutional ownership and flows." },
   { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Company Research", subtitle: "Final check before you pull the trigger — one verdict, plain-English reasons." },
   { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "Company Research", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },
@@ -132,11 +132,11 @@ export function lookupPageByPath(currentPath: string): PageEntry | undefined {
 /**
  * Return all entries grouped for sidebar rendering, with tier filtering applied.
  */
-export function getNavGroups(userTier: "free" | "starter" | "premium" = "free"): {
+export function getNavGroups(userTier: "free" | "pro" | "elite" = "free"): {
   label: NavGroup;
   items: PageEntry[];
 }[] {
-  const tierOrder: Record<string, number> = { free: 0, starter: 1, premium: 2 };
+  const tierOrder: Record<string, number> = { free: 0, pro: 1, elite: 2 };
   return NAV_GROUP_ORDER.map((group) => ({
     label: group,
     items: PAGE_REGISTRY.filter((p) => {
