@@ -118,6 +118,10 @@ export function DataTable<T>(props: DataTableProps<T>) {
   }, [filtered, sort, columns]);
 
   const toggleSort = (key: string, sortable: boolean | undefined) => {
+    // TEMP DEBUG (2026-05-27): Chris reports header clicks doing nothing
+    // on most pages. Log every invocation so we can see in devtools
+    // whether the handler fires at all.
+    console.log("[DataTable] header click", { key, sortable });
     if (sortable === false) return;
     setSort((curr) => {
       if (!curr || curr.key !== key) return { key, direction: "asc" };
@@ -215,15 +219,15 @@ export function DataTable<T>(props: DataTableProps<T>) {
                     >
                       <span>{c.header}</span>
                       {sortable && (
-                        <span className="inline-flex items-center text-muted-foreground/70">
+                        <span className="inline-flex items-center text-foreground">
                           {isSorted ? (
                             sort?.direction === "asc" ? (
-                              <ArrowUp className="h-3 w-3" />
+                              <ArrowUp className="h-3.5 w-3.5" />
                             ) : (
-                              <ArrowDown className="h-3 w-3" />
+                              <ArrowDown className="h-3.5 w-3.5" />
                             )
                           ) : (
-                            <ArrowUpDown className="h-3 w-3 opacity-40" />
+                            <ArrowUpDown className="h-3.5 w-3.5" />
                           )}
                         </span>
                       )}
