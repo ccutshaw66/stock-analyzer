@@ -1667,8 +1667,15 @@ export async function registerRoutes(
   // Forward /api/hermes/* and /api/kairos/* to the matching FastAPI dashboards
   // on superotter (10.209.32.8). Neither bot is publicly exposed — these
   // proxies are the only paths in, and they inherit the /api auth wall above.
+  //
+  // Elite-gated: the bots are an Elite-tier feature per the tier policy.
+  // Mount the tier check at the same prefix BEFORE the proxy so the gate
+  // fires before any upstream request is made.
+  const { requireTier } = await import("./platform/tiers/middleware");
   const { mountHermesProxy, mountInternalProxy } = await import("./hermes-proxy");
+  app.use("/api/hermes", requireTier("elite"));
   mountHermesProxy(app);
+  app.use("/api/kairos", requireTier("elite"));
   const KAIROS_URL = process.env.KAIROS_INTERNAL_URL || "http://10.209.32.8:8082";
   console.log(`[kairos-proxy] /api/kairos/* -> ${KAIROS_URL}`);
   mountInternalProxy(app, "/api/kairos", KAIROS_URL);
@@ -1933,7 +1940,7 @@ export async function registerRoutes(
   // Returns the scanner's MMExposure shape (GEX, DEX, unusual, squeezeBias)
   // used by Scanner 2.0 signals. Distinct from the UI page's richer
   // /api/mm-exposure/:ticker endpoint below, which is the user-facing view.
-  app.get("/api/mm-exposure-raw/:ticker", async (req, res) => {
+  app.get("/api/mm-exposure-raw/:ticker", requireTier("elite"), async (req, res) => {
     const ticker = String(req.params.ticker || "").toUpperCase();
     if (!ticker) return res.status(400).json({ error: "ticker required" });
     try {
@@ -5251,7 +5258,7 @@ export async function registerRoutes(
   //
   // Replaces the radar/axis Compass that shipped originally. See brief
   // `~/.claude/projects/C--dev/memory/brief_trigger_check.md`.
-  app.get("/api/conviction/:ticker", async (req, res) => {
+  app.get("/api/conviction/:ticker", requireTier("pro"), async (req, res) => {
     try {
       await ensureReady();
       const { getTriggerCheck } = await import("./conviction/trigger-check");

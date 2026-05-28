@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Backend tier enforcement (Round 1): Trigger Check + bot proxies + mm-exposure-raw
+
+**Why:** Followed up on the gap I called out in the tier-wire-up entry: sidebar hides Pro/Elite items, but a free user typing `/api/conviction/AAPL` got HTTP 200 back. Confirmed via the free@stockotter.ai test account that logged in cleanly. This Round 1 closes the highest-risk URL-bypass paths.
+
+**What — `requireTier` middleware fix:**
+- `server/platform/tiers/middleware.ts` — the existing `requireTier(min)` factory read `req.user?.tier` which is **never populated** (the auth middleware sets `{id,email,displayName}` only). Made the middleware async, looking up the tier via `getUserTier(req.user.id)` from `server/stripe.ts`. Fails open on transient DB errors so a blip doesn't lock out paying users (matches `checkFeatureAccess` legacy behavior).
+- 402 on tier-fail (`TIER_REQUIRED` + `requiredTier` + `currentTier` + `upgradeUrl`), 401 if not authenticated.
+
+**What — routes gated this round:**
+- `GET /api/conviction/:ticker` — `requireTier("pro")`. Trigger Check is the killer Pro feature; without this gate a free user could call it directly.
+- `GET /api/mm-exposure-raw/:ticker` — `requireTier("elite")`. The user-facing `/api/mm-exposure/:ticker` was already gated via `checkFeatureAccess('mmExposure')`; the diagnostic `-raw` sibling wasn't. Closed.
+- `/api/hermes/*` proxy — `app.use("/api/hermes", requireTier("elite"))` mounted before `mountHermesProxy`. HERMES is Elite-only.
+- `/api/kairos/*` proxy — same pattern: `app.use("/api/kairos", requireTier("elite"))` before `mountInternalProxy(app, "/api/kairos", ...)`. KAIROS is Elite-only.
+
+**What's still open (Round 2 sweep):** Institutions, Earnings Calendar, Dividend Finder, Track Record, Insider Activity, Alerts, Trade Tracker endpoints, Performance Analytics, Confluence Chart, Strategy Chart, Options Calculator, Kelly, Payoff Diagram, Greeks Calculator. The sidebar gates these for casual users, but a URL-typer can still hit them. Lower priority than tonight's set because most are read-only data routes and the risk is "free user gets data they paid for", not "free user breaks something." Round 2 when there's a real free-tier user base to worry about.
+
+**Files touched:**
+- Modified: `server/platform/tiers/middleware.ts` (async tier lookup)
+- Modified: `server/routes.ts` (3 routes gated + import added)
+
+---
 ## 2026-05-27 — Demo account: logout-triggered reset + restored after test blew it up
 
 **Why:** Chris's quote: *"We need to create a new test account that has all the features and staged transactions that can reset after they log out or leave the site. We had one but it got blown up in a test run."* The demo machinery (`server/demo-seed.ts` + `server/seed-demo.ts` + the idle-reset timer in `routes.ts`) was fully intact — just needed (1) a re-seed to restore the actual data and (2) a second reset trigger so logout immediately re-seeds, not just 60-min idle.
