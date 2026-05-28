@@ -296,8 +296,9 @@ function computeOptionPL(t: Trade): number {
     }
   }
 
-  // --- Butterflies & CTVs: rough estimate based on proximity to center ---
-  if (type.includes("BFLY") || type.includes("CTV")) {
+  // --- Butterflies & DSFs (Double Spread Fly, formerly CTV): rough estimate
+  // based on proximity to center. CTV kept for any legacy un-normalized rows.
+  if (type.includes("BFLY") || type.includes("DSF") || type.includes("CTV")) {
     // For butterflies, best at center strike. Rough: if near center, positive; if far, losing.
     if (strikeParts.length >= 2) {
       const center = (strikeParts[0] + strikeParts[strikeParts.length - 1]) / 2;

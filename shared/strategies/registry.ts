@@ -191,7 +191,7 @@ function pctChange(from: number | null, to: number | null): number | null {
 // ─── Manifests ────────────────────────────────────────────────────────────
 
 /**
- * HTF — High Tight Flag (Givens variant).
+ * HTF — High Tight Flag.
  * Lifecycle: Entry @ next open after breakout → Stop @ flag_low × 0.99 →
  * Take 1/3 after 3 cumulative close-strength days (close >5% above entry) →
  * Trail remaining 2/3 below 20-day MA after partial fires.
@@ -200,7 +200,7 @@ const HTF_MANIFEST: StrategyManifest = {
   id: "htf",
   name: "HTF (High Tight Flag)",
   shortName: "HTF",
-  description: "Givens HTF setup: 30%+ pole, tight flag, breakout on volume",
+  description: "HTF setup: 30%+ pole, tight flag, breakout on volume",
   color: "bull",
   requiresReason: false,
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "Pole", "Flag"],

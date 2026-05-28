@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — HTF header: drop "Givens" + rename CTV trade type → DSF (Double Spread Fly)
+
+**Why:**
+- Chris: "Need to take the name Givens off the current position HTF header." The HTF section card on /tracker was rendering "Givens HTF setup: 30%+ pole, tight flag, breakout on volume". Givens is an external author whose framework the HTF detector originally took inspiration from; the trade-tracker shouldn't surface his name on Chris's positions.
+- Chris: "Not use CTV due to it is another persons strategy I learned and there are a couple more that I may add later. But CTV has to change to DSF (Double Spread Fly) Call/Put." Same reason — borrowed naming. CCTV (Call CTV) → CDSF (Call DSF), PCTV (Put CTV) → PDSF (Put DSF).
+
+**What — HTF header rename:**
+- `shared/strategies/registry.ts` — `HTF_MANIFEST.description` changed from `"Givens HTF setup: …"` to `"HTF setup: 30%+ pole, tight flag, breakout on volume"`. Internal docs comment cleaned up too (was `* HTF — High Tight Flag (Givens variant).`, now `* HTF — High Tight Flag.`). Strategy id, behavior, and the per-strategy lifecycle rules unchanged.
+
+**What — CTV → DSF rename:**
+- `shared/schema.ts` — `TRADE_TYPES.CCTV` → `CDSF` (label "Call DSF (Double Spread Fly)"), `PCTV` → `PDSF` (label "Put DSF (Double Spread Fly)").
+- `shared/schema.ts` — added `LEGACY_TRADE_TYPE_MAP` + `normalizeTradeType()`. Same pattern as the behavior-tag rename: existing DB rows tagged CCTV/PCTV automatically render as CDSF/PDSF on read. No migration needed.
+- `server/storage.ts` — `selectTradesWithFallback` now normalizes both `behaviorTag` AND `tradeType` on read.
+- `server/demo-seed.ts` — seed trades updated to use CDSF/PDSF.
+- `shared/pnl/index.ts` and `client/src/pages/trade-tracker.tsx` — the "is this a butterfly/CTV pattern?" branch now matches `"BFLY" || "DSF" || "CTV"`. Legacy CTV kept in the check as a belt-and-suspenders fallback for any row that bypasses the normalize layer.
+- `client/src/pages/greeks-calculator.tsx` — added CDSF to the Call array, PDSF to the Put array. CCTV/PCTV kept in the arrays for the same belt-and-suspenders reason.
+- `client/src/components/AppLayout.tsx` — Add Trade modal: internal `ctvBuy*` / `ctvSell*` state variables renamed to `dsfBuy*` / `dsfSell*`. UI comment "CTV Dual Vertical Entry" → "DSF (Double Spread Fly) Dual Vertical Entry". User-visible label "Dual Vertical Entry (2 spreads = butterfly)" unchanged.
+
+**Files:**
+- Modified: `shared/strategies/registry.ts`, `shared/schema.ts`, `shared/pnl/index.ts`
+- Modified: `server/storage.ts`, `server/demo-seed.ts`
+- Modified: `client/src/components/AppLayout.tsx`, `client/src/pages/trade-tracker.tsx`, `client/src/pages/greeks-calculator.tsx`
+
+---
 ## 2026-05-27 — Dashboard tier filter + insider widgets bumped Pro + Action Queue sticky header + tier-test data cleanup
 
 **Why:** Chris's free@ session surfaced four things at once:

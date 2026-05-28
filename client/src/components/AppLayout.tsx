@@ -667,11 +667,11 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
   const [spreadWidth, setSpreadWidth] = useState("");
   const [allocation, setAllocation] = useState("");
 
-  // CTV dual-vertical fields
-  const [ctvBuyStrikes, setCtvBuyStrikes] = useState("");
-  const [ctvBuyPrice, setCtvBuyPrice] = useState("");
-  const [ctvSellStrikes, setCtvSellStrikes] = useState("");
-  const [ctvSellPrice, setCtvSellPrice] = useState("");
+  // DSF (Double Spread Fly) dual-vertical fields
+  const [dsfBuyStrikes, setDsfBuyStrikes] = useState("");
+  const [dsfBuyPrice, setDsfBuyPrice] = useState("");
+  const [dsfSellStrikes, setDsfSellStrikes] = useState("");
+  const [dsfSellPrice, setDsfSellPrice] = useState("");
 
   const typeDef = TRADE_TYPES[tradeType];
   const isCredit = typeDef?.isCredit ?? false;
@@ -687,10 +687,10 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     let rawPrice = parseFloat(openPrice) || 0;
-    // CTV: calculate net from two legs
-    if (isDualVertical && ctvBuyPrice && ctvSellPrice) {
-      const buyP = parseFloat(ctvBuyPrice) || 0;
-      const sellP = parseFloat(ctvSellPrice) || 0;
+    // DSF: net of the two verticals (buy debit + sell credit)
+    if (isDualVertical && dsfBuyPrice && dsfSellPrice) {
+      const buyP = parseFloat(dsfBuyPrice) || 0;
+      const sellP = parseFloat(dsfSellPrice) || 0;
       rawPrice = sellP - buyP; // positive = net credit, negative = net debit
     }
     const signedPrice = isDualVertical
@@ -708,7 +708,7 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
     createMut.mutate({
       pilotOrAdd, tradeDate, expiration: expiration || null, contractsShares,
       symbol: symbol.toUpperCase(), tradeType, tradeCategory: category,
-      strikes: isDualVertical ? `${ctvBuyStrikes}|${ctvSellStrikes}` : (strikes || null),
+      strikes: isDualVertical ? `${dsfBuyStrikes}|${dsfSellStrikes}` : (strikes || null),
       openPrice: signedPrice, commIn,
       allocation: parseFloat(allocation) || null, spreadWidth: sw,
       maxProfit,
@@ -755,39 +755,39 @@ function SidebarAddTradeModal({ settings, onClose }: { settings: any; onClose: (
               <DatePicker value={expiration} onChange={setExpiration} placeholder="Expiration" /></div>}
           </div>
 
-          {/* CTV Dual Vertical Entry */}
+          {/* DSF (Double Spread Fly) Dual Vertical Entry */}
           {isDualVertical ? (
             <div className="border border-primary/20 bg-primary/5 rounded-lg p-3 space-y-3">
               <p className="text-xs font-semibold text-primary">Dual Vertical Entry (2 spreads = butterfly)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-bear-light mb-1 block">Buy Spread (Debit Leg)</label>
-                  <input type="text" value={ctvBuyStrikes} onChange={e => setCtvBuyStrikes(e.target.value)}
+                  <input type="text" value={dsfBuyStrikes} onChange={e => setDsfBuyStrikes(e.target.value)}
                     placeholder="65/70" className="w-full h-8 px-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bear-light">−$</span>
-                    <input type="number" step="0.01" value={ctvBuyPrice} onChange={e => setCtvBuyPrice(e.target.value)}
+                    <input type="number" step="0.01" value={dsfBuyPrice} onChange={e => setDsfBuyPrice(e.target.value)}
                       placeholder="1.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bear/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-bull-light mb-1 block">Sell Spread (Credit Leg)</label>
-                  <input type="text" value={ctvSellStrikes} onChange={e => setCtvSellStrikes(e.target.value)}
+                  <input type="text" value={dsfSellStrikes} onChange={e => setDsfSellStrikes(e.target.value)}
                     placeholder="70/75" className="w-full h-8 px-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground mb-1" />
                   <div className="relative">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-bull-light">+$</span>
-                    <input type="number" step="0.01" value={ctvSellPrice} onChange={e => setCtvSellPrice(e.target.value)}
+                    <input type="number" step="0.01" value={dsfSellPrice} onChange={e => setDsfSellPrice(e.target.value)}
                       placeholder="2.50" className="w-full h-8 pl-7 pr-3 text-xs bg-background border border-bull/30 rounded-md font-mono text-foreground" />
                   </div>
                 </div>
               </div>
-              {ctvBuyPrice && ctvSellPrice && (
+              {dsfBuyPrice && dsfSellPrice && (
                 <div className="flex items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Net:</span>
-                  <span className={`font-bold tabular-nums ${(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
-                    {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(ctvSellPrice) || 0) - (parseFloat(ctvBuyPrice) || 0)).toFixed(2)} {(parseFloat(ctvSellPrice) || 0) > (parseFloat(ctvBuyPrice) || 0) ? "credit" : "debit"}
+                  <span className={`font-bold tabular-nums ${(parseFloat(dsfSellPrice) || 0) > (parseFloat(dsfBuyPrice) || 0) ? "text-bull-light" : "text-bear-light"}`}>
+                    {(parseFloat(dsfSellPrice) || 0) > (parseFloat(dsfBuyPrice) || 0) ? "+" : "-"}${Math.abs((parseFloat(dsfSellPrice) || 0) - (parseFloat(dsfBuyPrice) || 0)).toFixed(2)} {(parseFloat(dsfSellPrice) || 0) > (parseFloat(dsfBuyPrice) || 0) ? "credit" : "debit"}
                   </span>
-                  {ctvBuyStrikes && ctvSellStrikes && <span className="text-muted-foreground">Strikes: {ctvBuyStrikes}/{ctvSellStrikes}</span>}
+                  {dsfBuyStrikes && dsfSellStrikes && <span className="text-muted-foreground">Strikes: {dsfBuyStrikes}/{dsfSellStrikes}</span>}
                 </div>
               )}
             </div>

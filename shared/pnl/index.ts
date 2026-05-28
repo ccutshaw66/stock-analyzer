@@ -134,8 +134,10 @@ export function computeOpenOptionPL(t: Trade): number {
     return -premium * contracts * 100 * 0.5 - commIn;
   }
 
-  // Butterflies / CTVs — rough proximity-to-center estimate
-  if (type.includes("BFLY") || type.includes("CTV")) {
+  // Butterflies / DSFs (Double Spread Fly, formerly CTV) — rough
+  // proximity-to-center estimate. CTV kept in the check for legacy rows
+  // that haven't been normalized yet.
+  if (type.includes("BFLY") || type.includes("DSF") || type.includes("CTV")) {
     if (strikeParts.length >= 2) {
       const center = (strikeParts[0] + strikeParts[strikeParts.length - 1]) / 2;
       const dist = Math.abs(stock - center);

@@ -10,7 +10,7 @@ import {
   type Alert, type InsertAlert, type AlertRule, type InsertAlertRule,
   type DashboardLayoutRow,
   users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio, alerts, alertRules, dashboardLayouts,
-  normalizeBehaviorTag,
+  normalizeBehaviorTag, normalizeTradeType,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -331,10 +331,16 @@ export class DatabaseStorage implements IStorage {
       const dbRows: any[] = Array.isArray(result?.rows) ? result.rows : Array.isArray(result) ? result : [];
       rows = dbRows.map(r => this.mapTradeRow(r));
     }
-    // Normalize any legacy behaviorTag (e.g. pre-rename "Feed the Pigeons" →
-    // "Cashed Out for Coffee") on read so historical rows show the current
-    // label without needing a DB migration.
-    return rows.map(t => ({ ...t, behaviorTag: normalizeBehaviorTag(t.behaviorTag) }));
+    // Normalize legacy stored values on read so historical rows show the
+    // current labels without needing a DB migration:
+    //   - behaviorTag: "Feed the Pigeons" → "Cashed Out for Coffee"
+    //   - tradeType:   CCTV/PCTV → CDSF/PDSF (we renamed the borrowed
+    //                  strategy codes to our own "Double Spread Fly" naming).
+    return rows.map(t => ({
+      ...t,
+      behaviorTag: normalizeBehaviorTag(t.behaviorTag),
+      tradeType: normalizeTradeType(t.tradeType) ?? t.tradeType,
+    }));
   }
 
   // Maps a raw SQL trade row to the typed Trade shape, synthesizing defaults

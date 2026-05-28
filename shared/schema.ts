@@ -424,8 +424,8 @@ export const TRADE_TYPES = {
   PUBFLY: { label: "Put Unbal. Fly", category: "Option", legs: 3, targetROI: 0, isCredit: true },
   CUBFLYD: { label: "Debit CUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
   PUBFLYD: { label: "Debit PUBFLY", category: "Option", legs: 3, targetROI: 0, isCredit: false },
-  CCTV: { label: "Call CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
-  PCTV: { label: "Put CTV", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
+  CDSF: { label: "Call DSF (Double Spread Fly)", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
+  PDSF: { label: "Put DSF (Double Spread Fly)", category: "Option", legs: 4, targetROI: 0, isCredit: true, isDualVertical: true },
   DTC: { label: "Day Trade Call", category: "Option", legs: 1, targetROI: 50, isCredit: false },
   DTP: { label: "Day Trade Put", category: "Option", legs: 1, targetROI: 50, isCredit: false },
   DTCBFLY: { label: "DT Call Butterfly", category: "Option", legs: 3, targetROI: 200, isCredit: false },
@@ -459,4 +459,22 @@ const LEGACY_BEHAVIOR_TAG_MAP: Record<string, (typeof BEHAVIOR_TAGS)[number]> = 
 export function normalizeBehaviorTag(tag: string | null | undefined): string | null {
   if (!tag) return null;
   return LEGACY_BEHAVIOR_TAG_MAP[tag] ?? tag;
+}
+
+/**
+ * Legacy → canonical trade-type code map. Older trades stored borrowed
+ * strategy codes (e.g. CCTV/PCTV from another author's framework); we
+ * renamed those to our own naming (CDSF/PDSF = Double Spread Fly). This
+ * map normalizes legacy codes on read so existing rows show up as the
+ * current type without a DB migration. Add an entry here when a code
+ * is renamed.
+ */
+const LEGACY_TRADE_TYPE_MAP: Record<string, TradeTypeCode> = {
+  CCTV: "CDSF",
+  PCTV: "PDSF",
+};
+
+export function normalizeTradeType(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return LEGACY_TRADE_TYPE_MAP[code] ?? code;
 }

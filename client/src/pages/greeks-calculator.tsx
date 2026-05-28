@@ -241,8 +241,8 @@ export default function GreeksCalculator() {
             if (!isNaN(firstStrike)) setStrikePrice(firstStrike);
           }
           const tt = trade.tradeType as string;
-          if (['C', 'SC', 'CCS', 'CDS', 'CBFLY', 'CCTV'].includes(tt)) setOptionType('call');
-          else if (['P', 'SP', 'PCS', 'PDS', 'PBFLY', 'PCTV'].includes(tt)) setOptionType('put');
+          if (['C', 'SC', 'CCS', 'CDS', 'CBFLY', 'CDSF', 'CCTV'].includes(tt)) setOptionType('call');
+          else if (['P', 'SP', 'PCS', 'PDS', 'PBFLY', 'PDSF', 'PCTV'].includes(tt)) setOptionType('put');
         }} />
 
         {/* Inputs */}
