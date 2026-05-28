@@ -9,6 +9,38 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Tier gating wired across the full nav (Free / Pro / Elite)
+
+**Why:** Chris's quote: *"What is your assessment as to what each [tier] should be able to see and not see?"* Sat down and locked in the tier policy across all 27 pages, then wired the gates in one place (the page-registry). Two principles: (1) Trigger Check is the killer Pro feature — it's the daily-use "should I buy?" gate, so it has to be Pro-or-above to anchor the upgrade pitch; (2) anything that costs us money per query (paid Polygon Options data, options-chain compute, the self-hosted bots) goes Elite. Tonight's pass is sidebar visibility only — backend `platform/tiers` middleware enforcement is a separate follow-up sweep so users can't bypass by typing the URL.
+
+**Tier policy (one place, locked):**
+
+**Free — the hook**
+- Dashboard, Market Pulse, Profile, Trade Analysis, Long-Term Outlook (Verdict), Scanner, HTF Setups, Sector Heatmap, Help.
+- "Look up a ticker, see what we think, find opportunities" — enough value to demo, no actual trade-management workflow.
+
+**Pro — daily driver**
+- All Free, plus: Trigger Check, Confluence Chart, Strategy Chart, Institutions, Earnings Calendar, Dividend Finder, Dividend Portfolio, Track Record, Insider Activity, Alerts, Current Positions, Add Trade, Close Trade, Performance Analytics, Options Calculator, Kelly Criterion.
+- The "I run my trading day here" tier. Most paying users live here.
+
+**Elite — power user**
+- All Pro, plus: MM Exposure (gamma / dealer positioning — Polygon Options data), Payoff Diagram, Greeks Calculator, HERMES Auto Trader, KAIROS Auto Trader, Wheel Strategy, Markov Strategy.
+- Anything that costs us real $/query or runs on our hosts. Automated trading + advanced options modeling.
+
+**What — implementation:**
+- `client/src/lib/page-registry.ts` — added `requiresTier` to every entry that isn't Free. The sidebar's `getNavGroups()` already filters by tier (only Elite's `requiresTier: "elite"` would have been silently visible before tonight's `starter`→`pro`/`elite` rename). Now MM Exposure is `elite`, all Experimental bots are `elite`, the Calculators are split (Pro vs Elite per options-modeling complexity), and the Trade Tracker block (positions, add/close trade, analytics) is `pro`.
+- Comment blocks above each nav group explain the tier policy so a future editor can't quietly drop or escalate something without context.
+- Action pseudo-routes (`#add-trade`, `#close-trade`) also got `requiresTier: "pro"` — the existing filter respects `requiresTier` on actions, so the buttons hide for Free users alongside the rest of the trade-management group.
+
+**Files touched:**
+- Modified: `client/src/lib/page-registry.ts`
+
+**Risks / follow-ups (NOT done tonight):**
+- Backend enforcement. The `server/platform/tiers/middleware.ts` machinery exists but the route-by-route gates need to match this policy — a Free user typing `/api/conviction/AAPL` would still get a response today. The 401 auth wall is the only barrier; tier middleware needs to fire on the gated `/api/*` routes too. Round 2.
+- Free-tier per-page caps (the "Scanner top 10, HTF Top 5" idea from the policy proposal). The current pass is binary visible/hidden; soft caps require per-page logic. Add when there's a real free-tier customer base to throttle.
+- "starter"/"premium" still lives in `server/platform/tiers/*`, `server/demo-seed.ts`, and several `client/src/compartments/*/index.ts` `tier:` fields. None of those touch the sidebar visibility we just fixed — they affect server-side checks and compartment defaults. Sweep when convenient.
+
+---
 ## 2026-05-27 — Conviction Compass → Trigger Check (rebuilt from the user's "should I pull the trigger?" framing)
 
 **Why:** Chris's quote that unlocked the rebuild: *"I want to go to one spot in all the confusion and let it gather all that in a small box and tell me WHY I SHOULD OR SHOULD NOT enter this trade. Period."* The original Compass was an abstract 4-axis radar with verdicts like `ALL_ALIGNED_BULLISH` and a panel that exposed internal plumbing ("QoQ flow unavailable while EDGAR re-warms"). Chris's specific complaint while looking at AAPL: *"I am looking at a diamond shape with a green arrow pointing down and have a mostly bullish signal. WHAT THE FUCK DOES THAT MEAN???"* Translation: a paying user shouldn't have to interpret geometric shapes, axis-jargon verdicts, or internal data-source error notes. The page needed a plain-English verdict + plain-English reasons, period.
