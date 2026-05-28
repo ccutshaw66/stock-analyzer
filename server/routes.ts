@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, db } from "./storage";
 import { tradePriceHistory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
+import { requireAuth, optionalAuth, registerHandler, loginHandler, logoutHandler, meHandler, updateProfileHandler, changePasswordHandler, forgotPasswordHandler, resetPasswordHandler } from "./auth";
 import { getCached, setCache, clearCache, getCacheStats, TTL } from "./cache";
 import { readLongRange, readLongRangeFresh, writeLongRange, listLongRange } from "./long-range-cache";
 import { enqueue, getQueueStats, recordCacheHit } from "./request-queue";
@@ -115,6 +115,21 @@ let demoLastActivity: number = 0; // timestamp of last API request from demo use
 let demoUserId: number | null = null; // cached demo user ID
 let demoResetInProgress = false;
 
+// Pool used by both the idle-reset timer and the logout-reset trigger. Defined
+// at module scope (lazily initialized on first use) so the logout wrapper —
+// which is mounted before the timer block — can reference it safely.
+let demoPool: pg.Pool | null = null;
+function getDemoPool(): pg.Pool {
+  if (!demoPool) {
+    demoPool = new pg.Pool({
+      connectionString:
+        process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
+      max: 2,
+    });
+  }
+  return demoPool;
+}
+
 function isDemoUser(req: any): boolean {
   return req.user?.email === DEMO_EMAIL;
 }
@@ -124,6 +139,25 @@ function touchDemoActivity(req: any) {
     demoLastActivity = Date.now();
     if (!demoUserId) demoUserId = req.user!.id;
   }
+}
+
+/** Kick off a fire-and-forget demo reset. Used by both the idle-reset timer
+ *  and the logout-triggered reset. Idempotent — bails if a reset is already
+ *  in flight. */
+function triggerDemoReset(label: string) {
+  if (demoResetInProgress) return;
+  demoResetInProgress = true;
+  console.log(`[demo] ${label} — resetting demo account asynchronously`);
+  seedDemoAccount(getDemoPool())
+    .then(() => {
+      demoLastActivity = 0;
+      demoResetInProgress = false;
+      console.log(`[demo] Reset complete (${label}).`);
+    })
+    .catch((err: any) => {
+      demoResetInProgress = false;
+      console.error(`[demo] Reset failed (${label}):`, err?.message || err);
+    });
 }
 
 // ============================================================
@@ -1599,7 +1633,16 @@ export async function registerRoutes(
   // ─── Auth Routes (public) ─────────────────────────────────────────────────
   app.post("/api/auth/register", registerHandler);
   app.post("/api/auth/login", loginHandler);
-  app.post("/api/auth/logout", logoutHandler);
+  // Logout: wrap with optionalAuth so req.user is populated even though
+  // logout is a public route. If the demo user is logging out, kick off a
+  // reset before clearing the cookie — fire-and-forget so logout responds
+  // instantly while the reset runs in the background.
+  app.post("/api/auth/logout", optionalAuth, (req, res) => {
+    if (req.user?.email === DEMO_EMAIL) {
+      triggerDemoReset("logout");
+    }
+    return logoutHandler(req, res);
+  });
   app.post("/api/auth/forgot-password", forgotPasswordHandler);
   app.post("/api/auth/reset-password", resetPasswordHandler);
   app.get("/api/auth/me", requireAuth, meHandler);
@@ -6711,23 +6754,15 @@ export async function registerRoutes(
 
   // ─── Demo Account Idle Reset Timer ────────────────────────────────────────
   // Check every 5 minutes. If demo was active and is now idle for 60 min, reset.
-  const demoPool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://stockotter:St0ckOtter2026@localhost:5432/stockotter",
-    max: 2,
-  });
-
+  // Pool now lives at module scope via getDemoPool() so the logout-trigger
+  // wrapper can share it.
   setInterval(async () => {
     try {
       // Only reset if the demo user was active at some point
       if (demoLastActivity === 0) return;
       const elapsed = Date.now() - demoLastActivity;
       if (elapsed >= DEMO_IDLE_TIMEOUT_MS && !demoResetInProgress) {
-        demoResetInProgress = true;
-        console.log(`[demo] Idle for ${Math.round(elapsed / 60000)}m — resetting account...`);
-        await seedDemoAccount(demoPool);
-        demoLastActivity = 0; // reset tracker so it doesn't keep firing
-        demoResetInProgress = false;
-        console.log(`[demo] Account reset complete.`);
+        triggerDemoReset(`idle ${Math.round(elapsed / 60000)}m`);
       }
     } catch (err: any) {
       demoResetInProgress = false;

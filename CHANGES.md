@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Demo account: logout-triggered reset + restored after test blew it up
+
+**Why:** Chris's quote: *"We need to create a new test account that has all the features and staged transactions that can reset after they log out or leave the site. We had one but it got blown up in a test run."* The demo machinery (`server/demo-seed.ts` + `server/seed-demo.ts` + the idle-reset timer in `routes.ts`) was fully intact — just needed (1) a re-seed to restore the actual data and (2) a second reset trigger so logout immediately re-seeds, not just 60-min idle.
+
+**What — re-seed (done on .9):**
+- Ran `npm run seed:demo` on stockotter (.9). Restored:
+  - **Main demo account**: `ottertrader@stockotter.ai` / `demo123` — Elite tier, $25K starting equity, 86 trades across every category (PCS/CCS/CDS/PDS, single options, butterflies, CTV, day trades, stocks, unbalanced butterflies), 10 watchlist tickers, 8 dividend positions, account transactions.
+  - **Tier test accounts** (all password `test123`): `admin@stockotter.ai` (elite), `free@stockotter.ai` (free), `pro@stockotter.ai` (pro), `elite@stockotter.ai` (elite).
+
+**What — logout-triggered reset (new):**
+- `server/routes.ts` — wrapped `POST /api/auth/logout` with `optionalAuth` middleware so `req.user` is populated even on the public logout route. If the demo user is logging out, fire `triggerDemoReset("logout")` before calling the existing `logoutHandler`. Fire-and-forget — logout responds instantly, reset runs in the background.
+- New helper `triggerDemoReset(label)` consolidates the logic shared by the idle-reset timer and the logout trigger. Idempotent — bails if a reset is already in flight (prevents double-seeding if logout + idle fire close together).
+- `demoPool` moved from inline-in-setInterval to a module-scope lazy initializer `getDemoPool()` so the logout-trigger wrapper (mounted at line 1602) can use the same pool the timer (line 6700ish) uses without ordering concerns.
+
+**Reset behavior summary:**
+- Demo user logs out → reset fires immediately (this change).
+- Demo user idle for 60 min → reset fires (existing behavior, unchanged).
+- Both paths use the same `triggerDemoReset()` and the same lazy pool.
+- Reset takes a few seconds; logout response is instant, reset runs async.
+
+**Files touched:**
+- Modified: `server/routes.ts` (logout wrapper, helper, demoPool lazy-init)
+
+---
 ## 2026-05-27 — Tier gating wired across the full nav (Free / Pro / Elite)
 
 **Why:** Chris's quote: *"What is your assessment as to what each [tier] should be able to see and not see?"* Sat down and locked in the tier policy across all 27 pages, then wired the gates in one place (the page-registry). Two principles: (1) Trigger Check is the killer Pro feature — it's the daily-use "should I buy?" gate, so it has to be Pro-or-above to anchor the upgrade pitch; (2) anything that costs us money per query (paid Polygon Options data, options-chain compute, the self-hosted bots) goes Elite. Tonight's pass is sidebar visibility only — backend `platform/tiers` middleware enforcement is a separate follow-up sweep so users can't bypass by typing the URL.
