@@ -442,6 +442,21 @@ export const BEHAVIOR_TAGS = [
   "Fear / Panic",
   "Greed / FOMO",
   "Bias / Stubborn",
-  "Feed the Pigeons",
+  "Cashed Out for Coffee",
   "Other Issue",
 ] as const;
+
+/**
+ * Legacy → canonical behaviorTag map. Older trades were tagged with the
+ * pre-rename labels; this map normalizes them on read so existing rows
+ * surface with the current name. Add an entry here when a tag is renamed
+ * so historical analytics stay consistent without a DB migration.
+ */
+const LEGACY_BEHAVIOR_TAG_MAP: Record<string, (typeof BEHAVIOR_TAGS)[number]> = {
+  "Feed the Pigeons": "Cashed Out for Coffee",
+};
+
+export function normalizeBehaviorTag(tag: string | null | undefined): string | null {
+  if (!tag) return null;
+  return LEGACY_BEHAVIOR_TAG_MAP[tag] ?? tag;
+}

@@ -10,6 +10,7 @@ import {
   type Alert, type InsertAlert, type AlertRule, type InsertAlertRule,
   type DashboardLayoutRow,
   users, favorites, trades, accountSettings, accountTransactions, passwordResetTokens, tradePriceHistory, dividendPortfolio, alerts, alertRules, dashboardLayouts,
+  normalizeBehaviorTag,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -319,16 +320,21 @@ export class DatabaseStorage implements IStorage {
   // SELECT * and synthesize defaults so the app keeps working until db:push
   // runs. Same pattern as getAccountSettings above.
   private async selectTradesWithFallback(whereSql: any): Promise<Trade[]> {
+    let rows: Trade[];
     try {
-      return await db.select().from(trades).where(whereSql).orderBy(desc(trades.tradeDate));
+      rows = await db.select().from(trades).where(whereSql).orderBy(desc(trades.tradeDate));
     } catch (err: any) {
       const msg = String(err?.message || err);
       if (!/column .* does not exist/i.test(msg)) throw err;
       console.warn(`[storage] trades schema mismatch; using SELECT * fallback. Run 'npm run db:push' on this env. (${msg})`);
       const result: any = await db.execute(sql`SELECT * FROM trades WHERE ${whereSql} ORDER BY trade_date DESC`);
       const dbRows: any[] = Array.isArray(result?.rows) ? result.rows : Array.isArray(result) ? result : [];
-      return dbRows.map(r => this.mapTradeRow(r));
+      rows = dbRows.map(r => this.mapTradeRow(r));
     }
+    // Normalize any legacy behaviorTag (e.g. pre-rename "Feed the Pigeons" →
+    // "Cashed Out for Coffee") on read so historical rows show the current
+    // label without needing a DB migration.
+    return rows.map(t => ({ ...t, behaviorTag: normalizeBehaviorTag(t.behaviorTag) }));
   }
 
   // Maps a raw SQL trade row to the typed Trade shape, synthesizing defaults

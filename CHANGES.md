@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Behavior tag rename + secret-sauce score formulas removed from Help
+
+**Why:** Two follow-ups in one ship.
+- Chris on the behavior tags: rename "Feed the Pigeons" — picked **Cashed Out for Coffee** as the replacement.
+- Chris on the Help knowledge base: "the main analyst score you gave WAY TO MUCH information… Need to keep that scoring to our self." Confirmed: all four score formulas are proprietary, redact every bump table.
+
+**What — rename "Feed the Pigeons" → "Cashed Out for Coffee":**
+- `shared/schema.ts` — `BEHAVIOR_TAGS` updated; added `LEGACY_BEHAVIOR_TAG_MAP` + `normalizeBehaviorTag()` so old DB rows show the new label automatically (no migration needed).
+- `server/storage.ts` — `selectTradesWithFallback` normalizes `behaviorTag` on read; both the typed-Drizzle path and the SELECT-* fallback path get the rename.
+- `server/demo-seed.ts` — two demo trades updated to seed with the new tag.
+- `client/src/pages/trade-tracker.tsx` — Behavior Tags paragraph in the page's "How it works" block updated.
+- `client/src/data/help-content.tsx` — the Behavior tags entry uses the new name.
+
+**What — Help: score formulas redacted (secret sauce):**
+- `score-main-100` — was a full breakdown of 11 categories with percent weights. Now a high-level "blended 0–100 read on the ticker" description with a `Note` calling out that the recipe is proprietary.
+- `score-htf-quality` — was the +15/+10/+5 bump table for pole / flag / volume. Now describes what high vs. low means and how to use the Min score filter.
+- `score-insider-conviction` — was the +15/+10/+5/−20/−30 concentration penalty curve. Now describes what high vs. low signals about cluster quality.
+- `score-trigger-check` — was the explicit "weight ≥ 3 fail → NO" decision rules. Now just describes the four verdict words and how to read them.
+
+**Files:**
+- Modified: `shared/schema.ts`, `server/storage.ts`, `server/demo-seed.ts`
+- Modified: `client/src/pages/trade-tracker.tsx`
+- Modified: `client/src/data/help-content.tsx`
+
+---
 ## 2026-05-27 — Unified ticker-click navigation: always → /profile (unless on a Company Research page)
 
 **Why:** Chris reported the sector-heatmap bug — clicking a ticker set it as the global ticker but routed to `/scanner`. Plus a broader complaint: ticker-click behavior was inconsistent across the site (some places went to `/scanner`, some to `/institutional`, some just set the ticker and stayed put). The rule we agreed on: any ticker click should land on `/profile` so the Company Research nav group becomes the working context. Only exception: if the user is already on a per-ticker analysis page (the Company Research group), the click just swaps the ticker and stays.

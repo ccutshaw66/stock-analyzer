@@ -336,7 +336,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
           <li><B>Fear/Panic</B> — closed early out of fear.</li>
           <li><B>Greed/FOMO</B> — chased an entry.</li>
           <li><B>Bias/Stubborn</B> — held past your stop.</li>
-          <li><B>Feed the Pigeons</B> — took small gains instead of letting winners run.</li>
+          <li><B>Cashed Out for Coffee</B> — took small gains instead of letting winners run.</li>
         </Bullets>
       </>
     ),
@@ -743,17 +743,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tags: ["score", "verdict", "100", "analyze"],
     body: (
       <>
-        <P>Weighted average of 11 categories on a 0–10 scale, multiplied by 10 for display.</P>
-        <Bullets>
-          <li>Institutional Flow — 15%</li>
-          <li>Business Quality, Balance Sheet, Performance — 10% each</li>
-          <li>Insider Confidence, Analyst Consensus — 10% each</li>
-          <li>Income Strength — 8%</li>
-          <li>Valuation — 8%</li>
-          <li>Income Quality, Thesis Durability — 7% each</li>
-          <li>Liquidity — 5%</li>
-        </Bullets>
-        <P>Missing-data categories are dropped and remaining weights renormalize so under-covered tickers aren't penalized.</P>
+        <P>A blended 0–100 read on the ticker — higher is stronger. It rolls up fundamentals, balance-sheet health, smart-money flow, insider activity, analyst sentiment, and price behavior into one number, so you can compare tickers at a glance without juggling individual metrics.</P>
+        <P>Use it as a top-level filter, then drill into the specific Stock Otter pages (Profile, Trigger Check, Long-Term Outlook, etc.) for the why. The verdict label (next entry) is what most users actually act on.</P>
+        <Note>The exact factor mix and weights are proprietary — they tune as the system learns. The verdict thresholds in the next entry are stable.</Note>
       </>
     ),
   },
@@ -784,14 +776,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tags: ["htf", "quality", "score", "pole", "flag"],
     body: (
       <>
-        <P>Starts at 50, adjusted by:</P>
-        <Bullets>
-          <li><B>Pole gain</B>: +15 (≥100%), +10 (≥60%), +5 (≥30%)</li>
-          <li><B>Flag duration</B>: +10 (≥10 days), +5 (≥5 days)</li>
-          <li><B>Flag pullback</B> (lower is tighter): +10 (≤10%), +5 (≤15%)</li>
-          <li><B>Breakout volume ratio</B>: +15 (≥2.0×), +10 (≥1.5×), +5 (≥1.3×)</li>
-        </Bullets>
-        <P>Clamped 0–100. Overhead resistance is detected and surfaced info-only — it does <em>not</em> change the score.</P>
+        <P>A 0–100 read on how clean a High Tight Flag pattern is. Higher = a tighter pole, a more orderly flag, and stronger breakout volume — i.e. the closer the setup matches the textbook HTF, the higher the score.</P>
+        <P>Use the Min score filter on the HTF Setups page to hide weak patterns; a 70+ is a solid setup, 80+ is rare and worth a closer look.</P>
+        <Note>The exact weighting recipe is proprietary.</Note>
       </>
     ),
   },
@@ -804,13 +791,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tags: ["insider", "conviction", "cluster", "sponsor"],
     body: (
       <>
-        <P>Per-cluster (3+ insiders within a 14-day window). Starts at 50, adjusted by:</P>
-        <Bullets>
-          <li><B>Breadth</B> — more distinct insiders: +15 (≥7), +10 (≥5), +5 (≥4)</li>
-          <li><B>Concentration</B> (top insider's share of total $): +15 if &lt;40%, +5 if &lt;55%, −5 if &gt;65%, −20 if &gt;80%, −30 if &gt;95%</li>
-          <li><B>Dollar size</B>: +10 (≥$25M), +5 (≥$5M), −10 (&lt;$250K)</li>
-        </Bullets>
-        <P>The concentration penalty is what surfaces "MRP-style organic clusters" (many roughly-equal buyers) above "sponsor floods" (one huge buyer at IPO + a few token directors).</P>
+        <P>A 0–100 read on how meaningful a cluster of insider buys is. Higher scores favor clusters that look like genuine conviction (many distinct insiders, sized appropriately) and demote patterns that look like sponsor or IPO-mechanic noise (one dominant buyer + token participation).</P>
+        <P>70+ is a strong cluster worth investigating. Below 50 usually means a single big buyer is doing most of the work and the breadth isn't really there.</P>
+        <Note>The exact weighting recipe is proprietary.</Note>
       </>
     ),
   },
@@ -819,18 +802,19 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: "score-trigger-check",
     type: "what-it-means",
     category: "Verdicts & Scores",
-    title: "Trigger Check verdict logic",
+    title: "Trigger Check verdict",
     tags: ["trigger check", "go", "caution", "no", "conviction", "verdict"],
     body: (
       <>
-        <P>Aggregates 8 checks; each returns pass/warn/fail/skip with a weight. Decision rules:</P>
+        <P>One-word, take-this-trade verdict on the active ticker:</P>
         <Bullets>
-          <li><B>INSUFFICIENT_DATA</B> — every check skipped (no data).</li>
-          <li><B>NO</B> — any single check with weight ≥ 3 fails, OR fail count &gt; pass count.</li>
-          <li><B>CAUTION</B> — at least one fail (regardless of weight), OR warn count ≥ pass count.</li>
-          <li><B>GO</B> — passes outnumber warns and zero fails.</li>
+          <li><B>GO</B> — the setup is clean across the relevant checks.</li>
+          <li><B>CAUTION</B> — mixed signals; only take it if you have a strong reason.</li>
+          <li><B>NO</B> — at least one big reason argues against this entry.</li>
+          <li><B>NOT ENOUGH DATA</B> — not enough data on this ticker to make a call.</li>
         </Bullets>
-        <P>The 8 checks: Trend Stack, RSI Zone, HTF Setup, Insider Activity, Dealer Flow, Earnings Proximity, Fundamentals, Market Regime.</P>
+        <P>The checklist below the verdict pill spells out which checks passed, watched, or risked — read those to understand the why.</P>
+        <Note>The exact rules that turn check results into a verdict are proprietary.</Note>
       </>
     ),
   },

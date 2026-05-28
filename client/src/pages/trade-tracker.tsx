@@ -1206,7 +1206,7 @@ export default function TradeTracker() {
 
           <p className="font-semibold text-foreground mt-2">Behavior Tags:</p>
           <p>Track your trading psychology by tagging each closed trade:</p>
-          <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Feed the Pigeons</span> — Took small gains instead of letting winners run.</p>
+          <p><span className="text-bull-light font-semibold">All to Plan</span> — Followed your rules exactly. <span className="text-bear-light font-semibold">Fear/Panic</span> — Closed too early from fear. <span className="text-bear-light font-semibold">Greed/FOMO</span> — Chased a trade. <span className="text-watch-light font-semibold">Bias/Stubborn</span> — Held too long. <span className="text-watch-light font-semibold">Cashed Out for Coffee</span> — Took small gains instead of letting winners run.</p>
         </>
       }
     >
