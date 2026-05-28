@@ -9,6 +9,54 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Conviction Compass → Trigger Check (rebuilt from the user's "should I pull the trigger?" framing)
+
+**Why:** Chris's quote that unlocked the rebuild: *"I want to go to one spot in all the confusion and let it gather all that in a small box and tell me WHY I SHOULD OR SHOULD NOT enter this trade. Period."* The original Compass was an abstract 4-axis radar with verdicts like `ALL_ALIGNED_BULLISH` and a panel that exposed internal plumbing ("QoQ flow unavailable while EDGAR re-warms"). Chris's specific complaint while looking at AAPL: *"I am looking at a diamond shape with a green arrow pointing down and have a mostly bullish signal. WHAT THE FUCK DOES THAT MEAN???"* Translation: a paying user shouldn't have to interpret geometric shapes, axis-jargon verdicts, or internal data-source error notes. The page needed a plain-English verdict + plain-English reasons, period.
+
+**Brief:** `~/.claude/projects/C--dev/memory/brief_trigger_check.md`. Captured the requirements before writing any code (interview skill) so the redesign couldn't drift mid-build.
+
+**What — server (new pipeline behind the same `/api/conviction/:ticker` URL):**
+- New file `server/conviction/trigger-check.ts` — the pipeline. Fetches a `CheckContext` once per request (CompanySnapshot, 1y daily bars, MM exposure, market regime), then runs every check in the registry against that shared context. Aggregates the verdict (`GO` / `CAUTION` / `NO` / `INSUFFICIENT_DATA`) and a one-line "biggest reason" from the worst-rated (or for `GO`, best-rated) check. Caches for 5 minutes; `?refresh=1` busts the cache.
+- New file `server/conviction/checks/types.ts` — defines `CheckResult { id, category, label, status, reason, weight }`, the `CheckContext` shape every check reads from, and `TriggerCheckResponse` (the API payload).
+- New file `server/conviction/checks/registry.ts` — one array, one line per check. Adding a new check = append the import + the function name. No central rewrite to expand coverage.
+- New check files (one each), spanning all 7 visible categories so every group has at least one row in v1:
+  - `trend-stack.ts` — EMA 9/21/50 alignment + close-vs-EMA9 (`Trend`, weight 2)
+  - `rsi-zone.ts` — Wilder RSI(14) zone classifier (`Momentum`, weight 1)
+  - `htf-setup.ts` — High Tight Flag fired/forming via `scanHtf` (`Setup`, weight 3)
+  - `insider-activity.ts` — Form 4 buy/sell counts from `CompanySnapshot.insiderActivity` (`Smart Money`, weight 2)
+  - `dealer-flow.ts` — squeeze bias + strength + gamma-wall from `computeMMExposure` (`Dealer Flow`, weight 2)
+  - `earnings-proximity.ts` — days to `CompanySnapshot.earnings.nextReportDate` (`Catalysts`, weight 3 — load-bearing "sit out if earnings too close")
+  - `fundamentals.ts` — revenue + earnings growth from `CompanySnapshot.fundamentals` (`Fundamentals`, weight 1)
+  - `market-regime.ts` — Market Pulse tier (`Market Regime`, weight 2)
+- `server/routes.ts` — `GET /api/conviction/:ticker` now imports `getTriggerCheck` from the new pipeline. Response shape changed (verdict + reason + checks[] + summary); the old `compass_snapshots` Compass shape is gone. Also dropped the `/api/diag/conviction/backtest` route — the radar's forward-tracking panel that consumed it no longer exists.
+- The legacy `server/conviction/pipeline.ts` + `compass.ts` + the nightly snapshot cron + the `compass_snapshots` table are untouched. They keep writing rows nobody reads; cleanup is a follow-up after we confirm no other consumers.
+
+**What — client (`/conviction` page, same nav slot):**
+- `client/src/pages/conviction.tsx` — full rewrite. Drops the radar chart, axis cards, confluence gauge, and the BacktestPanel. New layout: a verdict pill (huge `GO` / `CAUTION` / `NO` word + one-line biggest reason + pass/watch/risk counts) on top, then a grid of category sections (Trend, Momentum, Setup, Smart Money, Dealer Flow, Catalysts, Fundamentals, Market Regime). Each row = a colored status icon, the check's plain-English label, a tiny status tag (`PASS` / `WATCH` / `RISK`), and the one-sentence reason.
+- `client/src/lib/page-registry.ts` — registry entry's label flipped from "Conviction Compass" to "Trigger Check"; subtitle updated to match the new framing.
+- Rows whose backing data was unavailable (illiquid options, missing earnings date, freshly-IPO'd ticker, etc.) return `null` from their check and are **hidden** from the page. Internal failure messages NEVER reach the user — no more "QoQ flow unavailable" notes.
+
+**Verdict logic** (in `aggregateVerdict`):
+- `NO` — any single fail with weight ≥ 3, or fails strictly outnumber passes.
+- `CAUTION` — any fail at all that doesn't trigger `NO`, or warns ≥ passes when passes > 0.
+- `GO` — passes outweigh warns and there are no fails.
+- `INSUFFICIENT_DATA` — fewer than 1 scored check (no data on the ticker).
+- Biggest reason = heaviest fail (when not `GO`) or heaviest pass (when `GO`).
+
+**Files touched:**
+- New: `server/conviction/trigger-check.ts`
+- New: `server/conviction/checks/{types,registry}.ts`
+- New: `server/conviction/checks/{trend-stack,rsi-zone,htf-setup,insider-activity,dealer-flow,earnings-proximity,fundamentals,market-regime}.ts`
+- Modified: `server/routes.ts` (route rewired, backtest route removed)
+- Modified: `client/src/pages/conviction.tsx` (full rewrite)
+- Modified: `client/src/lib/page-registry.ts` (label + subtitle)
+
+**Open follow-ups (not blocking):**
+- Cleanup pass: delete the unused `compass_snapshots` cron + table + `server/conviction/{pipeline,compass,backtest,tracker}.ts` after a few days of confirming nothing else reads from them.
+- Expand the check registry as Chris flags things he wants to see in the verdict (analyst rating changes, sector heatmap row, unusual options, etc. — each is one new file + one registry line).
+- Tune verdict weights once Chris has used the page on real tickers and tells us where it's miscalling.
+
+---
 ## 2026-05-27 — Conviction Compass restored — route was silently dropped on day two
 
 **Why:** Chris confirmed the Compass *did* work briefly then went dark: *"IT HASN'T WORKED SINCE ABOUT DAY TWO."* Bisected git log on `server/routes.ts` against the string `"api/conviction"` — the route registration disappeared at commit `b116a7a` "Page consistency: standardize Title -> Disclaimer -> How It Works." That commit was a layout-cleanup sweep that, while moving Title/Disclaimer/How-It-Works blocks around across many pages, accidentally deleted the `app.get("/api/conviction/:ticker", ...)` and `app.get("/api/diag/conviction/backtest", ...)` registrations along with it. The page kept calling `/api/conviction/${ticker}`, the server returned a 401 via the auth wall before any handler ran (because no route matched and the wall fires generically), and the page rendered the "Could not build Conviction Compass" error state. Exactly matches "doesn't tell me anything" since day two.

@@ -5198,43 +5198,32 @@ export async function registerRoutes(
   // for the past N days and returns per-fire metadata + win-rate aggregates.
   // Used to ground strategy-tuning decisions in data instead of intuition.
   //
-  // ─── Conviction Compass ─────────────────────────────────────────────────
-  // Single-ticker conviction signal that fuses four orthogonal categories:
-  // smart money flow, dealer positioning, technical momentum, and
-  // fundamental quality. Returns axis scores + confluence + plain-language
-  // verdict for the /conviction page's radar visualization.
+  // ─── Trigger Check (replaces Conviction Compass) ────────────────────────
+  // Pre-trade verdict for a single ticker. Pulls signals from across
+  // Company Research + Investment Opportunities (trend, momentum, HTF,
+  // insider activity, dealer flow, earnings proximity, fundamentals, market
+  // regime) and answers ONE question: "should I pull the trigger on this
+  // trade?" Returns a single-word verdict (`GO` / `CAUTION` / `NO`) + a
+  // one-line biggest reason + a grouped checklist of plain-English items.
   //
-  // Re-registered 2026-05-27 — Chris flagged that the Conviction Compass
-  // hasn't worked since "about day two." Tracked to commit b116a7a (page
-  // consistency sweep) which inadvertently dropped this route registration
-  // while it kept the page + pipeline. Restoring without changes to the
-  // underlying pipeline.
+  // Replaces the radar/axis Compass that shipped originally. See brief
+  // `~/.claude/projects/C--dev/memory/brief_trigger_check.md`.
   app.get("/api/conviction/:ticker", async (req, res) => {
     try {
       await ensureReady();
-      const { getConvictionCompass } = await import("./conviction/pipeline");
+      const { getTriggerCheck } = await import("./conviction/trigger-check");
       const ticker = req.params.ticker.toUpperCase();
       const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
-      const compass = await getConvictionCompass(ticker, {
+      const result = await getTriggerCheck(ticker, {
         yahooFetch,
         getYahooOwnership,
         forceRefresh,
       });
-      res.json(compass);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to build conviction compass" });
-    }
-  });
-
-  // Conviction Compass live forward-tracking backtest results — reads the
-  // compass_snapshots table populated by the nightly conviction-snapshot cron.
-  app.get("/api/diag/conviction/backtest", async (_req, res) => {
-    try {
-      const { getBacktestResults } = await import("./conviction/backtest");
-      const result = await getBacktestResults();
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to build backtest results" });
+      res
+        .status(500)
+        .json({ error: error?.message || "Failed to build trigger check" });
     }
   });
 

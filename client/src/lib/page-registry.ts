@@ -73,7 +73,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/chart",               label: "Strategy Chart",        icon: FlaskConical,    group: "Company Research", subtitle: "Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes." },
   { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Company Research", subtitle: "Dealer positioning, gamma exposure, max pain.", requiresTier: "starter" },
   { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "Company Research", subtitle: "13F-tracked institutional ownership and flows." },
-  { path: "/conviction",          label: "Conviction Compass",    icon: Compass,         group: "Company Research", subtitle: "Smart money + dealers + technicals + fundamentals on a single radar." },
+  { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Company Research", subtitle: "Final check before you pull the trigger — one verdict, plain-English reasons." },
   { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "Company Research", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },
 
   // ─── Investment Opportunities ──────────────────────────────────────────
