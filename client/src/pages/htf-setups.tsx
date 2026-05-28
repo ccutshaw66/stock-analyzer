@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
+import { useSubscription } from "@/hooks/useSubscription";
 import {
   useHtfScanner,
   useHtfScannerRefresh,
@@ -171,6 +172,11 @@ function SetupsTable({
   isRefreshing?: boolean;
 }) {
   const [, navigate] = useLocation();
+  const { tier } = useSubscription();
+  // Trade tracking is a Pro+ feature. Free users see HTF setups but can't add
+  // them as tracked trades — hide the Add column so the + doesn't route them
+  // to /tracker (which now route-gates and shows the upgrade prompt).
+  const canTrack = tier === "pro" || tier === "elite";
   const openChart = (symbol: string) => {
     navigate(`/htf/${symbol}`);
   };
@@ -308,28 +314,32 @@ function SetupsTable({
       sortValue: r => r.breakoutVolRatio,
       accessor: r => <span className="text-xs text-muted-foreground">{r.breakoutVolRatio.toFixed(1)}×</span>,
     },
-    {
-      key: "add",
-      header: "Add",
-      sortable: false,
-      align: "center",
-      width: "w-12",
-      accessor: r => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            addAsTrade(r);
-          }}
-          title="Add as a tracked trade — pre-fills strategy, stop, target, pole/flag data from this row"
-          data-testid={`htf-add-trade-${r.symbol}`}
-          className="p-1 rounded hover:bg-bull/20 text-bull-light hover:text-bull transition-colors"
-          aria-label={`Add ${r.symbol} as a tracked trade`}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      ),
-    },
+    ...(canTrack
+      ? [
+          {
+            key: "add",
+            header: "Add",
+            sortable: false,
+            align: "center" as const,
+            width: "w-12",
+            accessor: (r: HtfSetupRow) => (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  addAsTrade(r);
+                }}
+                title="Add as a tracked trade — pre-fills strategy, stop, target, pole/flag data from this row"
+                data-testid={`htf-add-trade-${r.symbol}`}
+                className="p-1 rounded hover:bg-bull/20 text-bull-light hover:text-bull transition-colors"
+                aria-label={`Add ${r.symbol} as a tracked trade`}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            ),
+          },
+        ]
+      : []),
     ...(showBlocked
       ? [
           {

@@ -9,6 +9,39 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Client-side route-level tier gating + HTF "Add" button hidden for Free
+
+**Why:** Chris reported as free@: *"I went to HTF page. Hit the + sign to add a trade and it went to current positions page but it is not in the menu."* Two leaks: (1) the HTF page's `+` button routes to `/tracker`, which the sidebar hides for Free but the React Router still mounts for any logged-in user — so Free users land on a page they're not paying for; (2) any other Pro/Elite page is reachable the same way by typing the URL. The Round-1 backend gate (the 402 from `/api/*`) blocks the data fetch, but the page UI still renders, which is a worse experience than just blocking access cleanly.
+
+**What — `<RequireTier>` React wrapper:**
+- New `client/src/components/RequireTier.tsx`. Wraps a page component, reads tier from `useSubscription`, and renders the existing `UpgradePrompt` inline if the user is below the required tier. Mirrors the server-side `requireTier` middleware so both layers stop unauthorized access at the same line.
+- Usage in `App.tsx`:
+  ```
+  <Route path="/tracker">
+    <RequireTier min="pro" feature="Current Positions" description="...">
+      <TradeTracker />
+    </RequireTier>
+  </Route>
+  ```
+
+**What — applied to every Pro and Elite route in `App.tsx`:**
+- **Pro-gated:** `/chart/confluence`, `/chart`, `/tracker`, `/conviction`, `/institutional`, `/insiders`, `/earnings`, `/dividends`, `/dividend-portfolio`, `/track-record`, `/alerts`, `/analytics`, `/calculator`, `/kelly`.
+- **Elite-gated:** `/mm-exposure`, `/payoff`, `/greeks`, `/wheel`, `/hermes`, `/kairos`, `/markov`.
+- Free routes (Dashboard, Market Pulse, Profile, Trade Analysis, Scanner, HTF Setups, HTF Pattern detail, Long-Term Outlook, Sector Heatmap, Help, Account, Admin, Reset Password, Terms, Privacy) — no wrapper.
+
+**What — HTF page `+` button hidden for Free:**
+- `client/src/pages/htf-setups.tsx` — `SetupsTable` now reads `useSubscription` and only adds the `"Add"` column when `tier === "pro" || "elite"`. Free users see the HTF rows + Open-chart action but no `+` that would route them to `/tracker`.
+
+**Sidebar action buttons** (`#add-trade`, `#close-trade` already had `requiresTier: "pro"`) — those hide via `getNavGroups()` filter for Free users. No code change tonight; they remain hidden.
+
+**Files touched:**
+- New: `client/src/components/RequireTier.tsx`
+- Modified: `client/src/App.tsx` (21 routes wrapped)
+- Modified: `client/src/pages/htf-setups.tsx` (conditional Add column)
+
+**Still open:** other pages may have action buttons that route Free users into Pro pages. These get fixed as Chris finds them — the route-level gate is now the safety net, so the worst case is an UpgradePrompt instead of a broken page.
+
+---
 ## 2026-05-27 — /help rebuilt as a searchable, indexed knowledge base
 
 **Why:** Chris: "create a comprehensive HOW TO and WHAT IT MEANS so we can add this to the help menu. Make it searchable and indexed… make sure when you make a statement that it is true and how it works." Previous /help was an accordion of FAQ-style copy with no search, no deep-linking, and some statements that didn't match the current code (e.g. Yahoo Finance as data source, scanner "10 results" limit, "no user login" — all wrong now).

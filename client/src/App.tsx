@@ -47,6 +47,7 @@ import ConfluenceChartPage from "@/pages/confluence-chart";
 import HtfSetupsPage from "@/pages/htf-setups";
 import HtfChartPage from "@/pages/htf-chart";
 import InsidersPage from "@/pages/insiders";
+import { RequireTier } from "@/components/RequireTier";
 import { Loader2 } from "lucide-react";
 import OnboardingTour from "@/components/OnboardingTour";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -103,43 +104,154 @@ function AuthenticatedApp() {
       <Router hook={useHashLocation}>
         <AppLayout>
           <Switch>
+            {/* Free — no tier gate */}
             <Route path="/" component={MarketPulse} />
             <Route path="/dashboard" component={Dashboard} />
-            <Route path="/chart/confluence/:ticker?" component={ConfluenceChartPage} />
             <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
-            <Route path="/chart" component={ChartPage} />
             <Route path="/scanner" component={Scanner} />
             <Route path="/htf" component={HtfSetupsPage} />
-            <Route path="/insiders" component={InsidersPage} />
             <Route path="/htf/:symbol" component={HtfChartPage} />
-            <Route path="/tracker" component={TradeTracker} />
-            <Route path="/calculator" component={OptionsCalculator} />
             <Route path="/verdict" component={Verdict} />
-            <Route path="/conviction" component={ConvictionPage} />
-            <Route path="/institutional" component={Institutional} />
-            <Route path="/help" component={Help} />
-            <Route path="/payoff" component={PayoffDiagram} />
-            <Route path="/kelly" component={KellyCalculator} />
-            <Route path="/greeks" component={GreeksCalculator} />
             <Route path="/sectors" component={SectorHeatmap} />
-            <Route path="/earnings" component={EarningsCalendar} />
-            <Route path="/analytics" component={TradeAnalytics} />
-            <Route path="/dividends" component={Dividends} />
-            <Route path="/dividend-portfolio" component={DividendPortfolio} />
-            <Route path="/mm-exposure" component={MMExposure} />
-            <Route path="/wheel" component={WheelCalculator} />
-            <Route path="/hermes" component={HermesPage} />
-            <Route path="/kairos" component={KairosPage} />
-            <Route path="/markov" component={MarkovPage} />
+            <Route path="/help" component={Help} />
             <Route path="/account" component={AccountPage} />
             <Route path="/admin" component={AdminPage} />
             <Route path="/reset-password" component={ResetPassword} />
-            <Route path="/track-record" component={TrackRecord} />
-            <Route path="/alerts" component={AlertsPage} />
             <Route path="/terms" component={LegalPage} />
             <Route path="/privacy" component={LegalPage} />
+
+            {/* Pro-gated — render UpgradePrompt for Free users */}
+            <Route path="/chart/confluence/:ticker?">
+              <RequireTier min="pro" feature="Confluence Chart"
+                description="Multi-signal verdict overlaid on the chart — candles, EMAs, signal pulse, MACD/RSI all in one view.">
+                <ConfluenceChartPage />
+              </RequireTier>
+            </Route>
+            <Route path="/chart">
+              <RequireTier min="pro" feature="Strategy Chart"
+                description="Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes side-by-side.">
+                <ChartPage />
+              </RequireTier>
+            </Route>
+            <Route path="/tracker">
+              <RequireTier min="pro" feature="Current Positions"
+                description="Track every open trade with live P/L, stops, and targets.">
+                <TradeTracker />
+              </RequireTier>
+            </Route>
+            <Route path="/conviction">
+              <RequireTier min="pro" feature="Trigger Check"
+                description="The final pre-trade verdict — pulls every signal into one GO/CAUTION/NO answer with a plain-English checklist.">
+                <ConvictionPage />
+              </RequireTier>
+            </Route>
+            <Route path="/institutional">
+              <RequireTier min="pro" feature="Institutions"
+                description="13F-tracked institutional ownership and flows for any ticker.">
+                <Institutional />
+              </RequireTier>
+            </Route>
+            <Route path="/insiders">
+              <RequireTier min="pro" feature="Insider Activity"
+                description="Monthly insider buy/sell ratio + ranked ticker tables. SEC Form 4 deep-scan.">
+                <InsidersPage />
+              </RequireTier>
+            </Route>
+            <Route path="/earnings">
+              <RequireTier min="pro" feature="Earnings Calendar"
+                description="Upcoming earnings dates with expected-move ranges.">
+                <EarningsCalendar />
+              </RequireTier>
+            </Route>
+            <Route path="/dividends">
+              <RequireTier min="pro" feature="Dividend Finder"
+                description="Discover, compare, and rank dividend-paying stocks.">
+                <Dividends />
+              </RequireTier>
+            </Route>
+            <Route path="/dividend-portfolio">
+              <RequireTier min="pro" feature="Dividend Positions"
+                description="Track dividend-paying holdings and forward income.">
+                <DividendPortfolio />
+              </RequireTier>
+            </Route>
+            <Route path="/track-record">
+              <RequireTier min="pro" feature="Track Record"
+                description="Every signal logged, every outcome tracked — see how the scanner actually performs over time.">
+                <TrackRecord />
+              </RequireTier>
+            </Route>
+            <Route path="/alerts">
+              <RequireTier min="pro" feature="Alerts"
+                description="Custom alerts on signals, levels, and verdict changes.">
+                <AlertsPage />
+              </RequireTier>
+            </Route>
+            <Route path="/analytics">
+              <RequireTier min="pro" feature="Performance Analytics"
+                description="How your trades actually performed — win rate, R-multiple, MFE/MAE drag.">
+                <TradeAnalytics />
+              </RequireTier>
+            </Route>
+            <Route path="/calculator">
+              <RequireTier min="pro" feature="Options Calculator"
+                description="Premium, break-even, and implied vol around the option chain.">
+                <OptionsCalculator />
+              </RequireTier>
+            </Route>
+            <Route path="/kelly">
+              <RequireTier min="pro" feature="Kelly Criterion"
+                description="Position sizing from edge, win rate, and bankroll.">
+                <KellyCalculator />
+              </RequireTier>
+            </Route>
+
+            {/* Elite-gated — paid-data + advanced options + automated trading */}
+            <Route path="/mm-exposure">
+              <RequireTier min="elite" feature="MM Exposure"
+                description="Dealer gamma positioning, gamma walls, and max-pain levels from the live options chain.">
+                <MMExposure />
+              </RequireTier>
+            </Route>
+            <Route path="/payoff">
+              <RequireTier min="elite" feature="Payoff Diagram"
+                description="Visualize P/L curves for any multi-leg options strategy.">
+                <PayoffDiagram />
+              </RequireTier>
+            </Route>
+            <Route path="/greeks">
+              <RequireTier min="elite" feature="Greeks Calculator"
+                description="Delta, gamma, theta, vega, rho — per leg and per position.">
+                <GreeksCalculator />
+              </RequireTier>
+            </Route>
+            <Route path="/wheel">
+              <RequireTier min="elite" feature="Wheel Strategy"
+                description="Cash-secured puts → covered calls — the wheel mechanics.">
+                <WheelCalculator />
+              </RequireTier>
+            </Route>
+            <Route path="/hermes">
+              <RequireTier min="elite" feature="HERMES Auto Trader"
+                description="Live status, stats, and trades from the self-hosted HERMES automated-trading service.">
+                <HermesPage />
+              </RequireTier>
+            </Route>
+            <Route path="/kairos">
+              <RequireTier min="elite" feature="KAIROS Auto Trader"
+                description="HTF + BBTC paper trader with conviction-tagged entries (HTF / BBTC / BOTH).">
+                <KairosPage />
+              </RequireTier>
+            </Route>
+            <Route path="/markov">
+              <RequireTier min="elite" feature="Markov Strategy"
+                description="Markov-chain regime model for forward-state probabilities.">
+                <MarkovPage />
+              </RequireTier>
+            </Route>
+
             <Route component={NotFound} />
           </Switch>
         </AppLayout>
