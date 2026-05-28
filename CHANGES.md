@@ -9,6 +9,84 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-28 — Tier schedule snapshot (current state of every page + widget)
+
+**Why:** Chris flagged that the tier schedule has drifted across multiple recent ships (the Free/Pro/Elite rewire, the dashboard tier filter, the Ask Otter free→pro move, the route-level gate wave, and a handful of unlogged tweaks). Some changes landed in CHANGES.md, some didn't. This entry is a **single source-of-truth snapshot** of the live tier assignments as of today so anyone reading the log can see the full state without diffing the page registry and every compartment.
+
+Source of truth in code: `client/src/lib/page-registry.ts` (pages) and `client/src/compartments/<name>/index.ts` (dashboard widgets — `meta.tier`).
+
+### Page tier schedule
+
+**Free** (no `requiresTier`):
+- `/dashboard` — Dashboard
+- `/market-pulse` — Market Pulse
+- `/profile` — Profile
+- `/trade` — Trade Analysis
+- `/scanner` — Scanner
+- `/htf` — HTF Setups
+- `/htf/:symbol` — HTF Pattern (per-symbol chart, hidden from nav)
+- `/sectors` — Sector Heatmap
+- `/verdict` — Long-Term Outlook
+- `/help` — Help / FAQ
+- Plus the system-level pages: Account, Admin, Reset Password, Terms, Privacy
+
+**Pro** (`requiresTier: "pro"`):
+- `/tracker` — Current Positions
+- `/dividend-portfolio` — Dividend Positions
+- `#add-trade` — Add Trade (sidebar action)
+- `#close-trade` — Close Trade (sidebar action)
+- `/analytics` — Performance Analytics
+- `/chart/confluence` — Confluence Chart
+- `/chart` — Strategy Chart
+- `/institutional` — Institutions
+- `/conviction` — Trigger Check
+- `/earnings` — Earnings Calendar
+- `/dividends` — Dividend Finder
+- `/track-record` — Track Record
+- `/insiders` — Insider Activity
+- `/alerts` — Alerts
+- `/calculator` — Options Calculator
+- `/kelly` — Kelly Criterion
+
+**Elite** (`requiresTier: "elite"`):
+- `/mm-exposure` — MM Exposure
+- `/payoff` — Payoff Diagram
+- `/greeks` — Greeks Calculator
+- `/hermes` — HERMES Auto Trader
+- `/kairos` — KAIROS Auto Trader
+- `/wheel` — Wheel Strategy
+- `/markov` — Markov Strategy
+
+### Dashboard widget tier schedule
+
+**Free** (visible on the dashboard for every user):
+- `action-queue`, `confluence-chart`, `dividend-calculator`, `favorites` (Watchlist), `hermes`, `htf-scanner`, `kairos`, `markov`, `morning-brief`, `morning-checklist`, `position-news`, `scanner` (Best Opps), `trades` (My Trades), `wheel`
+
+**Pro** (hidden from Free dashboards via `tierAllows()` filter):
+- `ask-otter` — pay-per-use AI Q&A; don't pitch paid AI to Free users
+- `insider-clusters` — FMP insider feed, Pro-only data
+- `insider-ratio` — FMP insider feed, Pro-only data
+- `position-insiders` — FMP insider feed, Pro-only data
+
+**Elite-only widgets:** none currently — the Elite tier is page-only at this point.
+
+### How the gates work (summary, not the rules themselves)
+
+- **Sidebar nav** hides any page with a `requiresTier` above the user's tier (`getNavGroups()` filter).
+- **Routes** are wrapped in `<RequireTier>` so URL-typing into a Pro/Elite path renders the `UpgradePrompt` instead of the page (077fbc9).
+- **Backend** has `requireTier()` middleware on the sensitive `/api/*` routes (Trigger Check, bot proxies, mm-exposure-raw — Round 1, 0a323e7). A free user calling those gets a 402.
+- **Dashboard widgets** filter through `tierAllows(compartmentId)`. Saved layouts retain the widget so upgrading restores it in place (743b612).
+
+### Open / pending
+- More backend routes still need `requireTier()` wired (Round 2 of the backend gate). Until then, the route-level UI gate is the safety net; the worst case is an UpgradePrompt instead of a broken page.
+
+**Files (current locations of the tier truth):**
+- `client/src/lib/page-registry.ts` — page-level `requiresTier`
+- `client/src/compartments/<name>/index.ts` — widget `meta.tier`
+- `client/src/components/RequireTier.tsx` — route wrapper
+- `server/platform/tiers/middleware.ts` — backend gate
+
+---
 ## 2026-05-27 — HTF header: drop "Givens" + rename CTV trade type → DSF (Double Spread Fly)
 
 **Why:**
