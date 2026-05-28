@@ -28,11 +28,23 @@ export function useDashboardLayout() {
     },
   });
 
+  const reset = useMutation<DashboardLayout, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", API_DASHBOARD_LAYOUT);
+      return res.json();
+    },
+    onSuccess: (fresh) => {
+      qc.setQueryData(QUERY_KEY, fresh);
+    },
+  });
+
   return {
     layout: query.data,
     isLoading: query.isLoading,
     error: query.error,
     save: mutation.mutate,
     isSaving: mutation.isPending,
+    reset: reset.mutate,
+    isResetting: reset.isPending,
   };
 }

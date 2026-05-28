@@ -733,6 +733,10 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return rows[0];
   }
+
+  async deleteDashboardLayout(userId: number): Promise<void> {
+    await db.delete(dashboardLayouts).where(eq(dashboardLayouts.userId, userId));
+  }
 }
 
 export const storage = new DatabaseStorage();

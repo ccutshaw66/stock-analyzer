@@ -60,6 +60,24 @@ export function registerDashboardRoutes(app: Express): void {
     }
   });
 
+  // Reset the current user's dashboard layout — drops the saved row so the
+  // next GET returns the server's default. Lets users opt back into a new
+  // default after we ship a layout change (e.g. moving Ask Otter).
+  app.delete("/api/dashboard/layout", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: "unauthenticated" });
+      return;
+    }
+    try {
+      await storage.deleteDashboardLayout(userId);
+      res.json(buildDefaultDashboardLayout());
+    } catch (err: any) {
+      console.error("[dashboard] DELETE layout failed:", err?.message || err);
+      res.status(500).json({ error: err?.message || "delete_failed" });
+    }
+  });
+
   // Save the current user's dashboard layout (full-document PATCH).
   // Validation of the body shape is intentionally light here — the layout
   // is a JSONB blob owned by the user. Future rounds can tighten with Zod.

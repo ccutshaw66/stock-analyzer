@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Dashboard: Ask Otter moved to the bottom + Reset-to-default button
+
+**Why:** Chris: "on dashboard move ASK Otter to the bottom of the Screen." Ask Otter (the conversational widget) was sitting in row 3, breaking up the curated morning-workspace stack (Brief → Action Queue → Position context → Insider context). Moving it to the bottom keeps the trade-relevant rows flowing top-down without the chat-style widget interrupting them.
+
+**What:**
+- **Default layout reorder** (`server/dashboard/layout.ts`):
+  - Row 1 (y=0): Morning Brief
+  - Row 2 (y=2): Action Queue | Morning Checklist
+  - Row 3 (y=8): Position News | Position Insiders
+  - Row 4 (y=14): Insider B/S Ratio | Insider Clusters
+  - Row 5 (y=20): **Ask Otter** (full width — bottom)
+- **Reset-to-default button** added so the new default actually reaches users with saved layouts:
+  - `DELETE /api/dashboard/layout` — drops the saved row, GET then returns the server default.
+  - `useDashboardLayout` exposes `reset()` + `isResetting`.
+  - Dashboard toolbar shows a "Reset to default" button when Customize is on. Confirms before nuking; only visible in customize mode so it isn't an accidental wipe.
+
+**Why the Reset button vs auto-migrating:** the layout JSONB is opaque storage — auto-migrating risks losing customizations Chris (or anyone) made on purpose. A one-click reset that's gated behind Customize mode is the conservative middle ground.
+
+**Files:**
+- Modified: `server/dashboard/layout.ts` (default reorder)
+- Modified: `server/storage.ts` (deleteDashboardLayout)
+- Modified: `server/dashboard/routes.ts` (DELETE /api/dashboard/layout)
+- Modified: `client/src/lib/dashboard/useDashboardLayout.ts` (reset mutation)
+- Modified: `client/src/pages/dashboard.tsx` (Reset to default button in customize mode)
+
+---
 ## 2026-05-27 — DataTable migration wave 3: sector-heatmap, mm-exposure, conviction, verdict, track-record, earnings-calendar, BacktestPanel, Markov
 
 **Why:** Continued the "standardize ALL tables" sweep. Wave 2 hit the high-traffic pages; wave 3 covers the remaining pages a user lands on regularly so the entire site has the same header look, sort behavior, and styling.

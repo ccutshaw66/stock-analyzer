@@ -16,7 +16,7 @@ import { listWidgetCompartments } from "@/compartments/registry";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTemplate } from "@/components/PageTemplate";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
-import { Loader2, X, Plus, LayoutDashboard, Settings2 } from "lucide-react";
+import { Loader2, X, Plus, LayoutDashboard, Settings2, RotateCcw } from "lucide-react";
 import type { DashboardLayout, TabSpec, WidgetSpec } from "@shared/dashboard/types";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -47,7 +47,7 @@ function withUpdatedTab(layout: DashboardLayout, tabId: string, nextWidgets: Wid
 const CUSTOMIZE_STORAGE_KEY = "stockotter:dashboard:customize";
 
 export default function Dashboard() {
-  const { layout, isLoading, error, save } = useDashboardLayout();
+  const { layout, isLoading, error, save, reset, isResetting } = useDashboardLayout();
   const [customize, setCustomize] = useState<boolean>(() => {
     try { return localStorage.getItem(CUSTOMIZE_STORAGE_KEY) === "1"; } catch { return false; }
   });
@@ -212,6 +212,29 @@ export default function Dashboard() {
     </button>
   );
 
+  // Reset-to-default — useful after we ship a layout change (e.g. moving a
+  // widget) since a saved layout otherwise overrides the new server default.
+  // Only shows in customize mode so it isn't an accidental nuke.
+  const resetToDefaultButton = customize ? (
+    <button
+      onClick={() => {
+        if (confirm("Reset dashboard to the default layout? Your current arrangement will be discarded.")) {
+          reset();
+          // The hook updates the query cache with the server's default;
+          // sync our local mirror so the grid re-renders against it.
+          setLocalLayout(undefined);
+        }
+      }}
+      disabled={isResetting}
+      className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors disabled:opacity-50"
+      data-testid="dashboard-reset-toggle"
+      title="Reset to the default layout (discards your customizations)"
+    >
+      {isResetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+      Reset to default
+    </button>
+  ) : null;
+
   const widgetChips = customize && (hiddenWidgets.length > 0 || availableToAdd.length > 0) ? (
     <div className="flex items-center gap-1.5 flex-wrap">
       {hiddenWidgets.map((w) => {
@@ -246,6 +269,7 @@ export default function Dashboard() {
   const toolbarChips = (
     <div className="flex items-center gap-2 flex-wrap">
       {widgetChips}
+      {resetToDefaultButton}
       {customizeToggle}
     </div>
   );
