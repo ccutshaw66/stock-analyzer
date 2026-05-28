@@ -14,7 +14,7 @@ import { InsiderClustersWidget } from "./InsiderClustersWidget";
 const meta: CompartmentMeta = {
   id: "insider-clusters",
   name: "Insider Clusters",
-  tier: "free",
+  tier: "pro",
   description: "Tickers across the market with 3+ insiders buying (or selling) in the last 14 days.",
 };
 

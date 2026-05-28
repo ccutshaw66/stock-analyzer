@@ -77,7 +77,10 @@ export function ActionQueueWidget() {
 
   return (
     <div className="h-full overflow-y-auto" data-testid="action-queue">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-card-border">
+      {/* Sticky so the header stays pinned when the list scrolls. Without
+          sticky, the header rolls up with the items and you lose the "Action
+          Queue · N items" context. */}
+      <div className="sticky top-0 z-10 bg-card flex items-center justify-between px-3 py-2 border-b border-card-border">
         <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
           <ListChecks className="h-3.5 w-3.5" />
           Action Queue

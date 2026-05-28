@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import GridLayout, { WidthProvider, type Layout } from "react-grid-layout";
 import { useDashboardLayout } from "@/lib/dashboard/useDashboardLayout";
 import { listWidgetCompartments } from "@/compartments/registry";
+import { useSubscription } from "@/hooks/useSubscription";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTemplate } from "@/components/PageTemplate";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
@@ -68,18 +69,41 @@ export default function Dashboard() {
     if (layout && !localLayout) setLocalLayout(layout);
   }, [layout, localLayout]);
 
+  // Tier filter: widgets whose compartment requires a tier above the user's
+  // are silently dropped from the dashboard. The layout still stores them, so
+  // upgrading restores them without losing the user's grid arrangement.
+  const { tier } = useSubscription();
+  const TIER_RANK: Record<string, number> = { free: 0, pro: 1, elite: 2 };
+  const userRank = TIER_RANK[tier ?? "free"] ?? 0;
+  const tierAllows = useCallback(
+    (compartmentId: string): boolean => {
+      const comp = compartmentMap.get(compartmentId);
+      const compTier = comp?.meta?.tier;
+      if (!compTier) return true;
+      return (TIER_RANK[compTier] ?? 0) <= userRank;
+    },
+    [compartmentMap, userRank],
+  );
+
   const activeTab = localLayout ? findActiveTab(localLayout) : undefined;
-  const visibleWidgets = useMemo(() => activeTab?.widgets.filter((w) => w.visible) ?? [], [activeTab]);
-  const hiddenWidgets = useMemo(() => activeTab?.widgets.filter((w) => !w.visible) ?? [], [activeTab]);
+  const visibleWidgets = useMemo(
+    () => activeTab?.widgets.filter((w) => w.visible && tierAllows(w.compartmentId)) ?? [],
+    [activeTab, tierAllows],
+  );
+  const hiddenWidgets = useMemo(
+    () => activeTab?.widgets.filter((w) => !w.visible && tierAllows(w.compartmentId)) ?? [],
+    [activeTab, tierAllows],
+  );
 
   // Compartments in the registry that aren't in this tab at all — surfaced as
   // "Add" chips alongside hidden widgets. Lets users mount newly-released
-  // compartments without resetting their saved layout.
+  // compartments without resetting their saved layout. Tier-gated widgets are
+  // hidden from "Add" too (user can't add what they don't have access to).
   const availableToAdd = useMemo(() => {
     if (!activeTab) return [] as typeof compartments;
     const inTab = new Set(activeTab.widgets.map((w) => w.compartmentId));
-    return compartments.filter((c) => !inTab.has(c.meta.id));
-  }, [activeTab, compartments]);
+    return compartments.filter((c) => !inTab.has(c.meta.id) && tierAllows(c.meta.id));
+  }, [activeTab, compartments, tierAllows]);
 
   // Persist whenever local layout diverges from server layout.
   const persist = useCallback(

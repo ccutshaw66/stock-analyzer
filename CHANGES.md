@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Dashboard tier filter + insider widgets bumped Pro + Action Queue sticky header + tier-test data cleanup
+
+**Why:** Chris's free@ session surfaced four things at once:
+1. *"Position INSIDERS widget should not be on the dashboard, as well as insider cluster or B/S ratio"* — they were `tier: "free"` and rendered for everyone.
+2. *"The header on the action queue rolls up with the contents"* — the widget header wasn't `sticky`, so it scrolled with the list.
+3. *"The AVNS trade that I stuck on the free tier current positions, before the change, is stuck in there"* — left over from before the route gate, and the dashboard's Position Insiders widget then said "No filings on AVNS in the last 30 days. Try loosening the filter." That message is fine; the actual problem was that AVNS shouldn't be associated with the free@ test account at all.
+4. *"No filings on AVNS in the last 30 days. Try loosening the filter."* — empty-state copy on the Position Insiders widget. Once the widget is hidden for Free and the stuck trade is gone, this message goes with it.
+
+**What — dashboard renderer now tier-filters widgets:**
+- `client/src/pages/dashboard.tsx` — added a `tierAllows(compartmentId)` check that reads `meta.tier` off the compartment and compares with the user's tier (via `useSubscription`). `visibleWidgets`, `hiddenWidgets`, and `availableToAdd` all filter through it. Widgets above the user's tier are silently dropped — the user's saved layout still stores them, so upgrading restores them in their original grid spots without losing arrangement.
+
+**What — insider widget tiers bumped to Pro:**
+- `position-insiders`, `insider-clusters`, `insider-ratio` compartments: `tier: "free"` → `tier: "pro"`. These all read from the FMP insider feed, which is a Pro feature in the policy.
+
+**What — Action Queue header pinned:**
+- `client/src/compartments/action-queue/ActionQueueWidget.tsx` — wrapped the header div with `sticky top-0 z-10 bg-card`. Was bare `flex items-center …` — header scrolled away with the list.
+
+**What — tier test accounts wipe-and-reseed on `npm run seed:demo`:**
+- `server/demo-seed.ts` — the tier-QA accounts now get their `trades / trade_price_history / favorites / account_transactions / account_settings / dividend_portfolio` rows wiped before the upsert.
+
+**Files touched:**
+- Modified: `client/src/pages/dashboard.tsx`
+- Modified: `client/src/compartments/{position-insiders,insider-clusters,insider-ratio}/index.ts`
+- Modified: `client/src/compartments/action-queue/ActionQueueWidget.tsx`
+- Modified: `server/demo-seed.ts`
+
+---
 ## 2026-05-27 — Behavior tag rename + secret-sauce score formulas removed from Help
 
 **Why:** Two follow-ups in one ship.

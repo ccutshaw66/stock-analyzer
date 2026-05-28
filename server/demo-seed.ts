@@ -251,6 +251,10 @@ export async function seedDemoAccount(pool: pg.Pool): Promise<number> {
     console.log(`[demo] Account seeded successfully — ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
 
     // ─── Create tier test accounts ────────────────────────────────────────
+    // These four are for tier-gating QA. They get the right tier in the
+    // users table but NO trades / favorites / positions / transactions —
+    // they should always start clean so the next reseed wipes whatever
+    // testing crud accumulated. Wipe THEN insert.
     const testPassword = await bcrypt.hash("test123", 12);
     const testAccounts = [
       { email: "admin@stockotter.ai", name: "Admin User", tier: "elite" },
@@ -259,13 +263,25 @@ export async function seedDemoAccount(pool: pg.Pool): Promise<number> {
       { email: "elite@stockotter.ai", name: "Elite Tier Test", tier: "elite" },
     ];
     for (const acct of testAccounts) {
+      // Find existing test-account id (if any) BEFORE the upsert so we can
+      // wipe its data using the stable id.
+      const existing = await client.query(`SELECT id FROM users WHERE email = $1`, [acct.email]);
+      const existingId: number | null = existing.rows[0]?.id ?? null;
+      if (existingId != null) {
+        await client.query(`DELETE FROM trade_price_history WHERE user_id = $1`, [existingId]);
+        await client.query(`DELETE FROM trades WHERE user_id = $1`, [existingId]);
+        await client.query(`DELETE FROM favorites WHERE user_id = $1`, [existingId]);
+        await client.query(`DELETE FROM account_transactions WHERE user_id = $1`, [existingId]);
+        await client.query(`DELETE FROM account_settings WHERE user_id = $1`, [existingId]);
+        await client.query(`DELETE FROM dividend_portfolio WHERE user_id = $1`, [existingId]);
+      }
       await client.query(
         `INSERT INTO users (email, password, display_name, has_seen_tour, subscription_tier)
          VALUES ($1, $2, $3, true, $4)
          ON CONFLICT (email) DO UPDATE SET display_name = $3, subscription_tier = $4, has_seen_tour = true`,
         [acct.email, testPassword, acct.name, acct.tier]
       );
-      console.log(`[demo] Test account: ${acct.email} (${acct.tier})`);
+      console.log(`[demo] Test account: ${acct.email} (${acct.tier}) — data wiped${existingId ? ` (was id ${existingId})` : ""}`);
     }
 
     return userId;

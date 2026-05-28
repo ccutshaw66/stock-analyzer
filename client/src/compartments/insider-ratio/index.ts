@@ -11,7 +11,7 @@ import { InsiderRatioWidget } from "./InsiderRatioWidget";
 const meta: CompartmentMeta = {
   id: "insider-ratio",
   name: "Insider B/S Ratio",
-  tier: "free",
+  tier: "pro",
   fullPageRoute: "/insiders",
   description: "Market-wide insider buy-vs-sell sentiment over the last 30 days, with month-over-month delta.",
 };

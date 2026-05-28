@@ -13,7 +13,7 @@ import { PositionInsidersWidget } from "./PositionInsidersWidget";
 const meta: CompartmentMeta = {
   id: "position-insiders",
   name: "Position Insiders",
-  tier: "free",
+  tier: "pro",
   description: "Insider buy/sell transactions on tickers you currently hold. Situational awareness only.",
 };
 
