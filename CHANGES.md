@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-27 — Conviction Compass restored — route was silently dropped on day two
+
+**Why:** Chris confirmed the Compass *did* work briefly then went dark: *"IT HASN'T WORKED SINCE ABOUT DAY TWO."* Bisected git log on `server/routes.ts` against the string `"api/conviction"` — the route registration disappeared at commit `b116a7a` "Page consistency: standardize Title -> Disclaimer -> How It Works." That commit was a layout-cleanup sweep that, while moving Title/Disclaimer/How-It-Works blocks around across many pages, accidentally deleted the `app.get("/api/conviction/:ticker", ...)` and `app.get("/api/diag/conviction/backtest", ...)` registrations along with it. The page kept calling `/api/conviction/${ticker}`, the server returned a 401 via the auth wall before any handler ran (because no route matched and the wall fires generically), and the page rendered the "Could not build Conviction Compass" error state. Exactly matches "doesn't tell me anything" since day two.
+
+**What:**
+- Re-added both routes in `server/routes.ts`, sitting right above the diag-strategy-eval block:
+  - `GET /api/conviction/:ticker` → `getConvictionCompass(ticker, { yahooFetch, getYahooOwnership, forceRefresh })` (passes the `?refresh=1` cache-buster through)
+  - `GET /api/diag/conviction/backtest` → `getBacktestResults()` (powers the forward-tracking panel at the bottom of the page)
+- No changes to `server/conviction/pipeline.ts`, `server/conviction/backtest.ts`, or the client page. The pipeline + page have been correct the whole time; they were just shouting into the void because nothing was listening at `/api/conviction/:ticker`.
+
+**Files touched:**
+- Modified: `server/routes.ts` (re-registered two `app.get` routes)
+
+---
 ## 2026-05-27 — Dashboard: Ask Otter moved to the bottom + Reset-to-default button
 
 **Why:** Chris: "on dashboard move ASK Otter to the bottom of the Screen." Ask Otter (the conversational widget) was sitting in row 3, breaking up the curated morning-workspace stack (Brief → Action Queue → Position context → Insider context). Moving it to the bottom keeps the trade-relevant rows flowing top-down without the chat-style widget interrupting them.

@@ -5198,6 +5198,46 @@ export async function registerRoutes(
   // for the past N days and returns per-fire metadata + win-rate aggregates.
   // Used to ground strategy-tuning decisions in data instead of intuition.
   //
+  // ─── Conviction Compass ─────────────────────────────────────────────────
+  // Single-ticker conviction signal that fuses four orthogonal categories:
+  // smart money flow, dealer positioning, technical momentum, and
+  // fundamental quality. Returns axis scores + confluence + plain-language
+  // verdict for the /conviction page's radar visualization.
+  //
+  // Re-registered 2026-05-27 — Chris flagged that the Conviction Compass
+  // hasn't worked since "about day two." Tracked to commit b116a7a (page
+  // consistency sweep) which inadvertently dropped this route registration
+  // while it kept the page + pipeline. Restoring without changes to the
+  // underlying pipeline.
+  app.get("/api/conviction/:ticker", async (req, res) => {
+    try {
+      await ensureReady();
+      const { getConvictionCompass } = await import("./conviction/pipeline");
+      const ticker = req.params.ticker.toUpperCase();
+      const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+      const compass = await getConvictionCompass(ticker, {
+        yahooFetch,
+        getYahooOwnership,
+        forceRefresh,
+      });
+      res.json(compass);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build conviction compass" });
+    }
+  });
+
+  // Conviction Compass live forward-tracking backtest results — reads the
+  // compass_snapshots table populated by the nightly conviction-snapshot cron.
+  app.get("/api/diag/conviction/backtest", async (_req, res) => {
+    try {
+      const { getBacktestResults } = await import("./conviction/backtest");
+      const result = await getBacktestResults();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "Failed to build backtest results" });
+    }
+  });
+
   //   GET /api/diag/strategy-eval?symbols=AAPL,MSFT,...&days=365[&detail=1]
   //
   // Default omits per-fire detail to keep the payload small. Pass detail=1
