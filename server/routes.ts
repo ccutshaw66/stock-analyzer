@@ -23,12 +23,12 @@ import {
   getPolygonQuoteSummary,
   getPolygonChart,
   getPolygonOptionsChain,
-  getPolygonUniverse,
   polygonScreener,
   polygonHasOptions,
   getPolygonEarningsRow,
 } from "./polygon";
-import { fmpAdapter, fmpSearchTickers, getFmpProfileBeta } from "./data/providers/fmp.adapter";
+import { fmpAdapter, fmpSearchTickers, getFmpProfileBeta, fmpScreenerSymbols } from "./data/providers/fmp.adapter";
+import { getFmpDividendData } from "./data/providers/fmp.dividends";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
@@ -477,12 +477,6 @@ async function getQuote(ticker: string): Promise<any> {
   const result = await getPolygonQuoteSummary(ticker);
   if (result) setCache(cacheKey, result, TTL.quote);
   return result;
-}
-
-// Lightweight quote — Polygon snapshot returns everything in one call already,
-// so we can share the code path with getQuote.
-async function getQuoteLight(ticker: string): Promise<any> {
-  return getQuote(ticker);
 }
 
 /** Convert a Yahoo-style range string to a "days back" number for FMP from-date math. */
@@ -1962,87 +1956,11 @@ export async function registerRoutes(
   });
 
   // ─── Dividend Routes (BEFORE parameterized routes) ──────────────────────
-
-  function extractDividendData(ticker: string, quote: any) {
-    const sd = quote?.summaryDetail || {};
-    const pr = quote?.price || {};
-    const ks = quote?.defaultKeyStatistics || {};
-    const fd = quote?.financialData || {};
-    const ce = quote?.calendarEvents || {};
-
-    const dividendYield = sd.dividendYield?.raw != null ? Number((sd.dividendYield.raw * 100).toFixed(2)) : 0;
-    const dividendRate = sd.dividendRate?.raw ?? 0;
-    const payoutRatio = sd.payoutRatio?.raw != null ? Number((sd.payoutRatio.raw * 100).toFixed(2)) : 0;
-    const trailingYield = sd.trailingAnnualDividendYield?.raw != null ? Number((sd.trailingAnnualDividendYield.raw * 100).toFixed(2)) : 0;
-    const fiveYearAvgYield = sd.fiveYearAvgDividendYield?.raw ?? null;
-    const lastDividendValue = ks.lastDividendValue?.raw ?? null;
-    const lastDividendDate = ks.lastDividendDate?.fmt ?? null;
-    const exDividendDate = ce.exDividendDate?.fmt ?? sd.exDividendDate?.fmt ?? null;
-    const dividendDate = ce.dividendDate?.fmt ?? sd.exDividendDate?.fmt ?? null; // next payment date
-    const price = pr.regularMarketPrice?.raw ?? fd.currentPrice?.raw ?? 0;
-    const companyName = pr.shortName ?? ticker;
-
-    // Estimate frequency
-    let frequency = "Quarterly";
-    if (lastDividendValue && lastDividendValue > 0 && dividendRate > 0) {
-      const ratio = dividendRate / lastDividendValue;
-      if (ratio >= 10) frequency = "Monthly";
-      else if (ratio >= 3) frequency = "Quarterly";
-      else if (ratio >= 1.5) frequency = "Semi-Annual";
-      else frequency = "Annual";
-    }
-
-    // Score calculation (0-100)
-    let score = 0;
-    // Yield scoring (max 25)
-    if (dividendYield > 5) score += 25;
-    else if (dividendYield > 3) score += 20;
-    else if (dividendYield > 2) score += 15;
-    else if (dividendYield > 1) score += 10;
-
-    // Payout ratio — REITs and MLPs often have 80%+, that's normal for them (max 20)
-    if (payoutRatio > 0 && payoutRatio <= 80) score += 20;
-    else if (payoutRatio > 80 && payoutRatio <= 100) score += 15;
-    else if (payoutRatio > 100) score += 5;
-    else if (payoutRatio === 0) score += 10; // no data — give benefit of doubt
-
-    // Current yield vs 5-year average — paying above average is bullish (max 15)
-    if (fiveYearAvgYield != null && dividendYield > fiveYearAvgYield) score += 15;
-    else if (fiveYearAvgYield != null) score += 5; // at least has a 5-year track record
-
-    // Active dividend (max 10)
-    if (dividendRate > 0) score += 10;
-
-    // Frequency bonus (max 15)
-    if (frequency === "Monthly") score += 15;
-    else if (frequency === "Quarterly") score += 15;
-    else if (frequency === "Semi-Annual") score += 10;
-    else if (frequency === "Annual") score += 5;
-
-    // Yield above 3% bonus (max 5) — rewards solid income stocks
-    if (dividendYield >= 3 && payoutRatio > 0 && payoutRatio < 100) score += 5;
-    // Extra bump for high yield + sustainable (max 5)
-    if (dividendYield >= 4 && payoutRatio > 0 && payoutRatio <= 80) score += 5;
-
-    return {
-      ticker,
-      companyName,
-      price: Number(price.toFixed(2)),
-      dividendYield,
-      dividendRate: Number(dividendRate.toFixed(2)),
-      exDividendDate,
-      distributionDate: dividendDate,  // when you get paid
-      payoutRatio,
-      trailingYield,
-      fiveYearAvgYield: fiveYearAvgYield != null ? Number(fiveYearAvgYield.toFixed(2)) : null,
-      lastDividendValue: lastDividendValue != null ? Number(lastDividendValue.toFixed(4)) : null,
-      lastDividendDate,
-      frequency,
-      annualDividend: Number(dividendRate.toFixed(2)),
-      dividendGrowth: null as number | null,
-      score,
-    };
-  }
+  //
+  // All dividend data comes from FMP via getFmpDividendData() (see
+  // server/data/providers/fmp.dividends.ts). The legacy extractDividendData +
+  // getQuoteLight → getPolygonQuoteSummary path was retired when Polygon was
+  // dropped for dividends.
 
   app.get("/api/dividends/scan", checkFeatureAccess('scansPerDay'), async (req, res) => {
     if (checkScanRateLimit(req, res)) return;
@@ -2062,9 +1980,12 @@ export async function registerRoutes(
         ? tickersParam.split(",").map(t => t.trim().toUpperCase()).filter(Boolean)
         : null;
 
-      // Resolve universe: custom tickers OR full Polygon universe (cached 24h)
+      // Resolve universe: custom tickers OR FMP dividend-payer screener (cached 24h).
+      // FMP's screener filters dividend payers server-side (dividendMoreThan), so
+      // we only enrich tickers that actually pay — far fewer than the old full
+      // Polygon universe scan.
       const UNIVERSE_TTL = 24 * 60 * 60 * 1000;
-      const universeCacheKey = "polygon:universe:500m";
+      const universeCacheKey = "fmp:dividend-universe:500m";
       let tickers: string[];
       if (customTickers && customTickers.length) {
         tickers = [...new Set(customTickers)].slice(0, 500);
@@ -2073,8 +1994,8 @@ export async function registerRoutes(
         if (cachedUniverse && !refresh) {
           tickers = cachedUniverse;
         } else {
-          console.log("[dividends-scan] Fetching Polygon universe...");
-          tickers = await getPolygonUniverse({ minMarketCap: 500_000_000 });
+          console.log("[dividends-scan] Fetching FMP dividend-payer universe...");
+          tickers = await fmpScreenerSymbols({ minMarketCap: 500_000_000, minDividend: 0.01, count: 500 });
           setCache(universeCacheKey, tickers, UNIVERSE_TTL);
         }
       }
@@ -2101,15 +2022,13 @@ export async function registerRoutes(
       const scanStart = Date.now();
       const results: any[] = [];
 
-      // Polygon Starter has no per-second cap; parallelize in batches of 20
+      // Enrich each payer with full dividend data from FMP, in batches of 20.
       const BATCH_SIZE = 20;
       for (let b = 0; b < tickers.length; b += BATCH_SIZE) {
         const batch = tickers.slice(b, b + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (ticker) => {
           try {
-            const quote = await getQuoteLight(ticker);
-            if (!quote) return null;
-            const d = extractDividendData(ticker, quote);
+            const d = await getFmpDividendData(ticker);
             // Skip tickers with no dividend at all
             if (!d || (d.dividendYield === 0 && d.dividendRate === 0)) return null;
             return d;
@@ -2355,8 +2274,7 @@ export async function registerRoutes(
         for (const item of weeklyPlan) {
           if (item.price > 0 && item.score > 0) continue; // already have live data from scan
           try {
-            const quote = await getQuoteLight(item.ticker);
-            const d = quote ? extractDividendData(item.ticker, quote) : null;
+            const d = await getFmpDividendData(item.ticker);
             if (d) {
               item.companyName = d.companyName || item.ticker;
               item.price = d.price || 0;
@@ -2428,8 +2346,7 @@ export async function registerRoutes(
       for (const [symbol, pos] of Object.entries(grouped)) {
         const avgCost = pos.totalCost / pos.shares;
         try {
-          const quote = await getQuoteLight(symbol);
-          const divData = quote ? extractDividendData(symbol, quote) : null;
+          const divData = await getFmpDividendData(symbol);
 
           // Only include if the stock actually pays a dividend
           if (!divData || divData.dividendRate <= 0) continue;
@@ -2808,11 +2725,11 @@ export async function registerRoutes(
     const ticker = req.params.ticker.toUpperCase();
     try {
       await ensureReady();
-      const quote = await getQuoteLight(ticker);
-      if (!quote) {
+      const d = await getFmpDividendData(ticker);
+      if (!d) {
         return res.status(404).json({ error: `No data found for ${ticker}` });
       }
-      res.json(extractDividendData(ticker, quote));
+      res.json(d);
     } catch (error: any) {
       res.status(500).json({ error: error?.message || "Failed to fetch dividend data" });
     }

@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-31 — Dividend data fully migrated to FMP (Polygon dropped for dividends)
+
+**Why:** Every dividend feature on the site (single-ticker lookup, scanner, weekly strategy, auto-portfolio) read from Polygon via a Yahoo-shaped adapter (`getQuoteLight` → `getPolygonQuoteSummary`) and a single `extractDividendData` helper. Polygon is on the kill list, and the dividend layer was the last consumer of `getPolygonUniverse` for the scan. This migrates the whole layer to FMP in one pass so no caller is left on the old provider.
+
+**What — new canonical FMP dividend source:**
+- `server/data/providers/fmp.dividends.ts` (new) — `getFmpDividendData(ticker)` returns the exact same shape the four routes + frontend already consume, sourced entirely from FMP: `/quote` (price + name), `/dividends` (history: ex-date, pay-date, per-record yield, **frequency string given directly by FMP** — the old ratio-based frequency *guess* is gone), and `/ratios-ttm` (`dividendYieldTTM`, `dividendPayoutRatioTTM`, `dividendPerShareTTM`). The 0–100 quality score is ported verbatim so scan ranking is unchanged. 5-year average yield is now computed from the per-record yields in the dividend history instead of relying on a Yahoo field.
+
+**What — routes rewired (`server/routes.ts`):**
+- `/api/dividends/:ticker`, `/api/dividends/scan`, `/api/dividends/weekly-strategy`, `/api/dividend-portfolio` all now call `getFmpDividendData()` instead of `getQuoteLight()` + `extractDividendData()`.
+- Scan universe switched from `getPolygonUniverse({minMarketCap})` to `fmpScreenerSymbols({ minMarketCap, minDividend: 0.01 })` — FMP filters dividend payers server-side, so the scan only enriches tickers that actually pay (much smaller working set than the old full-universe scan).
+- Removed the now-dead `extractDividendData` helper and the `getQuoteLight` wrapper, and dropped the unused `getPolygonUniverse` import.
+
+**Frontend:** No change — the response shape (`dividendYield`, `dividendRate`, `exDividendDate`, `distributionDate`, `payoutRatio`, `fiveYearAvgYield`, `frequency`, `score`, etc.) is preserved exactly.
+
+**Caching:** Unchanged tiers — `fmpGet` caches each endpoint in-memory; the scan keeps its 6h aggregate cache and weekly keeps its 7d cache. Dividend-payer universe cached 24h under `fmp:dividend-universe:500m`.
+
+**Known FMP data note:** FMP's `dividendYieldTTM` occasionally disagrees with a naive (annual ÷ price) calc for a given ticker (observed on F). We keep `dividendYieldTTM` as the primary yield to stay consistent with the snapshot/quote layer (avoiding cross-page drift); the computed yield is only a fallback when TTM is missing.
+
+**Files:** `server/data/providers/fmp.dividends.ts` (new), `server/routes.ts`.
+
+---
 ## 2026-05-31 — Diag endpoints public + ?basket=htf shortcut
 
 **Why:** Diag endpoints (`/api/diag/*`) are research/backtest harnesses with no user-specific data — pure aggregates against FMP-fed bars. They were behind the `/api` cookie auth wall, which blocked external agents (paired AIs, future automation) from running validations without a session cookie. Chris explicitly approved moving them outside the wall.
