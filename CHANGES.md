@@ -15,6 +15,7 @@ during the prior Perplexity/Claude session).
 
 **What — new canonical FMP dividend source:**
 - `server/data/providers/fmp.dividends.ts` (new) — `getFmpDividendData(ticker)` returns the exact same shape the four routes + frontend already consume, sourced entirely from FMP: `/quote` (price + name), `/dividends` (history: ex-date, pay-date, per-record yield, **frequency string given directly by FMP** — the old ratio-based frequency *guess* is gone), and `/ratios-ttm` (`dividendYieldTTM`, `dividendPayoutRatioTTM`, `dividendPerShareTTM`). The 0–100 quality score is ported verbatim so scan ranking is unchanged. 5-year average yield is now computed from the per-record yields in the dividend history instead of relying on a Yahoo field.
+- **Upcoming ex-date, not past:** FMP's historical `/dividends` feed stops at the last *passed* ex-date and upcoming dates are frequently undeclared (e.g. SCHD showed 2026-03-25 with no June record). `exDividendDate` / `distributionDate` are now the **next upcoming** ex/pay dates — a genuine future FMP record when one exists, otherwise projected forward from the most recent ex-date by the payout frequency (calendar-month accurate). `lastDividendDate` still holds the actual most-recent paid date. This restores the forward-looking behavior the old Yahoo calendar provided.
 
 **What — routes rewired (`server/routes.ts`):**
 - `/api/dividends/:ticker`, `/api/dividends/scan`, `/api/dividends/weekly-strategy`, `/api/dividend-portfolio` all now call `getFmpDividendData()` instead of `getQuoteLight()` + `extractDividendData()`.

@@ -87,6 +87,37 @@ function frequencyMultiplier(freq: string): number {
   }
 }
 
+/** Number of months between payments for a given frequency. */
+function frequencyMonths(freq: string): number {
+  switch (freq) {
+    case "Monthly": return 1;
+    case "Quarterly": return 3;
+    case "Semi-Annual": return 6;
+    case "Annual": return 12;
+    default: return 3;
+  }
+}
+
+const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
+
+/**
+ * Project the next (upcoming) ex-dividend date by rolling the most recent
+ * ex-date forward one frequency interval at a time until it lands in the
+ * future. FMP's historical /dividends feed stops at the last PASSED ex-date,
+ * and upcoming dates are often undeclared, so this projection is how we surface
+ * a forward-looking "next ex-date" (matching the old Yahoo calendar behavior).
+ */
+function projectForward(from: Date, frequency: string, now: number): Date {
+  const months = frequencyMonths(frequency);
+  const d = new Date(from);
+  let guard = 0;
+  while (d.getTime() <= now && guard < 120) {
+    d.setMonth(d.getMonth() + months);
+    guard++;
+  }
+  return d;
+}
+
 /**
  * Quality score (0-100). Ported verbatim from the legacy extractDividendData so
  * scan ranking and the displayed score stay identical across the migration.
@@ -150,14 +181,33 @@ export async function getFmpDividendData(ticker: string): Promise<DividendData |
   const upcoming = sorted.filter((r) => new Date(r.date!).getTime() > now);
 
   const mostRecent = past[0] ?? sorted[0] ?? null;
-  const nextEx = upcoming.length ? upcoming[upcoming.length - 1] : null; // nearest future
+  const nextEx = upcoming.length ? upcoming[upcoming.length - 1] : null; // nearest genuine future record
 
   const lastDividendValue = mostRecent ? (n(mostRecent.dividend) ?? n(mostRecent.adjDividend)) : null;
   const lastDividendDate = mostRecent?.date ?? null;
-  const exDividendDate = nextEx?.date ?? mostRecent?.date ?? null;
-  const distributionDate = nextEx?.paymentDate ?? mostRecent?.paymentDate ?? null;
 
   const frequency = normalizeFrequency(mostRecent?.frequency, sorted.length, sorted);
+
+  // UPCOMING ex-date + pay-date (users buy BEFORE the ex-date to capture the
+  // dividend, so the forward-looking date is what matters). Prefer a genuine
+  // future record from FMP; otherwise project the next one forward from the
+  // most recent ex-date by the payout frequency.
+  let exDividendDate: string | null = null;
+  let distributionDate: string | null = null;
+  if (nextEx) {
+    exDividendDate = nextEx.date ?? null;
+    distributionDate = nextEx.paymentDate ?? null;
+  } else if (mostRecent?.date) {
+    const projEx = projectForward(new Date(mostRecent.date), frequency, now);
+    exDividendDate = isoDay(projEx);
+    if (mostRecent.paymentDate) {
+      // Apply the most recent ex→pay gap to the projected ex-date.
+      const gapMs = new Date(mostRecent.paymentDate).getTime() - new Date(mostRecent.date).getTime();
+      distributionDate = Number.isFinite(gapMs) && gapMs >= 0
+        ? isoDay(new Date(projEx.getTime() + gapMs))
+        : null;
+    }
+  }
 
   // Annual dividend rate: prefer TTM per-share, else sum trailing 365 days of
   // ex-dated dividends, else extrapolate last dividend by frequency.
