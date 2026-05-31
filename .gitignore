@@ -15,3 +15,7 @@ data/htf-ohlcv-cache/
 # Claude Code — keep skills + shared settings, exclude local/runtime state
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# HERMES bot runtime state (per-host JSON; never goes in git)
+python/hermes/state/
