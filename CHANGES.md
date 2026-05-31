@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-31 — Predictive-score validation harness (no UI yet)
+
+**Why:** The original [[todo-predictive-short-term-indicator-kill-conviction-compass-confluence-pulse-signal-pulse]] called for ONE visual gauge on /dashboard that anticipates price movement BEFORE it moves. Predecessors (Signal Pulse, Confluence Pulse) were removed and Conviction Compass was rebuilt as Trigger Check, but the predictive layer itself was never built. Per the original spec's step 1 + 4 and `feedback_sanity_check_first`, **no UI ships until a candidate composite clears 55% directional accuracy on a held-out window.** This commit lands the validation harness only.
+
+**What — new diag endpoint:**
+- `server/diag/predictive-score-validate.ts` (new) — for every (ticker, bar) in the basket, builds 5 strategy votes (HTF + Wyckoff Spring SOS + BBTC BUY + VER BUY + AMC ≥3 score) using only data available at that bar, then samples forward 1d/5d/20d returns. Compares two candidate composites:
+  - **Candidate A** — strategy votes only (0..5)
+  - **Candidate B** — A + volume divergence (a tight 10-bar close range <4% with recent 5-bar volume ≥1.3× prior 5 bars). Score 0..6.
+- Aggregates per score-decile: top-decile up-rate, top-vs-bottom mean-return spread, edge over baseline.
+- Verdict block says whether B clears 55% AND whether volume divergence pulls its weight vs A — the gate that decides "build the gauge with B" vs "queue the next leading input."
+
+**What — new route:**
+- `server/routes.ts` — `GET /api/diag/predictive-score-validate?symbols=...&days=...` (250-day warmup needed for SMA200, max 500 symbols / 3650 days).
+
+**Files:**
+- New: `server/diag/predictive-score-validate.ts`
+- Modified: `server/routes.ts` (route mount only)
+
+**Hygiene:** Uses the canonical `computeRSISeries` from `server/indicators/rsi.ts`. Other indicators (EMA / SMA / ATR / Bollinger / MACD histogram / VAMI) are inlined to match the existing `server/diag/*` pattern; TODO comment in the file notes this duplication and links to the broader cross-page-indicator-drift cleanup.
+
+**Next:** Run on the 491-ticker × 10y basket. If B's 5-day top-decile up-rate ≥55%, ship the gauge compartment per `[[rule-universal-structure]]`. If not, drop volume divergence and queue options skew → sentiment.
+
+**Rollback:** `git reset --hard safe/20260531-102940` reverts to pre-harness HEAD.
+
+---
 ## 2026-05-28 — Tier schedule snapshot (current state of every page + widget)
 
 **Why:** Chris flagged that the tier schedule has drifted across multiple recent ships (the Free/Pro/Elite rewire, the dashboard tier filter, the Ask Otter free→pro move, the route-level gate wave, and a handful of unlogged tweaks). Some changes landed in CHANGES.md, some didn't. This entry is a **single source-of-truth snapshot** of the live tier assignments as of today so anyone reading the log can see the full state without diffing the page registry and every compartment.

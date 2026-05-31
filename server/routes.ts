@@ -5336,6 +5336,31 @@ export async function registerRoutes(
     }
   });
 
+  // Predictive-score validation harness — does a composite score (strategy
+  // votes ± leading-input layer) have directional edge on forward returns?
+  // Gates whether the /dashboard predictive gauge gets built. No UI yet.
+  //
+  //   GET /api/diag/predictive-score-validate?symbols=AAPL,MSFT&days=3650
+  //
+  // - symbols: comma-separated tickers, max 500
+  // - days: 250..3650 (default 3650 = ~10y; needs 220-bar warmup for SMA200)
+  app.get("/api/diag/predictive-score-validate", async (req, res) => {
+    try {
+      const { runPredictiveValidate } = await import("./diag/predictive-score-validate");
+      const symbols = String(req.query.symbols || "")
+        .split(",")
+        .map(s => s.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 500);
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 250), 3650);
+      const result = await runPredictiveValidate(symbols, days);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "predictive-score-validate failed" });
+    }
+  });
+
   // Comparison chart page — returns bars + strategy-specific signal dots +
   // regime bands (TFT only) + paired trades + summary stats for one ticker.
   // Powers the new /chart/:ticker frontend page where users toggle between
