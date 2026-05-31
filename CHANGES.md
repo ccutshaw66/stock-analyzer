@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-31 — Diag endpoints public + ?basket=htf shortcut
+
+**Why:** Diag endpoints (`/api/diag/*`) are research/backtest harnesses with no user-specific data — pure aggregates against FMP-fed bars. They were behind the `/api` cookie auth wall, which blocked external agents (paired AIs, future automation) from running validations without a session cookie. Chris explicitly approved moving them outside the wall.
+
+**What — exempt /api/diag/* from the auth wall:**
+- `server/routes.ts` — the `app.use("/api", requireAuth)` line now wraps `requireAuth` in a guard that lets `/api/diag/*` through. Every other `/api` route remains gated.
+
+**What — ?basket=htf shortcut on predictive-score-validate:**
+- `/api/diag/predictive-score-validate` now accepts `?basket=htf` instead of a pasted symbol list. Internally calls `getHtfUniverse()` (the same 491-ticker universe the strategy-pnl skill uses for its 10y baseline) and seeds `symbols` from there. Capped at 500 to match the existing `?symbols=` limit.
+
+**Trade-offs:** Diag endpoints do heavy compute (10y FMP fetches × indicator series × strategy scans). If abuse surfaces, add per-IP rate limiting on `/api/diag/*` — for now the callers are Chris + paired agents, and the FMP API has its own quota guard.
+
+**Files:** `server/routes.ts`.
+
+---
 ## 2026-05-31 — Predictive-score validation harness (no UI yet)
 
 **Why:** The original [[todo-predictive-short-term-indicator-kill-conviction-compass-confluence-pulse-signal-pulse]] called for ONE visual gauge on /dashboard that anticipates price movement BEFORE it moves. Predecessors (Signal Pulse, Confluence Pulse) were removed and Conviction Compass was rebuilt as Trigger Check, but the predictive layer itself was never built. Per the original spec's step 1 + 4 and `feedback_sanity_check_first`, **no UI ships until a candidate composite clears 55% directional accuracy on a held-out window.** This commit lands the validation harness only.

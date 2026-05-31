@@ -1655,7 +1655,14 @@ export async function registerRoutes(
   mountBotRoutes(app);
 
   // ─── Protect all other API routes ─────────────────────────────────────────
-  app.use("/api", requireAuth);
+  // Diag endpoints (/api/diag/*) are research/backtest harnesses with no
+  // user-specific data — exempted from the auth wall so external agents can
+  // run validation without a session cookie. Heavy compute, so consider
+  // rate-limiting if abuse surfaces; current callers are Chris + paired AIs.
+  app.use("/api", (req, res, next) => {
+    if (req.path.startsWith("/diag/")) return next();
+    return requireAuth(req, res, next);
+  });
 
   // ─── Track demo user activity ──────────────────────────────────────────────
   app.use("/api", (req, _res, next) => {
@@ -5347,12 +5354,20 @@ export async function registerRoutes(
   app.get("/api/diag/predictive-score-validate", async (req, res) => {
     try {
       const { runPredictiveValidate } = await import("./diag/predictive-score-validate");
-      const symbols = String(req.query.symbols || "")
+      let symbols = String(req.query.symbols || "")
         .split(",")
         .map(s => s.trim().toUpperCase())
         .filter(Boolean)
         .slice(0, 500);
-      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,..." });
+      // ?basket=htf shortcut: fetch the canonical HTF universe internally so
+      // callers don't have to paste 491 symbols. Same universe used by the
+      // strategy-pnl skill's 10y evaluation baseline.
+      if (!symbols.length && String(req.query.basket || "").toLowerCase() === "htf") {
+        const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+        const universe = await getHtfUniverse();
+        symbols = universe.tickers.map(t => t.symbol).slice(0, 500);
+      }
+      if (!symbols.length) return res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,... or ?basket=htf" });
       const days = Math.min(Math.max(Number(req.query.days) || 3650, 250), 3650);
       const result = await runPredictiveValidate(symbols, days);
       res.json(result);
