@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-31 — Fundamentals + earnings moved to FMP-only; Polygon/Yahoo kill scoped
+
+**Why:** Continuing the Yahoo/Polygon kill. A fresh audit confirmed two hard limits: **FMP has no options data on any tier**, so MM Exposure / unusual-options / gamma signals must stay on Polygon; and **FMP 13F needs the Ultimate plan (402s on ours)**, so institutional ownership must stay on Yahoo until a SEC EDGAR replacement is built. Per Chris's decisions: keep Polygon for options only, keep Yahoo for institutional only (EDGAR later), and defer the high-risk core quotes/charts migration to its own job. This commit does the safe, contained part.
+
+**What:**
+- `server/snapshot/fundamentals.ts` — dropped the Polygon (`getPolygonQuoteSummary`) fallback and the `fundamentalsFromQuoteSummary` helper. Fundamentals card is now FMP-only (`/ratios-ttm` + `/income-statement`, with `/key-metrics-ttm` field-patch enrichment unchanged).
+- `server/snapshot/earnings.ts` — dropped the Polygon (`getPolygonEarningsRow`) fallback. Earnings snapshot is FMP-only (`/earnings`).
+- `server/data/registry.ts` — `financials` and `earnings` capabilities flipped to FMP-only. Added explicit status comments: Polygon retained for `options` only, Yahoo retained for `institutional_holdings` only, `quotes`/`aggregates` migration deferred, dividends served FMP-direct.
+- Stale user-facing copy fixed: dividends page no longer says "Refreshing prices from Yahoo…"; the dividend-calculator hook's provider comment updated to FMP. Fundamentals enrichment comment de-Polygon'd.
+
+**Deliberately NOT touched (future jobs):** core quotes/charts (still Polygon-primary), options features (Polygon, intentional), institutional ownership (Yahoo, intentional until EDGAR).
+
+**Files:** `server/snapshot/fundamentals.ts`, `server/snapshot/earnings.ts`, `server/data/registry.ts`, `client/src/pages/dividends.tsx`, `client/src/compartments/dividend-calculator/useDividendCalculator.ts`.
+
+---
 ## 2026-05-31 — Dividend data fully migrated to FMP (Polygon dropped for dividends)
 
 **Why:** Every dividend feature on the site (single-ticker lookup, scanner, weekly strategy, auto-portfolio) read from Polygon via a Yahoo-shaped adapter (`getQuoteLight` → `getPolygonQuoteSummary`) and a single `extractDividendData` helper. Polygon is on the kill list, and the dividend layer was the last consumer of `getPolygonUniverse` for the scan. This migrates the whole layer to FMP in one pass so no caller is left on the old provider.

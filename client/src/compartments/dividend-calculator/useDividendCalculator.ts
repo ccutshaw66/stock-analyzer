@@ -6,11 +6,9 @@
  * one entry point. The derived per-distribution / yearly numbers come
  * from `dividendCalcLogic.computeNumbers` — pure math, no React.
  *
- * NOTE — provider note: today the underlying route is Polygon-via-Yahoo-
- * shape (both kill targets per `plan_yahoo_polygon_kill`). When that
- * route migrates to FMP, only the response-mapping step in this hook
- * (or the `extractDividendData` server function) has to change — the
- * shape DividendData is independent of the source provider.
+ * Provider: FMP (migrated 2026-05-31 — see server/data/providers/fmp.dividends.ts).
+ * The DividendData shape is provider-independent, so the UI was unchanged by
+ * the migration.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";

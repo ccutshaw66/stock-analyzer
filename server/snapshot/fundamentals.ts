@@ -1,22 +1,19 @@
 /**
  * Fundamentals adapter.
  *
- * Provider chain (FMP-primary as of 2026-05-06):
- *   1. FMP — /ratios-ttm + /income-statement merged (now using the correct
- *      stable-API TTM field names — see CHANGES.md 2026-05-06 for the
- *      systemic-bug fix that made this path actually work).
- *   2. Polygon — Yahoo-shaped quoteSummary blob with a financialData
- *      sub-object. Kept as fallback for resilience.
+ * Provider: FMP only (Polygon fallback dropped 2026-05-31 — Polygon kill).
+ *   FMP — /ratios-ttm + /income-statement merged (using the correct
+ *   stable-API TTM field names — see CHANGES.md 2026-05-06 for the
+ *   systemic-bug fix that made this path actually work).
  *
  * Field-level FMP enrichment still runs after `tryProviders` for D/E and
- * ROE specifically — these are the fields where FMP and Polygon's primary
- * sources have differed in coverage even when both partially succeed.
+ * ROE specifically — fields where FMP's primary TTM endpoint occasionally
+ * returns null and /key-metrics-ttm fills the gap.
  */
 
 import type { CompanyFundamentals, FieldHealth } from "./types";
 import { tryProviders } from "./fallback";
 import { fmpGet } from "../data/providers/fmp.client";
-import { getPolygonQuoteSummary } from "../polygon";
 
 const FUNDAMENTALS_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
@@ -25,35 +22,6 @@ function num(v: any): number | null {
   if (typeof v === "object" && v.raw !== undefined) v = v.raw;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
-}
-
-function fundamentalsFromQuoteSummary(summary: any): CompanyFundamentals | null {
-  if (!summary) return null;
-  const f = summary.financialData || {};
-  const k = summary.defaultKeyStatistics || {};
-
-  const out: CompanyFundamentals = {
-    revenue: num(f.totalRevenue),
-    revenueGrowth: num(f.revenueGrowth) !== null ? (num(f.revenueGrowth)! * 100) : null,
-    grossMargin: num(f.grossMargins) !== null ? (num(f.grossMargins)! * 100) : null,
-    operatingMargin: num(f.operatingMargins) !== null ? (num(f.operatingMargins)! * 100) : null,
-    profitMargin: num(f.profitMargins) !== null ? (num(f.profitMargins)! * 100) : null,
-    ebitdaMargin: num(f.ebitdaMargins) !== null ? (num(f.ebitdaMargins)! * 100) : null,
-    netIncome: null,
-    earningsGrowth: num(f.earningsGrowth) !== null ? (num(f.earningsGrowth)! * 100) : null,
-    payoutRatio: num(k.payoutRatio) !== null ? (num(k.payoutRatio)! * 100) : null,
-    debtToEquity: num(f.debtToEquity),
-    currentRatio: num(f.currentRatio),
-    returnOnEquity: num(f.returnOnEquity) !== null ? (num(f.returnOnEquity)! * 100) : null,
-    totalDebt: num(f.totalDebt),
-    totalCash: num(f.totalCash),
-    freeCashFlow: num(f.freeCashflow),
-    operatingCashFlow: num(f.operatingCashflow),
-  };
-
-  // Consider it useful only if we got *something* meaningful
-  const hasAny = Object.values(out).some(v => v !== null);
-  return hasAny ? out : null;
 }
 
 function fundamentalsFromFmp(ratios: any, income: any, incomePrior: any = null): CompanyFundamentals | null {
@@ -140,13 +108,6 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
           return fundamentalsFromFmp(ratios, income, incomePrior);
         },
       },
-      {
-        source: "polygon",
-        fetch: async () => {
-          const summary = await getPolygonQuoteSummary(T);
-          return fundamentalsFromQuoteSummary(summary);
-        },
-      },
     ],
     {
       ttlMs: FUNDAMENTALS_TTL_MS,
@@ -167,10 +128,10 @@ export async function getFundamentalsSnapshot(ticker: string): Promise<FieldHeal
   //   - debtToEquity → Balance Sheet Quality (10% weight)
   //   - returnOnEquity → currently unused by scoring but useful elsewhere
   //
-  // Payout ratio is intentionally NOT patched — null on Polygon often means
+  // Payout ratio is intentionally NOT patched — a null payout usually means
   // "no dividend" which the score treats correctly as a low income-quality
-  // signal. Patching from FMP would force "0%" which scores slightly worse
-  // and is semantically the same thing.
+  // signal. Forcing "0%" would score slightly worse and is semantically the
+  // same thing.
   if (result.value && (result.value.debtToEquity === null || result.value.returnOnEquity === null)) {
     try {
       // FMP's stable API returns fields with TTM suffix on /ratios-ttm

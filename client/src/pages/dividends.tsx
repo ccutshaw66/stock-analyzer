@@ -532,7 +532,7 @@ function WeeklyStrategy({ setActiveTicker }: { setActiveTicker: (t: string) => v
         <div className="flex items-center justify-center py-6">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>{data?.refreshed ? "Refreshing prices from Yahoo..." : "Loading strategy..."}</span>
+            <span>{data?.refreshed ? "Refreshing prices..." : "Loading strategy..."}</span>
           </div>
         </div>
       )}

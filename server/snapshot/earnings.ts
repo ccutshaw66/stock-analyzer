@@ -1,15 +1,13 @@
 /**
  * Earnings adapter.
  *
- * Provider chain: FMP /earnings (primary) → Polygon (fallback). FMP has the
- * cleanest per-symbol earnings history. Polygon's earnings come bundled with
- * its financials; we prefer FMP for the dedicated endpoint.
+ * Provider: FMP /earnings only (Polygon fallback dropped 2026-05-31 — Polygon
+ * kill). FMP has the cleanest per-symbol earnings history.
  */
 
 import type { CompanyEarnings, EarningsHistoryRow, FieldHealth } from "./types";
 import { tryProviders } from "./fallback";
 import { fmpGet } from "../data/providers/fmp.client";
-import { getPolygonEarningsRow } from "../polygon";
 
 const EARNINGS_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
@@ -89,19 +87,6 @@ export async function getEarningsSnapshot(ticker: string): Promise<FieldHealth<C
             nextReportDate: next?.date ?? null,
             isEstimated: !!next,
             history,
-          };
-        },
-      },
-      {
-        source: "polygon",
-        fetch: async () => {
-          const row = await getPolygonEarningsRow(T);
-          if (!row) return null;
-          // Polygon's per-ticker earnings is sparser; map what we can.
-          return {
-            nextReportDate: (row as any).reportDate ?? null,
-            isEstimated: false,
-            history: [],
           };
         },
       },
