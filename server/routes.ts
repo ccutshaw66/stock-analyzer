@@ -5632,6 +5632,37 @@ export async function registerRoutes(
     }
   });
 
+  // PUBLIC mirror of the auth-gated /api/unified-scanner cache-serve logic, so
+  // the served result can be inspected without a session. Same filtering.
+  app.get("/api/diag/unified-scan-served", async (req, res) => {
+    try {
+      const { getMarketCapTier, getPriceBand, MIN_GREEN, DEFAULT_TOP_N } = await import("@shared/scanner/types");
+      const { rankHits } = await import("./compartments/unified-scanner/engine");
+      const { tierCacheKey } = await import("./compartments/unified-scanner/warmup");
+      const { readUnifiedScan, unifiedScanAgeHours } = await import("./unified-scan-cache");
+      const tier = getMarketCapTier(String(req.query.marketCapTier || ""));
+      if (!tier) return res.status(400).json({ error: "marketCapTier required" });
+      const band = getPriceBand(tier.id, String(req.query.priceBandId || ""));
+      if (!band) return res.status(400).json({ error: "priceBandId required for tier" });
+      const sector = req.query.sector && String(req.query.sector).toLowerCase() !== "all" ? String(req.query.sector) : "all";
+      const strategyIds = String(req.query.strategyIds || "").split(",").map(s => s.trim()).filter(Boolean);
+      const minScore = Math.max(MIN_GREEN, Number(req.query.minScore) || MIN_GREEN);
+      const topN = Math.min(Math.max(Number(req.query.topN) || DEFAULT_TOP_N, 1), 200);
+      const cacheKey = tierCacheKey(tier.id);
+      const raw = readUnifiedScan(cacheKey);
+      const base = raw?.payload ?? [];
+      const inBand = (p: number) => p >= band.min && (band.max == null || p <= band.max);
+      const hits = base.filter((h: any) =>
+        h.marketCap >= tier.min && (tier.max == null || h.marketCap < tier.max) &&
+        inBand(h.price) && (sector === "all" || h.sector === sector) &&
+        (strategyIds.length === 0 || strategyIds.includes(h.strategyId)));
+      const ranked = rankHits(hits, minScore, topN);
+      res.json({ cacheKey, cacheExists: !!raw, cacheHits: base.length, ageHours: unifiedScanAgeHours(cacheKey), count: ranked.length, hits: ranked });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "served failed", stack: String(e?.stack || "").slice(0, 400) });
+    }
+  });
+
   // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
   // we can eyeball detection accuracy on a chart before investing in the
   // full backtest harness.

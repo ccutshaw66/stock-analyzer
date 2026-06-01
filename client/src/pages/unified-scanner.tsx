@@ -183,6 +183,7 @@ export default function UnifiedScannerPage() {
         {submitted && error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-center">
             <p className="text-sm text-red-400">Couldn't run the scan. Try Refresh now, or adjust a filter.</p>
+            <p className="mt-2 break-all text-xs text-muted-foreground">{String((error as any)?.message || "")}</p>
           </div>
         )}
 
