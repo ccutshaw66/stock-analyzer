@@ -22,7 +22,9 @@ during the prior Perplexity/Claude session).
 - Routes `GET /api/diag/strategy-pipe-bottom-pnl` and `GET /api/diag/strategy-rounding-bottom-pnl` (`?universe=htf` or `?symbols=`), same response shape as the HTF/Wyckoff harnesses for direct comparison.
 - Registered `pipe-bottom` + `rounding-bottom` manifests in `shared/strategies/registry.ts` as **`experimental: true`** — they appear in the Add-Trade dropdown with the experimental badge but are skipped by live scanner sweeps until the P&L gate clears.
 
-**Acceptance gate (same as Wyckoff Spring):** basket totalPnLDollar > 0 AND avgPnLPerTrade ≥ $30 AND (winRate ≥ 50% OR rMultiple ≥ 1.5). Validated on the 491-ticker HTF / 10y basket via the diag endpoints; `experimental` flips off only after a strategy passes. Until then they're research-stage only — they do NOT affect existing strategy P&L.
+**Validation results (491-ticker HTF / 10y / minScore=70, via the diag endpoints):**
+- **Rounding Bottom — PROMOTED TO LIVE.** 6,930 trades, 67.6% win rate, **$462,788 total P&L**, $66.78/trade, profitable on 299/490 tickers. Clears every acceptance gate (totalPnL > 0, avg/trade ≥ $30, winRate ≥ 50%). `experimental` removed.
+- **Pipe Bottom — STAYS EXPERIMENTAL.** Detector is sound (71% win rate, $120/trade) but only **7 setups fired in 10 years** across 490 tickers — far below the 30-trade minimum to go Live. Pipe Bottoms are genuinely rare on the sub-$75 universe. Revisit with a looser detector / wider universe later.
 
 **Files:** `server/signals/strategies/pipe-bottom.ts` (new), `server/signals/strategies/rounding-bottom.ts` (new), `server/diag/strategy-generic-pnl.ts` (new), `server/routes.ts`, `shared/strategies/registry.ts`.
 

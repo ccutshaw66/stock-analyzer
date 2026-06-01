@@ -1016,10 +1016,12 @@ const INSIDER_TRIGGER_MANIFEST: StrategyManifest = {
  * Two adjacent weekly downward spikes at ~the same low after a downtrend;
  * breakout = weekly close above the higher pipe high. Mean-reversion long.
  *
- * EXPERIMENTAL until the backtest gate clears on
- * /api/diag/strategy-pipe-bottom-pnl. Shares the standard long lifecycle
- * (stop → take 1/3 after 2 consecutive +10% closes → trail) so it reuses the
- * Wyckoff Spring evaluate; the trail is a 10-WEEK MA in the harness.
+ * EXPERIMENTAL — detector is sound (71% win rate, $120/trade on the HTF/10y
+ * basket) but only 7 setups fired in 10 years across 490 tickers, far below the
+ * 30-trade minimum to go Live. Pipe Bottoms are genuinely rare on the sub-$75
+ * universe. Stays research-stage; revisit with a looser detector or wider
+ * universe later. Validated via /api/diag/strategy-pipe-bottom-pnl. Shares the
+ * standard long lifecycle; the trail is a 10-WEEK MA in the harness.
  */
 const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
   id: "pipe-bottom",
@@ -1039,8 +1041,9 @@ const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
  * lowest throwback of the top patterns). Long U-shaped base; breakout = close
  * above the rim. Long.
  *
- * EXPERIMENTAL until the backtest gate clears on
- * /api/diag/strategy-rounding-bottom-pnl. Standard long lifecycle (daily).
+ * LIVE (promoted 2026-05-31). Cleared the acceptance gate on the 491-ticker
+ * HTF / 10y basket: 6,930 trades, 67.6% win rate, $462,788 total P&L,
+ * $66.78/trade, profitable on 299/490 tickers. Standard long lifecycle (daily).
  */
 const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   id: "rounding-bottom",
@@ -1049,7 +1052,6 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Long U-shaped saucer base → breakout above the rim (Bulkowski rank #8, lowest throwback)",
   color: "bull",
   requiresReason: false,
-  experimental: true,
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
