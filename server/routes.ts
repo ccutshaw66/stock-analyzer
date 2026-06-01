@@ -5575,6 +5575,39 @@ export async function registerRoutes(
     }
   });
 
+  // Unified-scanner VALIDATION endpoint (public diag). Runs a narrowed live
+  // scan for a given market-cap tier + price band so we can confirm the engine
+  // produces deterministic green-grade (80+) hits on real FMP data before the
+  // auth-gated /api/unified-scanner + UI are exercised.
+  //   GET /api/diag/unified-scan?marketCapTier=small&priceBandId=p2[&sector=Technology][&topN=25]
+  app.get("/api/diag/unified-scan", async (req, res) => {
+    try {
+      const { getMarketCapTier, getPriceBand, MIN_GREEN, DEFAULT_TOP_N } = await import("@shared/scanner/types");
+      const { scanSymbols } = await import("./compartments/unified-scanner/warmup");
+      const { rankHits, SCANNABLE_ENGINE_IDS } = await import("./compartments/unified-scanner/engine");
+      const tier = getMarketCapTier(String(req.query.marketCapTier || ""));
+      if (!tier) return res.status(400).json({ error: "marketCapTier required (micro|small|mid|large|mega)" });
+      const band = getPriceBand(tier.id, String(req.query.priceBandId || ""));
+      if (!band) return res.status(400).json({ error: `priceBandId required for the ${tier.id} tier` });
+      const sector = req.query.sector && String(req.query.sector).toLowerCase() !== "all" ? String(req.query.sector) : "all";
+      const topN = Math.min(Math.max(Number(req.query.topN) || DEFAULT_TOP_N, 1), 200);
+      const { fmpScreener } = await import("./data/providers/fmp.adapter");
+      const rows = await fmpScreener({
+        minMarketCap: tier.min, maxMarketCap: tier.max ?? undefined,
+        minPrice: band.min, maxPrice: band.max ?? undefined,
+        sector: sector === "all" ? undefined : sector,
+        minVolume: 300_000, count: 600, noShuffle: true,
+      }).catch(() => []);
+      const rowMap = new Map<string, any>();
+      for (const r of rows) rowMap.set(r.symbol, { symbol: r.symbol, companyName: r.companyName, marketCap: r.marketCap, sector: r.sector, price: r.price });
+      const all = await scanSymbols(Array.from(rowMap.keys()), rowMap);
+      const ranked = rankHits(all, MIN_GREEN, topN);
+      res.json({ tier: tier.id, band: band.id, sector, universeSize: rows.length, count: ranked.length, hits: ranked });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "diag unified-scan failed" });
+    }
+  });
+
   // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
   // we can eyeball detection accuracy on a chart before investing in the
   // full backtest harness.

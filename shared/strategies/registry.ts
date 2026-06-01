@@ -167,6 +167,14 @@ export interface StrategyManifest {
    * for "what strategies exist + where they surface."
    */
   pageGroup?: "wheel" | "trend" | "reversal" | "calculator";
+  /**
+   * Marks a strategy with a live bar-scanning detector wired into the unified
+   * scanner. `defaultOn` controls whether it's selected by default (experimental
+   * strategies set defaultOn:false). The detector is registered server-side in
+   * server/compartments/unified-scanner/engine.ts keyed by this manifest id —
+   * the registry just declares scannability so the UI can list it.
+   */
+  liveScan?: { defaultOn: boolean };
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────
@@ -203,6 +211,7 @@ const HTF_MANIFEST: StrategyManifest = {
   description: "HTF setup: 30%+ pole, tight flag, breakout on volume",
   color: "bull",
   requiresReason: false,
+  liveScan: { defaultOn: true },
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "Pole", "Flag"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -418,6 +427,7 @@ const WYCKOFF_SPRING_MANIFEST: StrategyManifest = {
   description: "False breakdown at trading-range bottom → SOS reversal (Wyckoff accumulation)",
   color: "bull",
   requiresReason: false,
+  liveScan: { defaultOn: true },
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "TR range", "Spring"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -614,6 +624,9 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   description: "Trend continuation + oversold reversal (Ready/Set/Go chain)",
   color: "info",
   requiresReason: false,
+  // NOTE: BBTC/VER are binary BUY/SELL signals with no 0–100 quality grade, so
+  // they're NOT in the green-gated unified scanner yet — they need a scoring
+  // rubric first (tracked as a follow-up). The legacy /api/scanner stays live.
   columnOrder: ["Stop (hard)", "Trail (10%)", "Active stop", "Target"],
   chartBacktest: {
     label: "BBTC + VER",
@@ -877,6 +890,7 @@ const AMC_MANIFEST: StrategyManifest = {
   description: "5-condition momentum confluence — middle leg of Ready/Set/Go",
   color: "watch",
   requiresReason: false,
+  liveScan: { defaultOn: true },
   columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
   chartBacktest: {
     label: "AMC only",
@@ -1030,6 +1044,7 @@ const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Two adjacent weekly downward spikes at a shared low → reversal (Bulkowski rank #5, weekly-only)",
   color: "bull",
   requiresReason: false,
+  liveScan: { defaultOn: false },
   experimental: true,
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
@@ -1052,6 +1067,7 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Long U-shaped saucer base → breakout above the rim (Bulkowski rank #8, lowest throwback)",
   color: "bull",
   requiresReason: false,
+  liveScan: { defaultOn: true },
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
@@ -1091,4 +1107,9 @@ export function getStrategyManifest(id: string | null | undefined): StrategyMani
 /** True if the given id is a known strategy. */
 export function isKnownStrategy(id: string | null | undefined): boolean {
   return !!id && id in STRATEGY_REGISTRY;
+}
+
+/** Manifests that have a live scanning detector, for the unified scanner UI. */
+export function listScannableStrategies(): StrategyManifest[] {
+  return Object.values(STRATEGY_REGISTRY).filter(m => m.liveScan);
 }

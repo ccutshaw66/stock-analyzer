@@ -96,6 +96,10 @@ export interface FmpScreenerFilters {
   maxBeta?: number;
   minDividend?: number;
   count?: number;               // default 100, capped by FMP at 10000 but we cap at 500
+  /** When true, skip the Fisher-Yates shuffle and return a deterministic
+   *  (market-cap desc) ordering. Used by the unified scanner so results are
+   *  identical run-to-run. Existing callers omit it and keep the shuffle. */
+  noShuffle?: boolean;
 }
 
 export interface FmpScreenerRow {
@@ -153,9 +157,14 @@ export async function fmpScreener(filters: FmpScreenerFilters): Promise<FmpScree
     return US_EXCHANGES.has(ex);
   });
 
-  for (let i = us.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [us[i], us[j]] = [us[j], us[i]];
+  if (filters.noShuffle) {
+    // Deterministic ordering for the unified scanner — same universe every run.
+    us.sort((a, b) => (Number(b.marketCap) || 0) - (Number(a.marketCap) || 0));
+  } else {
+    for (let i = us.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [us[i], us[j]] = [us[j], us[i]];
+    }
   }
 
   return us.slice(0, count).map((r) => ({

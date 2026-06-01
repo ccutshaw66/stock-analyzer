@@ -12,12 +12,14 @@ import { favoritesCompartment } from "./favorites";
 import { scannerCompartment } from "./scanner";
 import { tradesCompartment } from "./trades";
 import { htfScannerCompartment } from "./htf-scanner";
+import { unifiedScannerCompartment } from "./unified-scanner";
 
 const serverCompartments: ServerCompartmentEntry[] = [
   favoritesCompartment,
   scannerCompartment,
   tradesCompartment,
   htfScannerCompartment,
+  unifiedScannerCompartment,
 ];
 
 export function listServerCompartments(): readonly ServerCompartmentEntry[] {

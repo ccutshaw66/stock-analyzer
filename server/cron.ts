@@ -47,6 +47,23 @@ export function initCron(
 
   console.log("[CRON] Price snapshot job registered with scheduler (0 * * * *)");
 
+  // Nightly market-wide unified-scanner pre-compute. Primes the ranked disk
+  // cache so the /api/unified-scanner route returns instant, deterministic
+  // results sliced by the user's filters.
+  registerJob({
+    id: "unified-scanner-warmup",
+    description: "Nightly market-wide unified scan pre-compute (primes disk cache)",
+    cron: "15 8 * * *", // 3:15am ET (08:15 UTC)
+    timeoutMs: 40 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const { warmUnifiedScanCache } = await import("./compartments/unified-scanner/warmup");
+      const res = await warmUnifiedScanCache({ maxSymbols: 3000 });
+      console.log(`[CRON] unified scan warmup: ${res.written} hits cached, ${res.errors} errors`);
+    },
+  });
+
   // Daily refresh of EDGAR top-500 filer ranking at 3am ET (08:00 UTC).
   // Primes the 24h cache so user-facing requests never hit the 25-min cold path.
   // Pre-market hour, low SEC load. Hard 45-min cap.
