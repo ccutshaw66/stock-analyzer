@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-01 — Unified Scanner: one reliable scanner across every strategy
+
+**Why:** The four scattered scanners (HTF, BBTC+VER, AMC, Scanner-V2) felt like "russian roulette" — sometimes nothing, sometimes low-grade noise, sometimes a hit. Root cause: every scanner ran a **Fisher-Yates shuffle** over the universe and scanned only a random slice, so results were non-deterministic and two of them had no minimum-score filter at all. This replaces them with one registry-driven scanner that scans the whole market deterministically and only surfaces green-grade (80+) setups. Design + plan: `docs/superpowers/specs/2026-06-01-unified-scanner-design.md`, `docs/superpowers/plans/2026-06-01-unified-scanner.md`.
+
+**What — the fix:**
+- **Determinism:** added `noShuffle` to `fmpScreener` (sorts market-cap desc instead of shuffling). The unified scanner uses it, so the same filters always return the same results.
+- **Required filters:** the scan won't run until you choose a **market-cap tier** (no "All") and a **price band** (the price ranges adapt to the chosen tier). Sector + strategy selection + max-results are also adjustable.
+- **Green-only gate:** results are locked to score **80+** ("green-grade"), stated in the UI, never below 80 — kills the yellow-75 noise.
+- **Complete-market, not capped:** scans the full market; the $5–$75 band is just a filter now (clarified — it was only ever a backtest-relevance constraint).
+
+**What — the engine + plumbing:**
+- `server/compartments/unified-scanner/` — pure deterministic engine (`engine.ts`) running every registry-declared scannable strategy (HTF, Rounding Bottom, Wyckoff Spring, Pipe Bottom, AMC — all produce a real 0–100 score; AMC's 0–5 maps ×20). `warmup.ts` pre-scans the market; `routes.ts` serves `GET /api/unified-scanner`.
+- `server/unified-scan-cache.ts` — disk cache for pre-ranked results (mirrors long-range-cache).
+- `server/cron.ts` — nightly `unified-scanner-warmup` job primes the cache; the route slices it instantly by filters, with a **"Refresh now"** for on-demand re-scan.
+- `shared/strategies/registry.ts` — strategies declare `liveScan`, so a future strategy appears in the scanner automatically (`listScannableStrategies`).
+- `shared/scanner/types.ts` — shared filter/result contract + market-cap/price taxonomy.
+- **UI:** new `/scanner` page (`client/src/pages/unified-scanner.tsx`) + a dashboard widget (`unified-scanner` compartment). Company names route to `/profile` via the existing ticker-nav rule. Branded loading/empty/error states.
+- `/api/diag/unified-scan` — public validation endpoint. Verified on prod: deterministic across runs, all hits ≥80.
+
+**Consolidation:** `/scanner` now serves the unified scanner. The old BBTC+VER/AMC/V2 scanner is preserved at **`/scanner-legacy`** (BBTC/VER are binary BUY/SELL signals with no 0–100 quality grade, so they're NOT in the green-gated unified scanner yet — they need a scoring rubric first; tracked as the next follow-up). The legacy `/api/scanner*` routes are untouched for now.
+
+**Files:** `shared/scanner/types.ts`, `shared/strategies/registry.ts`, `server/data/providers/fmp.adapter.ts`, `server/compartments/unified-scanner/*`, `server/unified-scan-cache.ts`, `server/cron.ts`, `server/routes.ts`, `client/src/compartments/unified-scanner/*`, `client/src/pages/unified-scanner.tsx`, `client/src/compartments/registry.ts`, `client/src/lib/page-registry.ts`, `client/src/App.tsx`.
+
+---
 ## 2026-05-31 — Two new reversal strategies: Pipe Bottom (weekly) + Rounding Bottom (experimental)
 
 **Why:** Completes the "Top-3 #3" new-strategy push from the trading-library research (Wyckoff Spring already shipped 2026-05-21). Both patterns are high-ranked in Bulkowski's Encyclopedia and catch reversals the trend-following HTF misses, so they diversify the basket. Promoted from the `backend/patterns/*.py` references to production TypeScript detectors.

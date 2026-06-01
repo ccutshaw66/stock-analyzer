@@ -27,6 +27,7 @@ import { wheelCompartment } from "./wheel";
 import { kairosCompartment } from "./kairos";
 // Page-embedded compartments (no dashboard widget yet).
 import { dividendCalculatorCompartment } from "./dividend-calculator";
+import { unifiedScannerCompartment } from "./unified-scanner";
 
 const clientCompartments: ClientCompartmentEntry[] = [
   // Dashboard rebuild v1 — the new curated default layout uses these nine.
@@ -45,6 +46,8 @@ const clientCompartments: ClientCompartmentEntry[] = [
   tradesCompartment,
   confluenceChartCompartment,
   htfScannerCompartment,
+  // Unified scanner — top green-grade setups widget + /scanner full page.
+  unifiedScannerCompartment,
   // Experimental — registered so dashboard widgets can opt-in.
   hermesCompartment,
   markovCompartment,

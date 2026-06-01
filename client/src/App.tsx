@@ -14,6 +14,7 @@ import Home from "@/pages/home";
 import TradeAnalysis from "@/pages/trade-analysis";
 import ChartPage from "@/pages/chart";
 import Scanner from "@/pages/scanner";
+import UnifiedScannerPage from "@/pages/unified-scanner";
 import TradeTracker from "@/pages/trade-tracker";
 import MarketPulse from "@/pages/market-pulse";
 import OptionsCalculator from "@/pages/options-calculator";
@@ -110,7 +111,8 @@ function AuthenticatedApp() {
             <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
             <Route path="/trade" component={TradeAnalysis} />
-            <Route path="/scanner" component={Scanner} />
+            <Route path="/scanner" component={UnifiedScannerPage} />
+            <Route path="/scanner-legacy" component={Scanner} />
             <Route path="/htf" component={HtfSetupsPage} />
             <Route path="/htf/:symbol" component={HtfChartPage} />
             <Route path="/verdict" component={Verdict} />

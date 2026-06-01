@@ -84,7 +84,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Investment Opportunities ──────────────────────────────────────────
   // Free: Scanner, HTF Setups, Sector Heatmap (find ideas).
   // Pro: deeper opportunity tools — Earnings, Dividends, Track Record, Insider Activity, Alerts.
-  { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "Confluence-based explosion detector across the universe." },
+  { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "One scanner, every strategy — green-grade (80+) setups across the market." },
   { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Investment Opportunities", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
   { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Investment Opportunities", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", hideFromNav: true },
   { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "Investment Opportunities", subtitle: "Sector strength at a glance." },
