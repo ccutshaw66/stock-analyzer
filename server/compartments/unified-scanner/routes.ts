@@ -12,7 +12,7 @@ import {
 import { listScannableStrategies } from "@shared/strategies/registry";
 import { rankHits, SCANNABLE_ENGINE_IDS, type UniverseRow } from "./engine";
 import { readUnifiedScanFresh, unifiedScanAgeHours } from "../../unified-scan-cache";
-import { scanSymbols, UNIFIED_SCAN_MARKET_KEY } from "./warmup";
+import { scanSymbols, tierCacheKey } from "./warmup";
 import { fmpScreener } from "../../data/providers/fmp.adapter";
 
 function defaultStrategyIds(): string[] {
@@ -59,10 +59,11 @@ export function mountRoutes(app: Express): void {
       let source: "cache" | "live";
       let ageHours: number | null = null;
 
-      const cached = refresh ? null : readUnifiedScanFresh(UNIFIED_SCAN_MARKET_KEY);
+      const cacheKey = tierCacheKey(tier.id);
+      const cached = refresh ? null : readUnifiedScanFresh(cacheKey);
       if (cached) {
         source = "cache";
-        ageHours = unifiedScanAgeHours(UNIFIED_SCAN_MARKET_KEY);
+        ageHours = unifiedScanAgeHours(cacheKey);
         hits = cached.filter(h =>
           inTier(h.marketCap) && inBand(h.price) && inSector(h.sector) && strategyIds.includes(h.strategyId));
       } else {

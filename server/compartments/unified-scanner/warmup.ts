@@ -8,11 +8,15 @@ import { fmpGet } from "../../data/providers/fmp.client";
 import { fmpScreener } from "../../data/providers/fmp.adapter";
 import type { OHLCV } from "../../data/types";
 import type { ScanHit } from "@shared/scanner/types";
+import { MARKET_CAP_TIERS } from "@shared/scanner/types";
 import { getStrategyManifest } from "@shared/strategies/registry";
 import { scanOne, rankHits, SCANNABLE_ENGINE_IDS, type UniverseRow } from "./engine";
 import { writeUnifiedScan } from "../../unified-scan-cache";
 
-const MARKET_KEY = "market-all";
+/** Disk-cache key for a market-cap tier's pre-ranked hits. */
+export function tierCacheKey(tierId: string): string {
+  return `tier-${tierId}`;
+}
 
 // ~3y of history (+250-bar warmup buffer added below) — enough for every
 // detector (Rounding Bottom needs the most at ~750 bars) without the 10y
@@ -64,33 +68,37 @@ export async function scanSymbols(symbols: string[], rows: Map<string, UniverseR
 }
 
 /**
- * Full market warmup → writes the ranked cache. maxSymbols caps the universe
- * (deterministic, market-cap desc). Returns counts for the cron log.
+ * Market warmup → writes one ranked cache PER market-cap tier so every tier
+ * (incl. small/micro) gets real coverage — a single market-wide cap-desc slice
+ * would starve the small-caps. `perTier` caps the universe scanned per tier.
+ * Returns total counts for the cron log.
  */
-export async function warmUnifiedScanCache(opts: { maxSymbols?: number } = {}): Promise<{ written: number; errors: number }> {
-  const maxSymbols = opts.maxSymbols ?? 3000;
+export async function warmUnifiedScanCache(opts: { maxSymbols?: number; perTier?: number } = {}): Promise<{ written: number; errors: number; byTier: Record<string, number> }> {
+  // maxSymbols (legacy arg) is divided across tiers if perTier isn't given.
+  const perTier = opts.perTier ?? Math.max(300, Math.floor((opts.maxSymbols ?? 3000) / MARKET_CAP_TIERS.length));
   let errors = 0;
+  let written = 0;
+  const byTier: Record<string, number> = {};
 
-  // Deterministic universe — full market, liquid common stocks, no shuffle.
-  const universe = await fmpScreener({ minVolume: 500_000, count: maxSymbols, noShuffle: true }).catch(() => {
-    errors++;
-    return [];
-  });
+  for (const tier of MARKET_CAP_TIERS) {
+    const universe = await fmpScreener({
+      minMarketCap: tier.min,
+      maxMarketCap: tier.max ?? undefined,
+      minVolume: 400_000,
+      count: perTier,
+      noShuffle: true,
+    }).catch(() => { errors++; return []; });
 
-  const rows = new Map<string, UniverseRow>();
-  for (const r of universe) {
-    rows.set(r.symbol, {
-      symbol: r.symbol, companyName: r.companyName, marketCap: r.marketCap,
-      sector: r.sector, price: r.price,
-    });
+    const rows = new Map<string, UniverseRow>();
+    for (const r of universe) {
+      rows.set(r.symbol, { symbol: r.symbol, companyName: r.companyName, marketCap: r.marketCap, sector: r.sector, price: r.price });
+    }
+    const hits = await scanSymbols(Array.from(rows.keys()), rows);
+    const ranked = rankHits(hits, 0, hits.length);
+    writeUnifiedScan(tierCacheKey(tier.id), ranked);
+    byTier[tier.id] = ranked.length;
+    written += ranked.length;
   }
 
-  const symbols = Array.from(rows.keys());
-  const hits = await scanSymbols(symbols, rows);
-  // Store best-first; the route applies the per-request top-N after filtering.
-  const ranked = rankHits(hits, 0, hits.length);
-  writeUnifiedScan(MARKET_KEY, ranked);
-  return { written: ranked.length, errors };
+  return { written, errors, byTier };
 }
-
-export const UNIFIED_SCAN_MARKET_KEY = MARKET_KEY;
