@@ -75,7 +75,7 @@ export function mountRoutes(app: Express): void {
           maxPrice: band.max ?? undefined,
           sector: sector === "all" ? undefined : sector,
           minVolume: 300_000,
-          count: 600,
+          count: 150, // bounded so the on-demand/cold-cache scan stays fast
           noShuffle: true,
         }).catch(() => []);
         const rows = new Map<string, UniverseRow>();

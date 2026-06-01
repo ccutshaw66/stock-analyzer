@@ -5608,6 +5608,20 @@ export async function registerRoutes(
     }
   });
 
+  // Manual trigger for the market-wide warmup (primes the disk cache the
+  // nightly cron would otherwise fill). Public diag so it can be kicked off
+  // on demand. ?max=N caps the universe.
+  app.get("/api/diag/unified-scan-warm", async (req, res) => {
+    try {
+      const { warmUnifiedScanCache } = await import("./compartments/unified-scanner/warmup");
+      const max = Math.min(Math.max(Number(req.query.max) || 1500, 100), 3000);
+      const result = await warmUnifiedScanCache({ maxSymbols: max });
+      res.json({ ok: true, maxSymbols: max, ...result });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "warm failed" });
+    }
+  });
+
   // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
   // we can eyeball detection accuracy on a chart before investing in the
   // full backtest harness.

@@ -14,7 +14,10 @@ import { writeUnifiedScan } from "../../unified-scan-cache";
 
 const MARKET_KEY = "market-all";
 
-async function fetchBars(symbol: string, days = 3650): Promise<OHLCV[] | null> {
+// ~3y of history (+250-bar warmup buffer added below) — enough for every
+// detector (Rounding Bottom needs the most at ~750 bars) without the 10y
+// payload that made on-demand scans time out.
+async function fetchBars(symbol: string, days = 1100): Promise<OHLCV[] | null> {
   try {
     const to = new Date().toISOString().slice(0, 10);
     const from = new Date(Date.now() - (days + 250) * 86_400_000).toISOString().slice(0, 10);
