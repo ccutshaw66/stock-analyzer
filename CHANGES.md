@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-05-31 — Two new reversal strategies: Pipe Bottom (weekly) + Rounding Bottom (experimental)
+
+**Why:** Completes the "Top-3 #3" new-strategy push from the trading-library research (Wyckoff Spring already shipped 2026-05-21). Both patterns are high-ranked in Bulkowski's Encyclopedia and catch reversals the trend-following HTF misses, so they diversify the basket. Promoted from the `backend/patterns/*.py` references to production TypeScript detectors.
+
+**What — detectors (`server/signals/strategies/`):**
+- `pipe-bottom.ts` — Bulkowski Ch. 41 (rank #5, 45% avg rise). **WEEKLY bars only** (daily Pipes are unprofitable per Bulkowski p.537) — the detector resamples the daily series to weekly internally. Two adjacent weekly downward spikes at ~the same low after a ≥10% downtrend; breakout = weekly close above the higher pipe high. Entry next week's open, stop pipe_low × 0.97.
+- `rounding-bottom.ts` — Bulkowski Ch. 39 (rank #8, 43% avg rise, lowest throwback). Fits a quadratic to the lows over sliding 60–250-bar windows (closed-form least-squares, no numpy); requires an upward-opening bowl with the vertex inside the window and R² ≥ 0.55. Breakout = close above the lower of the left/right rim. Entry next day's open, stop bowl_low × 0.97.
+
+**What — evaluation + wiring:**
+- `server/diag/strategy-generic-pnl.ts` (new) — one reusable backtest harness for breakout-style long strategies (shared lifecycle: entry next bar open → hard stop → take 1/3 after 2 consecutive +10% closes → trail MA on remainder). Factored out so future strategies don't re-duplicate ~500 lines. Handles weekly vs daily simulation.
+- Routes `GET /api/diag/strategy-pipe-bottom-pnl` and `GET /api/diag/strategy-rounding-bottom-pnl` (`?universe=htf` or `?symbols=`), same response shape as the HTF/Wyckoff harnesses for direct comparison.
+- Registered `pipe-bottom` + `rounding-bottom` manifests in `shared/strategies/registry.ts` as **`experimental: true`** — they appear in the Add-Trade dropdown with the experimental badge but are skipped by live scanner sweeps until the P&L gate clears.
+
+**Acceptance gate (same as Wyckoff Spring):** basket totalPnLDollar > 0 AND avgPnLPerTrade ≥ $30 AND (winRate ≥ 50% OR rMultiple ≥ 1.5). Validated on the 491-ticker HTF / 10y basket via the diag endpoints; `experimental` flips off only after a strategy passes. Until then they're research-stage only — they do NOT affect existing strategy P&L.
+
+**Files:** `server/signals/strategies/pipe-bottom.ts` (new), `server/signals/strategies/rounding-bottom.ts` (new), `server/diag/strategy-generic-pnl.ts` (new), `server/routes.ts`, `shared/strategies/registry.ts`.
+
+---
 ## 2026-05-31 — Fundamentals + earnings moved to FMP-only; Polygon/Yahoo kill scoped
 
 **Why:** Continuing the Yahoo/Polygon kill. A fresh audit confirmed two hard limits: **FMP has no options data on any tier**, so MM Exposure / unusual-options / gamma signals must stay on Polygon; and **FMP 13F needs the Ultimate plan (402s on ours)**, so institutional ownership must stay on Yahoo until a SEC EDGAR replacement is built. Per Chris's decisions: keep Polygon for options only, keep Yahoo for institutional only (EDGAR later), and defer the high-risk core quotes/charts migration to its own job. This commit does the safe, contained part.

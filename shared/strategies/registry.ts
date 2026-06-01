@@ -1011,11 +1011,57 @@ const INSIDER_TRIGGER_MANIFEST: StrategyManifest = {
   evaluate: BBTC_VER_MANIFEST.evaluate,
 };
 
+/**
+ * Pipe Bottom (WEEKLY) — Bulkowski Ch. 41, rank #5 bull (45% avg rise).
+ * Two adjacent weekly downward spikes at ~the same low after a downtrend;
+ * breakout = weekly close above the higher pipe high. Mean-reversion long.
+ *
+ * EXPERIMENTAL until the backtest gate clears on
+ * /api/diag/strategy-pipe-bottom-pnl. Shares the standard long lifecycle
+ * (stop → take 1/3 after 2 consecutive +10% closes → trail) so it reuses the
+ * Wyckoff Spring evaluate; the trail is a 10-WEEK MA in the harness.
+ */
+const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
+  id: "pipe-bottom",
+  name: "Pipe Bottom (weekly)",
+  shortName: "Pipe",
+  description: "Two adjacent weekly downward spikes at a shared low → reversal (Bulkowski rank #5, weekly-only)",
+  color: "bull",
+  requiresReason: false,
+  experimental: true,
+  pageGroup: "reversal",
+  columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
+  evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
+};
+
+/**
+ * Rounding Bottom (Saucer) — Bulkowski Ch. 39, rank #8 bull (43% avg rise,
+ * lowest throwback of the top patterns). Long U-shaped base; breakout = close
+ * above the rim. Long.
+ *
+ * EXPERIMENTAL until the backtest gate clears on
+ * /api/diag/strategy-rounding-bottom-pnl. Standard long lifecycle (daily).
+ */
+const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
+  id: "rounding-bottom",
+  name: "Rounding Bottom",
+  shortName: "Saucer",
+  description: "Long U-shaped saucer base → breakout above the rim (Bulkowski rank #8, lowest throwback)",
+  color: "bull",
+  requiresReason: false,
+  experimental: true,
+  pageGroup: "reversal",
+  columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
+  evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────
 
 export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
   htf: HTF_MANIFEST,
   "wyckoff-spring": WYCKOFF_SPRING_MANIFEST,
+  "pipe-bottom": PIPE_BOTTOM_MANIFEST,
+  "rounding-bottom": ROUNDING_BOTTOM_MANIFEST,
   "bbtc-ver": BBTC_VER_MANIFEST,
   "insider-trigger": INSIDER_TRIGGER_MANIFEST,
   "tft-40w": TFT_40W_MANIFEST,

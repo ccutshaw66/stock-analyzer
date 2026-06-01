@@ -5501,6 +5501,80 @@ export async function registerRoutes(
     }
   });
 
+  // Pipe Bottom (WEEKLY) + Rounding Bottom P&L EVALUATORS — both run through the
+  // shared generic harness (server/diag/strategy-generic-pnl.ts). Same response
+  // shape + acceptance gate as Wyckoff Spring: basket totalPnLDollar > 0 AND
+  // avgPnLPerTrade ≥ $30 AND (winRate ≥ 50% OR rMultiple ≥ 1.5). These strategies
+  // ship as `experimental: true` in the registry until they clear the gate here.
+  //
+  //   GET /api/diag/strategy-pipe-bottom-pnl?universe=htf&days=3650&positionSize=1750&minScore=70
+  //   GET /api/diag/strategy-rounding-bottom-pnl?symbols=CVNA,SOFI&days=3650[&detail=1]
+  //
+  async function resolvePnlBasket(req: any, res: any): Promise<string[] | null> {
+    const universeMode = String(req.query.universe || "").toLowerCase();
+    if (universeMode === "htf") {
+      const { getHtfUniverse } = await import("./signals/universe/htf-universe");
+      const u = await getHtfUniverse();
+      const limit = Math.min(Math.max(Number(req.query.limit) || 500, 1), 2000);
+      return [...u.tickers]
+        .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+        .slice(0, limit)
+        .map(r => r.symbol.toUpperCase());
+    }
+    const symbols = String(req.query.symbols || "")
+      .split(",")
+      .map((s: string) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 2000);
+    if (!symbols.length) {
+      res.status(400).json({ error: "Provide ?symbols=AAPL,MSFT,... or ?universe=htf" });
+      return null;
+    }
+    return symbols;
+  }
+
+  app.get("/api/diag/strategy-pipe-bottom-pnl", async (req, res) => {
+    try {
+      const symbols = await resolvePnlBasket(req, res);
+      if (!symbols) return;
+      const { runGenericStrategyPnL } = await import("./diag/strategy-generic-pnl");
+      const { scanPipeBottom } = await import("./signals/strategies/pipe-bottom");
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw) ? Math.min(Math.max(minScoreRaw, 0), 100) : 70;
+      const result = await runGenericStrategyPnL(
+        { id: "pipe-bottom", label: "Pipe Bottom", timeframe: "weekly", scan: scanPipeBottom as any, trailMaPeriod: 10 },
+        symbols, days, positionSize, detail, minScore,
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-pipe-bottom-pnl failed" });
+    }
+  });
+
+  app.get("/api/diag/strategy-rounding-bottom-pnl", async (req, res) => {
+    try {
+      const symbols = await resolvePnlBasket(req, res);
+      if (!symbols) return;
+      const { runGenericStrategyPnL } = await import("./diag/strategy-generic-pnl");
+      const { scanRoundingBottom } = await import("./signals/strategies/rounding-bottom");
+      const days = Math.min(Math.max(Number(req.query.days) || 3650, 30), 3650);
+      const positionSize = Math.min(Math.max(Number(req.query.positionSize) || 1750, 100), 1000000);
+      const detail = String(req.query.detail || "") === "1";
+      const minScoreRaw = Number(req.query.minScore);
+      const minScore = Number.isFinite(minScoreRaw) ? Math.min(Math.max(minScoreRaw, 0), 100) : 70;
+      const result = await runGenericStrategyPnL(
+        { id: "rounding-bottom", label: "Rounding Bottom", timeframe: "daily", scan: scanRoundingBottom as any, trailMaPeriod: 20 },
+        symbols, days, positionSize, detail, minScore,
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error?.message || "strategy-rounding-bottom-pnl failed" });
+    }
+  });
+
   // Wyckoff Spring DIAGNOSTIC scan — single symbol, returns hits as JSON so
   // we can eyeball detection accuracy on a chart before investing in the
   // full backtest harness.
