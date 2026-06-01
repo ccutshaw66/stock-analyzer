@@ -1,8 +1,9 @@
 /**
- * Unified scanner HTTP route. Reads the nightly pre-ranked market cache and
- * slices it by the user's REQUIRED filters (market-cap tier + price band) plus
- * optional sector/strategy/score/topN. On a cold cache or ?refresh=1 it runs a
- * narrowed on-demand scan (bounded by the same filters, so it's tractable).
+ * Unified scanner HTTP route. Serves the pre-ranked, FULL-MARKET per-tier cache
+ * sliced by the user's REQUIRED filters (market-cap tier + price band) plus
+ * optional sector/strategy/score/topN. It never runs a heavy scan on the
+ * request path — a cold/stale cache or ?refresh=1 kicks a full background
+ * re-scan and returns the current cache immediately with `warming: true`.
  */
 import type { Express } from "express";
 import { checkFeatureAccess, checkScanRateLimit } from "../../middleware/tier";
@@ -10,10 +11,9 @@ import {
   getMarketCapTier, getPriceBand, MIN_GREEN, DEFAULT_TOP_N, type ScanFilters,
 } from "@shared/scanner/types";
 import { listScannableStrategies } from "@shared/strategies/registry";
-import { rankHits, SCANNABLE_ENGINE_IDS, type UniverseRow } from "./engine";
-import { readUnifiedScanFresh, unifiedScanAgeHours } from "../../unified-scan-cache";
-import { scanSymbols, tierCacheKey } from "./warmup";
-import { fmpScreener } from "../../data/providers/fmp.adapter";
+import { rankHits, SCANNABLE_ENGINE_IDS } from "./engine";
+import { readUnifiedScan, readUnifiedScanFresh, unifiedScanAgeHours } from "../../unified-scan-cache";
+import { tierCacheKey, startWarmInBackground, isWarmInFlight } from "./warmup";
 
 function defaultStrategyIds(): string[] {
   const onByDefault = listScannableStrategies()
@@ -51,47 +51,34 @@ export function mountRoutes(app: Express): void {
         marketCapTier: tier.id, priceBandId: band.id, sector, strategyIds, minScore, topN,
       };
 
-      const inTier = (mc: number) => mc >= tier.min && (tier.max == null || mc < tier.max);
       const inBand = (p: number) => p >= band.min && (band.max == null || p <= band.max);
       const inSector = (s: string) => sector === "all" || s === sector;
 
-      let hits;
-      let source: "cache" | "live";
-      let ageHours: number | null = null;
-
+      // Serve from the tier's full-market cache. Read raw (serve even if stale)
+      // and use freshness only to decide whether to trigger a background re-scan.
       const cacheKey = tierCacheKey(tier.id);
-      const cached = refresh ? null : readUnifiedScanFresh(cacheKey);
-      if (cached) {
-        source = "cache";
-        ageHours = unifiedScanAgeHours(cacheKey);
-        hits = cached.filter(h =>
-          inTier(h.marketCap) && inBand(h.price) && inSector(h.sector) && strategyIds.includes(h.strategyId));
-      } else {
-        // Cold cache or explicit refresh → narrowed on-demand scan bounded by filters.
-        source = "live";
-        const universe = await fmpScreener({
-          minMarketCap: tier.min,
-          maxMarketCap: tier.max ?? undefined,
-          minPrice: band.min,
-          maxPrice: band.max ?? undefined,
-          sector: sector === "all" ? undefined : sector,
-          minVolume: 300_000,
-          count: 150, // bounded so the on-demand/cold-cache scan stays fast
-          noShuffle: true,
-        }).catch(() => []);
-        const rows = new Map<string, UniverseRow>();
-        for (const r of universe) {
-          rows.set(r.symbol, { symbol: r.symbol, companyName: r.companyName, marketCap: r.marketCap, sector: r.sector, price: r.price });
-        }
-        const all = await scanSymbols(Array.from(rows.keys()), rows);
-        hits = all.filter(h => strategyIds.includes(h.strategyId));
+      const raw = readUnifiedScan(cacheKey);
+      const isFresh = readUnifiedScanFresh(cacheKey) !== null;
+
+      let warming = false;
+      if (!isFresh || refresh) {
+        // Kick a FULL market re-scan in the background (the whole liquid universe,
+        // not a subset) — never block the request on it.
+        startWarmInBackground();
+        warming = isWarmInFlight();
       }
 
+      const base = raw?.payload ?? [];
+      const hits = base.filter(h =>
+        h.marketCap >= tier.min && (tier.max == null || h.marketCap < tier.max) &&
+        inBand(h.price) && inSector(h.sector) && strategyIds.includes(h.strategyId));
       const ranked = rankHits(hits, minScore, topN);
+
       res.json({
         filters,
-        source,
-        ageHours,
+        source: raw ? "cache" : "warming",
+        warming,
+        ageHours: unifiedScanAgeHours(cacheKey),
         generatedAt: new Date().toISOString(),
         count: ranked.length,
         hits: ranked,

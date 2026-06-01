@@ -5608,17 +5608,27 @@ export async function registerRoutes(
     }
   });
 
-  // Manual trigger for the market-wide warmup (primes the disk cache the
-  // nightly cron would otherwise fill). Public diag so it can be kicked off
-  // on demand. ?max=N caps the universe.
-  app.get("/api/diag/unified-scan-warm", async (req, res) => {
+  // Manual trigger for the FULL market-wide warmup (primes the disk cache the
+  // nightly cron fills). Runs in the BACKGROUND so the request returns instantly
+  // instead of timing out — poll /api/diag/unified-scan-status for progress.
+  app.get("/api/diag/unified-scan-warm", async (_req, res) => {
     try {
-      const { warmUnifiedScanCache } = await import("./compartments/unified-scanner/warmup");
-      const max = Math.min(Math.max(Number(req.query.max) || 1500, 100), 3000);
-      const result = await warmUnifiedScanCache({ maxSymbols: max });
-      res.json({ ok: true, maxSymbols: max, ...result });
+      const { startWarmInBackground, isWarmInFlight } = await import("./compartments/unified-scanner/warmup");
+      const started = startWarmInBackground();
+      res.json({ ok: true, started, alreadyRunning: !started && isWarmInFlight() });
     } catch (e: any) {
       res.status(500).json({ error: e?.message || "warm failed" });
+    }
+  });
+
+  // Status of the per-tier scan caches (counts + age) + whether a warm is live.
+  app.get("/api/diag/unified-scan-status", async (_req, res) => {
+    try {
+      const { listUnifiedScan } = await import("./unified-scan-cache");
+      const { isWarmInFlight } = await import("./compartments/unified-scanner/warmup");
+      res.json({ warming: isWarmInFlight(), caches: listUnifiedScan() });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "status failed" });
     }
   });
 

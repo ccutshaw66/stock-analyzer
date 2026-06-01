@@ -59,8 +59,8 @@ export function initCron(
     runOnStart: false,
     handler: async () => {
       const { warmUnifiedScanCache } = await import("./compartments/unified-scanner/warmup");
-      const res = await warmUnifiedScanCache({ maxSymbols: 3000 });
-      console.log(`[CRON] unified scan warmup: ${res.written} hits cached, ${res.errors} errors`);
+      const res = await warmUnifiedScanCache(); // full liquid market, all tiers
+      console.log(`[CRON] unified scan warmup: ${res.written} hits from ${res.scanned} scanned, ${res.errors} errors`);
     },
   });
 

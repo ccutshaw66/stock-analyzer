@@ -67,24 +67,34 @@ export async function scanSymbols(symbols: string[], rows: Map<string, UniverseR
   return all;
 }
 
+// Liquidity floor — keep genuinely tradeable names; below this is untradeable
+// noise (you can't get filled). Everything above it in every tier is scanned.
+const WARM_MIN_VOLUME = 150_000;
+// FMP screener hard cap per call. Each tier's liquid universe is well under
+// this, so `count` here means "all of them" — NO top-N-by-cap subset.
+const WARM_PER_TIER = 3000;
+
+let warmInFlight = false;
+
 /**
- * Market warmup → writes one ranked cache PER market-cap tier so every tier
- * (incl. small/micro) gets real coverage — a single market-wide cap-desc slice
- * would starve the small-caps. `perTier` caps the universe scanned per tier.
+ * Market warmup → writes one ranked cache PER market-cap tier, scanning the
+ * FULL liquid universe of each tier (no top-N subset — `count` exceeds each
+ * tier's real size, so every qualifying ticker is scanned). The whole market
+ * is covered; the route just slices the cached results by the user's filters.
  * Returns total counts for the cron log.
  */
-export async function warmUnifiedScanCache(opts: { maxSymbols?: number; perTier?: number } = {}): Promise<{ written: number; errors: number; byTier: Record<string, number> }> {
-  // maxSymbols (legacy arg) is divided across tiers if perTier isn't given.
-  const perTier = opts.perTier ?? Math.max(300, Math.floor((opts.maxSymbols ?? 3000) / MARKET_CAP_TIERS.length));
+export async function warmUnifiedScanCache(opts: { perTier?: number } = {}): Promise<{ written: number; errors: number; byTier: Record<string, number>; scanned: number }> {
+  const perTier = opts.perTier ?? WARM_PER_TIER;
   let errors = 0;
   let written = 0;
+  let scanned = 0;
   const byTier: Record<string, number> = {};
 
   for (const tier of MARKET_CAP_TIERS) {
     const universe = await fmpScreener({
       minMarketCap: tier.min,
       maxMarketCap: tier.max ?? undefined,
-      minVolume: 400_000,
+      minVolume: WARM_MIN_VOLUME,
       count: perTier,
       noShuffle: true,
     }).catch(() => { errors++; return []; });
@@ -93,6 +103,7 @@ export async function warmUnifiedScanCache(opts: { maxSymbols?: number; perTier?
     for (const r of universe) {
       rows.set(r.symbol, { symbol: r.symbol, companyName: r.companyName, marketCap: r.marketCap, sector: r.sector, price: r.price });
     }
+    scanned += rows.size;
     const hits = await scanSymbols(Array.from(rows.keys()), rows);
     const ranked = rankHits(hits, 0, hits.length);
     writeUnifiedScan(tierCacheKey(tier.id), ranked);
@@ -100,5 +111,25 @@ export async function warmUnifiedScanCache(opts: { maxSymbols?: number; perTier?
     written += ranked.length;
   }
 
-  return { written, errors, byTier };
+  return { written, errors, byTier, scanned };
+}
+
+/**
+ * Kick off a full warm in the BACKGROUND (fire-and-forget) so callers (the
+ * manual trigger, the route's refresh/cold path) return instantly instead of
+ * holding an HTTP request for minutes. Guarded so only one runs at a time.
+ * Returns true if a new warm started, false if one was already running.
+ */
+export function startWarmInBackground(): boolean {
+  if (warmInFlight) return false;
+  warmInFlight = true;
+  void warmUnifiedScanCache()
+    .then(r => console.log(`[unified-scan] background warm done: ${r.written} hits from ${r.scanned} scanned, ${r.errors} errors`))
+    .catch(e => console.error(`[unified-scan] background warm failed:`, e?.message || e))
+    .finally(() => { warmInFlight = false; });
+  return true;
+}
+
+export function isWarmInFlight(): boolean {
+  return warmInFlight;
 }
