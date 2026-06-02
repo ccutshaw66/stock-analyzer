@@ -21,6 +21,10 @@ during the prior Perplexity/Claude session).
 
 **PEGY valuation upgrade (replaces the P/E-only valuation factor):**
 - `server/snapshot/score.ts` — `scoreValuation()` now computes a guarded **PEGY** = `P/E ÷ (earnings-growth% + dividend-yield%)` (Peter Lynch), bucketed `<1` cheap-for-growth → `>3` expensive. Inputs (`trailingPE`, `earningsGrowth`, `dividendYield`) were already collected. Guard: only used when earnings growth > 2%; otherwise falls back to the original P/E ladder (avoids the negative/zero-growth blow-up). Reasoning string now surfaces the PEGY number. Weight unchanged (0.08). Black-Scholes was evaluated and **rejected** as a company-evaluation indicator (it prices options, it does not value stocks).
+- **Growth cap (review follow-up):** PEGY credits at most **50%** earnings growth (`GROWTH_CAP`). A one-off earnings rebound can spike `earningsGrowth` into the hundreds/thousands of %, which would otherwise make PEGY meaninglessly tiny and flag junk as "cheap for growth." The capped figure is what the reasoning string shows.
+
+**Test (review follow-up):**
+- `scripts/htf-livestatus-smoke.ts` (+ `npm run htf:live:smoke`) — pure-function checks locking in every `htfLiveStatus` outcome (live / stopped / target-hit / chased / stale), including the exact SLSR scenario (months-old breakout + price past target → "target-hit", **not** GO). No network; exit 0 = pass.
 
 ---
 ## 2026-05-28 — Tier schedule snapshot (current state of every page + widget)

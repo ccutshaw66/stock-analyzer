@@ -214,8 +214,12 @@ function scoreValuation(snap: CompanySnapshot): CategoryScore {
   // only meaningful when earnings growth is solidly positive. With negative/near-zero
   // growth the ratio explodes or flips sign, so we fall back to the plain P/E ladder.
   const GROWTH_FLOOR = 2; // need >2% earnings growth for PEGY to be trustworthy
+  const GROWTH_CAP = 50;  // credit at most 50% growth — a one-off earnings rebound can spike
+                          // earningsGrowth into the hundreds/thousands of %, which would make
+                          // PEGY meaninglessly tiny and flag any junk as "cheap for growth".
   if (pe !== null && pe > 0 && growth !== null && growth > GROWTH_FLOOR) {
-    const pegy = pe / (growth + (dy ?? 0));
+    const usableGrowth = Math.min(growth, GROWTH_CAP);
+    const pegy = pe / (usableGrowth + (dy ?? 0));
     let score: number;
     if (pegy < 1) score = 9;        // cheap for its growth + income
     else if (pegy < 2) score = 7;   // fair
@@ -225,7 +229,7 @@ function scoreValuation(snap: CompanySnapshot): CategoryScore {
     return {
       name: "Valuation Sanity",
       score: clamp10(score), weight: 0.08,
-      reasoning: `PEGY ${fmt(pegy, 2)} (P/E ${fmt(pe, 1)}, growth ${fmt(growth, 1, "%")}, yield ${yieldTxt})`,
+      reasoning: `PEGY ${fmt(pegy, 2)} (P/E ${fmt(pe, 1)}, growth ${fmt(usableGrowth, 1, "%")}, yield ${yieldTxt})`,
       source: snap.quote.source,
       populated: true,
     };
