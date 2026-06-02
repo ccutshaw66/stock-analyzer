@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-02 — Trigger Check stale-signal fix + PEGY valuation upgrade
+
+**Why:** Chris caught the Trigger Check showing a **GO** on SLSR at $10.88 with a target of ~$8.10 and stop ~$5.09 — i.e. recommending an entry whose target was already ~26% *below* the live price. Root cause: `htf-setup.ts` read `hits[hits.length - 1]` from `scanHtf()`'s output, but `scanHtf` returns hits sorted **newest → oldest**, so it was surfacing the *oldest* HTF breakout in the lookback (which fired months ago, before the run-up) as if it had "just fired." It also never compared the setup's target/stop against the current price, so a long-dead trade still rendered as a clean GO.
+
+**Fix (stale-signal):**
+- `server/conviction/checks/htf-setup.ts` — read `hits[0]` (the freshest breakout), and gate the `pass`/GO through a liveness check.
+- `server/signals/strategies/htf.ts` — added `htfLiveStatus(hit, currentPrice, currentDate, maxDaysSinceBreakout)` (+ `HTF_MAX_CHASE_PCT`, `HtfLiveStatus`) as the **single source of truth** for "is this fired HTF still actionable right now": rejects setups that are stopped out, already at target, chased >10% past the breakout, or stale. Recency window is a parameter.
+- `server/compartments/htf-scanner/orchestrator.ts` — its private `isLiveSetup` (which already had the correct logic) now **delegates** to the shared `htfLiveStatus` with its existing 1-day window; removed the duplicate `MAX_CHASE_PCT`. Behavior preserved, logic de-duplicated so the nightly scanner and the on-demand Trigger Check can never drift.
+- Trigger Check now uses a 14-day freshness window and returns nuanced copy ("already ran to its ~$X target — the entry has passed", "fell below its ~$X stop — the setup failed", "ran too far past the breakout … chasing it now is risky", "fired N days ago — no longer a fresh trigger") instead of a blanket GO.
+
+**PEGY valuation upgrade (replaces the P/E-only valuation factor):**
+- `server/snapshot/score.ts` — `scoreValuation()` now computes a guarded **PEGY** = `P/E ÷ (earnings-growth% + dividend-yield%)` (Peter Lynch), bucketed `<1` cheap-for-growth → `>3` expensive. Inputs (`trailingPE`, `earningsGrowth`, `dividendYield`) were already collected. Guard: only used when earnings growth > 2%; otherwise falls back to the original P/E ladder (avoids the negative/zero-growth blow-up). Reasoning string now surfaces the PEGY number. Weight unchanged (0.08). Black-Scholes was evaluated and **rejected** as a company-evaluation indicator (it prices options, it does not value stocks).
+
+---
 ## 2026-05-28 — Tier schedule snapshot (current state of every page + widget)
 
 **Why:** Chris flagged that the tier schedule has drifted across multiple recent ships (the Free/Pro/Elite rewire, the dashboard tier filter, the Ask Otter free→pro move, the route-level gate wave, and a handful of unlogged tweaks). Some changes landed in CHANGES.md, some didn't. This entry is a **single source-of-truth snapshot** of the live tier assignments as of today so anyone reading the log can see the full state without diffing the page registry and every compartment.
