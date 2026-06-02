@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-02 — Fix bogus earnings-growth in Trigger Check ("-17059% YoY")
+
+**Why:** Trigger Check displayed nonsense like "Fundamentals weakening — earnings -17059% year-over-year. The business is shrinking." Two compounding bugs: (1) the conviction fundamentals check treated the growth values as *fractions* and multiplied by 100, but the fundamentals layer already returns *percent* — so −170% rendered as −17059% and even a −0.5% dip tripped the "shrinking" verdict; (2) the underlying −170% itself was a meaningless figure from earnings swinging off a near-zero / negative prior base.
+
+**What:**
+- `server/snapshot/fundamentals.ts` — YoY growth now returns null (not a number) when it isn't meaningful: prior base ≤ 0, current swung negative (a turnaround isn't a growth rate), or implausible magnitude (>500%). Stops garbage percentages at the source for every consumer.
+- `server/conviction/checks/fundamentals.ts` — corrected the units (values are percent, not fractions): removed the erroneous ×100 and fixed the growth thresholds (e.g. earnings-negative now <−10%, not <−0.1). The "business is shrinking" verdict no longer fires off a unit error or a meaningless base.
+
+**Files:** `server/snapshot/fundamentals.ts`, `server/conviction/checks/fundamentals.ts`.
+
+---
 ## 2026-06-01 — Unified Scanner: one reliable scanner across every strategy
 
 **Why:** The four scattered scanners (HTF, BBTC+VER, AMC, Scanner-V2) felt like "russian roulette" — sometimes nothing, sometimes low-grade noise, sometimes a hit. Root cause: every scanner ran a **Fisher-Yates shuffle** over the universe and scanned only a random slice, so results were non-deterministic and two of them had no minimum-score filter at all. This replaces them with one registry-driven scanner that scans the whole market deterministically and only surfaces green-grade (80+) setups. Design + plan: `docs/superpowers/specs/2026-06-01-unified-scanner-design.md`, `docs/superpowers/plans/2026-06-01-unified-scanner.md`.

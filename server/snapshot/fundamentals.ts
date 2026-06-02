@@ -37,14 +37,22 @@ function fundamentalsFromFmp(ratios: any, income: any, incomePrior: any = null):
   const revPrior   = num(ip.revenue);
   const niCurrent  = num(i.netIncome);
   const niPrior    = num(ip.netIncome);
-  const revenueGrowthCalc =
-    revCurrent !== null && revPrior !== null && revPrior !== 0
-      ? ((revCurrent - revPrior) / Math.abs(revPrior)) * 100
-      : null;
-  const earningsGrowthCalc =
-    niCurrent !== null && niPrior !== null && niPrior !== 0
-      ? ((niCurrent - niPrior) / Math.abs(niPrior)) * 100
-      : null;
+
+  // YoY % growth, returned as a PERCENT (5 = +5%). Returns null when the figure
+  // isn't meaningful, so downstream never narrates garbage like "-17059%":
+  //   - prior base ≤ 0 (can't compute growth off zero/negative)
+  //   - current swung negative (a turnaround/loss isn't a growth rate)
+  //   - implausible magnitude (>500%), which is a near-zero-base artifact
+  const yoyPct = (cur: number | null, prior: number | null): number | null => {
+    if (cur === null || prior === null) return null;
+    if (prior <= 0) return null;
+    if (cur < 0) return null;
+    const g = ((cur - prior) / prior) * 100;
+    if (!Number.isFinite(g) || Math.abs(g) > 500) return null;
+    return g;
+  };
+  const revenueGrowthCalc = yoyPct(revCurrent, revPrior);
+  const earningsGrowthCalc = yoyPct(niCurrent, niPrior);
 
   // Helper: try TTM-suffixed field name first (FMP stable API), fall back to
   // non-suffixed (FMP v3 legacy). The stable migration in Aug 2025 changed

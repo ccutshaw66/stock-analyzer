@@ -9,7 +9,7 @@ import type { Check, CheckResult } from "./types";
 export const fundamentalsCheck: Check = (ctx) => {
   const f = ctx.snapshot.fundamentals?.value;
   if (!f) return null;
-  const rg = f.revenueGrowth; // 0.05 = +5%
+  const rg = f.revenueGrowth; // PERCENT: 5 = +5% (null when not meaningful)
   const eg = f.earningsGrowth;
 
   const base: Omit<CheckResult, "status" | "reason"> = {
@@ -19,15 +19,15 @@ export const fundamentalsCheck: Check = (ctx) => {
     weight: 1,
   };
 
-  const rgPct = rg != null ? Math.round(rg * 100) : null;
-  const egPct = eg != null ? Math.round(eg * 100) : null;
+  const rgPct = rg != null ? Math.round(rg) : null;
+  const egPct = eg != null ? Math.round(eg) : null;
 
   if (rg == null && eg == null) return null; // no data — skip
 
-  const rgPositive = rg != null && rg > 0.03;
-  const rgNegative = rg != null && rg < -0.03;
-  const egPositive = eg != null && eg > 0.05;
-  const egNegative = eg != null && eg < -0.1;
+  const rgPositive = rg != null && rg > 3;
+  const rgNegative = rg != null && rg < -3;
+  const egPositive = eg != null && eg > 5;
+  const egNegative = eg != null && eg < -10;
 
   if (rgPositive && egPositive) {
     return {
