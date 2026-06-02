@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-02 — Claude Code subagents added (`.claude/agents/`)
+
+**Why:** The project had 7 skills but zero custom agents. These four autonomous subagents
+(committed to the repo, so every synced terminal gets them) target the remaining work — proving
+the indicator system is trustworthy and keeping it correct:
+- **`quant-validator`** (Opus) — out-of-sample / walk-forward backtests; Sharpe, max drawdown,
+  deflated Sharpe, excess-return vs SPY, per-factor GO/NO-GO, and factor-correlation
+  (confluence/redundancy). The engine for the validation backbone.
+- **`indicator-auditor`** (Sonnet, read-only) — sweeps for the stale-GO bug class: inverted
+  newest/oldest array reads, missing live-price guards, look-ahead bias, off-by-one indexing,
+  target/stop sanity. Run before every ship.
+- **`parity-checker`** (Sonnet) — verifies TS strategy ports match their Python references via the
+  existing parity scripts (`htf:parity`, `rsi:diff`, etc.).
+- **`verdict-ui-surfacer`** (Sonnet) — wires new backend metrics (PEGY, validation badges,
+  confluence count) into the React client honoring brand + empty/loading/error rules.
+---
 ## 2026-06-02 — Trigger Check stale-signal fix + PEGY valuation upgrade
 
 **Why:** Chris caught the Trigger Check showing a **GO** on SLSR at $10.88 with a target of ~$8.10 and stop ~$5.09 — i.e. recommending an entry whose target was already ~26% *below* the live price. Root cause: `htf-setup.ts` read `hits[hits.length - 1]` from `scanHtf()`'s output, but `scanHtf` returns hits sorted **newest → oldest**, so it was surfacing the *oldest* HTF breakout in the lookback (which fired months ago, before the run-up) as if it had "just fired." It also never compared the setup's target/stop against the current price, so a long-dead trade still rendered as a clean GO.
