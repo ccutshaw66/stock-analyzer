@@ -9,6 +9,40 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Research nav re-cut by individual-ticker vs scanner + chart merge + scan persistence
+
+Follow-up to the funnel reorg, per Chris's batch. Organizing rule clarified: **individual ticker
+vs tickers-in-general/scanners.**
+
+**Nav (page-registry.ts):** replaced the numbered funnel with cleaner groups — `Regime` (Market Pulse,
+Sectors), `Screen` (Scanner, HTF, + **Insider Activity moved here — it's a scanner, not per-ticker**),
+`Research` (the per-ticker methods: Profile, Institutions, Trade Analysis, MM Exposure, Trigger Check,
+Long-Term Outlook), `Setup` (the Chart). **Earnings moved to Investment Opportunities** (it shows
+watchlist earnings dates, not the active ticker's). **Kelly moved back to Calculators** (not
+ticker-specific). AppLayout auto-expand already registry-driven so it follows.
+
+**Chart merge (efficiency):** Confluence Chart and Strategy Chart collapsed into ONE `/chart` page.
+Added the MACD/RSI oscillator + the confluence dashboard panel (via `useConfluenceChart`) under the
+strategy backtester in `pages/chart.tsx`. Deleted `pages/confluence-chart.tsx`; `/chart/confluence`
+now redirects to `/chart`. Label is now just "Chart", in the Setup group.
+
+**HTF min-score input fix:** the number box fed every keystroke into the query key → re-scan + focus
+loss + "8"/"0" garbage (Chris's bug). Replaced with a Slider (commits on release only) via a reusable
+`MinScoreControl`. **Default changed 70 → 80** (green starts at 80).
+
+**Scan persistence ("scanning EVERY time is annoying"):** `useHtfScanner` was overriding the global
+staleTime:Infinity with `refetchInterval`/`refetchOnMount`/`refetchOnWindowFocus` → re-scanned on every
+nav/focus. Removed those (Refresh button stays the only trigger). Also widened the sessionStorage
+persister in `App.tsx` to cover `/api/unified-scanner` + `/api/htf/setups` (it only matched
+`/api/scanner`, missing the scanner Chris actually uses), so scan results survive a reload.
+
+**Files:** `client/src/lib/page-registry.ts`, `client/src/lib/useTickerNavigate.ts`,
+`client/src/pages/chart.tsx`, `client/src/pages/confluence-chart.tsx` (deleted), `client/src/App.tsx`,
+`client/src/pages/htf-setups.tsx`, `client/src/compartments/htf-scanner/useHtfScanner.ts`. tsc clean
+(no new errors). NOT done this batch: Profile "next earnings date" row (optional), per-text-input
+persistence (min-score etc. are useState — reset on unmount), Track Record empty-table root cause
+(likely Yahoo-shape `getChart` in `logSignals` silently logging 0 rows — needs verify/FMP migration).
+---
 ## 2026-06-03 — Reverse-split warning badge (split-adjusted prices no longer mislead)
 
 **Why:** Chris asked why Energous (WATT) appeared to crash from "$2,200" to $31 over 5 years.

@@ -84,13 +84,14 @@ export function useHtfScanner(opts: UseHtfScannerOptions = {}) {
   return useQuery<HtfSetupsResponse>({
     queryKey: [path],
     queryFn: async () => (await apiRequest("GET", path)).json(),
-    staleTime: 60_000,
-    // Auto-poll every 5 min so users don't see stale-and-blank when
-    // returning to /htf. Server caches the scan for 30 min internally
-    // so this is cheap — just keeps the React Query cache warm.
-    refetchInterval: 5 * 60 * 1000,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    // Persist the scan until the user logs out or hits Refresh — no silent
+    // re-scans on navigation/focus (Chris: "scanning EVERY time is annoying").
+    // The explicit Refresh button (useHtfScannerRefresh) is the only refetch
+    // trigger. Restores the global staleTime:Infinity that the per-query
+    // refetchOnMount/onWindowFocus were locally defeating.
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -24,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { apiRequest } from "@/lib/queryClient";
 import { useSubscription } from "@/hooks/useSubscription";
 import {
@@ -371,9 +372,36 @@ function SetupsTable({
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────
 
+/**
+ * Min-score control — a SLIDER, not a free-text box. Typing into a number
+ * input fed the value straight into the query key, so every keystroke re-ran
+ * the scan, stole focus, and left you with "8" or "0" (Chris's bug report).
+ * The slider only commits on release (`onValueCommit`), so dragging is smooth
+ * and the scan fires once. Default lives in the caller (80 — green starts at 80).
+ */
+function MinScoreControl({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <div className="flex items-center gap-2">
+      <Label className="text-xs whitespace-nowrap">Min score</Label>
+      <Slider
+        value={[draft]}
+        onValueChange={(v) => setDraft(v[0])}
+        onValueCommit={(v) => onCommit(v[0])}
+        min={50}
+        max={100}
+        step={5}
+        className="w-28"
+        aria-label="Minimum score"
+      />
+      <span className="text-sm font-semibold tabular-nums w-7 text-right text-foreground">{draft}</span>
+    </div>
+  );
+}
+
 /** "Live" tab — fired breakouts. The actionable "this bitch is about to blow" list. */
 function LiveTab() {
-  const [minScore, setMinScore] = useState(70);
+  const [minScore, setMinScore] = useState(80);
   const q = useHtfScanner({ actionableOnly: true, minScore, stage: "fired" });
 
   if (q.isLoading) {
@@ -408,18 +436,7 @@ function LiveTab() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="minScore" className="text-xs">Min score</Label>
-          <Input
-            id="minScore"
-            type="number"
-            value={minScore}
-            onChange={e => setMinScore(Number(e.target.value))}
-            className="w-20 h-8 text-sm"
-            min={0}
-            max={100}
-          />
-        </div>
+        <MinScoreControl value={minScore} onCommit={setMinScore} />
       </div>
       <SetupsTable
         rows={data.rows}
@@ -433,7 +450,7 @@ function LiveTab() {
 
 /** "Watch" tab — patterns still forming. Pole + flag valid, no breakout yet. */
 function WatchTab() {
-  const [minScore, setMinScore] = useState(70);
+  const [minScore, setMinScore] = useState(80);
   // Watch is a VISIBILITY surface, not a filter surface — per the
   // foundation-first rule + session_2026_05_21_pickup note. Drop
   // actionableOnly so forming patterns show even when R/R is below
@@ -473,18 +490,7 @@ function WatchTab() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="minScoreW" className="text-xs">Min score</Label>
-          <Input
-            id="minScoreW"
-            type="number"
-            value={minScore}
-            onChange={e => setMinScore(Number(e.target.value))}
-            className="w-20 h-8 text-sm"
-            min={0}
-            max={100}
-          />
-        </div>
+        <MinScoreControl value={minScore} onCommit={setMinScore} />
       </div>
       {data.rows.length === 0 ? (
         <BrandedEmptyState

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Route, Router } from "wouter";
+import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient, queryPersister } from "./lib/queryClient";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
@@ -44,7 +44,6 @@ import LegalPage from "@/pages/legal";
 import TrackRecord from "@/pages/track-record";
 import AlertsPage from "@/pages/alerts";
 import Dashboard from "@/pages/dashboard";
-import ConfluenceChartPage from "@/pages/confluence-chart";
 import HtfSetupsPage from "@/pages/htf-setups";
 import HtfChartPage from "@/pages/htf-chart";
 import InsidersPage from "@/pages/insiders";
@@ -124,16 +123,14 @@ function AuthenticatedApp() {
             <Route path="/terms" component={LegalPage} />
             <Route path="/privacy" component={LegalPage} />
 
-            {/* Pro-gated — render UpgradePrompt for Free users */}
+            {/* Confluence Chart merged into the single Chart page (2026-06).
+                Old links/bookmarks redirect to /chart. */}
             <Route path="/chart/confluence/:ticker?">
-              <RequireTier min="pro" feature="Confluence Chart"
-                description="Multi-signal verdict overlaid on the chart — candles, EMAs, signal pulse, MACD/RSI all in one view.">
-                <ConfluenceChartPage />
-              </RequireTier>
+              <Redirect to="/chart" />
             </Route>
             <Route path="/chart">
-              <RequireTier min="pro" feature="Strategy Chart"
-                description="Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes side-by-side.">
+              <RequireTier min="pro" feature="Chart"
+                description="Candles + EMAs + MACD/RSI + the multi-signal confluence read, with the strategy backtester (BBTC+VER, AMC, TFT).">
                 <ChartPage />
               </RequireTier>
             </Route>
@@ -270,14 +267,21 @@ function App() {
         client={queryClient}
         persistOptions={{
           persister: queryPersister,
-          // Persist only scanner-family queries — keeps sessionStorage from
-          // bloating with every API response and matches the legacy UX
-          // (scan results survive page reload inside the tab; everything
-          // else refetches). See lib/queryClient.ts for the rationale.
+          // Persist scanner + screener-family queries so results survive a
+          // page reload inside the tab (and don't re-scan on navigation).
+          // NOTE: the legacy filter only matched "/api/scanner", which MISSED
+          // the unified scanner ("/api/unified-scanner") that Chris actually
+          // uses, plus the HTF setups scan — so those silently re-ran. Widened
+          // to cover all scan/screen families. Everything else still refetches.
           dehydrateOptions: {
             shouldDehydrateQuery: (query) => {
               const firstKey = query.queryKey[0];
-              return typeof firstKey === "string" && firstKey.startsWith("/api/scanner");
+              if (typeof firstKey !== "string") return false;
+              return (
+                firstKey.startsWith("/api/scanner") ||
+                firstKey.startsWith("/api/unified-scanner") ||
+                firstKey.startsWith("/api/htf/setups")
+              );
             },
           },
         }}

@@ -33,11 +33,17 @@ import {
 } from "@/lib/design-tokens";
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
+import { useTimeframe } from "@/contexts/TimeframeContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageTemplate } from "@/components/PageTemplate";
 import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
-import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+// Merged from the old Confluence Chart page (one Chart page now): MACD/RSI
+// oscillator + the multi-signal confluence dashboard, fed by useConfluenceChart.
+import { IndicatorOscillator } from "@/components/IndicatorOscillator";
+import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
+import { useConfluenceChart } from "@/compartments/confluence-chart/useConfluenceChart";
+import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown, Layers } from "lucide-react";
 import { STRATEGY_REGISTRY } from "@shared/strategies/registry";
 import {
   ResponsiveContainer,
@@ -616,9 +622,12 @@ function TradeList({
 
 export default function ChartPage() {
   const { activeTicker } = useTicker();
+  const { timeframe } = useTimeframe();
   const [strategy, setStrategy] = useState<ChartStrategy>("bbtc-ver");
   const [days, setDays] = useState<number>(1825); // 5y default
   const [highlightedTradeNum, setHighlightedTradeNum] = useState<number | null>(null);
+  // Confluence layer (MACD/RSI + dashboard) merged in from the old page.
+  const conf = useConfluenceChart(activeTicker, timeframe);
 
   const { data, isLoading, error } = useQuery<ChartDataResponse>({
     queryKey: ["/api/chart", activeTicker, strategy, days],
@@ -795,6 +804,23 @@ export default function ChartPage() {
                 )}
                 <span className="text-muted-foreground">· hover any dot to see its trade #</span>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Indicators & Confluence — merged from the old Confluence Chart.
+              MACD/RSI momentum read + the multi-signal confluence dashboard. */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Indicators &amp; Confluence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 space-y-3">
+              <div className="flex justify-center">
+                <IndicatorOscillator ticker={activeTicker ?? ""} bars={60} />
+              </div>
+              <ConfluenceDashboardPanel bars={conf.bars} indicators={conf.indicators} quick={conf.quick} />
             </CardContent>
           </Card>
 

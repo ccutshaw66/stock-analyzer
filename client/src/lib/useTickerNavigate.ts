@@ -24,7 +24,6 @@ import { useTicker } from "@/contexts/TickerContext";
 const STAY_ROUTES: readonly string[] = [
   "/profile",
   "/trade",
-  "/chart/confluence",
   "/chart",
   "/mm-exposure",
   "/institutional",
