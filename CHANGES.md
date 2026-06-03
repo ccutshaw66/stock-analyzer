@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Indicator validation harness (out-of-sample, SPY-relative)
+
+**Why:** First evidence-based check of whether the signals actually beat SPY. `python/validation/validate_indicators.py`
+runs against `backtest_signals.json` (14,817 signals, 33 tickers, ~22 months; forward + matched SPY
+returns already baked in, so no FMP key needed) and writes `python/validation/factor_validation.json`.
+Per factor × horizon (7/30/90d) it reports mean excess vs SPY, win-rate-vs-SPY, an information ratio,
+the same metrics on a held-out latest-40%-of-dates **out-of-sample** split, a Bonferroni multiple-testing
+discount, and a factor correlation matrix.
+
+**Findings (the baseline we now build on):** win rates vs SPY are 46–53% (coin-flip); most in-sample
+edges evaporate or flip negative out-of-sample; only `STRONG_BUY` stays marginally positive OOS across
+all horizons. Correlation matrix shows `signal`/`score`/`bbtc`/`rsi` are 0.6–0.9 correlated — effectively
+ONE momentum signal, not four — while `vol_ratio` (~0.0) and `ver` (−0.1 to −0.3) are the only genuinely
+independent signals. Directly motivates the confluence rebuild: collapse the redundant cluster to one vote,
+require the independent signals to agree.
+---
 ## 2026-06-02 — Claude Code subagents added (`.claude/agents/`)
 
 **Why:** The project had 7 skills but zero custom agents. These four autonomous subagents

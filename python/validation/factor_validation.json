@@ -1,0 +1,731 @@
+{
+  "meta": {
+    "rows": 14817,
+    "tickers": 33,
+    "dateRange": [
+      "2024-06-26",
+      "2026-04-10"
+    ],
+    "oosCutDate": "2025-07-24",
+    "nTests": 33,
+    "bonferroniAlpha": 0.00152
+  },
+  "factors": {
+    "7d": {
+      "signal=STRONG_BUY": {
+        "full": {
+          "n": 4955,
+          "meanExcessVsSPY": 0.325,
+          "winRateVsSPY": 51.2,
+          "infoRatio": 0.055,
+          "t": 3.9,
+          "p": 0.0001
+        },
+        "oos": {
+          "n": 1908,
+          "meanExcessVsSPY": 0.165,
+          "winRateVsSPY": 50.3,
+          "infoRatio": 0.031,
+          "t": 1.35,
+          "p": 0.1775
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "signal=BUY": {
+        "full": {
+          "n": 3668,
+          "meanExcessVsSPY": 0.043,
+          "winRateVsSPY": 49.4,
+          "infoRatio": 0.007,
+          "t": 0.41,
+          "p": 0.6853
+        },
+        "oos": {
+          "n": 1388,
+          "meanExcessVsSPY": -0.176,
+          "winRateVsSPY": 49.6,
+          "infoRatio": -0.03,
+          "t": -1.11,
+          "p": 0.2684
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "signal=SELL": {
+        "full": {
+          "n": 3224,
+          "meanExcessVsSPY": -0.384,
+          "winRateVsSPY": 49.8,
+          "infoRatio": -0.059,
+          "t": -3.35,
+          "p": 0.0008
+        },
+        "oos": {
+          "n": 1241,
+          "meanExcessVsSPY": -0.42,
+          "winRateVsSPY": 49.0,
+          "infoRatio": -0.068,
+          "t": -2.4,
+          "p": 0.0166
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "signal=STRONG_SELL": {
+        "full": {
+          "n": 2739,
+          "meanExcessVsSPY": -0.677,
+          "winRateVsSPY": 46.4,
+          "infoRatio": -0.103,
+          "t": -5.38,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1172,
+          "meanExcessVsSPY": -0.131,
+          "winRateVsSPY": 48.9,
+          "infoRatio": -0.02,
+          "t": -0.68,
+          "p": 0.4963
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "bbtc=BUY": {
+        "full": {
+          "n": 6057,
+          "meanExcessVsSPY": 0.304,
+          "winRateVsSPY": 51.0,
+          "infoRatio": 0.052,
+          "t": 4.02,
+          "p": 0.0001
+        },
+        "oos": {
+          "n": 2219,
+          "meanExcessVsSPY": -0.039,
+          "winRateVsSPY": 49.1,
+          "infoRatio": -0.007,
+          "t": -0.34,
+          "p": 0.7375
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "NO-GO"
+      },
+      "ver=BUY": {
+        "full": {
+          "n": 266,
+          "meanExcessVsSPY": -0.027,
+          "winRateVsSPY": 50.8,
+          "infoRatio": -0.004,
+          "t": -0.07,
+          "p": 0.9469
+        },
+        "oos": {
+          "n": 90,
+          "meanExcessVsSPY": 0.411,
+          "winRateVsSPY": 52.2,
+          "infoRatio": 0.057,
+          "t": 0.54,
+          "p": 0.5918
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "bbtc=SELL": {
+        "full": {
+          "n": 4379,
+          "meanExcessVsSPY": -0.562,
+          "winRateVsSPY": 47.5,
+          "infoRatio": -0.086,
+          "t": -5.67,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1839,
+          "meanExcessVsSPY": -0.255,
+          "winRateVsSPY": 48.5,
+          "infoRatio": -0.04,
+          "t": -1.72,
+          "p": 0.085
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "ver=SELL": {
+        "full": {
+          "n": 256,
+          "meanExcessVsSPY": -0.553,
+          "winRateVsSPY": 48.0,
+          "infoRatio": -0.076,
+          "t": -1.22,
+          "p": 0.2229
+        },
+        "oos": {
+          "n": 86,
+          "meanExcessVsSPY": -0.112,
+          "winRateVsSPY": 51.2,
+          "infoRatio": -0.015,
+          "t": -0.14,
+          "p": 0.8876
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "rsi<30 (oversold\u2192long)": {
+        "full": {
+          "n": 1595,
+          "meanExcessVsSPY": 0.39,
+          "winRateVsSPY": 53.2,
+          "infoRatio": 0.058,
+          "t": 2.32,
+          "p": 0.0203
+        },
+        "oos": {
+          "n": 685,
+          "meanExcessVsSPY": 0.384,
+          "winRateVsSPY": 54.3,
+          "infoRatio": 0.057,
+          "t": 1.48,
+          "p": 0.1388
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "rsi>70 (overbought\u2192short)": {
+        "full": {
+          "n": 2328,
+          "meanExcessVsSPY": -0.402,
+          "winRateVsSPY": 47.3,
+          "infoRatio": -0.067,
+          "t": -3.23,
+          "p": 0.0012
+        },
+        "oos": {
+          "n": 760,
+          "meanExcessVsSPY": -0.527,
+          "winRateVsSPY": 46.8,
+          "infoRatio": -0.092,
+          "t": -2.55,
+          "p": 0.0108
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "vol_ratio>1.5 (long)": {
+        "full": {
+          "n": 1309,
+          "meanExcessVsSPY": 0.279,
+          "winRateVsSPY": 49.7,
+          "infoRatio": 0.038,
+          "t": 1.38,
+          "p": 0.1682
+        },
+        "oos": {
+          "n": 458,
+          "meanExcessVsSPY": 0.124,
+          "winRateVsSPY": 49.1,
+          "infoRatio": 0.017,
+          "t": 0.36,
+          "p": 0.7154
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      }
+    },
+    "30d": {
+      "signal=STRONG_BUY": {
+        "full": {
+          "n": 4876,
+          "meanExcessVsSPY": 1.261,
+          "winRateVsSPY": 51.2,
+          "infoRatio": 0.098,
+          "t": 6.85,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1829,
+          "meanExcessVsSPY": 0.425,
+          "winRateVsSPY": 50.4,
+          "infoRatio": 0.039,
+          "t": 1.67,
+          "p": 0.0959
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "signal=BUY": {
+        "full": {
+          "n": 3521,
+          "meanExcessVsSPY": 1.194,
+          "winRateVsSPY": 50.5,
+          "infoRatio": 0.087,
+          "t": 5.14,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1241,
+          "meanExcessVsSPY": -0.379,
+          "winRateVsSPY": 45.4,
+          "infoRatio": -0.031,
+          "t": -1.08,
+          "p": 0.2818
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "NO-GO"
+      },
+      "signal=SELL": {
+        "full": {
+          "n": 3013,
+          "meanExcessVsSPY": -1.181,
+          "winRateVsSPY": 47.7,
+          "infoRatio": -0.092,
+          "t": -5.03,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1030,
+          "meanExcessVsSPY": -0.744,
+          "winRateVsSPY": 49.5,
+          "infoRatio": -0.058,
+          "t": -1.87,
+          "p": 0.0612
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "signal=STRONG_SELL": {
+        "full": {
+          "n": 2417,
+          "meanExcessVsSPY": -2.512,
+          "winRateVsSPY": 44.7,
+          "infoRatio": -0.189,
+          "t": -9.3,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 850,
+          "meanExcessVsSPY": 0.069,
+          "winRateVsSPY": 52.7,
+          "infoRatio": 0.005,
+          "t": 0.15,
+          "p": 0.8795
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "bbtc=BUY": {
+        "full": {
+          "n": 5929,
+          "meanExcessVsSPY": 1.383,
+          "winRateVsSPY": 51.8,
+          "infoRatio": 0.107,
+          "t": 8.28,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 2091,
+          "meanExcessVsSPY": 0.026,
+          "winRateVsSPY": 48.6,
+          "infoRatio": 0.002,
+          "t": 0.1,
+          "p": 0.9166
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "ver=BUY": {
+        "full": {
+          "n": 249,
+          "meanExcessVsSPY": 1.866,
+          "winRateVsSPY": 56.2,
+          "infoRatio": 0.144,
+          "t": 2.28,
+          "p": 0.0228
+        },
+        "oos": {
+          "n": 73,
+          "meanExcessVsSPY": 2.188,
+          "winRateVsSPY": 61.6,
+          "infoRatio": 0.162,
+          "t": 1.38,
+          "p": 0.1668
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "bbtc=SELL": {
+        "full": {
+          "n": 3957,
+          "meanExcessVsSPY": -1.792,
+          "winRateVsSPY": 46.6,
+          "infoRatio": -0.133,
+          "t": -8.37,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1417,
+          "meanExcessVsSPY": -0.844,
+          "winRateVsSPY": 49.2,
+          "infoRatio": -0.064,
+          "t": -2.4,
+          "p": 0.0163
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "ver=SELL": {
+        "full": {
+          "n": 254,
+          "meanExcessVsSPY": -1.571,
+          "winRateVsSPY": 50.4,
+          "infoRatio": -0.094,
+          "t": -1.49,
+          "p": 0.1354
+        },
+        "oos": {
+          "n": 84,
+          "meanExcessVsSPY": -0.173,
+          "winRateVsSPY": 51.2,
+          "infoRatio": -0.011,
+          "t": -0.1,
+          "p": 0.9187
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "rsi<30 (oversold\u2192long)": {
+        "full": {
+          "n": 1421,
+          "meanExcessVsSPY": 1.716,
+          "winRateVsSPY": 55.0,
+          "infoRatio": 0.133,
+          "t": 5.0,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 511,
+          "meanExcessVsSPY": 2.051,
+          "winRateVsSPY": 57.9,
+          "infoRatio": 0.15,
+          "t": 3.38,
+          "p": 0.0007
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "rsi>70 (overbought\u2192short)": {
+        "full": {
+          "n": 2287,
+          "meanExcessVsSPY": -1.784,
+          "winRateVsSPY": 46.5,
+          "infoRatio": -0.137,
+          "t": -6.54,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 719,
+          "meanExcessVsSPY": -0.002,
+          "winRateVsSPY": 50.5,
+          "infoRatio": -0.0,
+          "t": -0.01,
+          "p": 0.9954
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "vol_ratio>1.5 (long)": {
+        "full": {
+          "n": 1271,
+          "meanExcessVsSPY": 1.909,
+          "winRateVsSPY": 51.0,
+          "infoRatio": 0.128,
+          "t": 4.57,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 420,
+          "meanExcessVsSPY": 0.869,
+          "winRateVsSPY": 50.7,
+          "infoRatio": 0.064,
+          "t": 1.32,
+          "p": 0.1881
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      }
+    },
+    "90d": {
+      "signal=STRONG_BUY": {
+        "full": {
+          "n": 4230,
+          "meanExcessVsSPY": 3.626,
+          "winRateVsSPY": 47.7,
+          "infoRatio": 0.132,
+          "t": 8.56,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1183,
+          "meanExcessVsSPY": 0.089,
+          "winRateVsSPY": 47.7,
+          "infoRatio": 0.004,
+          "t": 0.15,
+          "p": 0.8817
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "signal=BUY": {
+        "full": {
+          "n": 3098,
+          "meanExcessVsSPY": 3.655,
+          "winRateVsSPY": 48.7,
+          "infoRatio": 0.139,
+          "t": 7.75,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 818,
+          "meanExcessVsSPY": -2.027,
+          "winRateVsSPY": 40.8,
+          "infoRatio": -0.092,
+          "t": -2.62,
+          "p": 0.0087
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "NO-GO"
+      },
+      "signal=SELL": {
+        "full": {
+          "n": 2554,
+          "meanExcessVsSPY": -5.804,
+          "winRateVsSPY": 45.6,
+          "infoRatio": -0.239,
+          "t": -12.09,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 571,
+          "meanExcessVsSPY": 2.376,
+          "winRateVsSPY": 59.9,
+          "infoRatio": 0.109,
+          "t": 2.6,
+          "p": 0.0093
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "signal=STRONG_SELL": {
+        "full": {
+          "n": 1965,
+          "meanExcessVsSPY": -8.449,
+          "winRateVsSPY": 38.6,
+          "infoRatio": -0.336,
+          "t": -14.92,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 398,
+          "meanExcessVsSPY": 2.877,
+          "winRateVsSPY": 62.3,
+          "infoRatio": 0.139,
+          "t": 2.78,
+          "p": 0.0054
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "bbtc=BUY": {
+        "full": {
+          "n": 5159,
+          "meanExcessVsSPY": 4.101,
+          "winRateVsSPY": 49.6,
+          "infoRatio": 0.151,
+          "t": 10.87,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 1321,
+          "meanExcessVsSPY": -0.033,
+          "winRateVsSPY": 47.0,
+          "infoRatio": -0.002,
+          "t": -0.06,
+          "p": 0.9541
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "NO-GO"
+      },
+      "ver=BUY": {
+        "full": {
+          "n": 212,
+          "meanExcessVsSPY": 10.831,
+          "winRateVsSPY": 63.7,
+          "infoRatio": 0.408,
+          "t": 5.94,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 36,
+          "meanExcessVsSPY": 1.67,
+          "winRateVsSPY": 41.7,
+          "infoRatio": 0.081,
+          "t": 0.48,
+          "p": 0.628
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "bbtc=SELL": {
+        "full": {
+          "n": 3313,
+          "meanExcessVsSPY": -7.223,
+          "winRateVsSPY": 42.6,
+          "infoRatio": -0.285,
+          "t": -16.42,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 773,
+          "meanExcessVsSPY": 2.27,
+          "winRateVsSPY": 59.8,
+          "infoRatio": 0.108,
+          "t": 2.99,
+          "p": 0.0028
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "ver=SELL": {
+        "full": {
+          "n": 227,
+          "meanExcessVsSPY": -7.093,
+          "winRateVsSPY": 49.8,
+          "infoRatio": -0.228,
+          "t": -3.44,
+          "p": 0.0006
+        },
+        "oos": {
+          "n": 57,
+          "meanExcessVsSPY": -5.951,
+          "winRateVsSPY": 47.4,
+          "infoRatio": -0.243,
+          "t": -1.84,
+          "p": 0.0662
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "rsi<30 (oversold\u2192long)": {
+        "full": {
+          "n": 1177,
+          "meanExcessVsSPY": 9.263,
+          "winRateVsSPY": 62.3,
+          "infoRatio": 0.357,
+          "t": 12.25,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 267,
+          "meanExcessVsSPY": 2.685,
+          "winRateVsSPY": 48.3,
+          "infoRatio": 0.108,
+          "t": 1.76,
+          "p": 0.0776
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      },
+      "rsi>70 (overbought\u2192short)": {
+        "full": {
+          "n": 1982,
+          "meanExcessVsSPY": -5.623,
+          "winRateVsSPY": 48.6,
+          "infoRatio": -0.19,
+          "t": -8.46,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 414,
+          "meanExcessVsSPY": -4.523,
+          "winRateVsSPY": 45.4,
+          "infoRatio": -0.22,
+          "t": -4.47,
+          "p": 0.0
+        },
+        "survivesMultipleTesting": false,
+        "verdict": "NO-GO"
+      },
+      "vol_ratio>1.5 (long)": {
+        "full": {
+          "n": 1107,
+          "meanExcessVsSPY": 7.011,
+          "winRateVsSPY": 54.1,
+          "infoRatio": 0.247,
+          "t": 8.21,
+          "p": 0.0
+        },
+        "oos": {
+          "n": 256,
+          "meanExcessVsSPY": 1.061,
+          "winRateVsSPY": 45.7,
+          "infoRatio": 0.046,
+          "t": 0.74,
+          "p": 0.4619
+        },
+        "survivesMultipleTesting": true,
+        "verdict": "GO"
+      }
+    }
+  },
+  "correlation": {
+    "signal_dir": {
+      "signal_dir": 1.0,
+      "score": 0.9,
+      "rsi": 0.64,
+      "vol_ratio": -0.02,
+      "bbtc_dir": 0.82,
+      "ver_dir": -0.11
+    },
+    "score": {
+      "signal_dir": 0.9,
+      "score": 1.0,
+      "rsi": 0.7,
+      "vol_ratio": -0.05,
+      "bbtc_dir": 0.91,
+      "ver_dir": -0.04
+    },
+    "rsi": {
+      "signal_dir": 0.64,
+      "score": 0.7,
+      "rsi": 1.0,
+      "vol_ratio": -0.05,
+      "bbtc_dir": 0.78,
+      "ver_dir": -0.31
+    },
+    "vol_ratio": {
+      "signal_dir": -0.02,
+      "score": -0.05,
+      "rsi": -0.05,
+      "vol_ratio": 1.0,
+      "bbtc_dir": -0.05,
+      "ver_dir": 0.02
+    },
+    "bbtc_dir": {
+      "signal_dir": 0.82,
+      "score": 0.91,
+      "rsi": 0.78,
+      "vol_ratio": -0.05,
+      "bbtc_dir": 1.0,
+      "ver_dir": -0.22
+    },
+    "ver_dir": {
+      "signal_dir": -0.11,
+      "score": -0.04,
+      "rsi": -0.31,
+      "vol_ratio": 0.02,
+      "bbtc_dir": -0.22,
+      "ver_dir": 1.0
+    }
+  }
+}
