@@ -2,6 +2,8 @@ import { TrendingUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { formatPercent, getChangeColor, formatCurrency } from "@/lib/format";
 import { useTimeframe, TIMEFRAME_LABELS } from "@/contexts/TimeframeContext";
+import { useTicker } from "@/contexts/TickerContext";
+import { ReverseSplitBadge } from "@/components/ReverseSplitBadge";
 
 interface PerformanceProps {
   data: any;
@@ -36,14 +38,20 @@ function CustomTooltip({ active, payload, label }: any) {
 export function Performance({ data }: PerformanceProps) {
   const { historicalReturns, chartData } = data;
   const { timeframe } = useTimeframe();
+  const { activeTicker } = useTicker();
   const tfLabel = TIMEFRAME_LABELS[timeframe];
 
   return (
     <div className="bg-card border border-card-border rounded-lg p-6" data-testid="performance">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
-        <TrendingUp className="h-4 w-4" />
-        Performance
-      </h3>
+      {/* Reverse-split warning sits right next to the returns it explains —
+          a split-adjusted "5-Year Return" can look like a total collapse. */}
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" />
+          Performance
+        </h3>
+        <ReverseSplitBadge symbol={activeTicker} />
+      </div>
 
       {/* Returns Table */}
       <div className="mb-6">

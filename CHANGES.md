@@ -31,6 +31,10 @@ isn't mistaken for a real past price.
   when there's no qualifying reverse split, so it drops into any ticker header. Wired into the
   global ticker header in `AppLayout.tsx` so it shows on **every** page when a flagged ticker is
   active (covers chart, verdict, scanner, etc. in one place).
+- **Follow-up (same day):** the top-header badge was easy to miss, so the same component is now
+  also rendered in the **Performance card header** on the Profile page (`Performance.tsx`) —
+  top-right, right beside the 1/3/5-Year Return rows and price chart it explains. Same
+  self-contained component, no duplication.
 
 ---
 ## 2026-06-03 — Research nav → scientific funnel (Regime→Screen→Company→Setup→Decision)
