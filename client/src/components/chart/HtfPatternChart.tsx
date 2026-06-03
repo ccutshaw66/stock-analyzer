@@ -191,12 +191,13 @@ export function HtfPatternChart({ symbol }: { symbol: string }) {
       {q.data.annotation && (
         <PatternStatBar a={q.data.annotation} />
       )}
-      <div className="h-[480px] w-full rounded-md border border-border bg-card">
+      <div className="h-[620px] w-full rounded-md border border-border bg-card">
         <CandlePane
           bars={bars}
           overlays={overlays}
           markers={markers}
           priceLines={priceLines}
+          subPanes={{ macd: true, rsi: true }}
         />
       </div>
       <ChartLegend />

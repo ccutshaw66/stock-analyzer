@@ -988,13 +988,15 @@ export default function TradeAnalysis() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="h-80">
+              <div className="h-[520px]">
                 {/* TV-style candle pane via the shared primitive. Overlays + signal markers
-                    come from declarative config — no per-page Recharts plumbing. */}
+                    come from declarative config — no per-page Recharts plumbing. MACD/RSI
+                    render as synced sub-panes (CandlePane computes them from these bars). */}
                 <CandlePane
                   bars={chartDataWithFilter ?? []}
                   overlays={emaOverlays(emaState)}
                   markers={buildTradeAnalysisMarkers(chartDataWithFilter, chartSideFilter)}
+                  subPanes={{ macd: true, rsi: true }}
                   testId="trade-analysis-candle-pane"
                 />
               </div>

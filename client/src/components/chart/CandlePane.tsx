@@ -67,6 +67,7 @@ import {
 } from "@/lib/design-tokens";
 import otterMascot from "@/assets/icon.png";
 import type { ChartBar, LineOverlay, ChartMarker, PriceLine } from "./types";
+import { computeChartOscillators } from "./oscillators";
 
 export interface CandlePaneProps {
   /** Bars to render. */
@@ -344,6 +345,16 @@ export function CandlePane({
       return out.sort((a, b) => (a.time as number) - (b.time as number));
     };
 
+    // If the chart's bars already carry rsi/macd* (e.g. /api/chart), use them;
+    // otherwise compute from closes (same math) so `subPanes` is plug-and-play
+    // on ANY chart with no data plumbing. Identical bars → identical oscillators.
+    const closes = bars.map(b => b.close);
+    const needCompute =
+      !bars.some(b => typeof b.macd === "number") || !bars.some(b => typeof b.rsi === "number");
+    const computed = needCompute ? computeChartOscillators(closes) : null;
+    const pick = (raw: number | string | undefined, fb: number | undefined): number =>
+      typeof raw === "number" ? raw : (typeof fb === "number" ? fb : NaN);
+
     // ── MACD pane ──
     if (wantMacd) {
       if (!macdHistRef.current) {
@@ -364,13 +375,15 @@ export function CandlePane({
       const hist: Array<{ time: Time; value: number; color?: string }> = [];
       const macdL: Array<{ time: Time; value: number }> = [];
       const sigL: Array<{ time: Time; value: number }> = [];
-      for (const b of bars) {
+      bars.forEach((b, i) => {
         const t = dateToTime(b.date);
-        const h = b.macdHist, m = b.macd, s = b.macdSignal;
-        if (typeof h === "number" && !isNaN(h)) hist.push({ time: t, value: h, color: h >= 0 ? OVERLAY_BULL_40 : OVERLAY_BEAR_40 });
-        if (typeof m === "number" && !isNaN(m)) macdL.push({ time: t, value: m });
-        if (typeof s === "number" && !isNaN(s)) sigL.push({ time: t, value: s });
-      }
+        const h = pick(b.macdHist, computed?.macdHist[i]);
+        const m = pick(b.macd, computed?.macd[i]);
+        const s = pick(b.macdSignal, computed?.macdSignal[i]);
+        if (!isNaN(h)) hist.push({ time: t, value: h, color: h >= 0 ? OVERLAY_BULL_40 : OVERLAY_BEAR_40 });
+        if (!isNaN(m)) macdL.push({ time: t, value: m });
+        if (!isNaN(s)) sigL.push({ time: t, value: s });
+      });
       macdHistRef.current.setData(dedupe(hist));
       macdLineRef.current.setData(dedupe(macdL));
       macdSignalRef.current.setData(dedupe(sigL));
@@ -391,11 +404,11 @@ export function CandlePane({
         rsiLineRef.current.createPriceLine({ price: 30, color: SIGNAL_BULL, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" });
       }
       const rsi: Array<{ time: Time; value: number }> = [];
-      for (const b of bars) {
+      bars.forEach((b, i) => {
         const t = dateToTime(b.date);
-        const r = b.rsi;
-        if (typeof r === "number" && !isNaN(r)) rsi.push({ time: t, value: r });
-      }
+        const r = pick(b.rsi, computed?.rsi[i]);
+        if (!isNaN(r)) rsi.push({ time: t, value: r });
+      });
       rsiLineRef.current.setData(dedupe(rsi));
     } else {
       if (rsiLineRef.current) { chart.removeSeries(rsiLineRef.current); rsiLineRef.current = null; }

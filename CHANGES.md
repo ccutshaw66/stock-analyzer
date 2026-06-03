@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — MACD/RSI sub-panes on Trade Analysis + HTF pattern chart (plug-and-play)
+
+**Why:** The synced MACD/RSI sub-panes shipped on `/chart` were a hit. Roll the same treatment
+to the other two charts that use the canonical `CandlePane` — Trade Analysis and the HTF pattern
+chart — without per-chart data plumbing.
+
+**What changed:**
+- **`client/src/components/chart/oscillators.ts`** (new) — `computeChartOscillators(closes)`:
+  RSI(14) + MACD(12,26,9), math mirroring the server's `chart-data.ts` exactly.
+- **`client/src/components/chart/CandlePane.tsx`** — the `subPanes` MACD/RSI panes now use a
+  bar's own `rsi`/`macd*` fields when present (e.g. `/api/chart`) and **fall back to computing
+  them from the bars' closes when absent**. So `subPanes={{ macd, rsi }}` is now truly
+  plug-and-play on ANY chart — no endpoint changes needed. Same bars → identical oscillators
+  (verified: client RSI/MACD match the server's on AAPL).
+- **`client/src/pages/trade-analysis.tsx`** + **`client/src/components/chart/HtfPatternChart.tsx`**
+  — enabled `subPanes={{ macd: true, rsi: true }}` and gave each pane room. MACD/RSI now ride the
+  candle's single time scale, so they pan/zoom in lockstep (same as `/chart`).
+- `npm run build` passes.
+
+---
 ## 2026-06-03 — Scanner accuracy: decouple detector lookback from fetch window + demote Rounding Bottom
 
 **Why:** We considered bumping the scanner's history window to 10y. An out-of-sample,
