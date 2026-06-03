@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Chart: MACD/RSI now live INSIDE the candle chart and pan with it
+
+**Why:** On `/chart` the MACD/RSI oscillator was a separate component fetching its OWN
+60-bar feed (`/api/scanner-v2/indicators`), disconnected from the candle. Two problems Chris
+hit: (1) panning/zooming the candlestick chart did nothing to the RSI/MACD — they were static,
+because they were a different render on a different data pull; (2) it violated "one source of
+truth" — the oscillator could show different history than the candle for the same ticker.
+
+**What changed:**
+- **Server** `server/diag/chart-data.ts` — `/api/chart` now emits `rsi`, `macd`, `macdSignal`,
+  `macdHist` on every bar, computed from the SAME `closes` the candle uses (added
+  `computeMACDFull`; `computeMACDHistogram` now delegates to it). Verified against live FMP
+  (AAPL: 390/390 bars carry RSI+MACD, histogram == macd − signal, RSI in range).
+- **Client** `client/src/components/chart/CandlePane.tsx` — new optional `subPanes={{ macd, rsi }}`
+  prop renders MACD (histogram + MACD/signal lines) and RSI(14, with 30/50/70 rails) as sub-panes
+  INSIDE the same Lightweight-Charts instance. One shared time scale ⇒ they pan/zoom in lockstep
+  with the candles and read the same `bars`. Additive — existing single-pane callers unaffected.
+- **Client** `client/src/pages/chart.tsx` — enabled the sub-panes on the strategy chart (taller
+  pane) and removed the standalone disconnected `IndicatorOscillator` from the Confluence card.
+  (The oscillator component stays for the scanner cards that still use it.)
+- `.gitignore` — added `env.txt` so the local key file can never be committed.
+- `npm run build` passes.
+
+---
 ## 2026-06-03 — HERMES compartment: convert raw Tailwind palette to design tokens
 
 **Why:** The HERMES dashboard widget and full view predate the design-tokens-everywhere rule and

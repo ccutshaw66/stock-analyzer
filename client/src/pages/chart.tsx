@@ -40,7 +40,6 @@ import { PageTemplate } from "@/components/PageTemplate";
 import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
 // Merged from the old Confluence Chart page (one Chart page now): MACD/RSI
 // oscillator + the multi-signal confluence dashboard, fed by useConfluenceChart.
-import { IndicatorOscillator } from "@/components/IndicatorOscillator";
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
 import { useConfluenceChart } from "@/compartments/confluence-chart/useConfluenceChart";
 import { FlaskConical, TrendingUp, TrendingDown, Target, ArrowUpDown, ArrowUp, ArrowDown, Layers } from "lucide-react";
@@ -415,11 +414,12 @@ function StrategyChart({ data, highlightedTradeNum }: {
       <div className="flex justify-end mb-2">
         <EmaToggleStrip state={emaState} onChange={setEmaState} />
       </div>
-      <div className="relative" style={{ height: 420 }}>
+      <div className="relative" style={{ height: 560 }}>
         <CandlePane
           bars={data.bars}
           overlays={emaOverlays(emaState)}
           markers={markers}
+          subPanes={{ macd: true, rsi: true }}
           testId="strategy-chart-candle-pane"
         />
       </div>
@@ -807,19 +807,17 @@ export default function ChartPage() {
             </CardContent>
           </Card>
 
-          {/* Indicators & Confluence — merged from the old Confluence Chart.
-              MACD/RSI momentum read + the multi-signal confluence dashboard. */}
+          {/* Confluence dashboard — multi-signal read. MACD/RSI now live IN the
+              main chart as synced sub-panes (same bars, pan together), so the
+              old standalone 60-bar oscillator was removed from here. */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Layers className="h-4 w-4" />
-                Indicators &amp; Confluence
+                Confluence
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3 space-y-3">
-              <div className="flex justify-center">
-                <IndicatorOscillator ticker={activeTicker ?? ""} bars={60} />
-              </div>
               <ConfluenceDashboardPanel bars={conf.bars} indicators={conf.indicators} quick={conf.quick} />
             </CardContent>
           </Card>

@@ -8,6 +8,7 @@ vite.config.ts.*
 *.db-shm
 *.db-wal
 .env
+env.txt
 data.db
 data/long-range-cache/
 data/htf-ohlcv-cache/

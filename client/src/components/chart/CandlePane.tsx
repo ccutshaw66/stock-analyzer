@@ -60,6 +60,10 @@ import {
   OVERLAY_BULL_40,
   OVERLAY_BEAR_40,
   OVERLAY_NEUTRAL_8,
+  CHART_RSI,
+  SIGNAL_WATCH_SHORT,
+  SIGNAL_SHORT_ADD,
+  CHART_AXIS_LINE,
 } from "@/lib/design-tokens";
 import otterMascot from "@/assets/icon.png";
 import type { ChartBar, LineOverlay, ChartMarker, PriceLine } from "./types";
@@ -77,6 +81,12 @@ export interface CandlePaneProps {
   showVolume?: boolean;
   /** Show the otter watermark in the corner. Default true. */
   showWatermark?: boolean;
+  /**
+   * Momentum oscillator sub-panes rendered INSIDE this chart (one shared time
+   * scale → they pan/zoom in lockstep with the candles, from the same bars).
+   * Reads `bar.macd` / `bar.macdSignal` / `bar.macdHist` and `bar.rsi`.
+   */
+  subPanes?: { macd?: boolean; rsi?: boolean };
   /** Test ID — defaults to "candle-pane". Override for multi-pane pages. */
   testId?: string;
 }
@@ -95,6 +105,7 @@ export function CandlePane({
   priceLines = [],
   showVolume = true,
   showWatermark = true,
+  subPanes,
   testId = "candle-pane",
 }: CandlePaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,6 +119,11 @@ export function CandlePane({
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   /** Active price-line handles so we can remove them on re-render. */
   const priceLineRefs = useRef<IPriceLine[]>([]);
+  /** Oscillator sub-pane series (MACD pane + RSI pane), created on demand. */
+  const macdHistRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const macdLineRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const macdSignalRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsiLineRef = useRef<ISeriesApi<"Line"> | null>(null);
 
   // Initialize chart once. All data updates flow through refs.
   useEffect(() => {
@@ -178,6 +194,10 @@ export function CandlePane({
       volumeSeriesRef.current = null;
       overlaySeriesRef.current = {};
       markersPluginRef.current = null;
+      macdHistRef.current = null;
+      macdLineRef.current = null;
+      macdSignalRef.current = null;
+      rsiLineRef.current = null;
     };
   }, [showVolume]);
 
@@ -298,6 +318,98 @@ export function CandlePane({
       .sort((a, b) => (a.time as number) - (b.time as number));
     markersPluginRef.current.setMarkers(seriesMarkers);
   }, [markers]);
+
+  // Oscillator sub-panes (MACD + RSI) drawn INSIDE this chart. They live on
+  // their own pane indices but share the candle's single time scale, so
+  // panning/zooming the candles moves them in lockstep — and they read the
+  // SAME `bars` (bar.macd* / bar.rsi), never a separate fetch.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const wantMacd = !!subPanes?.macd;
+    const wantRsi = !!subPanes?.rsi;
+    const macdPane = 1;
+    const rsiPane = wantMacd ? 2 : 1;
+
+    const dedupe = (rows: Array<{ time: Time; value: number; color?: string }>) => {
+      const seen = new Set<number>();
+      const out: typeof rows = [];
+      for (const r of rows) {
+        const k = r.time as unknown as number;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(r);
+      }
+      return out.sort((a, b) => (a.time as number) - (b.time as number));
+    };
+
+    // ── MACD pane ──
+    if (wantMacd) {
+      if (!macdHistRef.current) {
+        macdHistRef.current = chart.addSeries(HistogramSeries, {
+          priceLineVisible: false, lastValueVisible: false,
+        }, macdPane);
+      }
+      if (!macdLineRef.current) {
+        macdLineRef.current = chart.addSeries(LineSeries, {
+          color: CHART_RSI, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: "MACD",
+        }, macdPane);
+      }
+      if (!macdSignalRef.current) {
+        macdSignalRef.current = chart.addSeries(LineSeries, {
+          color: SIGNAL_WATCH_SHORT, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: "Signal",
+        }, macdPane);
+      }
+      const hist: Array<{ time: Time; value: number; color?: string }> = [];
+      const macdL: Array<{ time: Time; value: number }> = [];
+      const sigL: Array<{ time: Time; value: number }> = [];
+      for (const b of bars) {
+        const t = dateToTime(b.date);
+        const h = b.macdHist, m = b.macd, s = b.macdSignal;
+        if (typeof h === "number" && !isNaN(h)) hist.push({ time: t, value: h, color: h >= 0 ? OVERLAY_BULL_40 : OVERLAY_BEAR_40 });
+        if (typeof m === "number" && !isNaN(m)) macdL.push({ time: t, value: m });
+        if (typeof s === "number" && !isNaN(s)) sigL.push({ time: t, value: s });
+      }
+      macdHistRef.current.setData(dedupe(hist));
+      macdLineRef.current.setData(dedupe(macdL));
+      macdSignalRef.current.setData(dedupe(sigL));
+    } else {
+      if (macdHistRef.current) { chart.removeSeries(macdHistRef.current); macdHistRef.current = null; }
+      if (macdLineRef.current) { chart.removeSeries(macdLineRef.current); macdLineRef.current = null; }
+      if (macdSignalRef.current) { chart.removeSeries(macdSignalRef.current); macdSignalRef.current = null; }
+    }
+
+    // ── RSI pane ──
+    if (wantRsi) {
+      if (!rsiLineRef.current) {
+        rsiLineRef.current = chart.addSeries(LineSeries, {
+          color: SIGNAL_SHORT_ADD, lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: "RSI",
+        }, rsiPane);
+        rsiLineRef.current.createPriceLine({ price: 70, color: SIGNAL_BEAR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" });
+        rsiLineRef.current.createPriceLine({ price: 50, color: CHART_AXIS_LINE, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: false, title: "" });
+        rsiLineRef.current.createPriceLine({ price: 30, color: SIGNAL_BULL, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" });
+      }
+      const rsi: Array<{ time: Time; value: number }> = [];
+      for (const b of bars) {
+        const t = dateToTime(b.date);
+        const r = b.rsi;
+        if (typeof r === "number" && !isNaN(r)) rsi.push({ time: t, value: r });
+      }
+      rsiLineRef.current.setData(dedupe(rsi));
+    } else {
+      if (rsiLineRef.current) { chart.removeSeries(rsiLineRef.current); rsiLineRef.current = null; }
+    }
+
+    // Price pane keeps the lion's share; each oscillator gets a slim strip.
+    if (wantMacd || wantRsi) {
+      const panes = chart.panes();
+      panes[0]?.setStretchFactor(3);
+      if (wantMacd) panes[macdPane]?.setStretchFactor(1);
+      if (wantRsi) panes[rsiPane]?.setStretchFactor(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bars, subPanes?.macd, subPanes?.rsi]);
 
   // Sync horizontal price lines. Each call removes the old set and creates
   // fresh ones — small N (typically <10), so the cost is negligible. Drawn

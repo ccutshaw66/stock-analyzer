@@ -113,21 +113,30 @@ function computeVolAvg(volumes: number[], period: number): number[] {
   }
   return out;
 }
-function computeMACDHistogram(closes: number[]): number[] {
+/**
+ * Full MACD(12,26,9) — returns the MACD line, signal line, and histogram
+ * as three aligned series. One computation so the chart's MACD pane and any
+ * histogram consumer read identical numbers (single source of truth).
+ */
+function computeMACDFull(closes: number[]): { macd: number[]; signal: number[]; hist: number[] } {
   const ema12 = computeEMA(closes, 12);
   const ema26 = computeEMA(closes, 26);
-  const macdLine = closes.map((_, i) =>
+  const macd = closes.map((_, i) =>
     !isNaN(ema12[i]) && !isNaN(ema26[i]) ? ema12[i] - ema26[i] : NaN,
   );
   const validMacd: number[] = [];
   const validIdx: number[] = [];
-  macdLine.forEach((v, i) => { if (!isNaN(v)) { validMacd.push(v); validIdx.push(i); } });
+  macd.forEach((v, i) => { if (!isNaN(v)) { validMacd.push(v); validIdx.push(i); } });
   const sigEma = computeEMA(validMacd, 9);
   const signal = new Array(closes.length).fill(NaN);
   validIdx.forEach((idx, j) => { signal[idx] = sigEma[j]; });
-  return closes.map((_, i) =>
-    !isNaN(macdLine[i]) && !isNaN(signal[i]) ? macdLine[i] - signal[i] : NaN,
+  const hist = closes.map((_, i) =>
+    !isNaN(macd[i]) && !isNaN(signal[i]) ? macd[i] - signal[i] : NaN,
   );
+  return { macd, signal, hist };
+}
+function computeMACDHistogram(closes: number[]): number[] {
+  return computeMACDFull(closes).hist;
 }
 function computeVAMIScaled(closes: number[], volumes: number[]): number[] {
   const vami = new Array(closes.length).fill(0);
@@ -196,6 +205,13 @@ export interface ChartBar {
   ema21?: number | null;
   ema50?: number | null;
   sma200?: number | null;
+  // Momentum oscillators — emitted so the chart's MACD/RSI sub-panes render
+  // from the SAME bars as the candle (no separate fetch, no drift). RSI(14),
+  // MACD(12,26,9).
+  rsi?: number | null;
+  macd?: number | null;
+  macdSignal?: number | null;
+  macdHist?: number | null;
 }
 
 export interface ChartSignalDot {
@@ -860,10 +876,15 @@ export async function getChartData(
   const ema21Series = computeEMA(bars.close, EMA_MID);
   const ema50Series = computeEMA(bars.close, EMA_SLOW);
   const sma200Series = computeSMA(bars.close, SMA_TREND_PERIOD);
+  // Oscillators off the SAME closes — emitted per bar so the chart's MACD/RSI
+  // sub-panes render from this one series (not a separate 60-bar fetch).
+  const rsiSeries = computeRSI(bars.close, RSI_PERIOD);
+  const macdFull = computeMACDFull(bars.close);
 
   // Bars for display (sliced).
   const displayBars: ChartBar[] = [];
   const finite = (v: number) => (isNaN(v) ? null : Number(v.toFixed(2)));
+  const finite4 = (v: number) => (isNaN(v) ? null : Number(v.toFixed(4)));
   for (let i = startIdx; i < bars.close.length; i++) {
     displayBars.push({
       date: bars.date[i],
@@ -876,6 +897,10 @@ export async function getChartData(
       ema21: finite(ema21Series[i]),
       ema50: finite(ema50Series[i]),
       sma200: finite(sma200Series[i]),
+      rsi: finite(rsiSeries[i]),
+      macd: finite4(macdFull.macd[i]),
+      macdSignal: finite4(macdFull.signal[i]),
+      macdHist: finite4(macdFull.hist[i]),
     });
   }
 
