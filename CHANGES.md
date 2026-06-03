@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — One bar source: scanner + chart read the same cache (no more cross-page drift)
+
+**Why:** The chart endpoint and the unified scanner each fetched their own price bars
+straight from FMP with their own lookback windows, bypassing the canonical `getHtfBars`
+cache. Same ticker, different bars → indicators could disagree page-to-page (Chris: "none
+should grab any different histories — it should all come from the same data"). This was the
+last remaining drift vector after the RSI/indicator MATH was already unified.
+
+**What changed:**
+- **`server/data/htf-ohlcv-cache.ts` — `getHtfBars` is now lookback-aware.** One cache entry
+  holds the LARGEST window any caller has needed (high-water mark); each caller is served a
+  slice matching EXACTLY what a direct FMP fetch of its own `lookbackDays` would return (same
+  `from` boundary, by date string). So every surface reads from ONE underlying series while
+  keeping its own window size — no behavior change for existing callers, just one source.
+- **`server/diag/chart-data.ts`** (the `/chart` page) — now pulls bars via `getHtfBars`
+  (window `days+350`, unchanged) instead of its own FMP fetch.
+- **`server/compartments/unified-scanner/warmup.ts`** (the `/scanner`) — now pulls bars via
+  `getHtfBars` (window `1100+250≈3.7y`, unchanged) instead of its own FMP fetch.
+- **Verified (live FMP, byte-level):** `getHtfBars(D)` sliced from the shared cache is
+  IDENTICAL to a direct fetch of D days across every caller window (2175 / 1350 / 380 / 365)
+  on AAPL, F, PLUG — 12/12 bars identical. `getChartData` end-to-end unchanged except the
+  live current-day bar's price (expected). `npm run build` passes.
+- **Note:** the nightly market-wide scanner warmup now persists bars into the shared disk
+  cache for the tickers it scans (it was cache-less before) — modestly more disk, in exchange
+  for a warm shared cache and zero cross-page drift.
+
+---
 ## 2026-06-03 — Chart: MACD/RSI now live INSIDE the candle chart and pan with it
 
 **Why:** On `/chart` the MACD/RSI oscillator was a separate component fetching its OWN

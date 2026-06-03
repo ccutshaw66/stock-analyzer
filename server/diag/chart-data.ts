@@ -17,7 +17,7 @@
  * Used by `GET /api/chart/:ticker`.
  */
 
-import { fmpGet } from "../data/providers/fmp.client";
+import { getHtfBars } from "../data/htf-ohlcv-cache";
 import { computeBBTC, type BBTCSignal, type BBTCSignalSide } from "../signals/strategies/bbtc";
 import { computeVER, type VERSignal, type VERSignalSide } from "../signals/strategies/ver";
 import { scoreAMC, type AMCInput } from "../signals/strategies/amc";
@@ -164,30 +164,25 @@ interface Bars {
 }
 
 async function fetchBars(symbol: string, days: number): Promise<Bars | null> {
-  try {
-    const to = new Date().toISOString().slice(0, 10);
-    // Generous warmup for SMA200/40W weekly etc.
-    const from = new Date(Date.now() - (days + 350) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const data: any = await fmpGet("/historical-price-eod/full", { symbol, from, to });
-    const arr: any[] = Array.isArray(data) ? data : (data?.historical || []);
-    if (arr.length < 60) return null;
-    const sorted = [...arr].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const date: string[] = [];
-    const open: number[] = [];
-    const high: number[] = [];
-    const low: number[] = [];
-    const close: number[] = [];
-    const volume: number[] = [];
-    for (const r of sorted) {
-      const o = Number(r.open), h = Number(r.high), l = Number(r.low), c = Number(r.close), v = Number(r.volume);
-      if (!Number.isFinite(c)) continue;
-      date.push(String(r.date));
-      open.push(o); high.push(h); low.push(l); close.push(c); volume.push(Number.isFinite(v) ? v : 0);
-    }
-    return { date, open, high, low, close, volume };
-  } catch {
-    return null;
+  // ONE shared bar source: the canonical getHtfBars disk cache. Request the
+  // same generous warmup window the chart used before (days + 350 for
+  // SMA200 / 40W weekly) so the output is identical — just served from the
+  // unified cache instead of a private FMP fetch (kills cross-page drift).
+  const ohlcv = await getHtfBars(symbol, { lookbackDays: days + 350 });
+  if (ohlcv.length < 60) return null;
+  const date: string[] = [];
+  const open: number[] = [];
+  const high: number[] = [];
+  const low: number[] = [];
+  const close: number[] = [];
+  const volume: number[] = [];
+  for (const b of ohlcv) {
+    if (!Number.isFinite(b.c)) continue;
+    date.push(b.t.toISOString().slice(0, 10));
+    open.push(b.o); high.push(b.h); low.push(b.l); close.push(b.c);
+    volume.push(Number.isFinite(b.v) ? b.v : 0);
   }
+  return { date, open, high, low, close, volume };
 }
 
 // ─── Response shape ────────────────────────────────────────────────────────

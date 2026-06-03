@@ -53,27 +53,58 @@ async function fetchBarsFromFmp(symbol: string, lookbackDays: number): Promise<O
   return bars;
 }
 
-function readFresh(symbol: string): OHLCV[] | null {
+// ── Window helpers (lookback-aware single source) ──────────────────────────
+// One cache entry holds the LARGEST window any caller has needed (high-water
+// mark); every caller is served a slice matching EXACTLY what a direct FMP
+// fetch of its own lookbackDays would return. So all surfaces (scanner, chart,
+// analyzer) read from ONE underlying series — no separate fetch, no drift —
+// while keeping their own window sizes.
+
+/** Slop so a weekend/holiday-truncated first bar isn't treated as a coverage miss. */
+const COVERAGE_SLOP_DAYS = 10;
+
+/** The `from` date string a direct fetch of `lookbackDays` would use. */
+function fromDateStr(lookbackDays: number): string {
+  return new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Calendar-day span from the earliest cached bar to now. */
+function coverageDaysOf(bars: OHLCV[]): number {
+  if (!bars.length) return 0;
+  return Math.floor((Date.now() - bars[0].t.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Slice a (superset) series down to exactly the window a direct FMP fetch of
+ * `lookbackDays` would return — same `from` boundary, compared by date string,
+ * so the output is identical to fetchBarsFromFmp(symbol, lookbackDays).
+ */
+function sliceToWindow(bars: OHLCV[], lookbackDays: number): OHLCV[] {
+  const from = fromDateStr(lookbackDays);
+  return bars.filter(b => b.t.toISOString().slice(0, 10) >= from);
+}
+
+function payloadToBars(payload: CachedBarsPayload | null | undefined): OHLCV[] | null {
+  if (!payload || !Array.isArray(payload.bars)) return null;
+  return payload.bars.map(b => ({ t: new Date(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }));
+}
+
+/** Cached bars within TTL whose coverage spans `neededDays`, sliced to it. */
+function readFresh(symbol: string, neededDays: number): OHLCV[] | null {
   const entry = readLongRange(symbol, HTF_RANGE, HTF_INTERVAL);
   if (!entry) return null;
   if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) return null;
-  const payload = entry.payload as CachedBarsPayload;
-  if (!payload || !Array.isArray(payload.bars)) return null;
-  return payload.bars.map(b => ({
-    t: new Date(b.t),
-    o: b.o, h: b.h, l: b.l, c: b.c, v: b.v,
-  }));
+  const bars = payloadToBars(entry.payload as CachedBarsPayload);
+  if (!bars) return null;
+  if (coverageDaysOf(bars) + COVERAGE_SLOP_DAYS < neededDays) return null; // not enough history cached
+  return sliceToWindow(bars, neededDays);
 }
 
-function readStale(symbol: string): OHLCV[] | null {
+/** Any cached bars (ignores TTL), unsliced — for high-water-mark + soft-fail. */
+function readAnyBars(symbol: string): OHLCV[] | null {
   const entry = readLongRange(symbol, HTF_RANGE, HTF_INTERVAL);
   if (!entry) return null;
-  const payload = entry.payload as CachedBarsPayload;
-  if (!payload || !Array.isArray(payload.bars)) return null;
-  return payload.bars.map(b => ({
-    t: new Date(b.t),
-    o: b.o, h: b.h, l: b.l, c: b.c, v: b.v,
-  }));
+  return payloadToBars(entry.payload as CachedBarsPayload);
 }
 
 function writeBars(symbol: string, bars: OHLCV[]): void {
@@ -104,21 +135,27 @@ export async function getHtfBars(
   symbol: string,
   opts: GetBarsOptions = {},
 ): Promise<OHLCV[]> {
-  const lookback = opts.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
+  const needed = opts.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
   const force = opts.forceRefresh ?? false;
 
   if (!force) {
-    const fresh = readFresh(symbol);
+    const fresh = readFresh(symbol, needed);
     if (fresh && fresh.length > 0) return fresh;
   }
 
+  // Never shrink the cached window below what's already there — keep the
+  // high-water mark so a small-window caller doesn't evict a big one's history.
+  const existing = readAnyBars(symbol);
+  const fetchDays = Math.max(needed, coverageDaysOf(existing ?? []));
+
   try {
-    const bars = await fetchBarsFromFmp(symbol, lookback);
+    const bars = await fetchBarsFromFmp(symbol, fetchDays);
     if (bars.length > 0) writeBars(symbol, bars);
-    return bars;
+    return sliceToWindow(bars, needed);
   } catch {
-    // Soft-fail: return any stale cached data if we have it, else empty.
-    return readStale(symbol) ?? [];
+    // Soft-fail: serve stale cache (sliced to the requested window) if present.
+    const stale = readAnyBars(symbol);
+    return stale ? sliceToWindow(stale, needed) : [];
   }
 }
 

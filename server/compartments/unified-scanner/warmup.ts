@@ -4,8 +4,8 @@
  * writes the full ScanHit[] to the disk cache under "market-all". The nightly
  * cron calls this; the route reads the cache and slices by user filters.
  */
-import { fmpGet } from "../../data/providers/fmp.client";
 import { fmpScreener } from "../../data/providers/fmp.adapter";
+import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import type { OHLCV } from "../../data/types";
 import type { ScanHit } from "@shared/scanner/types";
 import { MARKET_CAP_TIERS } from "@shared/scanner/types";
@@ -22,26 +22,13 @@ export function tierCacheKey(tierId: string): string {
 // detector (Rounding Bottom needs the most at ~750 bars) without the 10y
 // payload that made on-demand scans time out.
 async function fetchBars(symbol: string, days = 1100): Promise<OHLCV[] | null> {
-  try {
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - (days + 250) * 86_400_000).toISOString().slice(0, 10);
-    const data: any = await fmpGet("/historical-price-eod/full", { symbol, from, to });
-    const arr: any[] = Array.isArray(data) ? data : data?.historical || [];
-    if (arr.length < 250) return null;
-    const sorted = [...arr].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const out: OHLCV[] = [];
-    for (const r of sorted) {
-      const c = Number(r.close);
-      if (!Number.isFinite(c)) continue;
-      out.push({
-        t: new Date(r.date), o: Number(r.open), h: Number(r.high),
-        l: Number(r.low), c, v: Number.isFinite(Number(r.volume)) ? Number(r.volume) : 0,
-      });
-    }
-    return out;
-  } catch {
-    return null;
-  }
+  // ONE shared bar source: the canonical getHtfBars cache. Same window the
+  // warmup used before (days + 250 ≈ 3.7y — Rounding Bottom needs ~750 bars),
+  // so scan results are unchanged, just served from the unified cache so the
+  // scanner and chart can never disagree on the same ticker's bars.
+  const bars = await getHtfBars(symbol, { lookbackDays: days + 250 });
+  if (bars.length < 250) return null;
+  return bars;
 }
 
 const labelOf = (id: string) => getStrategyManifest(id).shortName;
