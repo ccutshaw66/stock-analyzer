@@ -890,7 +890,14 @@ const AMC_MANIFEST: StrategyManifest = {
   description: "5-condition momentum confluence — middle leg of Ready/Set/Go",
   color: "watch",
   requiresReason: false,
-  liveScan: { defaultOn: true },
+  // defaultOn:false as of 2026-06-03 — out-of-sample validation (weekly
+  // walk-forward, HTF universe, N=7,137) showed AMC significantly LOSES to SPY
+  // (median excess −0.96%/−2.27% at 20d/60d, t≈−5; 14.3% win vs 28.6% breakeven
+  // for its +2.5R/−1R payoff). It's also a single momentum vote (its 5
+  // conditions are all trend/momentum, correlated with HTF), so it can't even
+  // serve as an independent confluence confirmer. Code/detector retained and
+  // still toggle-able; re-enable only if a validated edge is established.
+  liveScan: { defaultOn: false },
   columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
   chartBacktest: {
     label: "AMC only",

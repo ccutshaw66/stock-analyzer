@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Demote AMC from default green GO (no out-of-sample edge)
+
+**Why:** Out-of-sample, SPY-relative, walk-forward validation (weekly steps, 66 HTF-universe
+$5–75 names, 2016–2026, **N=7,137 setups**) showed AMC **significantly loses to SPY**: median
+excess −0.96% / −2.27% at +20d / +60d, t-stat ≈ −5; 14.3% win rate vs the 28.6% breakeven its
++2.5R/−1R payoff needs (expectancy −0.26R). Large, well-powered sample — not a fluke. AMC was
+the scanner's most common green hit, so it was the biggest source of SPY-negative "GO"s. Its 5
+conditions are also all trend/momentum (correlated with HTF), so it can't serve as an
+independent confluence vote either.
+
+**What changed:**
+- **`shared/strategies/registry.ts`** — AMC `liveScan.defaultOn` **true → false**. It no longer
+  surfaces as a default green GO; detector/code retained, still toggle-able, still cached.
+- **Net:** with AMC + Rounding Bottom both demoted, the unified scanner's default greens are now
+  the validated/where-evidence-supports set — **HTF is the one detector with a confirmed
+  SPY-beating edge.** The green list is intentionally leaner but trustworthy. Follow-up: a
+  validation sweep of Wyckoff / Pipe Bottom / the momentum+volume axes to refill with real edges.
+- `npm run build` passes.
+
+---
 ## 2026-06-03 — MACD/RSI sub-panes on Trade Analysis + HTF pattern chart (plug-and-play)
 
 **Why:** The synced MACD/RSI sub-panes shipped on `/chart` were a hit. Roll the same treatment
