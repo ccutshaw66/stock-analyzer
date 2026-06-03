@@ -20,9 +20,9 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { UpgradePrompt } from "@/components/UpgradePrompt";
 import { PageTemplate } from "@/components/PageTemplate";
 
-type Tier = "free" | "pro" | "elite";
+type Tier = "free" | "pro" | "elite" | "owner";
 
-const RANK: Record<Tier, number> = { free: 0, pro: 1, elite: 2 };
+const RANK: Record<Tier, number> = { free: 0, pro: 1, elite: 2, owner: 3 };
 
 interface RequireTierProps {
   min: Tier;

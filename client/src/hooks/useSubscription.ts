@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 interface SubscriptionStatus {
-  tier: "free" | "pro" | "elite";
+  tier: "free" | "pro" | "elite" | "owner";
   limits: {
     scansPerDay: number;
     analysisPerDay: number;

@@ -31,8 +31,8 @@ export interface PageEntry {
   readonly group: NavGroup;
   /** Optional subtitle shown under the title in the PageHeader. */
   readonly subtitle?: string;
-  /** If set, entry is only visible to users at or above this tier. */
-  readonly requiresTier?: "pro" | "elite";
+  /** If set, entry is only visible to users at or above this tier. `owner` = Chris only (Admin Playground). */
+  readonly requiresTier?: "pro" | "elite" | "owner";
   /** Pseudo-routes for sidebar-only actions (modals); not real pages. Skipped by PageHeader auto-match. */
   readonly action?: true;
   /**
@@ -50,6 +50,7 @@ export type NavGroup =
   | "Investment Opportunities"
   | "Calculators"
   | "Experimental"
+  | "Admin Playground"
   | "Help";
 
 /**
@@ -108,7 +109,13 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Experimental", subtitle: "Live status, stats, and trades from the self-hosted HERMES service.", requiresTier: "elite" },
   { path: "/kairos",              label: "KAIROS Auto Trader",    icon: Rocket,          group: "Experimental", subtitle: "Experimental HTF + BBTC paper trader. Conviction-tagged entries (HTF / BBTC / BOTH).", requiresTier: "elite" },
   { path: "/wheel",               label: "Wheel Strategy",        icon: RefreshCw,       group: "Experimental", subtitle: "Cash-secured puts → covered calls — the wheel mechanics.", requiresTier: "elite" },
-  { path: "/markov",              label: "Markov Strategy",       icon: Network,         group: "Experimental", subtitle: "Markov-chain regime model — Python stub awaiting implementation.", requiresTier: "elite" },
+
+  // ─── Admin Playground ──────────────────────────────────────────────────
+  // OWNER ONLY (Chris). The private workbench for unproven / in-test surfaces.
+  // To retire a public surface WITHOUT deleting it: change that entry's `group`
+  // to "Admin Playground" and `requiresTier` to "owner". It disappears for
+  // everyone else and reappears here for the owner — one line, no deletes.
+  { path: "/markov",              label: "Markov Strategy",       icon: Network,         group: "Admin Playground", subtitle: "Markov-chain regime model — Python stub awaiting implementation.", requiresTier: "owner" },
 
   // ─── Help ──────────────────────────────────────────────────────────────
   { path: "/help",                label: "Help / FAQ",            icon: BookOpen,        group: "Help", subtitle: "Glossary, common questions, and how Stock Otter works." },
@@ -123,6 +130,7 @@ export const NAV_GROUP_ORDER: readonly NavGroup[] = [
   "Investment Opportunities",
   "Calculators",
   "Experimental",
+  "Admin Playground",
   "Help",
 ];
 
@@ -143,11 +151,11 @@ export function lookupPageByPath(currentPath: string): PageEntry | undefined {
 /**
  * Return all entries grouped for sidebar rendering, with tier filtering applied.
  */
-export function getNavGroups(userTier: "free" | "pro" | "elite" = "free"): {
+export function getNavGroups(userTier: "free" | "pro" | "elite" | "owner" = "free"): {
   label: NavGroup;
   items: PageEntry[];
 }[] {
-  const tierOrder: Record<string, number> = { free: 0, pro: 1, elite: 2 };
+  const tierOrder: Record<string, number> = { free: 0, pro: 1, elite: 2, owner: 3 };
   return NAV_GROUP_ORDER.map((group) => ({
     label: group,
     items: PAGE_REGISTRY.filter((p) => {

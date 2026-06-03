@@ -20,11 +20,20 @@ export const TIER_LIMITS = {
   free: { scansPerDay: 10, analysisPerDay: 10, mmExposure: false, tradeLimit: 20, exports: false },
   pro: { scansPerDay: 30, analysisPerDay: 30, mmExposure: true, tradeLimit: 999, exports: false },
   elite: { scansPerDay: 999, analysisPerDay: 999, mmExposure: true, tradeLimit: 999, exports: true },
+  // owner — Chris's private tier, above elite. Everything elite has, plus the
+  // Admin Playground (owner-only surfaces). Granted ONLY by OWNER_EMAILS below,
+  // never settable via the admin tier endpoint, so nobody else can reach it.
+  owner: { scansPerDay: 999, analysisPerDay: 999, mmExposure: true, tradeLimit: 999, exports: true },
 };
 
 export type SubscriptionTier = keyof typeof TIER_LIMITS;
 
-// ─── Admin Email ──────────────────────────────────────────────────────────
+// ─── Owner / Admin Email ────────────────────────────────────────────────────
+// OWNER_EMAILS = the single person (Chris) who reaches the `owner` tier + the
+// Admin Playground. Kept distinct from ADMIN_EMAILS (co-admins) on purpose:
+// admins get `elite`, the owner gets `owner`. Single source of truth — imported
+// elsewhere rather than re-listed.
+export const OWNER_EMAILS = ['christopher.cutshaw@gmail.com', 'ccutshaw@imetrotech.net'];
 
 const ADMIN_EMAILS = ['awisper@me.com', 'christopher.cutshaw@gmail.com', 'admin@stockotter.ai'];
 
@@ -38,7 +47,11 @@ export async function getUserTier(userId: number): Promise<SubscriptionTier> {
   const user = await storage.getUser(userId);
   if (!user) return 'free';
 
-  // Admin always gets elite
+  // Owner (Chris) gets the private `owner` tier — above elite, unlocks the
+  // Admin Playground. Checked first so it wins over the admin->elite rule.
+  if (OWNER_EMAILS.includes(user.email)) return 'owner';
+
+  // Other admins always get elite
   if (ADMIN_EMAILS.includes(user.email)) return 'elite';
 
   const tier = (user.subscriptionTier || 'free') as SubscriptionTier;

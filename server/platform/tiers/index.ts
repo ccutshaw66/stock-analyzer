@@ -3,7 +3,7 @@
  * Pages and routes never check tier inline — they use requireTier() middleware
  * or the canAccess() helper.
  */
-export type Tier = "free" | "pro" | "elite";
+export type Tier = "free" | "pro" | "elite" | "owner";
 
 export interface TierLimits {
   scansPerDay: number;
@@ -39,9 +39,19 @@ export const TIERS: Record<Tier, TierLimits> = {
     exportsEnabled: true,
     institutionalEnabled: true,
   },
+  // owner — Chris only. Same caps as elite; the difference is nav access
+  // (the Admin Playground group), enforced via RANK below.
+  owner: {
+    scansPerDay: Infinity,
+    watchlistSize: Infinity,
+    alertsEnabled: true,
+    mmExposureEnabled: true,
+    exportsEnabled: true,
+    institutionalEnabled: true,
+  },
 };
 
-const RANK: Record<Tier, number> = { free: 0, pro: 1, elite: 2 };
+const RANK: Record<Tier, number> = { free: 0, pro: 1, elite: 2, owner: 3 };
 
 export function meetsTier(user: Tier, min: Tier): boolean {
   return RANK[user] >= RANK[min];

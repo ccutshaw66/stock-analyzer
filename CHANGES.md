@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Owner tier + Admin Playground (foundation for trim-without-delete)
+
+**Why:** Chris wants to simplify the public site by pulling experimental/unproven surfaces out
+of everyone's view WITHOUT deleting them — relocating them to a private owner-only workbench he
+alone can reach. Foundation-first: this adds a new top access tier and a new nav group that plug
+into the EXISTING tier + page registries additively (no parallel structures, no hard-coded forks),
+so retiring any surface later is a one-line change.
+
+**What changed:**
+- **New `owner` tier, above `elite`**, added to both tier definitions: `server/stripe.ts` (`TIER_LIMITS`
+  + `getUserTier`) and `server/platform/tiers/index.ts` (`Tier`/`TIERS`/`RANK` → `owner: 3`). Mirrored
+  in the shared compartment contract (`shared/compartments/types.ts` `CompartmentTier`) and the client
+  (`useSubscription`, `RequireTier` RANK, `getNavGroups`).
+- **Locked to Chris only.** New `OWNER_EMAILS` allowlist in `server/stripe.ts` (single source of truth);
+  `getUserTier` returns `owner` for those emails (checked before the admin→elite rule). The admin tier
+  PATCH endpoint still only accepts free/pro/elite, so `owner` can NEVER be granted to anyone else.
+- **New "Admin Playground" nav group** in `client/src/lib/page-registry.ts` (added to `NavGroup`,
+  `NAV_GROUP_ORDER`, and the tier filter). It only resolves for `owner`; for everyone else it filters to
+  empty and the group vanishes entirely.
+- **Seeded the move:** Markov (a Python stub) relocated from Experimental → Admin Playground (`owner`).
+  The documented pattern for any future trim: set that page's `group: "Admin Playground"` +
+  `requiresTier: "owner"` — it disappears for users and reappears in Chris's Playground. No deletes.
+
+**Files:** `server/stripe.ts`, `server/platform/tiers/index.ts`, `shared/compartments/types.ts`,
+`client/src/hooks/useSubscription.ts`, `client/src/components/RequireTier.tsx`,
+`client/src/components/AppLayout.tsx`, `client/src/lib/page-registry.ts`. Type-check clean (no new errors).
+---
 ## 2026-06-03 — Validation harness hardened + benchmark bug fixed (trustworthy verdicts)
 
 **Why:** The first harness (entry below) produced several "GO" verdicts that turned out to be

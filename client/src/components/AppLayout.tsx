@@ -526,7 +526,7 @@ function Sidebar({
   // Sidebar nav comes from the page registry — single source of truth.
   // Adding a page = one entry in `client/src/lib/page-registry.ts`.
   // Help is split off because it renders separately at the bottom of the nav.
-  const allGroups = getNavGroups(tier as "free" | "pro" | "elite");
+  const allGroups = getNavGroups(tier as "free" | "pro" | "elite" | "owner");
   const navGroups = allGroups.filter((g) => g.label !== "Help");
   const helpItem = allGroups
     .find((g) => g.label === "Help")

@@ -13,7 +13,7 @@
  * See `docs/MASTER_PATHWAY.md` Phase 1B for the full contract.
  */
 
-export type CompartmentTier = "free" | "pro" | "elite";
+export type CompartmentTier = "free" | "pro" | "elite" | "owner";
 
 export interface CompartmentMeta {
   /** Stable id used by registries, persistence schemas, and tier middleware. */
