@@ -162,6 +162,15 @@ export class DatabaseStorage implements IStorage {
           total_allocated_limit DOUBLE PRECISION DEFAULT 0.30
         )
       `);
+      // ─── account_settings additive columns (idempotent) ───────────────────
+      // These were added to shared/schema.ts after the table's original
+      // CREATE, so existing deploys lack them unless `db:push` was run. Without
+      // these ALTERs, updateAccountSettings hits "column does not exist" and the
+      // storage fallback SILENTLY DROPS the value — which is why a manually-set
+      // Brokerage Cash anchor never persisted (the user had to keep re-entering
+      // it). Mirror the users-table pattern below so the column always exists.
+      await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION DEFAULT 0`);
+      await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS htf_config JSONB`);
       await client.query(`
         CREATE TABLE IF NOT EXISTS account_transactions (
           id SERIAL PRIMARY KEY,

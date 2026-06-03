@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Fix: Brokerage Cash anchor wouldn't persist (Trade Tracker "cash keeps resetting")
+
+**Why:** Chris reported having to re-enter the cash amount in Trade Tracker settings over and over —
+it behaved as a static value he had to maintain by hand instead of the adjustable running total he
+asked for. Root cause: the `cash_balance` (and `htf_config`) columns were added to `shared/schema.ts`
+AFTER `account_settings` was first created, but `storage.initialize()` only does `CREATE TABLE IF NOT
+EXISTS` (a no-op on the existing prod table) and — unlike the `users` table, which has explicit
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` lines for every later column — had **no ALTER** for these
+two. Since `db:push` isn't in the deploy path, the column never existed in prod. So every save hit
+"column does not exist", and `updateAccountSettings`'s migration-lag fallback **silently dropped the
+value** — the anchor never persisted, so cash always recomputed as `0 + trade activity` and never
+reflected the number Chris typed.
+
+**What changed:**
+- `server/storage.ts` `initialize()` — added two idempotent migrations mirroring the existing
+  users-table pattern: `ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS cash_balance DOUBLE
+  PRECISION DEFAULT 0` and `... ADD COLUMN IF NOT EXISTS htf_config JSONB`. Runs at every boot; no-op
+  where the column already exists. After deploy, the Brokerage Cash anchor persists, so cash is once
+  again a real running total (auto-tracks each trade's open/close cash flow) that can be re-anchored
+  to the broker value and stays put. `htf_config` healed at the same time — it had the identical
+  silent-drop bug for HTF scanner overrides.
+
+---
 ## 2026-06-03 — Owner tier + Admin Playground (foundation for trim-without-delete)
 
 **Why:** Chris wants to simplify the public site by pulling experimental/unproven surfaces out
