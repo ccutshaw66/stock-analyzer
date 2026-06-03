@@ -1,9 +1,10 @@
 # StockOtter — Project Rules
 
 **First, follow the global operating rules in `~/.claude/CLAUDE.md`** (simple > complex;
-one approval covers the whole job, never re-ask mid-task; snapshot before executing,
-never ask; verify before claiming done; report once, plainly). Everything below is
-ADDITIONAL and stockotter-specific.
+ONE source of truth — pull once, cache, reuse; one approval covers the whole job, never
+re-ask mid-task; snapshot before executing, never ask; verify before claiming done;
+sanity-check before shipping; report once, plainly). Everything below is ADDITIONAL and
+stockotter-specific.
 
 Owner: Chris Cutshaw — owns stockotter.ai. Cut-and-paste coder: give exact CLI steps in
 order with what to expect.
@@ -16,7 +17,19 @@ order with what to expect.
   push `main` + that tag in ONE `git push` (one webhook = one deploy). Use the `ship` skill.
 - **Every code change ships with a `CHANGES.md` entry** (one entry per completed change, not
   per commit — newest on top, with **why** + **what**). Use the `changes-entry` skill.
+- **Sanity-check before every ship:** `npm run build` (the real deploy gate) must pass, plus
+  verify the actual user-facing behavior of what changed. Use the `verify-work` skill. Never
+  push red or unverified.
 - Name files explicitly when staging. Never `git add -A`/`.`, never `--no-verify`.
+
+## One source of truth — pull once, cache, reuse (PRIMARY — see global rule #2)
+- A given fact (P/E, price, a fundamental, a ratio) has ONE canonical fetch path. If it shows
+  on 10 pages/widgets, it is fetched ONCE and reused — never pulled 10 times from 10 places.
+- Read shared data through the existing compartment / shared hook / snapshot layer that
+  already owns it. Do NOT add a second, parallel fetch for the same number — that causes
+  cross-page drift (the same value disagreeing between pages) and wastes API calls.
+- This data is essentially static for a while, so the first call should serve everything for
+  a long time. New widget needs a number that already exists somewhere? Reuse that source.
 
 ## Data providers
 - **FMP is the data source.** Yahoo and Polygon are being killed — do NOT add new callers to

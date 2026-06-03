@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Rules: add "one source of truth" (primary) + "sanity-check before ship"
+
+**Why:** Chris flagged two rules that needed to be primary and explicit: (1) the same fact
+(e.g. a P/E shown on 10 pages) must be fetched ONCE and reused from one cached source, not
+pulled 10 times from 10 places — these numbers are essentially static and shouldn't be
+re-called per request; (2) always run a sanity check before shipping.
+
+**What changed:**
+- Global `~/.claude/CLAUDE.md` — added rule #2 "ONE source of truth. Pull once, cache, reuse"
+  (marked PRIMARY) and rule #6 "ALWAYS sanity-check before shipping."
+- Project `CLAUDE.md` — new "One source of truth" section (P/E example, read through the
+  existing compartment/shared-hook/snapshot layer, no parallel fetches → no cross-page drift),
+  and a sanity-check (`npm run build` + `verify-work`) step in the deploy rules.
+
+---
 ## 2026-06-03 — Pre-ship correctness audit: 9 signal/scoring/strategy defects fixed
 
 **Why:** A multi-agent correctness sweep (adversarially verified) found a cluster of bugs in the
