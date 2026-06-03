@@ -33,7 +33,7 @@ export type HtfLiveSetupRow = InsertHtfSetup & {
 };
 import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
-import { scanHtf, scanFormingHtf, type HtfHit } from "../../signals/strategies/htf";
+import { scanHtf, scanFormingHtf, htfLiveStatus, type HtfHit } from "../../signals/strategies/htf";
 
 // ─── Live-setup filters ────────────────────────────────────────────────
 // A breakout is only tradeable on the next market open after it fires.
@@ -46,7 +46,6 @@ import { scanHtf, scanFormingHtf, type HtfHit } from "../../signals/strategies/h
 // Tighter than this (0 days) usually returns an empty list because few
 // stocks break out on any single bar.
 const MAX_DAYS_SINCE_BREAKOUT = 1;
-const MAX_CHASE_PCT = 0.10;            // skip setups where price ran >10% past breakout
 import {
   DEFAULT_ACCOUNT_CONFIG,
   PortfolioState,
@@ -134,17 +133,8 @@ function rowFromHitAndRec(
 }
 
 function isLiveSetup(hit: HtfHit, currentPrice: number, currentDate: Date): boolean {
-  // Recency
-  const dayMs = 24 * 60 * 60 * 1000;
-  const daysSince = Math.round((currentDate.getTime() - hit.breakoutDate.getTime()) / dayMs);
-  if (daysSince > MAX_DAYS_SINCE_BREAKOUT) return false;
-  // Already hit target — trade is over
-  if (currentPrice >= hit.targetPrice) return false;
-  // Already stopped out
-  if (currentPrice <= hit.stopPrice) return false;
-  // Chased — price ran too far past the breakout for a clean entry today
-  if (currentPrice > hit.breakoutPrice * (1 + MAX_CHASE_PCT)) return false;
-  return true;
+  // Delegates to the shared predicate so scanner + Trigger Check stay in lock-step.
+  return htfLiveStatus(hit, currentPrice, currentDate, MAX_DAYS_SINCE_BREAKOUT).live;
 }
 
 async function processSymbol(

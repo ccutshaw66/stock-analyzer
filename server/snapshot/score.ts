@@ -206,6 +206,36 @@ function scoreValuation(snap: CompanySnapshot): CategoryScore {
   const q = snap.quote.value;
   const pe = num(q?.trailingPE);
   const fpe = num(q?.forwardPE);
+  const growth = num(snap.fundamentals.value?.earningsGrowth); // % YoY
+  const dy = num(q?.dividendYield); // %
+
+  // PEGY (Peter Lynch): P/E ÷ (earnings-growth% + dividend-yield%). Growth-adjusted
+  // valuation — rewards cheap-for-growth names that a raw P/E can't see. Guarded:
+  // only meaningful when earnings growth is solidly positive. With negative/near-zero
+  // growth the ratio explodes or flips sign, so we fall back to the plain P/E ladder.
+  const GROWTH_FLOOR = 2; // need >2% earnings growth for PEGY to be trustworthy
+  const GROWTH_CAP = 50;  // credit at most 50% growth — a one-off earnings rebound can spike
+                          // earningsGrowth into the hundreds/thousands of %, which would make
+                          // PEGY meaninglessly tiny and flag any junk as "cheap for growth".
+  if (pe !== null && pe > 0 && growth !== null && growth > GROWTH_FLOOR) {
+    const usableGrowth = Math.min(growth, GROWTH_CAP);
+    const pegy = pe / (usableGrowth + (dy ?? 0));
+    let score: number;
+    if (pegy < 1) score = 9;        // cheap for its growth + income
+    else if (pegy < 2) score = 7;   // fair
+    else if (pegy < 3) score = 5;   // fully valued
+    else score = 3;                 // expensive even after growth + yield
+    const yieldTxt = dy !== null ? fmt(dy, 1, "%") : "0%";
+    return {
+      name: "Valuation Sanity",
+      score: clamp10(score), weight: 0.08,
+      reasoning: `PEGY ${fmt(pegy, 2)} (P/E ${fmt(pe, 1)}, growth ${fmt(usableGrowth, 1, "%")}, yield ${yieldTxt})`,
+      source: snap.quote.source,
+      populated: true,
+    };
+  }
+
+  // Fallback: plain P/E ladder (no usable growth) — original behavior preserved.
   let score = 5;
   if (pe !== null) {
     if (pe < 0) score = 3;

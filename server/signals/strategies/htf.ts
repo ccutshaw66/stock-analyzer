@@ -91,6 +91,42 @@ export interface HtfScanOptions {
   minScore?: number;            // default 0
 }
 
+/** Price ran >10% past the breakout = too late to enter cleanly (chase risk). */
+export const HTF_MAX_CHASE_PCT = 0.10;
+
+export type HtfLiveStatus =
+  | { live: true; daysSince: number }
+  | { live: false; reason: "stopped" | "target-hit" | "chased" | "stale"; daysSince: number };
+
+/**
+ * Is a *fired* HTF hit still an actionable long RIGHT NOW?  Pure function and the
+ * single source of truth shared by the nightly scanner (orchestrator) and the
+ * on-demand Trigger Check, so the two can never silently drift.
+ *
+ * The price-based guards (stopped / target already hit / chased too far past the
+ * breakout) are universal. Recency is parameterised because consumers differ: the
+ * nightly scanner wants same-day breakouts only (1 day); the Trigger Check tolerates
+ * a wider window before it stops calling a setup "fresh".
+ *
+ * @param maxDaysSinceBreakout  recency window in CALENDAR days.
+ */
+export function htfLiveStatus(
+  hit: HtfHit,
+  currentPrice: number,
+  currentDate: Date,
+  maxDaysSinceBreakout: number,
+): HtfLiveStatus {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysSince = Math.round((currentDate.getTime() - hit.breakoutDate.getTime()) / dayMs);
+  // Order matters only for which reason is reported when several apply: surface
+  // the most decision-relevant (trade already resolved) before mere staleness.
+  if (currentPrice <= hit.stopPrice) return { live: false, reason: "stopped", daysSince };
+  if (currentPrice >= hit.targetPrice) return { live: false, reason: "target-hit", daysSince };
+  if (currentPrice > hit.breakoutPrice * (1 + HTF_MAX_CHASE_PCT)) return { live: false, reason: "chased", daysSince };
+  if (daysSince > maxDaysSinceBreakout) return { live: false, reason: "stale", daysSince };
+  return { live: true, daysSince };
+}
+
 /** Rolling N-bar average volume; NaN until window is fully populated (>= N/3 bars min). */
 function rollingVolAvg(volumes: number[], window: number): number[] {
   const out = new Array(volumes.length).fill(NaN);
