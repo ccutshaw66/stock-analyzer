@@ -9,6 +9,32 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Scanner accuracy: decouple detector lookback from fetch window + demote Rounding Bottom
+
+**Why:** We considered bumping the scanner's history window to 10y. An out-of-sample,
+walk-forward validation (weekly steps, HTF $5–75 universe, SPY-relative, ~129 names over a
+decade) showed two things: (1) the scanner's freshness gate (only setups ≤3 days old surface)
+makes HTF and Wyckoff **lookback-invariant** for the live scan — a longer window only digs up
+old breakouts that get filtered out, so bumping to 10y changes nothing live for them and is
+strictly worse for Rounding Bottom; (2) of the pattern detectors, only **HTF beats SPY**
+out-of-sample — **Rounding Bottom has no SPY-relative edge** (negative excess at +20d and +60d
+across every lookback, large sample), and Wyckoff fires ~6×/decade (un-validatable).
+
+**What changed (accuracy-driven, validated):**
+- **`server/compartments/unified-scanner/engine.ts`** — the adapters passed
+  `{ lookbackDays: bars.length }`, which let the fetch-window size silently re-tune the
+  detectors. Now each detector gets a fixed, validated **~1y (252)** lookback (HTF / Rounding
+  Bottom / Wyckoff). This decouples "how much history we fetch" from "what the detector scores,"
+  so we can fetch 10y for charts/other features without disturbing the scanner.
+- **`shared/strategies/registry.ts`** — Rounding Bottom `liveScan.defaultOn` **true → false**.
+  It no longer surfaces as a default solo green GO (no out-of-sample edge); the detector/code is
+  retained and still toggle-able, and it's still computed into the cache. Re-enable only if a
+  validated edge is established.
+- **Net:** the scanner's default green GOs are now the validated/where-evidence-supports set;
+  the SPY-losing pattern is no longer badged as high-conviction. HTF/Wyckoff/AMC live output
+  unchanged. Verified: build passes; engine smoke runs clean on the 252 lookbacks.
+
+---
 ## 2026-06-03 — One bar source: scanner + chart read the same cache (no more cross-page drift)
 
 **Why:** The chart endpoint and the unified scanner each fetched their own price bars

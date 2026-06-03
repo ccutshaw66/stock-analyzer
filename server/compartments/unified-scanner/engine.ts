@@ -74,17 +74,29 @@ interface RawHit {
 
 type DetectorFn = (bars: OHLCV[], symbol: string) => RawHit[];
 
+// Detector lookbacks — DECOUPLED from the fetch-window size. Previously the
+// adapters passed `lookbackDays: bars.length`, so however much history the
+// scanner fetched silently re-tuned the detectors. Validated out-of-sample
+// 2026-06-03 (weekly walk-forward, HTF $5–75 universe, SPY-relative): the
+// freshness gate makes HTF/Wyckoff lookback-INVARIANT for the live scan, and
+// for Rounding Bottom ~1y (252) is the best of {252,504,927,1764,2576}. So we
+// pass each detector a fixed, validated lookback — and can now fetch any amount
+// of history for other features without disturbing the scanner.
+const HTF_LOOKBACK_DAYS = 252;
+const ROUNDING_LOOKBACK_DAYS = 252;
+const WYCKOFF_LOOKBACK_DAYS = 252;
+
 // ─── Pattern detectors (native 0–100 qualityScore) ─────────────────────────
 const PATTERN_ADAPTERS: Record<string, DetectorFn> = {
-  "htf": (b, s) => scanHtf(b, s, { lookbackDays: b.length }).map(h => ({
+  "htf": (b, s) => scanHtf(b, s, { lookbackDays: HTF_LOOKBACK_DAYS }).map(h => ({
     strategyId: "htf", score: h.qualityScore, direction: "long",
     entry: h.breakoutPrice, stop: h.stopPrice, target: h.targetPrice, asOf: h.breakoutDate,
   })),
-  "rounding-bottom": (b, s) => scanRoundingBottom(b, s, { lookbackDays: b.length }).map(h => ({
+  "rounding-bottom": (b, s) => scanRoundingBottom(b, s, { lookbackDays: ROUNDING_LOOKBACK_DAYS }).map(h => ({
     strategyId: "rounding-bottom", score: h.qualityScore, direction: "long",
     entry: h.breakoutPrice, stop: h.stopPrice, target: h.targetPrice, asOf: h.breakoutDate,
   })),
-  "wyckoff-spring": (b, s) => scanWyckoffSpring(b, s, { lookbackDays: b.length }).map(h => ({
+  "wyckoff-spring": (b, s) => scanWyckoffSpring(b, s, { lookbackDays: WYCKOFF_LOOKBACK_DAYS }).map(h => ({
     strategyId: "wyckoff-spring", score: h.qualityScore, direction: "long",
     entry: h.breakoutPrice, stop: h.stopPrice, target: h.targetPrice, asOf: h.breakoutDate,
   })),

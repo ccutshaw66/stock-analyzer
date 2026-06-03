@@ -1067,7 +1067,12 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Long U-shaped saucer base → breakout above the rim (Bulkowski rank #8, lowest throwback)",
   color: "bull",
   requiresReason: false,
-  liveScan: { defaultOn: true },
+  // defaultOn:false as of 2026-06-03 — out-of-sample validation (weekly
+  // walk-forward, HTF universe, large N) showed Rounding Bottom has NO
+  // SPY-relative edge (negative excess at +20d and +60d across every lookback),
+  // so it shouldn't surface as a default solo green GO. Code/detector retained
+  // and still toggle-able; re-enable only if a validated edge is established.
+  liveScan: { defaultOn: false },
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
