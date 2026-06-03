@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Fix: owner/admin tier email match is case-insensitive (restores Admin Playground nav)
+
+**Why:** Chris (owner) lost the "Admin Playground" nav group + owner tier. Root cause: `getUserTier`
+matched `OWNER_EMAILS.includes(user.email)` / `ADMIN_EMAILS.includes(...)` with exact,
+case-sensitive equality. Any casing/whitespace difference between the stored email and the
+literal list silently dropped him to a lower tier, so `/api/subscription/status` returned a
+non-owner tier and `getNavGroups` filtered the owner-only group out.
+
+**What changed:**
+- **`server/stripe.ts`** `getUserTier` — normalize the user email (`trim().toLowerCase()`) and
+  compare case-insensitively against `OWNER_EMAILS` / `ADMIN_EMAILS`. Owner/admin resolution no
+  longer depends on exact email casing.
+- No other change needed — `getNavGroups` (owner ≥ owner) and the Admin Playground registry entry
+  were already correct; the tier just wasn't resolving to `owner`.
+- `npm run build` passes. (Hard-refresh the browser after deploy to clear any stale client bundle.)
+
+---
 ## 2026-06-03 — Demote AMC from default green GO (no out-of-sample edge)
 
 **Why:** Out-of-sample, SPY-relative, walk-forward validation (weekly steps, 66 HTF-universe

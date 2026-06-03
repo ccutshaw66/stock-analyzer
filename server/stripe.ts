@@ -47,12 +47,17 @@ export async function getUserTier(userId: number): Promise<SubscriptionTier> {
   const user = await storage.getUser(userId);
   if (!user) return 'free';
 
+  // Email match is case-insensitive + trimmed. A casing or whitespace
+  // difference in the stored email must NEVER silently drop the owner (or an
+  // admin) to a lower tier — that's how Chris lost the Admin Playground nav.
+  const email = (user.email || '').trim().toLowerCase();
+
   // Owner (Chris) gets the private `owner` tier — above elite, unlocks the
   // Admin Playground. Checked first so it wins over the admin->elite rule.
-  if (OWNER_EMAILS.includes(user.email)) return 'owner';
+  if (OWNER_EMAILS.some(e => e.toLowerCase() === email)) return 'owner';
 
   // Other admins always get elite
-  if (ADMIN_EMAILS.includes(user.email)) return 'elite';
+  if (ADMIN_EMAILS.some(e => e.toLowerCase() === email)) return 'elite';
 
   const tier = (user.subscriptionTier || 'free') as SubscriptionTier;
 
