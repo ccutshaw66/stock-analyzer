@@ -1,731 +1,2097 @@
 {
   "meta": {
-    "rows": 14817,
-    "tickers": 33,
-    "dateRange": [
-      "2024-06-26",
-      "2026-04-10"
+    "rowsTotal": 15334,
+    "tradeableTickers": 33,
+    "tickers": [
+      "AAL",
+      "AFRM",
+      "BAC",
+      "CCL",
+      "CLF",
+      "CVE",
+      "DAL",
+      "DKNG",
+      "ET",
+      "F",
+      "GM",
+      "GME",
+      "HBAN",
+      "HOOD",
+      "INTC",
+      "KEY",
+      "KGC",
+      "KMI",
+      "KVUE",
+      "MARA",
+      "NCLH",
+      "NIO",
+      "PFE",
+      "PINS",
+      "RIOT",
+      "RIVN",
+      "SNAP",
+      "SOFI",
+      "SU",
+      "T",
+      "VALE",
+      "WBD",
+      "WMB"
     ],
-    "oosCutDate": "2025-07-24",
-    "nTests": 33,
-    "bonferroniAlpha": 0.00152
+    "dateRange": [
+      "2024-08-14",
+      "2026-06-02"
+    ],
+    "tradingDays": 451,
+    "approxYears": 1.79,
+    "horizons": [
+      "7d",
+      "30d",
+      "90d"
+    ],
+    "nFolds": 4,
+    "foldBounds": [
+      {
+        "fold": 1,
+        "testStart": "2025-05-05",
+        "testEnd": "2025-08-08"
+      },
+      {
+        "fold": 2,
+        "testStart": "2025-08-11",
+        "testEnd": "2025-11-13"
+      },
+      {
+        "fold": 3,
+        "testStart": "2025-11-14",
+        "testEnd": "2026-02-24"
+      },
+      {
+        "fold": 4,
+        "testStart": "2026-02-25",
+        "testEnd": "2026-06-02"
+      }
+    ],
+    "nTrials": 33,
+    "bonferroniAlpha": 0.001515,
+    "minOOSn": 100,
+    "method": "anchored walk-forward; Newey-West HAC SE (lag=horizon); moving-block bootstrap; Bailey-LdP deflated Sharpe"
   },
   "factors": {
     "7d": {
       "signal=STRONG_BUY": {
+        "horizon": "7d",
         "full": {
-          "n": 4955,
-          "meanExcessVsSPY": 0.325,
-          "winRateVsSPY": 51.2,
-          "infoRatio": 0.055,
-          "t": 3.9,
-          "p": 0.0001
+          "n": 4921,
+          "meanExcessVsSPY": 0.4631,
+          "winRateVsSPY": 47.8,
+          "infoRatio": 0.0639,
+          "t_ols": 4.48,
+          "p_ols": 1e-05,
+          "t_hac": 3.9,
+          "p_hac": 0.0001,
+          "p_bootstrap": 0.0005,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 1908,
-          "meanExcessVsSPY": 0.165,
-          "winRateVsSPY": 50.3,
-          "infoRatio": 0.031,
-          "t": 1.35,
-          "p": 0.1775
+        "oosPooled": {
+          "n": 3224,
+          "meanExcessVsSPY": 0.4003,
+          "winRateVsSPY": 46.6,
+          "infoRatio": 0.0546,
+          "t_ols": 3.1,
+          "p_ols": 0.00193,
+          "t_hac": 2.82,
+          "p_hac": 0.00474,
+          "p_bootstrap": 0.006,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 968,
+            "meanExcessVsSPY": 0.5634,
+            "infoRatio": 0.0825,
+            "winRateVsSPY": 45.9
+          },
+          {
+            "fold": 2,
+            "n": 926,
+            "meanExcessVsSPY": 0.5202,
+            "infoRatio": 0.0698,
+            "winRateVsSPY": 47.7
+          },
+          {
+            "fold": 3,
+            "n": 825,
+            "meanExcessVsSPY": 0.5165,
+            "infoRatio": 0.0813,
+            "winRateVsSPY": 50.8
+          },
+          {
+            "fold": 4,
+            "n": 505,
+            "meanExcessVsSPY": -0.3218,
+            "infoRatio": -0.0348,
+            "winRateVsSPY": 39.0
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "signal=BUY": {
+        "horizon": "7d",
         "full": {
-          "n": 3668,
-          "meanExcessVsSPY": 0.043,
-          "winRateVsSPY": 49.4,
-          "infoRatio": 0.007,
-          "t": 0.41,
-          "p": 0.6853
+          "n": 3777,
+          "meanExcessVsSPY": 0.2786,
+          "winRateVsSPY": 46.8,
+          "infoRatio": 0.0358,
+          "t_ols": 2.2,
+          "p_ols": 0.02793,
+          "t_hac": 1.8,
+          "p_hac": 0.07212,
+          "p_bootstrap": 0.05997,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 1388,
-          "meanExcessVsSPY": -0.176,
-          "winRateVsSPY": 49.6,
-          "infoRatio": -0.03,
-          "t": -1.11,
-          "p": 0.2684
+        "oosPooled": {
+          "n": 2322,
+          "meanExcessVsSPY": 0.2342,
+          "winRateVsSPY": 46.9,
+          "infoRatio": 0.0307,
+          "t_ols": 1.48,
+          "p_ols": 0.13942,
+          "t_hac": 1.2,
+          "p_hac": 0.23188,
+          "p_bootstrap": 0.2089,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 756,
+            "meanExcessVsSPY": 0.0666,
+            "infoRatio": 0.0096,
+            "winRateVsSPY": 47.6
+          },
+          {
+            "fold": 2,
+            "n": 515,
+            "meanExcessVsSPY": 0.6796,
+            "infoRatio": 0.0804,
+            "winRateVsSPY": 46.4
+          },
+          {
+            "fold": 3,
+            "n": 572,
+            "meanExcessVsSPY": 0.3816,
+            "infoRatio": 0.0611,
+            "winRateVsSPY": 50.2
+          },
+          {
+            "fold": 4,
+            "n": 479,
+            "meanExcessVsSPY": -0.1562,
+            "infoRatio": -0.0171,
+            "winRateVsSPY": 42.6
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "signal=SELL": {
+        "horizon": "7d",
         "full": {
-          "n": 3224,
-          "meanExcessVsSPY": -0.384,
-          "winRateVsSPY": 49.8,
-          "infoRatio": -0.059,
-          "t": -3.35,
-          "p": 0.0008
+          "n": 3404,
+          "meanExcessVsSPY": -0.3407,
+          "winRateVsSPY": 49.3,
+          "infoRatio": -0.046,
+          "t_ols": -2.68,
+          "p_ols": 0.00731,
+          "t_hac": -2.14,
+          "p_hac": 0.03208,
+          "p_bootstrap": 0.03148,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 1241,
-          "meanExcessVsSPY": -0.42,
-          "winRateVsSPY": 49.0,
-          "infoRatio": -0.068,
-          "t": -2.4,
-          "p": 0.0166
+        "oosPooled": {
+          "n": 1825,
+          "meanExcessVsSPY": -0.3307,
+          "winRateVsSPY": 50.2,
+          "infoRatio": -0.044,
+          "t_ols": -1.88,
+          "p_ols": 0.06014,
+          "t_hac": -1.51,
+          "p_hac": 0.13185,
+          "p_bootstrap": 0.12094,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 334,
+            "meanExcessVsSPY": -1.068,
+            "infoRatio": -0.1712,
+            "winRateVsSPY": 45.8
+          },
+          {
+            "fold": 2,
+            "n": 493,
+            "meanExcessVsSPY": 0.4745,
+            "infoRatio": 0.0575,
+            "winRateVsSPY": 55.6
+          },
+          {
+            "fold": 3,
+            "n": 442,
+            "meanExcessVsSPY": -0.9478,
+            "infoRatio": -0.1182,
+            "winRateVsSPY": 44.6
+          },
+          {
+            "fold": 4,
+            "n": 556,
+            "meanExcessVsSPY": -0.1112,
+            "infoRatio": -0.0158,
+            "winRateVsSPY": 52.7
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 4
       },
       "signal=STRONG_SELL": {
+        "horizon": "7d",
         "full": {
-          "n": 2739,
-          "meanExcessVsSPY": -0.677,
-          "winRateVsSPY": 46.4,
-          "infoRatio": -0.103,
-          "t": -5.38,
-          "p": 0.0
+          "n": 2994,
+          "meanExcessVsSPY": -0.7976,
+          "winRateVsSPY": 46.9,
+          "infoRatio": -0.1035,
+          "t_ols": -5.66,
+          "p_ols": 0.0,
+          "t_hac": -4.13,
+          "p_hac": 4e-05,
+          "p_bootstrap": 0.0005,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 1172,
-          "meanExcessVsSPY": -0.131,
+        "oosPooled": {
+          "n": 1605,
+          "meanExcessVsSPY": -0.4698,
           "winRateVsSPY": 48.9,
-          "infoRatio": -0.02,
-          "t": -0.68,
-          "p": 0.4963
+          "infoRatio": -0.0588,
+          "t_ols": -2.35,
+          "p_ols": 0.01857,
+          "t_hac": -1.73,
+          "p_hac": 0.0842,
+          "p_bootstrap": 0.08096,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 220,
+            "meanExcessVsSPY": -1.6151,
+            "infoRatio": -0.2339,
+            "winRateVsSPY": 45.5
+          },
+          {
+            "fold": 2,
+            "n": 378,
+            "meanExcessVsSPY": 0.007,
+            "infoRatio": 0.001,
+            "winRateVsSPY": 50.8
+          },
+          {
+            "fold": 3,
+            "n": 473,
+            "meanExcessVsSPY": 0.4546,
+            "infoRatio": 0.0482,
+            "winRateVsSPY": 49.3
+          },
+          {
+            "fold": 4,
+            "n": 534,
+            "meanExcessVsSPY": -1.1543,
+            "infoRatio": -0.1533,
+            "winRateVsSPY": 48.7
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 4
       },
       "bbtc=BUY": {
+        "horizon": "7d",
         "full": {
-          "n": 6057,
-          "meanExcessVsSPY": 0.304,
-          "winRateVsSPY": 51.0,
-          "infoRatio": 0.052,
-          "t": 4.02,
-          "p": 0.0001
+          "n": 6297,
+          "meanExcessVsSPY": 0.3388,
+          "winRateVsSPY": 47.3,
+          "infoRatio": 0.0465,
+          "t_ols": 3.69,
+          "p_ols": 0.00023,
+          "t_hac": 3.26,
+          "p_hac": 0.00112,
+          "p_bootstrap": 0.001,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 2219,
-          "meanExcessVsSPY": -0.039,
-          "winRateVsSPY": 49.1,
-          "infoRatio": -0.007,
-          "t": -0.34,
-          "p": 0.7375
+        "oosPooled": {
+          "n": 4002,
+          "meanExcessVsSPY": 0.2391,
+          "winRateVsSPY": 45.7,
+          "infoRatio": 0.0328,
+          "t_ols": 2.08,
+          "p_ols": 0.03784,
+          "t_hac": 1.87,
+          "p_hac": 0.06091,
+          "p_bootstrap": 0.05497,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": true,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 1275,
+            "meanExcessVsSPY": 0.3275,
+            "infoRatio": 0.0482,
+            "winRateVsSPY": 44.5
+          },
+          {
+            "fold": 2,
+            "n": 1015,
+            "meanExcessVsSPY": 0.4948,
+            "infoRatio": 0.0666,
+            "winRateVsSPY": 48.5
+          },
+          {
+            "fold": 3,
+            "n": 1006,
+            "meanExcessVsSPY": 0.4217,
+            "infoRatio": 0.0666,
+            "winRateVsSPY": 50.2
+          },
+          {
+            "fold": 4,
+            "n": 706,
+            "meanExcessVsSPY": -0.5485,
+            "infoRatio": -0.0612,
+            "winRateVsSPY": 37.5
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "ver=BUY": {
+        "horizon": "7d",
         "full": {
-          "n": 266,
-          "meanExcessVsSPY": -0.027,
-          "winRateVsSPY": 50.8,
-          "infoRatio": -0.004,
-          "t": -0.07,
-          "p": 0.9469
+          "n": 128,
+          "meanExcessVsSPY": -0.1765,
+          "winRateVsSPY": 46.1,
+          "infoRatio": -0.0209,
+          "t_ols": -0.24,
+          "p_ols": 0.8128,
+          "t_hac": -0.17,
+          "p_hac": 0.86864,
+          "p_bootstrap": 0.87256,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 90,
-          "meanExcessVsSPY": 0.411,
-          "winRateVsSPY": 52.2,
-          "infoRatio": 0.057,
-          "t": 0.54,
-          "p": 0.5918
+        "oosPooled": {
+          "n": 65,
+          "note": "INSUFFICIENT N (<100)"
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 4,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 25,
+            "meanExcessVsSPY": -1.884,
+            "infoRatio": -0.4528,
+            "winRateVsSPY": 32.0
+          },
+          {
+            "fold": 3,
+            "n": 26,
+            "meanExcessVsSPY": -5.3577,
+            "infoRatio": -0.6539,
+            "winRateVsSPY": 23.1
+          },
+          {
+            "fold": 4,
+            "n": 10,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "INSUFFICIENT N",
+        "foldsPositive": 0,
+        "foldsScored": 2
       },
       "bbtc=SELL": {
+        "horizon": "7d",
         "full": {
-          "n": 4379,
-          "meanExcessVsSPY": -0.562,
+          "n": 4448,
+          "meanExcessVsSPY": -0.6093,
           "winRateVsSPY": 47.5,
-          "infoRatio": -0.086,
-          "t": -5.67,
-          "p": 0.0
+          "infoRatio": -0.0796,
+          "t_ols": -5.31,
+          "p_ols": 0.0,
+          "t_hac": -4.02,
+          "p_hac": 6e-05,
+          "p_bootstrap": 0.0005,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 1839,
-          "meanExcessVsSPY": -0.255,
-          "winRateVsSPY": 48.5,
-          "infoRatio": -0.04,
-          "t": -1.72,
-          "p": 0.085
+        "oosPooled": {
+          "n": 2444,
+          "meanExcessVsSPY": -0.3342,
+          "winRateVsSPY": 49.1,
+          "infoRatio": -0.0422,
+          "t_ols": -2.09,
+          "p_ols": 0.03693,
+          "t_hac": -1.66,
+          "p_hac": 0.09626,
+          "p_bootstrap": 0.10245,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 351,
+            "meanExcessVsSPY": -1.5236,
+            "infoRatio": -0.2354,
+            "winRateVsSPY": 43.0
+          },
+          {
+            "fold": 2,
+            "n": 668,
+            "meanExcessVsSPY": 0.4567,
+            "infoRatio": 0.057,
+            "winRateVsSPY": 53.6
+          },
+          {
+            "fold": 3,
+            "n": 679,
+            "meanExcessVsSPY": 0.0024,
+            "infoRatio": 0.0003,
+            "winRateVsSPY": 46.8
+          },
+          {
+            "fold": 4,
+            "n": 746,
+            "meanExcessVsSPY": -0.7892,
+            "infoRatio": -0.1099,
+            "winRateVsSPY": 49.9
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 4
       },
       "ver=SELL": {
+        "horizon": "7d",
         "full": {
-          "n": 256,
-          "meanExcessVsSPY": -0.553,
-          "winRateVsSPY": 48.0,
-          "infoRatio": -0.076,
-          "t": -1.22,
-          "p": 0.2229
+          "n": 228,
+          "meanExcessVsSPY": 0.6587,
+          "winRateVsSPY": 52.6,
+          "infoRatio": 0.0819,
+          "t_ols": 1.24,
+          "p_ols": 0.21621,
+          "t_hac": 0.94,
+          "p_hac": 0.34672,
+          "p_bootstrap": 0.33583,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 86,
-          "meanExcessVsSPY": -0.112,
-          "winRateVsSPY": 51.2,
-          "infoRatio": -0.015,
-          "t": -0.14,
-          "p": 0.8876
+        "oosPooled": {
+          "n": 128,
+          "meanExcessVsSPY": -0.1602,
+          "winRateVsSPY": 51.6,
+          "infoRatio": -0.0192,
+          "t_ols": -0.22,
+          "p_ols": 0.82811,
+          "t_hac": -0.18,
+          "p_hac": 0.85844,
+          "p_bootstrap": 0.85457,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 38,
+            "meanExcessVsSPY": 0.2203,
+            "infoRatio": 0.0307,
+            "winRateVsSPY": 50.0
+          },
+          {
+            "fold": 2,
+            "n": 32,
+            "meanExcessVsSPY": -0.5884,
+            "infoRatio": -0.0694,
+            "winRateVsSPY": 50.0
+          },
+          {
+            "fold": 3,
+            "n": 42,
+            "meanExcessVsSPY": 0.8824,
+            "infoRatio": 0.1236,
+            "winRateVsSPY": 54.8
+          },
+          {
+            "fold": 4,
+            "n": 16,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 3
       },
-      "rsi<30 (oversold\u2192long)": {
+      "rsi<30 (oversold->long)": {
+        "horizon": "7d",
         "full": {
-          "n": 1595,
-          "meanExcessVsSPY": 0.39,
-          "winRateVsSPY": 53.2,
-          "infoRatio": 0.058,
-          "t": 2.32,
-          "p": 0.0203
+          "n": 477,
+          "meanExcessVsSPY": 1.0083,
+          "winRateVsSPY": 56.0,
+          "infoRatio": 0.1375,
+          "t_ols": 3.0,
+          "p_ols": 0.00268,
+          "t_hac": 1.89,
+          "p_hac": 0.0588,
+          "p_bootstrap": 0.04748,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 685,
-          "meanExcessVsSPY": 0.384,
-          "winRateVsSPY": 54.3,
-          "infoRatio": 0.057,
-          "t": 1.48,
-          "p": 0.1388
+        "oosPooled": {
+          "n": 261,
+          "meanExcessVsSPY": 0.6054,
+          "winRateVsSPY": 52.1,
+          "infoRatio": 0.0732,
+          "t_ols": 1.18,
+          "p_ols": 0.23701,
+          "t_hac": 0.71,
+          "p_hac": 0.47672,
+          "p_bootstrap": 0.44478,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 7,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 78,
+            "meanExcessVsSPY": -0.4565,
+            "infoRatio": -0.109,
+            "winRateVsSPY": 43.6
+          },
+          {
+            "fold": 3,
+            "n": 115,
+            "meanExcessVsSPY": -1.2134,
+            "infoRatio": -0.1256,
+            "winRateVsSPY": 45.2
+          },
+          {
+            "fold": 4,
+            "n": 61,
+            "meanExcessVsSPY": 3.7092,
+            "infoRatio": 0.6612,
+            "winRateVsSPY": 72.1
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 3
       },
-      "rsi>70 (overbought\u2192short)": {
+      "rsi>70 (overbought->short)": {
+        "horizon": "7d",
         "full": {
-          "n": 2328,
-          "meanExcessVsSPY": -0.402,
-          "winRateVsSPY": 47.3,
-          "infoRatio": -0.067,
-          "t": -3.23,
-          "p": 0.0012
+          "n": 1213,
+          "meanExcessVsSPY": -0.3672,
+          "winRateVsSPY": 46.2,
+          "infoRatio": -0.0522,
+          "t_ols": -1.82,
+          "p_ols": 0.06923,
+          "t_hac": -1.33,
+          "p_hac": 0.1839,
+          "p_bootstrap": 0.16292,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 760,
-          "meanExcessVsSPY": -0.527,
-          "winRateVsSPY": 46.8,
-          "infoRatio": -0.092,
-          "t": -2.55,
-          "p": 0.0108
+        "oosPooled": {
+          "n": 736,
+          "meanExcessVsSPY": -0.4867,
+          "winRateVsSPY": 45.8,
+          "infoRatio": -0.0655,
+          "t_ols": -1.78,
+          "p_ols": 0.07562,
+          "t_hac": -1.36,
+          "p_hac": 0.1743,
+          "p_bootstrap": 0.15942,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 214,
+            "meanExcessVsSPY": 0.0331,
+            "infoRatio": 0.0048,
+            "winRateVsSPY": 50.9
+          },
+          {
+            "fold": 2,
+            "n": 189,
+            "meanExcessVsSPY": -0.2364,
+            "infoRatio": -0.036,
+            "winRateVsSPY": 46.6
+          },
+          {
+            "fold": 3,
+            "n": 214,
+            "meanExcessVsSPY": -0.7393,
+            "infoRatio": -0.1264,
+            "winRateVsSPY": 40.2
+          },
+          {
+            "fold": 4,
+            "n": 119,
+            "meanExcessVsSPY": -1.3647,
+            "infoRatio": -0.1223,
+            "winRateVsSPY": 45.4
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 4
       },
       "vol_ratio>1.5 (long)": {
+        "horizon": "7d",
         "full": {
-          "n": 1309,
-          "meanExcessVsSPY": 0.279,
-          "winRateVsSPY": 49.7,
-          "infoRatio": 0.038,
-          "t": 1.38,
-          "p": 0.1682
+          "n": 1466,
+          "meanExcessVsSPY": 0.2825,
+          "winRateVsSPY": 47.3,
+          "infoRatio": 0.0337,
+          "t_ols": 1.29,
+          "p_ols": 0.19668,
+          "t_hac": 1.12,
+          "p_hac": 0.26225,
+          "p_bootstrap": 0.24538,
+          "hacLag": 7
         },
-        "oos": {
-          "n": 458,
-          "meanExcessVsSPY": 0.124,
-          "winRateVsSPY": 49.1,
-          "infoRatio": 0.017,
-          "t": 0.36,
-          "p": 0.7154
+        "oosPooled": {
+          "n": 818,
+          "meanExcessVsSPY": 0.1525,
+          "winRateVsSPY": 46.1,
+          "infoRatio": 0.0187,
+          "t_ols": 0.54,
+          "p_ols": 0.59184,
+          "t_hac": 0.48,
+          "p_hac": 0.63462,
+          "p_bootstrap": 0.62469,
+          "hacLag": 7
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 215,
+            "meanExcessVsSPY": 0.5527,
+            "infoRatio": 0.0679,
+            "winRateVsSPY": 47.0
+          },
+          {
+            "fold": 2,
+            "n": 226,
+            "meanExcessVsSPY": 0.6303,
+            "infoRatio": 0.0785,
+            "winRateVsSPY": 46.0
+          },
+          {
+            "fold": 3,
+            "n": 216,
+            "meanExcessVsSPY": -0.4822,
+            "infoRatio": -0.0583,
+            "winRateVsSPY": 44.4
+          },
+          {
+            "fold": 4,
+            "n": 161,
+            "meanExcessVsSPY": -0.2012,
+            "infoRatio": -0.0249,
+            "winRateVsSPY": 47.2
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 4
       }
     },
     "30d": {
       "signal=STRONG_BUY": {
+        "horizon": "30d",
         "full": {
-          "n": 4876,
-          "meanExcessVsSPY": 1.261,
-          "winRateVsSPY": 51.2,
-          "infoRatio": 0.098,
-          "t": 6.85,
-          "p": 0.0
+          "n": 4674,
+          "meanExcessVsSPY": 1.7796,
+          "winRateVsSPY": 47.9,
+          "infoRatio": 0.1129,
+          "t_ols": 7.72,
+          "p_ols": 0.0,
+          "t_hac": 3.85,
+          "p_hac": 0.00012,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 1829,
-          "meanExcessVsSPY": 0.425,
-          "winRateVsSPY": 50.4,
-          "infoRatio": 0.039,
-          "t": 1.67,
-          "p": 0.0959
+        "oosPooled": {
+          "n": 2977,
+          "meanExcessVsSPY": 1.9188,
+          "winRateVsSPY": 48.9,
+          "infoRatio": 0.1193,
+          "t_ols": 6.51,
+          "p_ols": 0.0,
+          "t_hac": 4.07,
+          "p_hac": 5e-05,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 968,
+            "meanExcessVsSPY": 4.1161,
+            "infoRatio": 0.2751,
+            "winRateVsSPY": 53.9
+          },
+          {
+            "fold": 2,
+            "n": 926,
+            "meanExcessVsSPY": 0.731,
+            "infoRatio": 0.0423,
+            "winRateVsSPY": 44.3
+          },
+          {
+            "fold": 3,
+            "n": 825,
+            "meanExcessVsSPY": 1.9495,
+            "infoRatio": 0.1442,
+            "winRateVsSPY": 54.2
+          },
+          {
+            "fold": 4,
+            "n": 258,
+            "meanExcessVsSPY": -2.1599,
+            "infoRatio": -0.1016,
+            "winRateVsSPY": 30.2
+          }
+        ],
+        "verdict": "GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "signal=BUY": {
+        "horizon": "30d",
         "full": {
-          "n": 3521,
-          "meanExcessVsSPY": 1.194,
-          "winRateVsSPY": 50.5,
-          "infoRatio": 0.087,
-          "t": 5.14,
-          "p": 0.0
+          "n": 3569,
+          "meanExcessVsSPY": 1.7642,
+          "winRateVsSPY": 48.9,
+          "infoRatio": 0.1066,
+          "t_ols": 6.37,
+          "p_ols": 0.0,
+          "t_hac": 3.65,
+          "p_hac": 0.00026,
+          "p_bootstrap": 0.0015,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 1241,
-          "meanExcessVsSPY": -0.379,
-          "winRateVsSPY": 45.4,
-          "infoRatio": -0.031,
-          "t": -1.08,
-          "p": 0.2818
+        "oosPooled": {
+          "n": 2114,
+          "meanExcessVsSPY": 1.5023,
+          "winRateVsSPY": 48.8,
+          "infoRatio": 0.0898,
+          "t_ols": 4.13,
+          "p_ols": 4e-05,
+          "t_hac": 2.59,
+          "p_hac": 0.00948,
+          "p_bootstrap": 0.0095,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": true,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 756,
+            "meanExcessVsSPY": 3.656,
+            "infoRatio": 0.252,
+            "winRateVsSPY": 57.9
+          },
+          {
+            "fold": 2,
+            "n": 515,
+            "meanExcessVsSPY": 0.6911,
+            "infoRatio": 0.039,
+            "winRateVsSPY": 44.3
+          },
+          {
+            "fold": 3,
+            "n": 572,
+            "meanExcessVsSPY": -0.3248,
+            "infoRatio": -0.022,
+            "winRateVsSPY": 50.0
+          },
+          {
+            "fold": 4,
+            "n": 271,
+            "meanExcessVsSPY": 0.8925,
+            "infoRatio": 0.0391,
+            "winRateVsSPY": 29.5
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "signal=SELL": {
+        "horizon": "30d",
         "full": {
-          "n": 3013,
-          "meanExcessVsSPY": -1.181,
-          "winRateVsSPY": 47.7,
-          "infoRatio": -0.092,
-          "t": -5.03,
-          "p": 0.0
+          "n": 3247,
+          "meanExcessVsSPY": -1.3933,
+          "winRateVsSPY": 50.7,
+          "infoRatio": -0.0812,
+          "t_ols": -4.63,
+          "p_ols": 0.0,
+          "t_hac": -2.52,
+          "p_hac": 0.01174,
+          "p_bootstrap": 0.01349,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 1030,
-          "meanExcessVsSPY": -0.744,
-          "winRateVsSPY": 49.5,
-          "infoRatio": -0.058,
-          "t": -1.87,
-          "p": 0.0612
+        "oosPooled": {
+          "n": 1668,
+          "meanExcessVsSPY": -1.3411,
+          "winRateVsSPY": 52.3,
+          "infoRatio": -0.0695,
+          "t_ols": -2.84,
+          "p_ols": 0.00455,
+          "t_hac": -1.52,
+          "p_hac": 0.12809,
+          "p_bootstrap": 0.13643,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 334,
+            "meanExcessVsSPY": -4.8299,
+            "infoRatio": -0.3196,
+            "winRateVsSPY": 41.3
+          },
+          {
+            "fold": 2,
+            "n": 493,
+            "meanExcessVsSPY": -0.6241,
+            "infoRatio": -0.0336,
+            "winRateVsSPY": 53.5
+          },
+          {
+            "fold": 3,
+            "n": 442,
+            "meanExcessVsSPY": 1.088,
+            "infoRatio": 0.0702,
+            "winRateVsSPY": 51.1
+          },
+          {
+            "fold": 4,
+            "n": 399,
+            "meanExcessVsSPY": -1.9976,
+            "infoRatio": -0.0778,
+            "winRateVsSPY": 61.2
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 4
       },
       "signal=STRONG_SELL": {
+        "horizon": "30d",
         "full": {
-          "n": 2417,
-          "meanExcessVsSPY": -2.512,
-          "winRateVsSPY": 44.7,
-          "infoRatio": -0.189,
-          "t": -9.3,
-          "p": 0.0
+          "n": 2824,
+          "meanExcessVsSPY": -2.5531,
+          "winRateVsSPY": 46.5,
+          "infoRatio": -0.1637,
+          "t_ols": -8.7,
+          "p_ols": 0.0,
+          "t_hac": -4.68,
+          "p_hac": 0.0,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 850,
-          "meanExcessVsSPY": 0.069,
-          "winRateVsSPY": 52.7,
-          "infoRatio": 0.005,
-          "t": 0.15,
-          "p": 0.8795
+        "oosPooled": {
+          "n": 1435,
+          "meanExcessVsSPY": -1.5636,
+          "winRateVsSPY": 48.0,
+          "infoRatio": -0.0974,
+          "t_ols": -3.69,
+          "p_ols": 0.00022,
+          "t_hac": -2.0,
+          "p_hac": 0.04498,
+          "p_bootstrap": 0.04848,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 220,
+            "meanExcessVsSPY": -6.0441,
+            "infoRatio": -0.4372,
+            "winRateVsSPY": 42.7
+          },
+          {
+            "fold": 2,
+            "n": 378,
+            "meanExcessVsSPY": -1.6637,
+            "infoRatio": -0.1215,
+            "winRateVsSPY": 45.0
+          },
+          {
+            "fold": 3,
+            "n": 473,
+            "meanExcessVsSPY": 1.6021,
+            "infoRatio": 0.0956,
+            "winRateVsSPY": 52.4
+          },
+          {
+            "fold": 4,
+            "n": 364,
+            "meanExcessVsSPY": -2.8654,
+            "infoRatio": -0.1614,
+            "winRateVsSPY": 48.6
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 4
       },
       "bbtc=BUY": {
+        "horizon": "30d",
         "full": {
-          "n": 5929,
-          "meanExcessVsSPY": 1.383,
-          "winRateVsSPY": 51.8,
-          "infoRatio": 0.107,
-          "t": 8.28,
-          "p": 0.0
+          "n": 5981,
+          "meanExcessVsSPY": 1.8714,
+          "winRateVsSPY": 48.1,
+          "infoRatio": 0.1187,
+          "t_ols": 9.18,
+          "p_ols": 0.0,
+          "t_hac": 5.08,
+          "p_hac": 0.0,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 2091,
-          "meanExcessVsSPY": 0.026,
+        "oosPooled": {
+          "n": 3686,
+          "meanExcessVsSPY": 1.7983,
           "winRateVsSPY": 48.6,
-          "infoRatio": 0.002,
-          "t": 0.1,
-          "p": 0.9166
+          "infoRatio": 0.1124,
+          "t_ols": 6.82,
+          "p_ols": 0.0,
+          "t_hac": 4.59,
+          "p_hac": 0.0,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 1275,
+            "meanExcessVsSPY": 3.7941,
+            "infoRatio": 0.257,
+            "winRateVsSPY": 52.9
+          },
+          {
+            "fold": 2,
+            "n": 1015,
+            "meanExcessVsSPY": 0.6471,
+            "infoRatio": 0.0382,
+            "winRateVsSPY": 43.9
+          },
+          {
+            "fold": 3,
+            "n": 1006,
+            "meanExcessVsSPY": 1.3724,
+            "infoRatio": 0.0983,
+            "winRateVsSPY": 53.6
+          },
+          {
+            "fold": 4,
+            "n": 390,
+            "meanExcessVsSPY": -0.632,
+            "infoRatio": -0.0302,
+            "winRateVsSPY": 33.3
+          }
+        ],
+        "verdict": "GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       },
       "ver=BUY": {
+        "horizon": "30d",
         "full": {
-          "n": 249,
-          "meanExcessVsSPY": 1.866,
-          "winRateVsSPY": 56.2,
-          "infoRatio": 0.144,
-          "t": 2.28,
-          "p": 0.0228
+          "n": 128,
+          "meanExcessVsSPY": -0.9691,
+          "winRateVsSPY": 40.6,
+          "infoRatio": -0.0691,
+          "t_ols": -0.78,
+          "p_ols": 0.43425,
+          "t_hac": -0.69,
+          "p_hac": 0.48816,
+          "p_bootstrap": 0.56022,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 73,
-          "meanExcessVsSPY": 2.188,
-          "winRateVsSPY": 61.6,
-          "infoRatio": 0.162,
-          "t": 1.38,
-          "p": 0.1668
+        "oosPooled": {
+          "n": 65,
+          "note": "INSUFFICIENT N (<100)"
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 4,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 25,
+            "meanExcessVsSPY": -3.5644,
+            "infoRatio": -0.2803,
+            "winRateVsSPY": 36.0
+          },
+          {
+            "fold": 3,
+            "n": 26,
+            "meanExcessVsSPY": -6.2158,
+            "infoRatio": -0.523,
+            "winRateVsSPY": 19.2
+          },
+          {
+            "fold": 4,
+            "n": 10,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "INSUFFICIENT N",
+        "foldsPositive": 0,
+        "foldsScored": 2
       },
       "bbtc=SELL": {
+        "horizon": "30d",
         "full": {
-          "n": 3957,
-          "meanExcessVsSPY": -1.792,
-          "winRateVsSPY": 46.6,
-          "infoRatio": -0.133,
-          "t": -8.37,
-          "p": 0.0
+          "n": 4220,
+          "meanExcessVsSPY": -1.833,
+          "winRateVsSPY": 48.9,
+          "infoRatio": -0.1085,
+          "t_ols": -7.05,
+          "p_ols": 0.0,
+          "t_hac": -3.85,
+          "p_hac": 0.00012,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 1417,
-          "meanExcessVsSPY": -0.844,
-          "winRateVsSPY": 49.2,
-          "infoRatio": -0.064,
-          "t": -2.4,
-          "p": 0.0163
+        "oosPooled": {
+          "n": 2216,
+          "meanExcessVsSPY": -1.6845,
+          "winRateVsSPY": 50.0,
+          "infoRatio": -0.0904,
+          "t_ols": -4.25,
+          "p_ols": 2e-05,
+          "t_hac": -2.3,
+          "p_hac": 0.02159,
+          "p_bootstrap": 0.01949,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 351,
+            "meanExcessVsSPY": -5.0495,
+            "infoRatio": -0.3587,
+            "winRateVsSPY": 42.2
+          },
+          {
+            "fold": 2,
+            "n": 668,
+            "meanExcessVsSPY": -0.9438,
+            "infoRatio": -0.0544,
+            "winRateVsSPY": 49.0
+          },
+          {
+            "fold": 3,
+            "n": 679,
+            "meanExcessVsSPY": 1.2968,
+            "infoRatio": 0.0808,
+            "winRateVsSPY": 52.9
+          },
+          {
+            "fold": 4,
+            "n": 518,
+            "meanExcessVsSPY": -4.2675,
+            "infoRatio": -0.1741,
+            "winRateVsSPY": 52.9
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 4
       },
       "ver=SELL": {
+        "horizon": "30d",
         "full": {
-          "n": 254,
-          "meanExcessVsSPY": -1.571,
-          "winRateVsSPY": 50.4,
-          "infoRatio": -0.094,
-          "t": -1.49,
-          "p": 0.1354
+          "n": 219,
+          "meanExcessVsSPY": -3.1031,
+          "winRateVsSPY": 46.1,
+          "infoRatio": -0.165,
+          "t_ols": -2.44,
+          "p_ols": 0.0146,
+          "t_hac": -1.62,
+          "p_hac": 0.10526,
+          "p_bootstrap": 0.10395,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 84,
-          "meanExcessVsSPY": -0.173,
-          "winRateVsSPY": 51.2,
-          "infoRatio": -0.011,
-          "t": -0.1,
-          "p": 0.9187
+        "oosPooled": {
+          "n": 119,
+          "meanExcessVsSPY": -4.4947,
+          "winRateVsSPY": 43.7,
+          "infoRatio": -0.2367,
+          "t_ols": -2.58,
+          "p_ols": 0.00981,
+          "t_hac": -2.38,
+          "p_hac": 0.0173,
+          "p_bootstrap": 0.008,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 38,
+            "meanExcessVsSPY": -3.0295,
+            "infoRatio": -0.1516,
+            "winRateVsSPY": 52.6
+          },
+          {
+            "fold": 2,
+            "n": 32,
+            "meanExcessVsSPY": -4.8678,
+            "infoRatio": -0.3472,
+            "winRateVsSPY": 34.4
+          },
+          {
+            "fold": 3,
+            "n": 42,
+            "meanExcessVsSPY": -2.249,
+            "infoRatio": -0.1713,
+            "winRateVsSPY": 42.9
+          },
+          {
+            "fold": 4,
+            "n": 7,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 3
       },
-      "rsi<30 (oversold\u2192long)": {
+      "rsi<30 (oversold->long)": {
+        "horizon": "30d",
         "full": {
-          "n": 1421,
-          "meanExcessVsSPY": 1.716,
-          "winRateVsSPY": 55.0,
-          "infoRatio": 0.133,
-          "t": 5.0,
-          "p": 0.0
+          "n": 475,
+          "meanExcessVsSPY": 1.4719,
+          "winRateVsSPY": 52.4,
+          "infoRatio": 0.1148,
+          "t_ols": 2.5,
+          "p_ols": 0.01237,
+          "t_hac": 1.16,
+          "p_hac": 0.24691,
+          "p_bootstrap": 0.25737,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 511,
-          "meanExcessVsSPY": 2.051,
-          "winRateVsSPY": 57.9,
-          "infoRatio": 0.15,
-          "t": 3.38,
-          "p": 0.0007
+        "oosPooled": {
+          "n": 259,
+          "meanExcessVsSPY": 0.8228,
+          "winRateVsSPY": 47.5,
+          "infoRatio": 0.0568,
+          "t_ols": 0.91,
+          "p_ols": 0.36083,
+          "t_hac": 0.45,
+          "p_hac": 0.65182,
+          "p_bootstrap": 0.67316,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 7,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 78,
+            "meanExcessVsSPY": 0.5462,
+            "infoRatio": 0.0389,
+            "winRateVsSPY": 52.6
+          },
+          {
+            "fold": 3,
+            "n": 115,
+            "meanExcessVsSPY": -2.9977,
+            "infoRatio": -0.2448,
+            "winRateVsSPY": 34.8
+          },
+          {
+            "fold": 4,
+            "n": 59,
+            "meanExcessVsSPY": 5.4924,
+            "infoRatio": 0.4294,
+            "winRateVsSPY": 62.7
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 3
       },
-      "rsi>70 (overbought\u2192short)": {
+      "rsi>70 (overbought->short)": {
+        "horizon": "30d",
         "full": {
-          "n": 2287,
-          "meanExcessVsSPY": -1.784,
-          "winRateVsSPY": 46.5,
-          "infoRatio": -0.137,
-          "t": -6.54,
-          "p": 0.0
+          "n": 1163,
+          "meanExcessVsSPY": -4.3693,
+          "winRateVsSPY": 42.6,
+          "infoRatio": -0.2658,
+          "t_ols": -9.06,
+          "p_ols": 0.0,
+          "t_hac": -3.71,
+          "p_hac": 0.00021,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 719,
-          "meanExcessVsSPY": -0.002,
-          "winRateVsSPY": 50.5,
-          "infoRatio": -0.0,
-          "t": -0.01,
-          "p": 0.9954
+        "oosPooled": {
+          "n": 686,
+          "meanExcessVsSPY": -4.7374,
+          "winRateVsSPY": 40.8,
+          "infoRatio": -0.2818,
+          "t_ols": -7.38,
+          "p_ols": 0.0,
+          "t_hac": -3.55,
+          "p_hac": 0.00039,
+          "p_bootstrap": 0.0005,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 214,
+            "meanExcessVsSPY": -6.1978,
+            "infoRatio": -0.3534,
+            "winRateVsSPY": 42.1
+          },
+          {
+            "fold": 2,
+            "n": 189,
+            "meanExcessVsSPY": -3.1181,
+            "infoRatio": -0.1948,
+            "winRateVsSPY": 42.9
+          },
+          {
+            "fold": 3,
+            "n": 214,
+            "meanExcessVsSPY": -4.0475,
+            "infoRatio": -0.3735,
+            "winRateVsSPY": 32.7
+          },
+          {
+            "fold": 4,
+            "n": 69,
+            "meanExcessVsSPY": -6.7828,
+            "infoRatio": -0.2416,
+            "winRateVsSPY": 56.5
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 4
       },
       "vol_ratio>1.5 (long)": {
+        "horizon": "30d",
         "full": {
-          "n": 1271,
-          "meanExcessVsSPY": 1.909,
-          "winRateVsSPY": 51.0,
-          "infoRatio": 0.128,
-          "t": 4.57,
-          "p": 0.0
+          "n": 1397,
+          "meanExcessVsSPY": 1.3542,
+          "winRateVsSPY": 47.5,
+          "infoRatio": 0.0824,
+          "t_ols": 3.08,
+          "p_ols": 0.00207,
+          "t_hac": 1.94,
+          "p_hac": 0.05268,
+          "p_bootstrap": 0.04798,
+          "hacLag": 30
         },
-        "oos": {
-          "n": 420,
-          "meanExcessVsSPY": 0.869,
-          "winRateVsSPY": 50.7,
-          "infoRatio": 0.064,
-          "t": 1.32,
-          "p": 0.1881
+        "oosPooled": {
+          "n": 749,
+          "meanExcessVsSPY": 1.4573,
+          "winRateVsSPY": 46.7,
+          "infoRatio": 0.086,
+          "t_ols": 2.35,
+          "p_ols": 0.01856,
+          "t_hac": 1.75,
+          "p_hac": 0.07964,
+          "p_bootstrap": 0.09045,
+          "hacLag": 30
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 215,
+            "meanExcessVsSPY": 3.45,
+            "infoRatio": 0.203,
+            "winRateVsSPY": 51.2
+          },
+          {
+            "fold": 2,
+            "n": 226,
+            "meanExcessVsSPY": 1.728,
+            "infoRatio": 0.1118,
+            "winRateVsSPY": 46.5
+          },
+          {
+            "fold": 3,
+            "n": 216,
+            "meanExcessVsSPY": -1.481,
+            "infoRatio": -0.0964,
+            "winRateVsSPY": 45.8
+          },
+          {
+            "fold": 4,
+            "n": 92,
+            "meanExcessVsSPY": 3.0345,
+            "infoRatio": 0.1358,
+            "winRateVsSPY": 39.1
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 4
       }
     },
     "90d": {
       "signal=STRONG_BUY": {
+        "horizon": "90d",
         "full": {
-          "n": 4230,
-          "meanExcessVsSPY": 3.626,
-          "winRateVsSPY": 47.7,
-          "infoRatio": 0.132,
-          "t": 8.56,
-          "p": 0.0
+          "n": 4120,
+          "meanExcessVsSPY": 3.7224,
+          "winRateVsSPY": 46.0,
+          "infoRatio": 0.1253,
+          "t_ols": 8.04,
+          "p_ols": 0.0,
+          "t_hac": 2.84,
+          "p_hac": 0.00445,
+          "p_bootstrap": 0.004,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 1183,
-          "meanExcessVsSPY": 0.089,
-          "winRateVsSPY": 47.7,
-          "infoRatio": 0.004,
-          "t": 0.15,
-          "p": 0.8817
+        "oosPooled": {
+          "n": 2423,
+          "meanExcessVsSPY": 4.9812,
+          "winRateVsSPY": 48.0,
+          "infoRatio": 0.1559,
+          "t_ols": 7.67,
+          "p_ols": 0.0,
+          "t_hac": 3.31,
+          "p_hac": 0.00093,
+          "p_bootstrap": 0.004,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 968,
+            "meanExcessVsSPY": 9.3093,
+            "infoRatio": 0.2577,
+            "winRateVsSPY": 50.3
+          },
+          {
+            "fold": 2,
+            "n": 926,
+            "meanExcessVsSPY": 3.2602,
+            "infoRatio": 0.1176,
+            "winRateVsSPY": 52.5
+          },
+          {
+            "fold": 3,
+            "n": 529,
+            "meanExcessVsSPY": 0.0738,
+            "infoRatio": 0.0025,
+            "winRateVsSPY": 36.1
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "GO",
+        "foldsPositive": 3,
+        "foldsScored": 3
       },
       "signal=BUY": {
+        "horizon": "90d",
         "full": {
-          "n": 3098,
-          "meanExcessVsSPY": 3.655,
-          "winRateVsSPY": 48.7,
-          "infoRatio": 0.139,
-          "t": 7.75,
-          "p": 0.0
+          "n": 3152,
+          "meanExcessVsSPY": 4.6207,
+          "winRateVsSPY": 46.7,
+          "infoRatio": 0.148,
+          "t_ols": 8.31,
+          "p_ols": 0.0,
+          "t_hac": 2.92,
+          "p_hac": 0.00356,
+          "p_bootstrap": 0.0065,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 818,
-          "meanExcessVsSPY": -2.027,
-          "winRateVsSPY": 40.8,
-          "infoRatio": -0.092,
-          "t": -2.62,
-          "p": 0.0087
+        "oosPooled": {
+          "n": 1697,
+          "meanExcessVsSPY": 5.6718,
+          "winRateVsSPY": 51.9,
+          "infoRatio": 0.1706,
+          "t_ols": 7.03,
+          "p_ols": 0.0,
+          "t_hac": 3.73,
+          "p_hac": 0.00019,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": true,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 756,
+            "meanExcessVsSPY": 10.8764,
+            "infoRatio": 0.3177,
+            "winRateVsSPY": 56.6
+          },
+          {
+            "fold": 2,
+            "n": 515,
+            "meanExcessVsSPY": 2.4789,
+            "infoRatio": 0.0799,
+            "winRateVsSPY": 53.8
+          },
+          {
+            "fold": 3,
+            "n": 426,
+            "meanExcessVsSPY": 0.2954,
+            "infoRatio": 0.009,
+            "winRateVsSPY": 41.3
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "GO",
+        "foldsPositive": 3,
+        "foldsScored": 3
       },
       "signal=SELL": {
+        "horizon": "90d",
         "full": {
-          "n": 2554,
-          "meanExcessVsSPY": -5.804,
-          "winRateVsSPY": 45.6,
-          "infoRatio": -0.239,
-          "t": -12.09,
-          "p": 0.0
+          "n": 2714,
+          "meanExcessVsSPY": -5.0391,
+          "winRateVsSPY": 49.1,
+          "infoRatio": -0.1571,
+          "t_ols": -8.19,
+          "p_ols": 0.0,
+          "t_hac": -3.39,
+          "p_hac": 0.00069,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 571,
-          "meanExcessVsSPY": 2.376,
-          "winRateVsSPY": 59.9,
-          "infoRatio": 0.109,
-          "t": 2.6,
-          "p": 0.0093
+        "oosPooled": {
+          "n": 1135,
+          "meanExcessVsSPY": -4.3738,
+          "winRateVsSPY": 47.9,
+          "infoRatio": -0.1196,
+          "t_ols": -4.03,
+          "p_ols": 6e-05,
+          "t_hac": -2.0,
+          "p_hac": 0.04519,
+          "p_bootstrap": 0.04248,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 334,
+            "meanExcessVsSPY": -9.9302,
+            "infoRatio": -0.2877,
+            "winRateVsSPY": 47.3
+          },
+          {
+            "fold": 2,
+            "n": 493,
+            "meanExcessVsSPY": -1.623,
+            "infoRatio": -0.048,
+            "winRateVsSPY": 46.2
+          },
+          {
+            "fold": 3,
+            "n": 308,
+            "meanExcessVsSPY": -2.7513,
+            "infoRatio": -0.0654,
+            "winRateVsSPY": 51.3
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 3
       },
       "signal=STRONG_SELL": {
+        "horizon": "90d",
         "full": {
-          "n": 1965,
-          "meanExcessVsSPY": -8.449,
-          "winRateVsSPY": 38.6,
-          "infoRatio": -0.336,
-          "t": -14.92,
-          "p": 0.0
+          "n": 2288,
+          "meanExcessVsSPY": -6.9061,
+          "winRateVsSPY": 42.6,
+          "infoRatio": -0.2302,
+          "t_ols": -11.01,
+          "p_ols": 0.0,
+          "t_hac": -3.77,
+          "p_hac": 0.00016,
+          "p_bootstrap": 0.001,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 398,
-          "meanExcessVsSPY": 2.877,
-          "winRateVsSPY": 62.3,
-          "infoRatio": 0.139,
-          "t": 2.78,
-          "p": 0.0054
+        "oosPooled": {
+          "n": 899,
+          "meanExcessVsSPY": -2.8502,
+          "winRateVsSPY": 47.5,
+          "infoRatio": -0.0921,
+          "t_ols": -2.76,
+          "p_ols": 0.00575,
+          "t_hac": -1.05,
+          "p_hac": 0.29524,
+          "p_bootstrap": 0.23688,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 220,
+            "meanExcessVsSPY": -15.0828,
+            "infoRatio": -0.3541,
+            "winRateVsSPY": 53.2
+          },
+          {
+            "fold": 2,
+            "n": 378,
+            "meanExcessVsSPY": 1.1747,
+            "infoRatio": 0.0531,
+            "winRateVsSPY": 44.7
+          },
+          {
+            "fold": 3,
+            "n": 301,
+            "meanExcessVsSPY": 1.0362,
+            "infoRatio": 0.0371,
+            "winRateVsSPY": 46.8
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 2,
+        "foldsScored": 3
       },
       "bbtc=BUY": {
+        "horizon": "90d",
         "full": {
-          "n": 5159,
-          "meanExcessVsSPY": 4.101,
-          "winRateVsSPY": 49.6,
-          "infoRatio": 0.151,
-          "t": 10.87,
-          "p": 0.0
+          "n": 5270,
+          "meanExcessVsSPY": 4.4323,
+          "winRateVsSPY": 46.8,
+          "infoRatio": 0.1456,
+          "t_ols": 10.57,
+          "p_ols": 0.0,
+          "t_hac": 3.54,
+          "p_hac": 0.00039,
+          "p_bootstrap": 0.001,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 1321,
-          "meanExcessVsSPY": -0.033,
-          "winRateVsSPY": 47.0,
-          "infoRatio": -0.002,
-          "t": -0.06,
-          "p": 0.9541
+        "oosPooled": {
+          "n": 2975,
+          "meanExcessVsSPY": 5.7695,
+          "winRateVsSPY": 49.9,
+          "infoRatio": 0.178,
+          "t_ols": 9.71,
+          "p_ols": 0.0,
+          "t_hac": 3.95,
+          "p_hac": 8e-05,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": true,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 1275,
+            "meanExcessVsSPY": 10.8847,
+            "infoRatio": 0.3035,
+            "winRateVsSPY": 53.4
+          },
+          {
+            "fold": 2,
+            "n": 1015,
+            "meanExcessVsSPY": 3.1811,
+            "infoRatio": 0.1142,
+            "winRateVsSPY": 52.5
+          },
+          {
+            "fold": 3,
+            "n": 685,
+            "meanExcessVsSPY": 0.0839,
+            "infoRatio": 0.0027,
+            "winRateVsSPY": 39.6
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "GO",
+        "foldsPositive": 3,
+        "foldsScored": 3
       },
       "ver=BUY": {
+        "horizon": "90d",
         "full": {
-          "n": 212,
-          "meanExcessVsSPY": 10.831,
-          "winRateVsSPY": 63.7,
-          "infoRatio": 0.408,
-          "t": 5.94,
-          "p": 0.0
+          "n": 93,
+          "meanExcessVsSPY": 3.103,
+          "winRateVsSPY": 50.5,
+          "infoRatio": 0.1146,
+          "t_ols": 1.11,
+          "p_ols": 0.26905,
+          "t_hac": 1.54,
+          "p_hac": 0.12455,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 36,
-          "meanExcessVsSPY": 1.67,
-          "winRateVsSPY": 41.7,
-          "infoRatio": 0.081,
-          "t": 0.48,
-          "p": 0.628
+        "oosPooled": {
+          "n": 30,
+          "note": "INSUFFICIENT N (<100)"
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 4,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 25,
+            "meanExcessVsSPY": -10.386,
+            "infoRatio": -0.5142,
+            "winRateVsSPY": 36.0
+          },
+          {
+            "fold": 3,
+            "n": 1,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "INSUFFICIENT N",
+        "foldsPositive": 0,
+        "foldsScored": 1
       },
       "bbtc=SELL": {
+        "horizon": "90d",
         "full": {
-          "n": 3313,
-          "meanExcessVsSPY": -7.223,
-          "winRateVsSPY": 42.6,
-          "infoRatio": -0.285,
-          "t": -16.42,
-          "p": 0.0
+          "n": 3427,
+          "meanExcessVsSPY": -5.8858,
+          "winRateVsSPY": 45.6,
+          "infoRatio": -0.1874,
+          "t_ols": -10.97,
+          "p_ols": 0.0,
+          "t_hac": -4.17,
+          "p_hac": 3e-05,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 773,
-          "meanExcessVsSPY": 2.27,
-          "winRateVsSPY": 59.8,
-          "infoRatio": 0.108,
-          "t": 2.99,
-          "p": 0.0028
+        "oosPooled": {
+          "n": 1423,
+          "meanExcessVsSPY": -4.1789,
+          "winRateVsSPY": 47.9,
+          "infoRatio": -0.1175,
+          "t_ols": -4.43,
+          "p_ols": 1e-05,
+          "t_hac": -1.75,
+          "p_hac": 0.08059,
+          "p_bootstrap": 0.04998,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 351,
+            "meanExcessVsSPY": -10.781,
+            "infoRatio": -0.2749,
+            "winRateVsSPY": 53.6
+          },
+          {
+            "fold": 2,
+            "n": 668,
+            "meanExcessVsSPY": -1.398,
+            "infoRatio": -0.0468,
+            "winRateVsSPY": 43.3
+          },
+          {
+            "fold": 3,
+            "n": 404,
+            "meanExcessVsSPY": -3.0411,
+            "infoRatio": -0.0762,
+            "winRateVsSPY": 50.5
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 3
       },
       "ver=SELL": {
+        "horizon": "90d",
         "full": {
-          "n": 227,
-          "meanExcessVsSPY": -7.093,
-          "winRateVsSPY": 49.8,
-          "infoRatio": -0.228,
-          "t": -3.44,
-          "p": 0.0006
+          "n": 201,
+          "meanExcessVsSPY": -7.7703,
+          "winRateVsSPY": 53.2,
+          "infoRatio": -0.2114,
+          "t_ols": -3.0,
+          "p_ols": 0.00273,
+          "t_hac": -1.77,
+          "p_hac": 0.07718,
+          "p_bootstrap": 0.15742,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 57,
-          "meanExcessVsSPY": -5.951,
+        "oosPooled": {
+          "n": 101,
+          "meanExcessVsSPY": -16.0097,
+          "winRateVsSPY": 46.5,
+          "infoRatio": -0.3901,
+          "t_ols": -3.92,
+          "p_ols": 9e-05,
+          "t_hac": -8.61,
+          "p_hac": 0.0,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "n": 38,
+            "meanExcessVsSPY": -15.2303,
+            "infoRatio": -0.3944,
+            "winRateVsSPY": 44.7
+          },
+          {
+            "fold": 2,
+            "n": 32,
+            "meanExcessVsSPY": -15.5372,
+            "infoRatio": -0.4938,
+            "winRateVsSPY": 43.8
+          },
+          {
+            "fold": 3,
+            "n": 31,
+            "meanExcessVsSPY": -17.4529,
+            "infoRatio": -0.3328,
+            "winRateVsSPY": 51.6
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 3
+      },
+      "rsi<30 (oversold->long)": {
+        "horizon": "90d",
+        "full": {
+          "n": 335,
+          "meanExcessVsSPY": 4.9374,
+          "winRateVsSPY": 63.9,
+          "infoRatio": 0.2073,
+          "t_ols": 3.79,
+          "p_ols": 0.00015,
+          "t_hac": 1.93,
+          "p_hac": 0.05319,
+          "p_bootstrap": 0.11044,
+          "hacLag": 90
+        },
+        "oosPooled": {
+          "n": 119,
+          "meanExcessVsSPY": 1.3369,
+          "winRateVsSPY": 58.8,
+          "infoRatio": 0.0461,
+          "t_ols": 0.5,
+          "p_ols": 0.61514,
+          "t_hac": 0.48,
+          "p_hac": 0.6337,
+          "p_bootstrap": 0.98001,
+          "hacLag": 90
+        },
+        "folds": [
+          {
+            "fold": 1,
+            "n": 7,
+            "note": "thin (<20)"
+          },
+          {
+            "fold": 2,
+            "n": 78,
+            "meanExcessVsSPY": -3.8356,
+            "infoRatio": -0.1718,
+            "winRateVsSPY": 55.1
+          },
+          {
+            "fold": 3,
+            "n": 34,
+            "meanExcessVsSPY": 1.6912,
+            "infoRatio": 0.0827,
+            "winRateVsSPY": 67.6
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 1,
+        "foldsScored": 2
+      },
+      "rsi>70 (overbought->short)": {
+        "horizon": "90d",
+        "full": {
+          "n": 999,
+          "meanExcessVsSPY": -6.4805,
           "winRateVsSPY": 47.4,
-          "infoRatio": -0.243,
-          "t": -1.84,
-          "p": 0.0662
+          "infoRatio": -0.2157,
+          "t_ols": -6.82,
+          "p_ols": 0.0,
+          "t_hac": -2.41,
+          "p_hac": 0.01589,
+          "p_bootstrap": 0.02149,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
-      },
-      "rsi<30 (oversold\u2192long)": {
-        "full": {
-          "n": 1177,
-          "meanExcessVsSPY": 9.263,
-          "winRateVsSPY": 62.3,
-          "infoRatio": 0.357,
-          "t": 12.25,
-          "p": 0.0
+        "oosPooled": {
+          "n": 522,
+          "meanExcessVsSPY": -10.8956,
+          "winRateVsSPY": 43.1,
+          "infoRatio": -0.3138,
+          "t_ols": -7.17,
+          "p_ols": 0.0,
+          "t_hac": -3.44,
+          "p_hac": 0.00058,
+          "p_bootstrap": 0.0005,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 267,
-          "meanExcessVsSPY": 2.685,
-          "winRateVsSPY": 48.3,
-          "infoRatio": 0.108,
-          "t": 1.76,
-          "p": 0.0776
-        },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
-      },
-      "rsi>70 (overbought\u2192short)": {
-        "full": {
-          "n": 1982,
-          "meanExcessVsSPY": -5.623,
-          "winRateVsSPY": 48.6,
-          "infoRatio": -0.19,
-          "t": -8.46,
-          "p": 0.0
-        },
-        "oos": {
-          "n": 414,
-          "meanExcessVsSPY": -4.523,
-          "winRateVsSPY": 45.4,
-          "infoRatio": -0.22,
-          "t": -4.47,
-          "p": 0.0
-        },
-        "survivesMultipleTesting": false,
-        "verdict": "NO-GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 214,
+            "meanExcessVsSPY": -14.502,
+            "infoRatio": -0.3823,
+            "winRateVsSPY": 41.1
+          },
+          {
+            "fold": 2,
+            "n": 189,
+            "meanExcessVsSPY": -12.5164,
+            "infoRatio": -0.4322,
+            "winRateVsSPY": 30.7
+          },
+          {
+            "fold": 3,
+            "n": 119,
+            "meanExcessVsSPY": -1.836,
+            "infoRatio": -0.0514,
+            "winRateVsSPY": 66.4
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 0,
+        "foldsScored": 3
       },
       "vol_ratio>1.5 (long)": {
+        "horizon": "90d",
         "full": {
-          "n": 1107,
-          "meanExcessVsSPY": 7.011,
-          "winRateVsSPY": 54.1,
-          "infoRatio": 0.247,
-          "t": 8.21,
-          "p": 0.0
+          "n": 1219,
+          "meanExcessVsSPY": 4.8323,
+          "winRateVsSPY": 48.4,
+          "infoRatio": 0.1503,
+          "t_ols": 5.25,
+          "p_ols": 0.0,
+          "t_hac": 2.69,
+          "p_hac": 0.00717,
+          "p_bootstrap": 0.0085,
+          "hacLag": 90
         },
-        "oos": {
-          "n": 256,
-          "meanExcessVsSPY": 1.061,
-          "winRateVsSPY": 45.7,
-          "infoRatio": 0.046,
-          "t": 0.74,
-          "p": 0.4619
+        "oosPooled": {
+          "n": 571,
+          "meanExcessVsSPY": 5.9522,
+          "winRateVsSPY": 50.3,
+          "infoRatio": 0.1738,
+          "t_ols": 4.15,
+          "p_ols": 3e-05,
+          "t_hac": 2.61,
+          "p_hac": 0.00918,
+          "p_bootstrap": 0.0035,
+          "hacLag": 90
         },
-        "survivesMultipleTesting": true,
-        "verdict": "GO"
+        "folds": [
+          {
+            "fold": 1,
+            "n": 215,
+            "meanExcessVsSPY": 11.0166,
+            "infoRatio": 0.3026,
+            "winRateVsSPY": 53.0
+          },
+          {
+            "fold": 2,
+            "n": 226,
+            "meanExcessVsSPY": 0.8522,
+            "infoRatio": 0.0319,
+            "winRateVsSPY": 51.3
+          },
+          {
+            "fold": 3,
+            "n": 130,
+            "meanExcessVsSPY": 6.4426,
+            "infoRatio": 0.1587,
+            "winRateVsSPY": 43.8
+          },
+          {
+            "fold": 4,
+            "n": 0,
+            "note": "thin (<20)"
+          }
+        ],
+        "verdict": "NO-GO",
+        "foldsPositive": 3,
+        "foldsScored": 3
       }
+    }
+  },
+  "deflatedSharpe": {
+    "varSharpeAcrossTrials": 0.021277,
+    "nTrials": 33,
+    "bestByMagnitude": {
+      "factor": "ver=SELL",
+      "horizon": "90d",
+      "oosInfoRatio": -0.3901,
+      "n": 101,
+      "dsr": 0.7439,
+      "srObserved": 0.3901,
+      "srThreshold": 0.3081,
+      "skew": -1.12,
+      "kurtosis": 4.323,
+      "z": 0.656,
+      "nTrials": 33
+    },
+    "bestLongCandidate": {
+      "factor": "bbtc=BUY",
+      "horizon": "90d",
+      "oosInfoRatio": 0.178,
+      "n": 2975,
+      "dsr": 0.0,
+      "srObserved": 0.178,
+      "srThreshold": 0.3081,
+      "skew": 1.22,
+      "kurtosis": 5.409,
+      "z": -7.848,
+      "nTrials": 33
     }
   },
   "correlation": {
     "signal_dir": {
       "signal_dir": 1.0,
-      "score": 0.9,
-      "rsi": 0.64,
-      "vol_ratio": -0.02,
-      "bbtc_dir": 0.82,
-      "ver_dir": -0.11
+      "score": 0.896,
+      "rsi": 0.749,
+      "vol_ratio": 0.015,
+      "bbtc_dir": 0.836,
+      "ver_dir": -0.135
     },
     "score": {
-      "signal_dir": 0.9,
+      "signal_dir": 0.896,
       "score": 1.0,
-      "rsi": 0.7,
-      "vol_ratio": -0.05,
-      "bbtc_dir": 0.91,
-      "ver_dir": -0.04
+      "rsi": 0.821,
+      "vol_ratio": -0.003,
+      "bbtc_dir": 0.911,
+      "ver_dir": -0.055
     },
     "rsi": {
-      "signal_dir": 0.64,
-      "score": 0.7,
+      "signal_dir": 0.749,
+      "score": 0.821,
       "rsi": 1.0,
-      "vol_ratio": -0.05,
-      "bbtc_dir": 0.78,
-      "ver_dir": -0.31
+      "vol_ratio": 0.032,
+      "bbtc_dir": 0.854,
+      "ver_dir": -0.316
     },
     "vol_ratio": {
-      "signal_dir": -0.02,
-      "score": -0.05,
-      "rsi": -0.05,
+      "signal_dir": 0.015,
+      "score": -0.003,
+      "rsi": 0.032,
       "vol_ratio": 1.0,
-      "bbtc_dir": -0.05,
-      "ver_dir": 0.02
+      "bbtc_dir": 0.029,
+      "ver_dir": -0.127
     },
     "bbtc_dir": {
-      "signal_dir": 0.82,
-      "score": 0.91,
-      "rsi": 0.78,
-      "vol_ratio": -0.05,
+      "signal_dir": 0.836,
+      "score": 0.911,
+      "rsi": 0.854,
+      "vol_ratio": 0.029,
       "bbtc_dir": 1.0,
-      "ver_dir": -0.22
+      "ver_dir": -0.18
     },
     "ver_dir": {
-      "signal_dir": -0.11,
-      "score": -0.04,
-      "rsi": -0.31,
-      "vol_ratio": 0.02,
-      "bbtc_dir": -0.22,
+      "signal_dir": -0.135,
+      "score": -0.055,
+      "rsi": -0.316,
+      "vol_ratio": -0.127,
+      "bbtc_dir": -0.18,
       "ver_dir": 1.0
     }
+  },
+  "redundancyClusters": {
+    "threshold": 0.7,
+    "clusters": [
+      [
+        "signal_dir",
+        "score",
+        "rsi",
+        "bbtc_dir"
+      ],
+      [
+        "vol_ratio"
+      ],
+      [
+        "ver_dir"
+      ]
+    ],
+    "independentAxes": 3
   }
 }

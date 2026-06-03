@@ -22,20 +22,21 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 
 # ─── Tickers ────────────────────────────────────────────────────────────────────
-# Watchlist (from favorites table via demo-seed.ts)
-WATCHLIST = ["AAPL", "MSFT", "HD", "JNJ", "KO", "O", "JEPI", "XOM", "BAC", "TSLA"]
-
-# Portfolio / dividend holdings
-PORTFOLIO = ["O", "JEPI", "KO", "JNJ", "XOM", "T", "VZ", "PG"]
-
-# Traded tickers (from demo trades)
-TRADED = ["NVDA", "AMD", "AMZN", "META", "NFLX", "GOOGL", "PLTR", "SOFI",
-          "RIVN", "COIN", "SNAP", "ROKU", "PARA", "DIS", "INTC", "NKE",
-          "WBA", "MO", "F", "SPY", "QQQ", "IWM"]
+# HTF-profile basket: the $7K account can only trade $5–$75 names, so the
+# validation universe MUST match that band (mega-caps mislead the numbers).
+# These are liquid (>750k avg vol), >$200M-cap US names that sat in the
+# $5–$75 band across the 2024–2026 window. SPY is added separately as the
+# benchmark only — it is NOT a tradeable signal here.
+HTF_BASKET = [
+    "SOFI", "F", "RIVN", "INTC", "SNAP", "PARA", "WBA", "T", "BAC", "CCL",
+    "AAL", "DAL", "NCLH", "HOOD", "RIOT", "MARA", "NIO", "PINS", "DKNG",
+    "AFRM", "CLF", "X", "KMI", "WMB", "ET", "HBAN", "KEY", "VALE", "WBD",
+    "GM", "PFE", "KVUE", "CVE", "SU", "KGC", "GME",
+]
 
 # De-duplicate and sort
-ALL_TICKERS = sorted(set(WATCHLIST + PORTFOLIO + TRADED))
-print(f"Backtesting {len(ALL_TICKERS)} tickers: {', '.join(ALL_TICKERS)}")
+ALL_TICKERS = sorted(set(HTF_BASKET))
+print(f"Backtesting {len(ALL_TICKERS)} HTF-basket tickers: {', '.join(ALL_TICKERS)}")
 
 # ─── Yahoo Finance Data Fetch ────────────────────────────────────────────────
 
@@ -95,28 +96,39 @@ def compute_ema(closes, length):
 
 
 def compute_rsi(closes, period=14):
-    """Compute RSI at each point — same as track-record.ts logic."""
-    if len(closes) < period + 1:
-        return [50.0] * len(closes)
-    
-    rsi_values = [50.0] * len(closes)
-    
-    for idx in range(period, len(closes)):
-        gains = 0.0
-        losses = 0.0
-        for i in range(idx - period + 1, idx + 1):
-            diff = closes[i] - closes[i-1]
-            if diff > 0:
-                gains += diff
-            else:
-                losses += abs(diff)
-        avg_gain = gains / period
-        avg_loss = losses / period
-        if avg_loss == 0:
-            rsi_values[idx] = 100.0
+    """Wilder's RSI (SMMA) — byte-for-byte the production computeRSISeries in
+    server/signals/strategies/bbtc.ts. Seed = simple average of the first
+    `period` diffs at index `period`, then Wilder exponential smoothing.
+    (Was previously a simple rolling average, which fired RSI thresholds on
+    different bars than production — a silent parity break.)"""
+    n = len(closes)
+    if n < period + 1:
+        return [50.0] * n
+
+    rsi_values = [50.0] * n
+
+    # Seed: simple average of first `period` price changes (index 1..period)
+    gain_sum = 0.0
+    loss_sum = 0.0
+    for i in range(1, period + 1):
+        diff = closes[i] - closes[i - 1]
+        if diff > 0:
+            gain_sum += diff
         else:
-            rsi_values[idx] = 100.0 - (100.0 / (1.0 + avg_gain / avg_loss))
-    
+            loss_sum -= diff
+    avg_gain = gain_sum / period
+    avg_loss = loss_sum / period
+    rsi_values[period] = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+
+    # Wilder smoothing for the rest
+    for idx in range(period + 1, n):
+        diff = closes[idx] - closes[idx - 1]
+        g = diff if diff > 0 else 0.0
+        l = -diff if diff < 0 else 0.0
+        avg_gain = (avg_gain * (period - 1) + g) / period
+        avg_loss = (avg_loss * (period - 1) + l) / period
+        rsi_values[idx] = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+
     return rsi_values
 
 
@@ -290,27 +302,31 @@ def main():
     print(f"{'='*70}\n")
     
     # ── Add SPY benchmark returns ──
+    # CRITICAL: the SPY benchmark must be measured on the SAME unit as the
+    # ticker's return_Nd, which is N *trading days* forward (closes[day + N]).
+    # The old code added N *calendar* days, which under-counted by ~2/8/26
+    # trading days at 7/30/90d and manufactured a systematic positive excess
+    # (~+0.13/+0.52/+1.16%) — proven by SPY-vs-itself being non-zero. We now
+    # index SPY's own ordered trading-day series, giving exact parity.
+    spy_dates = sorted(spy_daily.keys())
+    spy_closes_ordered = [spy_daily[d] for d in spy_dates]
+    spy_idx = {d: i for i, d in enumerate(spy_dates)}
+    n_spy = len(spy_dates)
+
     for sig in all_signals:
         sig_date = sig["date"]
-        spy_price_at = spy_daily.get(sig_date)
-        if spy_price_at:
-            # Find SPY price ~7/30/90 days later
-            d = datetime.strptime(sig_date, "%Y-%m-%d")
-            for horizon, key in [(7, "spy_7d"), (30, "spy_30d"), (90, "spy_90d")]:
-                target = d + timedelta(days=horizon)
-                # Find closest trading day
-                spy_future = None
-                for offset in range(0, 5):
-                    check = (target + timedelta(days=offset)).strftime("%Y-%m-%d")
-                    if check in spy_daily:
-                        spy_future = spy_daily[check]
-                        break
-                if spy_future and spy_price_at > 0:
-                    sig[key] = round(((spy_future - spy_price_at) / spy_price_at) * 100, 2)
-                else:
-                    sig[key] = None
-        else:
+        i = spy_idx.get(sig_date)
+        if i is None:
             sig["spy_7d"] = sig["spy_30d"] = sig["spy_90d"] = None
+            continue
+        spy_price_at = spy_closes_ordered[i]
+        for horizon, key in [(7, "spy_7d"), (30, "spy_30d"), (90, "spy_90d")]:
+            j = i + horizon
+            if j < n_spy and spy_price_at > 0:
+                spy_future = spy_closes_ordered[j]
+                sig[key] = round(((spy_future - spy_price_at) / spy_price_at) * 100, 2)
+            else:
+                sig[key] = None
     
     # ── Analysis ──────────────────────────────────────────────────────────────
     
@@ -452,10 +468,12 @@ def main():
     
     # ── Save Results ──────────────────────────────────────────────────────────
     
-    with open("/home/user/workspace/stock-analyzer/backtest_results.json", "w") as f:
+    import os
+    out_dir = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(out_dir, "backtest_results.json"), "w") as f:
         json.dump(results, f, indent=2)
-    
-    with open("/home/user/workspace/stock-analyzer/backtest_signals.json", "w") as f:
+
+    with open(os.path.join(out_dir, "backtest_signals.json"), "w") as f:
         json.dump(all_signals, f, indent=2)
     
     # ── Print Summary ─────────────────────────────────────────────────────────

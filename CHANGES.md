@@ -9,6 +9,42 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Validation harness hardened + benchmark bug fixed (trustworthy verdicts)
+
+**Why:** The first harness (entry below) produced several "GO" verdicts that turned out to be
+**artifacts of a data bug and a mismatched test universe**. A multi-agent pass (indicator-auditor →
+quant-validator → parity-checker) found and fixed the root causes so the GO/NO-GO calls can actually
+be trusted before any indicator is allowed to carry weight in the score.
+
+**What was broken & fixed:**
+- **SPY benchmark misaligned (HIGH).** `backtest.py` measured a ticker's `return_Nd` as N *trading
+  days* forward but the SPY benchmark as N *calendar days* forward — different grids. This handed every
+  long signal a phantom +0.18%/+0.68%/+1.64% (7/30/90d) of free alpha. Fixed to index SPY's own
+  trading-day series (`idx + N`). Proven by new `python/validation/verify_alignment.py`: SPY-vs-itself
+  self-excess is now **exactly 0.0000%** at all horizons (was the bias above).
+- **RSI parity break (MED).** Backtest used a simple rolling-average RSI; production uses Wilder's SMMA.
+  Rewrote `compute_rsi` to byte-match production `computeRSISeries`/`wildersRSISeries`. Parity-checker
+  confirms backtest now mirrors `track-record.ts` exactly (no signal-level divergence).
+- **Wrong universe.** Validation ran on mega-caps (AAPL/NVDA/TSLA) the $7K account can't trade. Swapped
+  to a 36-name HTF-profile basket ($5–75, liquid). Regenerated `backtest_signals.json` (15,334 signals).
+- **Weak methodology.** Rewrote `validate_indicators.py`: 4-fold **walk-forward** (was a single 60/40
+  split), **Newey-West HAC** + moving-block bootstrap to deflate autocorrelated overlapping-return
+  t-stats, **Deflated Sharpe Ratio** (Bailey & López de Prado) for multiple-testing, OOS sample floor
+  raised to ≥100, startup data-integrity guard, repo-root-safe paths. Stdlib-only.
+
+**Verdict on the clean data:** **no factor earns a real GO.** The long side of the momentum cluster
+(signal/score/bbtc BUY @30–90d) shows positive raw excess but **decays to zero/negative in the most
+recent fold** and its best info-ratio (0.178) sits **below the best-of-N luck floor → Deflated Sharpe ≈ 0**.
+`signal`/`score`/`bbtc`/`rsi` collapse into **one** momentum vote (r = 0.75–0.91), not four — counting
+them separately is false confidence. `vol_ratio` is independent but not significant; `ver` is independent
+but INSUFFICIENT N. Binding constraint is the short (~1.8y, single-regime) sample. **Next lever: extend
+history to ≥5y — more out-of-sample time, not more indicators.** Hand-back for `server/snapshot/score.ts`:
+collapse the redundant cluster to one vote; do not raise weight on anything yet.
+
+**Files:** `backtest.py` (RSI, universe, SPY alignment, repo-relative output paths),
+`python/validation/validate_indicators.py` (rewritten), `python/validation/verify_alignment.py` (new),
+regenerated `backtest_signals.json` / `backtest_results.json` / `python/validation/factor_validation.json`.
+---
 ## 2026-06-03 — Indicator validation harness (out-of-sample, SPY-relative)
 
 **Why:** First evidence-based check of whether the signals actually beat SPY. `python/validation/validate_indicators.py`
