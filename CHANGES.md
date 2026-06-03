@@ -9,6 +9,68 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Pre-ship correctness audit: 9 signal/scoring/strategy defects fixed
+
+**Why:** A multi-agent correctness sweep (adversarially verified) found a cluster of bugs in the
+live decision path — the same bug class as the earlier stale-GO incident. Two were high-leverage
+and opposite: position sizing silently *killed valid trades*, while the scanner *surfaced dead
+setups as green GOs*.
+
+**What changed:**
+- **Position sizing R/R inversion** (`server/signals/risk/position-sizing.ts`): the TS port
+  hard-blocked any setup with reward/risk < 2.0, but the Python reference only blocks below 1:1
+  and *warns* below the 2:1 minimum. Valid setups (LUNR 1.83, BKSY 1.63) were being dropped in
+  prod. Now matches Python — block only sub-1:1, non-blocking warning below the configured min.
+  `htf:parity` now passes (LUNR sizes, BADRR 0.4:1 still blocked).
+- **Scanner missing live-price guard** (`server/compartments/unified-scanner/engine.ts`): hits
+  were filtered only by date freshness, so a breakout that had already blown through its stop or
+  target — or been chased far past entry — still surfaced as an actionable green GO. Added an
+  `isLiveAtPrice` guard mirroring the shared `htfLiveStatus` price checks across every adapter
+  (HTF/Rounding/Wyckoff/Pipe/AMC).
+- **Pipe-bottom never appeared** (same file): weekly patterns are always ≥5–7 days old, but
+  freshness was hard-coded to 3 calendar days, filtering every pipe-bottom hit. Freshness is now
+  per-strategy (weekly patterns get a 12-day window).
+- **BBTC displayed stops were wrong / phantom** (`server/signals/strategies/bbtc.ts`,
+  `server/routes.ts`): Trade Analysis recomputed the stop from current-bar ATR × 2.0 and trail
+  from × 1.5, and showed a synthetic profit target — none of which match the locked strategy
+  (hard stop = entry-bar ATR × 2.5, trail = × 3.0, **no target**). It also emitted stale levels
+  after a position closed. BBTC now exposes `inPosition` + computed `hardStop`/`trailStop`/
+  `effectiveStop` as the single source of truth; routes display them only while in-position and
+  drop the fake target.
+- **Trigger Check used a stale price** (`server/conviction/checks/htf-setup.ts`): the HTF live
+  guard was fed the last daily bar's close (up to a day stale on an intraday check). Now uses the
+  live snapshot quote, falling back to the bar close only when unavailable.
+- **Volume spike ratio self-suppressed** (`server/indicators/volume.ts`): the baseline average
+  included the bar being tested, understating a true spike ~2×. Baseline now excludes the current
+  bar.
+
+**Verified:** `npm run check` (no new type errors), `htf:parity` PASS, `htf:live:smoke` PASS.
+BBTC parity failures are pre-existing (Python reference is stale vs the 2026-05-08 state-based
+rewrite) — confirmed identical on untouched HEAD, out of scope here.
+
+**Deferred (low, flagged):** VER `ENTER` can persist for months without a staleness/chase guard —
+needs a VER result-shape change + consumer logic, left as a follow-up to avoid a rushed change to
+a signal surface. AMC's fixed 8%/20% stop/target are now live-price-guarded but the percentages
+still want a validated measure-rule basis.
+
+---
+## 2026-06-03 — Add CLAUDE.md rule files so every agent/session reads Chris's rules
+
+**Why:** Chris's standing rules (keep it simple, one approval covers the whole job — don't
+re-ask mid-task, snapshot before executing — don't ask) lived only in the auto-memory system,
+which Claude loads as soft "background context," so agents kept ignoring them. `CLAUDE.md` is
+the file Claude Code reads as real, top-priority user instructions at the start of every
+session (including subagents) — and none existed.
+
+**What changed:**
+- New **global** `~/.claude/CLAUDE.md` (machine-wide, every project/terminal/subagent) with the
+  universal behavioral rules. Not in this repo — lives in Chris's user dir.
+- New **project** `I:\stockotter\CLAUDE.md` (committed) — points to the global rules and pins
+  stockotter operational rules: ship-to-main + safe-tag snapshot + CHANGES.md per change,
+  FMP-only data, no-independent-builds / moveable-widget structure, fintech quality bar, HTF
+  test universe, and where project memory lives.
+
+---
 ## 2026-06-03 — Research nav re-cut by individual-ticker vs scanner + chart merge + scan persistence
 
 Follow-up to the funnel reorg, per Chris's batch. Organizing rule clarified: **individual ticker
