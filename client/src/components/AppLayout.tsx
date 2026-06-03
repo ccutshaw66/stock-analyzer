@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
-import { getNavGroups } from "@/lib/page-registry";
+import { getNavGroups, lookupPageByPath } from "@/lib/page-registry";
 import { useTickerNavigate, isCompanyResearchRoute } from "@/lib/useTickerNavigate";
 import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
@@ -543,12 +543,15 @@ function Sidebar({
   const toggleGroup = (label: string) => {
     setGroupOpen((prev) => (prev[label] ? {} : { [label]: true }));
   };
-  // Auto-expand the Company Research group whenever the user lands on one
-  // of its pages (either via a ticker click or direct navigation). Matches
-  // the accordion behavior — opening CR closes whatever else was open.
+  // Auto-expand the funnel group the user just landed on (via ticker click or
+  // direct nav) when it's a per-ticker research page. Registry-driven: the
+  // per-ticker pages now span funnel stages 3·Company / 4·Setup / 5·Decision,
+  // so we open whichever group that route actually belongs to. Accordion
+  // behavior preserved — opening one closes whatever else was open.
   useEffect(() => {
     if (isCompanyResearchRoute(location)) {
-      setGroupOpen({ "Company Research": true });
+      const entry = lookupPageByPath(location);
+      if (entry) setGroupOpen({ [entry.group]: true });
     }
   }, [location]);
 

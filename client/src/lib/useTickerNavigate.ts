@@ -3,14 +3,16 @@
  *
  * Rule (2026-05-27, Chris):
  *   Any ticker click anywhere on the site should set the global active
- *   ticker AND navigate to /profile, so the Company Research group becomes
- *   the working context.
+ *   ticker AND navigate to /profile, so the per-ticker research funnel
+ *   (stages 3·Company → 4·Setup → 5·Decision) becomes the working context.
  *
  * Exception: if the current page IS per-ticker analysis (it reads the
  * active ticker from context and renders that ticker's research), the
  * click just swaps the ticker and we stay on the page.
  *
- * The "stay" set is the Company Research group of the page registry.
+ * The "stay" set below is exactly those per-ticker funnel pages (the ones
+ * that read the active ticker from context). Market-wide pages in the same
+ * funnel groups (e.g. /earnings, /insiders) are deliberately NOT stay routes.
  *
  * Note: /htf/:symbol embeds the ticker in the URL — it does NOT read from
  * TickerContext — so it's deliberately NOT a stay route. Clicking a ticker

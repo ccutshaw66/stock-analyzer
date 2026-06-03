@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Research nav → scientific funnel (Regime→Screen→Company→Setup→Decision)
+
+**Why:** The research pages were a hodgepodge across four nav groups in no order — you couldn't
+walk the menu and actually research a stock with a methodology. Reorganized the left nav into a
+numbered, DIRECTION-AWARE research funnel: each stage answers one falsifiable question and you walk
+it top-to-bottom to a verdict. (See `brief_research_funnel` + the interview that defined it.)
+
+**The methodology (both ways — long AND bearish-via-options):** Stage 1 is a router, not a long-only
+gate. Bullish → long shares/calls; bearish → puts/debit-spreads via the MM/options read (NOT short
+shares — those signals tested dead); chop → premium-sell or stand aside. Decision output = direction
+× instrument + plan. MM Exposure promoted to a first-class Setup input (gamma/max-pain = strikes+timing).
+
+**What changed (pure `client/src/lib/page-registry.ts` reorg — no pages built or deleted):**
+- New nav groups `1 · Regime` / `2 · Screen` / `3 · Company` / `4 · Setup` / `5 · Decision` replacing
+  the old "Company Research" group; pages remapped: Market Pulse + Sector Heatmap → Regime; Scanner +
+  HTF → Screen; Profile + Institutions + Earnings + Insider Activity → Company; Trade Analysis +
+  Confluence + Strategy Chart + MM Exposure → Setup; Trigger Check + Long-Term Outlook + Kelly → Decision.
+- `NAV_GROUP_ORDER` places the funnel between Trade Tracker (home/trade-mgmt, Dashboard stays on top)
+  and the non-funnel groups (Investment Opportunities now just Dividend Finder/Track Record/Alerts;
+  Calculators; Experimental; Admin Playground; Help).
+- `AppLayout` sidebar auto-expand is now registry-driven (`lookupPageByPath`) so it opens whichever
+  funnel group the current per-ticker page belongs to (was hardcoded to the now-removed group).
+- `useTickerNavigate` STAY_ROUTES unchanged (behavior intact); stale comments updated.
+
+**Files:** `client/src/lib/page-registry.ts`, `client/src/components/AppLayout.tsx`,
+`client/src/lib/useTickerNavigate.ts`. Type-check clean (no new errors). Reversible (registry-only).
+---
 ## 2026-06-03 — Fix: Brokerage Cash anchor wouldn't persist (Trade Tracker "cash keeps resetting")
 
 **Why:** Chris reported having to re-enter the cash amount in Trade Tracker settings over and over —

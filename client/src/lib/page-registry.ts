@@ -44,9 +44,22 @@ export interface PageEntry {
   readonly hideFromNav?: true;
 }
 
+/**
+ * Nav groups. The research path is a SCIENTIFIC FUNNEL: groups 1→5 are stages
+ * you walk top-to-bottom, each answering one falsifiable question with a gate.
+ * It is DIRECTION-AWARE — Regime routes to long (shares/calls), bearish
+ * (puts/spreads via the MM/options read), or stand-aside; it is NOT long-only.
+ * The non-funnel groups (Trade Tracker = manage open trades, Investment
+ * Opportunities = income/monitoring, Calculators, Experimental, Admin
+ * Playground, Help) sit outside the funnel. See brief_research_funnel.
+ */
 export type NavGroup =
   | "Trade Tracker"
-  | "Company Research"
+  | "1 · Regime"
+  | "2 · Screen"
+  | "3 · Company"
+  | "4 · Setup"
+  | "5 · Decision"
   | "Investment Opportunities"
   | "Calculators"
   | "Experimental"
@@ -58,50 +71,56 @@ export type NavGroup =
  * To add a page: append an entry here, no other edits required.
  */
 export const PAGE_REGISTRY: readonly PageEntry[] = [
-  // ─── Trade Tracker ─────────────────────────────────────────────────────
-  // Free: Dashboard + Market Pulse (the daily-driver glance, no trade tracking).
-  // Pro: actual trade management, P/L analytics, and dividend portfolio.
+  // ─── Trade Tracker ── home + manage OPEN trades (not part of the funnel) ──
+  // Dashboard stays first so the landing page never moves.
   { path: "/dashboard",           label: "Dashboard",             icon: LayoutDashboard, group: "Trade Tracker", subtitle: "Your customizable Stock Otter view." },
-  { path: "/market-pulse",        label: "Market Pulse",          icon: Activity,        group: "Trade Tracker", subtitle: "Macro environment at a glance — measured, not narrated." },
   { path: "/tracker",             label: "Current Positions",     icon: ClipboardList,   group: "Trade Tracker", subtitle: "Your open trades with realized + unrealized P/L.", requiresTier: "pro" },
   { path: "/dividend-portfolio",  label: "Dividend Positions",    icon: Landmark,        group: "Trade Tracker", subtitle: "Dividend-paying holdings and forward income.", requiresTier: "pro" },
   { path: "#add-trade",           label: "Add Trade",             icon: Plus,            group: "Trade Tracker", action: true, requiresTier: "pro" },
   { path: "#close-trade",         label: "Close Trade",           icon: CheckCircle2,    group: "Trade Tracker", action: true, requiresTier: "pro" },
   { path: "/analytics",           label: "Performance Analytics", icon: PieChart,        group: "Trade Tracker", subtitle: "How your trades actually performed — win rate, R-multiple, drag.", requiresTier: "pro" },
 
-  // ─── Company Research ──────────────────────────────────────────────────
-  // Free: Profile, Trade Analysis, Long-Term Outlook (the "look up a ticker" loop).
-  // Pro: Confluence/Strategy charts, Institutions, Trigger Check (the killer pre-trade verdict).
-  // Elite: MM Exposure (Polygon Options data — paid feed).
-  { path: "/profile",             label: "Profile",               icon: BarChart3,       group: "Company Research", subtitle: "Quote, fundamentals, ratings, and quick snapshot." },
-  { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "Company Research", subtitle: "Per-ticker signal walk-through with chart overlays." },
-  { path: "/chart/confluence",    label: "Confluence Chart",      icon: Layers,          group: "Company Research", subtitle: "Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read.", requiresTier: "pro" },
-  { path: "/chart",               label: "Strategy Chart",        icon: FlaskConical,    group: "Company Research", subtitle: "Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes.", requiresTier: "pro" },
-  { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Company Research", subtitle: "Dealer positioning, gamma exposure, max pain.", requiresTier: "elite" },
-  { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "Company Research", subtitle: "13F-tracked institutional ownership and flows.", requiresTier: "pro" },
-  { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Company Research", subtitle: "Final check before you pull the trigger — one verdict, plain-English reasons.", requiresTier: "pro" },
-  { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "Company Research", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },
+  // ═══ RESEARCH FUNNEL — walk 1→5 top to bottom ═══════════════════════════
+  // ─── 1 · Regime ── "Should I be buying anything — and which direction?" ──
+  // The router: bullish → long/calls, bearish → puts/spreads (via MM/options),
+  // chop → premium-sell or stand aside. NOT a long-only gate.
+  { path: "/market-pulse",        label: "Market Pulse",          icon: Activity,        group: "1 · Regime", subtitle: "Macro environment — sets the direction: long, bearish-via-options, or stand aside." },
+  { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "1 · Regime", subtitle: "Sector strength at a glance — where the money is rotating, both ways." },
 
-  // ─── Investment Opportunities ──────────────────────────────────────────
-  // Free: Scanner, HTF Setups, Sector Heatmap (find ideas).
-  // Pro: deeper opportunity tools — Earnings, Dividends, Track Record, Insider Activity, Alerts.
-  { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Investment Opportunities", subtitle: "One scanner, every strategy — green-grade (80+) setups across the market." },
-  { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Investment Opportunities", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
-  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Investment Opportunities", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", hideFromNav: true },
-  { path: "/sectors",             label: "Sector Heatmap",        icon: Grid3X3,         group: "Investment Opportunities", subtitle: "Sector strength at a glance." },
-  { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings with expected moves.", requiresTier: "pro" },
+  // ─── 2 · Screen ── "What names even qualify?" ──
+  { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "2 · Screen", subtitle: "One scanner, every strategy — green-grade (80+) setups across the market." },
+  { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "2 · Screen", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
+  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "2 · Screen", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", hideFromNav: true },
+
+  // ─── 3 · Company ── "What is it — sound, who owns it, earnings risk?" ──
+  { path: "/profile",             label: "Profile",               icon: BarChart3,       group: "3 · Company", subtitle: "Quote, fundamentals, ratings, and quick snapshot." },
+  { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "3 · Company", subtitle: "13F-tracked institutional ownership and flows — is smart money in or out?", requiresTier: "pro" },
+  { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "3 · Company", subtitle: "Upcoming earnings with expected moves — the catalyst/landmine check.", requiresTier: "pro" },
+  { path: "/insiders",            label: "Insider Activity",      icon: Scale,           group: "3 · Company", subtitle: "Monthly buy/sell ratio across the market + ranked ticker tables. SEC Form 4 deep-scan coming.", requiresTier: "pro" },
+
+  // ─── 4 · Setup ── "Is the chart/options giving a TIMED entry (either way)?" ──
+  // MM Exposure is first-class here: gamma walls + max pain + dealer positioning
+  // ARE the strike + timing for the options/bearish read.
+  { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "4 · Setup", subtitle: "Per-ticker signal walk-through with chart overlays." },
+  { path: "/chart/confluence",    label: "Confluence Chart",      icon: Layers,          group: "4 · Setup", subtitle: "Multi-signal verdict on a single chart — candles + EMAs + signal pulse + MACD/RSI all in one read.", requiresTier: "pro" },
+  { path: "/chart",               label: "Strategy Chart",        icon: FlaskConical,    group: "4 · Setup", subtitle: "Visual backtester comparing BBTC+VER, AMC, and TFT strategy modes.", requiresTier: "pro" },
+  { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "4 · Setup", subtitle: "Dealer positioning, gamma exposure, max pain — the options/bearish read: strikes + timing.", requiresTier: "elite" },
+
+  // ─── 5 · Decision ── "Go/no-go: direction × instrument + size." ──
+  { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "5 · Decision", subtitle: "Final check before you pull the trigger — one verdict, direction, plain-English reasons.", requiresTier: "pro" },
+  { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "5 · Decision", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },
+  { path: "/kelly",               label: "Kelly Criterion",       icon: Percent,         group: "5 · Decision", subtitle: "Position sizing from edge, win rate, and bankroll — how much to put on.", requiresTier: "pro" },
+  // ═══ END RESEARCH FUNNEL ════════════════════════════════════════════════
+
+  // ─── Investment Opportunities ── income + monitoring (outside the funnel) ──
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks.", requiresTier: "pro" },
   { path: "/track-record",        label: "Track Record",          icon: Trophy,          group: "Investment Opportunities", subtitle: "Every signal logged. Every outcome tracked.", requiresTier: "pro" },
-  { path: "/insiders",            label: "Insider Activity",      icon: Scale,           group: "Investment Opportunities", subtitle: "Monthly buy/sell ratio across the market + ranked ticker tables. SEC Form 4 deep-scan coming.", requiresTier: "pro" },
   { path: "/alerts",              label: "Alerts",                icon: Bell,            group: "Investment Opportunities", subtitle: "Custom alerts on signals, levels, and verdict changes.", requiresTier: "pro" },
 
-  // ─── Calculators ───────────────────────────────────────────────────────
-  // Pro: Options Calculator + Kelly (sizing tools traders actually use daily).
-  // Elite: Payoff + Greeks (advanced options modeling, options-chain heavy).
+  // ─── Calculators ── options math (outside the funnel) ──
   { path: "/calculator",          label: "Options Calculator",    icon: Calculator,      group: "Calculators", subtitle: "Premium, break-even, and IV around the option chain.", requiresTier: "pro" },
   { path: "/payoff",              label: "Payoff Diagram",        icon: Spline,          group: "Calculators", subtitle: "Visualize P/L curves for any options strategy.", requiresTier: "elite" },
   { path: "/greeks",              label: "Greeks Calculator",     icon: Sigma,           group: "Calculators", subtitle: "Delta, gamma, theta, vega, rho per leg and position.", requiresTier: "elite" },
-  { path: "/kelly",               label: "Kelly Criterion",       icon: Percent,         group: "Calculators", subtitle: "Position sizing from edge, win rate, and bankroll.", requiresTier: "pro" },
 
   // ─── Experimental ──────────────────────────────────────────────────────
   // Elite-only — these are bots/strategies that run on Chris's infra and represent
@@ -126,7 +145,13 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
  */
 export const NAV_GROUP_ORDER: readonly NavGroup[] = [
   "Trade Tracker",
-  "Company Research",
+  // Research funnel — the scientific path, walked top to bottom.
+  "1 · Regime",
+  "2 · Screen",
+  "3 · Company",
+  "4 · Setup",
+  "5 · Decision",
+  // Outside the funnel.
   "Investment Opportunities",
   "Calculators",
   "Experimental",
