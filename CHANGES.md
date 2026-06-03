@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — HERMES compartment: convert raw Tailwind palette to design tokens
+
+**Why:** The HERMES dashboard widget and full view predate the design-tokens-everywhere rule and
+still hard-coded raw Tailwind palette classes (`text-green-400`, `bg-red-500/15`, `text-purple-400`,
+etc.) for the online/offline status, add/remove/save buttons, and error text — a direct violation
+of the "use design tokens, not raw hex/Tailwind palette" rule. (The earlier hex literals were
+already gone; this closes out the last of the palette violations in the compartment.)
+
+**What changed:**
+- `client/src/compartments/hermes/HermesWidget.tsx` — Bot icon `text-purple-400` → `text-primary`
+  (HERMES brand accent); online/offline status pill + dot `green/red-400` + `bg-*-500/15` →
+  `bull-light` / `bear-light` semantic tokens.
+- `client/src/compartments/hermes/HermesFullView.tsx` — same conversion across the StatusPill,
+  Add Asset / Remove / Save (StrategyEditor + GoalSettings) buttons, and all error text.
+- No behavior change — purely visual-token swap to existing `bull-light`/`bear-light`/`primary`
+  tokens already used elsewhere in the same files. Verified: zero raw palette/hex matches remain
+  in `client/src/compartments/hermes/`; `npm run build` passes.
+
+---
 ## 2026-06-03 — Rules: add "one source of truth" (primary) + "sanity-check before ship"
 
 **Why:** Chris flagged two rules that needed to be primary and explicit: (1) the same fact

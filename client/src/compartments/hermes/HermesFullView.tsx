@@ -278,10 +278,10 @@ function StatusPill({ state }: { state: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-        isOnline ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+        isOnline ? "bg-bull-light/15 text-bull-light" : "bg-bear-light/15 text-bear-light"
       }`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-green-400" : "bg-red-400"}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? "bg-bull-light" : "bg-bear-light"}`} />
       {state || "unknown"}
     </span>
   );
@@ -459,13 +459,13 @@ function ManageAssets({
         <NumberField label="RSI Threshold" value={threshold} step={1} min={0} max={100} onChange={setThreshold} />
         <NumberField label="Stop Loss %" value={stopLossPct} step={0.25} min={0} max={50} onChange={setStopLossPct} />
         <button onClick={submit} disabled={addPending || !symbol.trim()}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold bg-green-500/15 text-green-400 hover:bg-green-500/25 disabled:opacity-50 transition-colors"
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold bg-bull-light/15 text-bull-light hover:bg-bull-light/25 disabled:opacity-50 transition-colors"
           data-testid="button-add-asset">
           {addPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
           Add Asset
         </button>
       </div>
-      {addError instanceof Error && <p className="text-[11px] text-red-400 mt-2">{addError.message}</p>}
+      {addError instanceof Error && <p className="text-[11px] text-bear-light mt-2">{addError.message}</p>}
 
       <div className="mt-3 space-y-1">
         {assets.length === 0 ? (
@@ -479,7 +479,7 @@ function ManageAssets({
               <button
                 onClick={() => { if (confirm(`Remove ${a} from HERMES?`)) removeAsset(a); }}
                 disabled={removePending}
-                className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-red-500/15 text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-bear-light/15 text-bear-light hover:bg-bear-light/25 disabled:opacity-50 transition-colors"
                 data-testid={`button-remove-${a.replace("/", "-")}`}>
                 {removePending && removeTarget === a ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                 Remove
@@ -488,7 +488,7 @@ function ManageAssets({
           ))
         )}
       </div>
-      {removeError instanceof Error && <p className="text-[11px] text-red-400 mt-2">{removeError.message}</p>}
+      {removeError instanceof Error && <p className="text-[11px] text-bear-light mt-2">{removeError.message}</p>}
     </section>
   );
 }
@@ -567,7 +567,7 @@ function StrategyEditor({
                 <button onClick={() => save(asset)} disabled={isSaving}
                   className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-colors ${
                     wasSaved
-                      ? "bg-green-500/15 text-green-400"
+                      ? "bg-bull-light/15 text-bull-light"
                       : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   }`}
                   data-testid={`button-save-${asset.replace("/", "-")}`}>
@@ -577,7 +577,7 @@ function StrategyEditor({
               </div>
             );
           })}
-          {error instanceof Error && <p className="text-[11px] text-red-400">{error.message}</p>}
+          {error instanceof Error && <p className="text-[11px] text-bear-light">{error.message}</p>}
         </div>
       )}
     </section>
@@ -648,14 +648,14 @@ function GoalSettings({
         <NumberField label="Min Sharpe" value={minSharpe} step={0.1} min={-5} max={10} onChange={setMinSharpe} />
         <button onClick={save} disabled={pending}
           className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-colors ${
-            saved ? "bg-green-500/15 text-green-400" : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            saved ? "bg-bull-light/15 text-bull-light" : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           }`}
           data-testid="button-save-goals">
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
           {saved ? "Saved" : "Save Goals"}
         </button>
       </div>
-      {error instanceof Error && <p className="text-[11px] text-red-400 mt-2">{error.message}</p>}
+      {error instanceof Error && <p className="text-[11px] text-bear-light mt-2">{error.message}</p>}
     </section>
   );
 }

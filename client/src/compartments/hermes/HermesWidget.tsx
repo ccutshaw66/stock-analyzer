@@ -35,14 +35,14 @@ export function HermesWidget() {
       <Link href="/hermes">
         <div className="widget-drag-handle cursor-grab active:cursor-grabbing flex items-center justify-between px-1 pb-2 border-b border-border">
           <div className="flex items-center gap-1.5">
-            <Bot className="h-3.5 w-3.5 text-purple-400" />
+            <Bot className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs font-semibold text-foreground">HERMES</span>
             <span
               className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                isOnline ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                isOnline ? "bg-bull-light/15 text-bull-light" : "bg-bear-light/15 text-bear-light"
               }`}
             >
-              <span className={`h-1 w-1 rounded-full ${isOnline ? "bg-green-400" : "bg-red-400"}`} />
+              <span className={`h-1 w-1 rounded-full ${isOnline ? "bg-bull-light" : "bg-bear-light"}`} />
               {statusText}
             </span>
           </div>
