@@ -10,6 +10,7 @@ import { useTickerNavigate } from "@/lib/useTickerNavigate";
 import { useUnifiedScanner } from "@/compartments/unified-scanner/useUnifiedScanner";
 import { MARKET_CAP_TIERS, MIN_GREEN, DEFAULT_TOP_N, type ScanFilters } from "@shared/scanner/types";
 import { listScannableStrategies } from "@shared/strategies/registry";
+import { useSubscription } from "@/hooks/useSubscription";
 import { Radar, Loader2, RefreshCw, TrendingUp, ArrowUpRight } from "lucide-react";
 
 const SECTORS = [
@@ -18,16 +19,24 @@ const SECTORS = [
   "Real Estate", "Utilities", "Basic Materials",
 ];
 
-const SCANNABLE = listScannableStrategies();
+const ALL_SCANNABLE = listScannableStrategies();
 
 export default function UnifiedScannerPage() {
   const drillTo = useTickerNavigate();
+  const { tier: userTier } = useSubscription();
+  const isOwner = userTier === "owner";
+  // Public users only see validated strategies; ownerOnly detectors (failed
+  // OOS validation, kept for owner experimentation) appear only for the owner.
+  const SCANNABLE = useMemo(
+    () => ALL_SCANNABLE.filter(m => isOwner || !m.liveScan?.ownerOnly),
+    [isOwner],
+  );
 
   const [tierId, setTierId] = useState<string>("");
   const [bandId, setBandId] = useState<string>("");
   const [sector, setSector] = useState<string>("All");
   const [strategyIds, setStrategyIds] = useState<string[]>(
-    SCANNABLE.filter(m => m.liveScan?.defaultOn).map(m => m.id),
+    ALL_SCANNABLE.filter(m => m.liveScan?.defaultOn).map(m => m.id),
   );
   const [minScore, setMinScore] = useState<number>(MIN_GREEN);
   const [topN, setTopN] = useState<number>(DEFAULT_TOP_N);

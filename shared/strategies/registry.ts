@@ -170,11 +170,13 @@ export interface StrategyManifest {
   /**
    * Marks a strategy with a live bar-scanning detector wired into the unified
    * scanner. `defaultOn` controls whether it's selected by default (experimental
-   * strategies set defaultOn:false). The detector is registered server-side in
-   * server/compartments/unified-scanner/engine.ts keyed by this manifest id —
-   * the registry just declares scannability so the UI can list it.
+   * strategies set defaultOn:false). `ownerOnly` HIDES it from the public scanner
+   * entirely (only the owner/Chris sees + can run it) — used for detectors that
+   * failed out-of-sample validation but are kept for owner experimentation. The
+   * detector is registered server-side in unified-scanner/engine.ts keyed by this
+   * manifest id; the registry just declares scannability so the UI can list it.
    */
-  liveScan?: { defaultOn: boolean };
+  liveScan?: { defaultOn: boolean; ownerOnly?: boolean };
 }
 
 // ─── Formatting helpers ───────────────────────────────────────────────────
@@ -427,7 +429,10 @@ const WYCKOFF_SPRING_MANIFEST: StrategyManifest = {
   description: "False breakdown at trading-range bottom → SOS reversal (Wyckoff accumulation)",
   color: "bull",
   requiresReason: false,
-  liveScan: { defaultOn: true },
+  // ownerOnly as of 2026-06-03 — OOS validation: fires only ~8 green setups in
+  // a decade across 80+ names = too rare to validate (and the thin sample tilts
+  // negative). Pulled from the public scanner; owner can still run it.
+  liveScan: { defaultOn: false, ownerOnly: true },
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "TR range", "Spring"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -897,7 +902,7 @@ const AMC_MANIFEST: StrategyManifest = {
   // conditions are all trend/momentum, correlated with HTF), so it can't even
   // serve as an independent confluence confirmer. Code/detector retained and
   // still toggle-able; re-enable only if a validated edge is established.
-  liveScan: { defaultOn: false },
+  liveScan: { defaultOn: false, ownerOnly: true },
   columnOrder: ["Stop (EXIT)", "Exit trigger", "Target"],
   chartBacktest: {
     label: "AMC only",
@@ -1051,7 +1056,10 @@ const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Two adjacent weekly downward spikes at a shared low → reversal (Bulkowski rank #5, weekly-only)",
   color: "bull",
   requiresReason: false,
-  liveScan: { defaultOn: false },
+  // ownerOnly as of 2026-06-03 — OOS validation: its scoring rubric tops out at
+  // ~65 (below the 80 green gate), so it's structurally incapable of ever
+  // surfacing a green GO. Pulled from the public scanner; owner can still run it.
+  liveScan: { defaultOn: false, ownerOnly: true },
   experimental: true,
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
@@ -1079,7 +1087,7 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   // SPY-relative edge (negative excess at +20d and +60d across every lookback),
   // so it shouldn't surface as a default solo green GO. Code/detector retained
   // and still toggle-able; re-enable only if a validated edge is established.
-  liveScan: { defaultOn: false },
+  liveScan: { defaultOn: false, ownerOnly: true },
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,

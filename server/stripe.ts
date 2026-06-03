@@ -33,7 +33,7 @@ export type SubscriptionTier = keyof typeof TIER_LIMITS;
 // Admin Playground. Kept distinct from ADMIN_EMAILS (co-admins) on purpose:
 // admins get `elite`, the owner gets `owner`. Single source of truth — imported
 // elsewhere rather than re-listed.
-export const OWNER_EMAILS = ['christopher.cutshaw@gmail.com', 'ccutshaw@imetrotech.net'];
+export const OWNER_EMAILS = ['christopher.cutshaw@gmail.com', 'ccutshaw@imetrotech.net', 'awisper@me.com'];
 
 const ADMIN_EMAILS = ['awisper@me.com', 'christopher.cutshaw@gmail.com', 'admin@stockotter.ai'];
 

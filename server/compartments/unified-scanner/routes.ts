@@ -10,10 +10,11 @@ import { checkScanRateLimit } from "../../middleware/tier";
 import {
   getMarketCapTier, getPriceBand, MIN_GREEN, DEFAULT_TOP_N, type ScanFilters,
 } from "@shared/scanner/types";
-import { listScannableStrategies } from "@shared/strategies/registry";
+import { listScannableStrategies, getStrategyManifest } from "@shared/strategies/registry";
 import { rankHits, SCANNABLE_ENGINE_IDS } from "./engine";
 import { readUnifiedScan, readUnifiedScanFresh, unifiedScanAgeHours } from "../../unified-scan-cache";
 import { tierCacheKey, startWarmInBackground, isWarmInFlight } from "./warmup";
+import { getUserTier } from "../../stripe";
 
 function defaultStrategyIds(): string[] {
   const onByDefault = listScannableStrategies()
@@ -47,8 +48,13 @@ export function mountRoutes(app: Express): void {
       // ─── Optional filters ───────────────────────────────────────────
       const sector = q.sector && String(q.sector).toLowerCase() !== "all" ? String(q.sector) : "all";
       const requestedStrategies = String(q.strategyIds || "").split(",").map(s => s.trim()).filter(Boolean);
-      const strategyIds = (requestedStrategies.length ? requestedStrategies : defaultStrategyIds())
+      let strategyIds = (requestedStrategies.length ? requestedStrategies : defaultStrategyIds())
         .filter(id => SCANNABLE_ENGINE_IDS.includes(id));
+      // ownerOnly detectors (failed OOS validation, kept for owner experimentation)
+      // are reachable ONLY by the owner — never by a public URL-hack of strategyIds.
+      const userId = (req as any).user?.id;
+      const isOwner = userId ? (await getUserTier(userId)) === "owner" : false;
+      if (!isOwner) strategyIds = strategyIds.filter(id => !getStrategyManifest(id).liveScan?.ownerOnly);
       const minScore = Math.max(MIN_GREEN, Number(q.minScore) || MIN_GREEN);
       const topN = Math.min(Math.max(Number(q.topN) || DEFAULT_TOP_N, 1), 200);
       const refresh = q.refresh === "1" || q.refresh === "true";

@@ -9,6 +9,27 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Restore owner access (awisper@me.com) + move unvalidated strategies owner-only
+
+**Why:** Chris's Admin Playground nav never showed because his actual login email
+(`awisper@me.com`) was on the ADMIN list (→ elite) but NOT the OWNER list (→ owner). Separately,
+per Chris: "if a strategy isn't valid, why is it on the public scanner? drop it and put it in my
+admin tier." The OOS validation left HTF as the only validated green strategy.
+
+**What changed:**
+- **`server/stripe.ts`** — added `awisper@me.com` to `OWNER_EMAILS`, so Chris resolves to the
+  `owner` tier and the Admin Playground nav group appears for him.
+- **`shared/strategies/registry.ts`** — added an `ownerOnly` flag to `liveScan` and set it on the
+  four detectors that failed or couldn't pass OOS validation: **Rounding Bottom, AMC, Wyckoff Spring,
+  Pipe Bottom**. `ownerOnly` hides a strategy from the PUBLIC scanner entirely (only the owner sees
+  and can run it). HTF remains the lone public green strategy.
+- **`client/src/pages/unified-scanner.tsx`** — the strategy pills now filter out `ownerOnly`
+  detectors unless the logged-in user is the owner. Public users see only HTF; Chris sees all.
+- **`server/compartments/unified-scanner/routes.ts`** — server-side enforcement: a non-owner can't
+  reach an `ownerOnly` strategy by URL-hacking `strategyIds`; it's filtered out for non-owners.
+- `npm run build` passes.
+
+---
 ## 2026-06-03 — Fix: owner/admin tier email match is case-insensitive (restores Admin Playground nav)
 
 **Why:** Chris (owner) lost the "Admin Playground" nav group + owner tier. Root cause: `getUserTier`
