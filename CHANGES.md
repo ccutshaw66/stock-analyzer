@@ -44,6 +44,17 @@ collapse the redundant cluster to one vote; do not raise weight on anything yet.
 **Files:** `backtest.py` (RSI, universe, SPY alignment, repo-relative output paths),
 `python/validation/validate_indicators.py` (rewritten), `python/validation/verify_alignment.py` (new),
 regenerated `backtest_signals.json` / `backtest_results.json` / `python/validation/factor_validation.json`.
+
+**UPDATE (same day) — 10-year window.** Found the harness was capped at a `2 * 365`-day Yahoo fetch
+(an artifact of `backtest.py` being a quick standalone added 2026-04-13; the *strategy* backtests in
+`server/diag/strategy-htf-validation.ts` already use 3650d/10y via FMP). Bumped the fetch to 10 years and
+regenerated: now **74,721 signals, 2016→2026 across 2018/2020/2022/bull regimes** (was ~1.8y single-regime).
+**Verdicts changed:** the long momentum vote (`bbtc=BUY`, `signal=STRONG_BUY/BUY`) now clears HAC-significance
+at 7d & 30d (t 3.2–6.2, 2–3/4 folds) — it was noise on 1.8y. `vol_ratio>1.5` is positive in **4/4 folds @30d**
+and is independent of the momentum cluster (the cleanest second axis), though it just misses Bonferroni.
+Short/sell side still dead; `ver` still INSUFFICIENT N. Deflated Sharpe still cautious (edge is real but
+modest — size accordingly). Net: **2 usable independent axes (momentum + volume)** now exist for the unified
+verdict. Foundation TODO: source these bars from the 10y FMP pipeline instead of Yahoo (kills a Yahoo dep).
 ---
 ## 2026-06-03 — Indicator validation harness (out-of-sample, SPY-relative)
 

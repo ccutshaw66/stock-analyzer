@@ -259,12 +259,20 @@ def generate_signals_for_ticker(ticker, chart_data):
 
 def main():
     now = int(time.time())
-    two_years_ago = now - (2 * 365 * 24 * 3600)
+    # 10-year window to match the strategy backtests (strategy-htf-validation.ts
+    # uses 3650 days via FMP). The old 2-year cap was an artifact of this script
+    # being a quick standalone — it gave the factor validation only ~1.8y of
+    # single-regime data. 10y spans 2018 selloff / 2020 COVID / 2022 bear / bull,
+    # so a real edge can separate from luck. Recent-IPO names just contribute
+    # fewer rows (handled per-ticker). NOTE: still on Yahoo here; the foundation
+    # move is to source these bars from the same 10y FMP pipeline (kills Yahoo).
+    two_years_ago = now - (10 * 365 * 24 * 3600)
     
     all_signals = []
     spy_daily = {}  # date -> price for SPY benchmark
     
-    print(f"\nFetching 2 years of daily data ({datetime.utcfromtimestamp(two_years_ago).strftime('%Y-%m-%d')} to {datetime.utcfromtimestamp(now).strftime('%Y-%m-%d')})...\n")
+    fetch_start = now - (10 * 365 * 24 * 3600)
+    print(f"\nFetching 10 years of daily data ({datetime.utcfromtimestamp(fetch_start).strftime('%Y-%m-%d')} to {datetime.utcfromtimestamp(now).strftime('%Y-%m-%d')})...\n")
     
     # Always fetch SPY first for benchmark
     tickers_to_fetch = ["SPY"] + [t for t in ALL_TICKERS if t != "SPY"]

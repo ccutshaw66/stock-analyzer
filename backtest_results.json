@@ -1,607 +1,607 @@
 {
   "overall_7d": {
-    "total_signals": 15096,
-    "buy_signals": 8698,
-    "sell_signals": 6398,
-    "buy_win_rate": 53.7,
-    "sell_win_rate": 43.7,
-    "combined_win_rate": 49.5,
-    "avg_buy_return": 0.9,
-    "avg_sell_return": 1.06,
-    "avg_spy_return": 0.52,
+    "total_signals": 74483,
+    "buy_signals": 38950,
+    "sell_signals": 35533,
+    "buy_win_rate": 51.2,
+    "sell_win_rate": 47.5,
+    "combined_win_rate": 49.4,
+    "avg_buy_return": 0.73,
+    "avg_sell_return": 0.5,
+    "avg_spy_return": 0.35,
     "alpha_vs_spy": 0.38
   },
   "overall_30d": {
-    "total_signals": 14314,
-    "buy_signals": 8243,
-    "sell_signals": 6071,
-    "buy_win_rate": 57.8,
-    "sell_win_rate": 40.0,
-    "combined_win_rate": 50.3,
-    "avg_buy_return": 3.59,
-    "avg_sell_return": 4.39,
-    "avg_spy_return": 1.81,
-    "alpha_vs_spy": 1.77
+    "total_signals": 73701,
+    "buy_signals": 38495,
+    "sell_signals": 35206,
+    "buy_win_rate": 51.3,
+    "sell_win_rate": 46.2,
+    "combined_win_rate": 48.9,
+    "avg_buy_return": 2.89,
+    "avg_sell_return": 2.6,
+    "avg_spy_return": 1.43,
+    "alpha_vs_spy": 1.46
   },
   "overall_90d": {
-    "total_signals": 12274,
-    "buy_signals": 7272,
-    "sell_signals": 5002,
-    "buy_win_rate": 57.1,
-    "sell_win_rate": 37.2,
-    "combined_win_rate": 49.0,
-    "avg_buy_return": 8.47,
-    "avg_sell_return": 11.87,
-    "avg_spy_return": 4.36,
-    "alpha_vs_spy": 4.11
+    "total_signals": 71661,
+    "buy_signals": 37524,
+    "sell_signals": 34137,
+    "buy_win_rate": 51.3,
+    "sell_win_rate": 44.9,
+    "combined_win_rate": 48.2,
+    "avg_buy_return": 10.1,
+    "avg_sell_return": 9.77,
+    "avg_spy_return": 4.38,
+    "alpha_vs_spy": 5.73
   },
   "by_score_bracket_30d": {
     "Strong Buy (3+)": {
-      "count": 4674,
-      "win_rate": 57.2,
-      "avg_return_30d": 3.35,
-      "wins": 2673
+      "count": 20585,
+      "win_rate": 50.8,
+      "avg_return_30d": 2.38,
+      "wins": 10460
     },
     "Buy (1-2)": {
-      "count": 3569,
-      "win_rate": 58.5,
-      "avg_return_30d": 3.89,
-      "wins": 2089
+      "count": 17910,
+      "win_rate": 51.9,
+      "avg_return_30d": 3.47,
+      "wins": 9301
     },
     "Sell (-1 to -2)": {
-      "count": 3247,
-      "win_rate": 42.1,
-      "avg_return_30d": 3.68,
-      "wins": 1367
+      "count": 17383,
+      "win_rate": 47.1,
+      "avg_return_30d": 2.11,
+      "wins": 8180
     },
     "Strong Sell (-3+)": {
-      "count": 2824,
-      "win_rate": 37.7,
-      "avg_return_30d": 5.2,
-      "wins": 1064
+      "count": 17823,
+      "win_rate": 45.3,
+      "avg_return_30d": 3.08,
+      "wins": 8068
     }
   },
   "by_ticker_30d": {
     "AAL": {
-      "total": 421,
-      "buys": 238,
-      "sells": 183,
-      "win_rate": 49.9,
-      "avg_return_30d": 2.99
+      "total": 2432,
+      "buys": 1169,
+      "sells": 1263,
+      "win_rate": 43.1,
+      "avg_return_30d": 0.13
     },
     "AFRM": {
-      "total": 421,
-      "buys": 242,
-      "sells": 179,
-      "win_rate": 51.3,
-      "avg_return_30d": 7.33
+      "total": 1272,
+      "buys": 561,
+      "sells": 711,
+      "win_rate": 54.1,
+      "avg_return_30d": 5.36
     },
     "BAC": {
-      "total": 421,
-      "buys": 276,
-      "sells": 145,
-      "win_rate": 50.4,
-      "avg_return_30d": 2.29
+      "total": 2432,
+      "buys": 1493,
+      "sells": 939,
+      "win_rate": 47.6,
+      "avg_return_30d": 2.02
     },
     "CCL": {
-      "total": 421,
-      "buys": 254,
-      "sells": 167,
-      "win_rate": 54.4,
-      "avg_return_30d": 4.62
+      "total": 2432,
+      "buys": 1256,
+      "sells": 1176,
+      "win_rate": 47.0,
+      "avg_return_30d": 1.38
     },
     "CLF": {
-      "total": 421,
-      "buys": 195,
-      "sells": 226,
-      "win_rate": 46.3,
-      "avg_return_30d": 1.42
+      "total": 2432,
+      "buys": 1249,
+      "sells": 1183,
+      "win_rate": 49.5,
+      "avg_return_30d": 2.95
     },
     "CVE": {
-      "total": 421,
-      "buys": 231,
-      "sells": 190,
-      "win_rate": 68.6,
-      "avg_return_30d": 4.2
+      "total": 2432,
+      "buys": 1302,
+      "sells": 1130,
+      "win_rate": 51.5,
+      "avg_return_30d": 2.93
     },
     "DAL": {
-      "total": 421,
-      "buys": 283,
-      "sells": 138,
-      "win_rate": 51.8,
-      "avg_return_30d": 5.0
+      "total": 2432,
+      "buys": 1371,
+      "sells": 1061,
+      "win_rate": 42.7,
+      "avg_return_30d": 1.93
     },
     "DKNG": {
-      "total": 421,
-      "buys": 183,
-      "sells": 238,
-      "win_rate": 39.0,
-      "avg_return_30d": -1.41
+      "total": 1643,
+      "buys": 881,
+      "sells": 762,
+      "win_rate": 52.2,
+      "avg_return_30d": 4.52
     },
     "ET": {
-      "total": 421,
-      "buys": 228,
-      "sells": 193,
-      "win_rate": 61.3,
-      "avg_return_30d": 1.71
+      "total": 2432,
+      "buys": 1375,
+      "sells": 1057,
+      "win_rate": 50.1,
+      "avg_return_30d": 0.97
     },
     "F": {
-      "total": 421,
-      "buys": 255,
-      "sells": 166,
-      "win_rate": 54.6,
-      "avg_return_30d": 1.84
+      "total": 2432,
+      "buys": 1257,
+      "sells": 1175,
+      "win_rate": 48.0,
+      "avg_return_30d": 0.96
     },
     "GM": {
-      "total": 421,
-      "buys": 275,
-      "sells": 146,
-      "win_rate": 57.7,
-      "avg_return_30d": 4.1
+      "total": 2432,
+      "buys": 1341,
+      "sells": 1091,
+      "win_rate": 50.5,
+      "avg_return_30d": 1.87
     },
     "GME": {
-      "total": 421,
-      "buys": 178,
-      "sells": 243,
-      "win_rate": 37.3,
-      "avg_return_30d": 1.49
+      "total": 2432,
+      "buys": 969,
+      "sells": 1463,
+      "win_rate": 47.2,
+      "avg_return_30d": 9.73
     },
     "HBAN": {
-      "total": 421,
-      "buys": 269,
-      "sells": 152,
-      "win_rate": 46.3,
-      "avg_return_30d": 1.29
+      "total": 2432,
+      "buys": 1448,
+      "sells": 984,
+      "win_rate": 45.0,
+      "avg_return_30d": 1.25
     },
     "HOOD": {
-      "total": 421,
-      "buys": 259,
-      "sells": 162,
-      "win_rate": 63.2,
-      "avg_return_30d": 13.39
+      "total": 1136,
+      "buys": 562,
+      "sells": 574,
+      "win_rate": 54.4,
+      "avg_return_30d": 5.15
     },
     "INTC": {
-      "total": 421,
-      "buys": 239,
-      "sells": 182,
-      "win_rate": 38.0,
-      "avg_return_30d": 15.81
+      "total": 2432,
+      "buys": 1269,
+      "sells": 1163,
+      "win_rate": 46.2,
+      "avg_return_30d": 2.62
     },
     "KEY": {
-      "total": 421,
-      "buys": 267,
-      "sells": 154,
-      "win_rate": 50.6,
-      "avg_return_30d": 2.38
-    },
-    "KGC": {
-      "total": 421,
-      "buys": 358,
-      "sells": 63,
-      "win_rate": 68.9,
-      "avg_return_30d": 9.66
-    },
-    "KMI": {
-      "total": 421,
-      "buys": 278,
-      "sells": 143,
-      "win_rate": 45.6,
-      "avg_return_30d": 3.26
-    },
-    "KVUE": {
-      "total": 421,
-      "buys": 219,
-      "sells": 202,
-      "win_rate": 39.9,
-      "avg_return_30d": -1.33
-    },
-    "MARA": {
-      "total": 421,
-      "buys": 159,
-      "sells": 262,
-      "win_rate": 48.0,
+      "total": 2432,
+      "buys": 1426,
+      "sells": 1006,
+      "win_rate": 44.6,
       "avg_return_30d": 1.53
     },
+    "KGC": {
+      "total": 2432,
+      "buys": 1421,
+      "sells": 1011,
+      "win_rate": 50.3,
+      "avg_return_30d": 3.46
+    },
+    "KMI": {
+      "total": 2432,
+      "buys": 1368,
+      "sells": 1064,
+      "win_rate": 45.4,
+      "avg_return_30d": 0.85
+    },
+    "KVUE": {
+      "total": 692,
+      "buys": 303,
+      "sells": 389,
+      "win_rate": 43.2,
+      "avg_return_30d": -0.86
+    },
+    "MARA": {
+      "total": 2432,
+      "buys": 960,
+      "sells": 1472,
+      "win_rate": 53.7,
+      "avg_return_30d": 11.24
+    },
     "NCLH": {
-      "total": 421,
-      "buys": 235,
-      "sells": 186,
-      "win_rate": 51.3,
-      "avg_return_30d": 1.32
+      "total": 2432,
+      "buys": 1286,
+      "sells": 1146,
+      "win_rate": 45.5,
+      "avg_return_30d": 1.37
     },
     "NIO": {
-      "total": 421,
-      "buys": 182,
-      "sells": 239,
-      "win_rate": 48.2,
-      "avg_return_30d": 4.35
+      "total": 1860,
+      "buys": 769,
+      "sells": 1091,
+      "win_rate": 52.5,
+      "avg_return_30d": 4.95
     },
     "PFE": {
-      "total": 421,
-      "buys": 232,
-      "sells": 189,
-      "win_rate": 39.2,
-      "avg_return_30d": -0.57
+      "total": 2432,
+      "buys": 1217,
+      "sells": 1215,
+      "win_rate": 44.9,
+      "avg_return_30d": 0.03
     },
     "PINS": {
-      "total": 421,
-      "buys": 146,
-      "sells": 275,
-      "win_rate": 44.4,
-      "avg_return_30d": -1.66
+      "total": 1710,
+      "buys": 843,
+      "sells": 867,
+      "win_rate": 51.5,
+      "avg_return_30d": 1.3
     },
     "RIOT": {
-      "total": 421,
-      "buys": 231,
-      "sells": 190,
-      "win_rate": 49.2,
-      "avg_return_30d": 12.12
+      "total": 2432,
+      "buys": 1120,
+      "sells": 1312,
+      "win_rate": 51.4,
+      "avg_return_30d": 12.06
     },
     "RIVN": {
-      "total": 421,
-      "buys": 180,
-      "sells": 241,
-      "win_rate": 36.8,
-      "avg_return_30d": 2.55
+      "total": 1063,
+      "buys": 401,
+      "sells": 662,
+      "win_rate": 46.0,
+      "avg_return_30d": -0.89
     },
     "SNAP": {
-      "total": 421,
-      "buys": 137,
-      "sells": 284,
-      "win_rate": 37.5,
-      "avg_return_30d": -1.8
+      "total": 2246,
+      "buys": 1046,
+      "sells": 1200,
+      "win_rate": 51.4,
+      "avg_return_30d": 1.22
     },
     "SOFI": {
-      "total": 421,
-      "buys": 271,
-      "sells": 150,
-      "win_rate": 71.3,
-      "avg_return_30d": 8.65
+      "total": 1279,
+      "buys": 541,
+      "sells": 738,
+      "win_rate": 54.2,
+      "avg_return_30d": 2.59
     },
     "SU": {
-      "total": 421,
-      "buys": 287,
-      "sells": 134,
-      "win_rate": 47.7,
-      "avg_return_30d": 4.2
+      "total": 2432,
+      "buys": 1422,
+      "sells": 1010,
+      "win_rate": 48.1,
+      "avg_return_30d": 1.99
     },
     "T": {
-      "total": 421,
-      "buys": 287,
-      "sells": 134,
+      "total": 2432,
+      "buys": 1191,
+      "sells": 1241,
       "win_rate": 53.0,
-      "avg_return_30d": 1.81
+      "avg_return_30d": 0.04
     },
     "VALE": {
-      "total": 421,
-      "buys": 267,
-      "sells": 154,
-      "win_rate": 53.4,
-      "avg_return_30d": 3.84
+      "total": 2432,
+      "buys": 1328,
+      "sells": 1104,
+      "win_rate": 49.7,
+      "avg_return_30d": 2.33
     },
     "WBD": {
-      "total": 421,
-      "buys": 288,
-      "sells": 133,
-      "win_rate": 47.5,
-      "avg_return_30d": 11.07
+      "total": 2432,
+      "buys": 1120,
+      "sells": 1312,
+      "win_rate": 47.9,
+      "avg_return_30d": 1.58
     },
     "WMB": {
-      "total": 421,
-      "buys": 294,
-      "sells": 127,
-      "win_rate": 44.9,
-      "avg_return_30d": 3.91
+      "total": 2432,
+      "buys": 1434,
+      "sells": 998,
+      "win_rate": 45.8,
+      "avg_return_30d": 1.66
     }
   },
   "best_buy_calls": [
     {
-      "ticker": "INTC",
-      "date": "2026-03-31",
+      "ticker": "GME",
+      "date": "2020-12-11",
       "score": 1,
-      "price": 44.13,
-      "return_30d": 172.58
+      "price": 3.33,
+      "return_30d": 2510.89
     },
     {
-      "ticker": "INTC",
-      "date": "2026-04-01",
+      "ticker": "GME",
+      "date": "2020-12-15",
       "score": 1,
-      "price": 48.03,
-      "return_30d": 141.37
+      "price": 3.46,
+      "return_30d": 2246.57
     },
     {
-      "ticker": "INTC",
-      "date": "2026-03-25",
+      "ticker": "GME",
+      "date": "2020-12-16",
       "score": 1,
-      "price": 47.18,
-      "return_30d": 132.34
+      "price": 3.46,
+      "return_30d": 1524.55
     },
     {
-      "ticker": "INTC",
-      "date": "2026-04-02",
+      "ticker": "GME",
+      "date": "2020-12-14",
+      "score": 1,
+      "price": 3.18,
+      "return_30d": 1422.01
+    },
+    {
+      "ticker": "GME",
+      "date": "2020-12-10",
+      "score": 1,
+      "price": 3.53,
+      "return_30d": 948.02
+    },
+    {
+      "ticker": "MARA",
+      "date": "2020-11-09",
+      "score": 1,
+      "price": 2.21,
+      "return_30d": 532.13
+    },
+    {
+      "ticker": "MARA",
+      "date": "2020-11-27",
       "score": 3,
-      "price": 50.38,
-      "return_30d": 115.9
+      "price": 4.28,
+      "return_30d": 510.98
     },
     {
-      "ticker": "INTC",
-      "date": "2026-03-19",
-      "score": 1,
-      "price": 46.18,
-      "return_30d": 115.72
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-04-06",
+      "ticker": "GME",
+      "date": "2020-12-17",
       "score": 3,
-      "price": 50.78,
-      "return_30d": 113.02
+      "price": 3.71,
+      "return_30d": 506.88
     },
     {
-      "ticker": "INTC",
-      "date": "2026-04-07",
+      "ticker": "GME",
+      "date": "2020-12-18",
       "score": 3,
-      "price": 52.91,
-      "return_30d": 109.41
+      "price": 3.91,
+      "return_30d": 491.23
     },
     {
-      "ticker": "INTC",
-      "date": "2026-04-08",
+      "ticker": "GME",
+      "date": "2020-12-09",
       "score": 1,
-      "price": 58.95,
-      "return_30d": 101.8
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-04-10",
-      "score": 3,
-      "price": 62.38,
-      "return_30d": 92.11
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-04-09",
-      "score": 1,
-      "price": 61.72,
-      "return_30d": 92.0
+      "price": 3.41,
+      "return_30d": 462.15
     }
   ],
   "worst_buy_calls": [
     {
-      "ticker": "MARA",
-      "date": "2025-10-15",
+      "ticker": "RIOT",
+      "date": "2017-12-20",
       "score": 3,
-      "price": 22.84,
-      "return_30d": -51.36
-    },
-    {
-      "ticker": "MARA",
-      "date": "2025-10-14",
-      "score": 3,
-      "price": 22.24,
-      "return_30d": -49.78
-    },
-    {
-      "ticker": "MARA",
-      "date": "2025-10-09",
-      "score": 3,
-      "price": 20.2,
-      "return_30d": -49.31
-    },
-    {
-      "ticker": "AFRM",
-      "date": "2025-02-20",
-      "score": 1,
-      "price": 74.61,
-      "return_30d": -47.85
-    },
-    {
-      "ticker": "AFRM",
-      "date": "2025-02-21",
-      "score": 1,
-      "price": 68.55,
-      "return_30d": -47.85
-    },
-    {
-      "ticker": "MARA",
-      "date": "2025-10-10",
-      "score": 1,
-      "price": 18.65,
-      "return_30d": -46.01
-    },
-    {
-      "ticker": "CLF",
-      "date": "2026-02-06",
-      "score": 3,
-      "price": 14.73,
-      "return_30d": -45.49
-    },
-    {
-      "ticker": "MARA",
-      "date": "2025-10-08",
-      "score": 3,
-      "price": 20.2,
-      "return_30d": -45.05
-    },
-    {
-      "ticker": "MARA",
-      "date": "2025-10-13",
-      "score": 3,
-      "price": 20.24,
-      "return_30d": -44.61
+      "price": 36.12,
+      "return_30d": -70.38
     },
     {
       "ticker": "RIOT",
-      "date": "2025-01-24",
+      "date": "2022-03-29",
+      "score": 1,
+      "price": 23.0,
+      "return_30d": -70.26
+    },
+    {
+      "ticker": "AFRM",
+      "date": "2022-03-29",
+      "score": 1,
+      "price": 48.15,
+      "return_30d": -69.62
+    },
+    {
+      "ticker": "RIOT",
+      "date": "2017-12-19",
+      "score": 1,
+      "price": 38.6,
+      "return_30d": -68.5
+    },
+    {
+      "ticker": "MARA",
+      "date": "2022-03-29",
+      "score": 1,
+      "price": 31.14,
+      "return_30d": -67.95
+    },
+    {
+      "ticker": "RIOT",
+      "date": "2022-03-28",
+      "score": 1,
+      "price": 22.86,
+      "return_30d": -67.06
+    },
+    {
+      "ticker": "RIOT",
+      "date": "2022-03-30",
       "score": 3,
-      "price": 13.54,
-      "return_30d": -44.17
+      "price": 22.04,
+      "return_30d": -66.83
+    },
+    {
+      "ticker": "RIOT",
+      "date": "2017-12-18",
+      "score": 1,
+      "price": 36.47,
+      "return_30d": -66.27
+    },
+    {
+      "ticker": "AAL",
+      "date": "2020-02-21",
+      "score": 1,
+      "price": 27.82,
+      "return_30d": -66.25
+    },
+    {
+      "ticker": "MARA",
+      "date": "2022-03-30",
+      "score": 1,
+      "price": 29.56,
+      "return_30d": -65.66
     }
   ],
   "best_sell_calls": [
     {
-      "ticker": "MARA",
-      "date": "2025-11-05",
+      "ticker": "NCLH",
+      "date": "2020-02-04",
       "score": -1,
-      "price": 17.13,
-      "return_30d": -43.43
+      "price": 54.75,
+      "return_30d": -85.81
     },
     {
-      "ticker": "DAL",
-      "date": "2025-02-25",
+      "ticker": "NCLH",
+      "date": "2020-02-05",
       "score": -1,
-      "price": 61.79,
-      "return_30d": -41.93
+      "price": 55.11,
+      "return_30d": -85.07
     },
     {
-      "ticker": "PINS",
-      "date": "2026-01-02",
+      "ticker": "NCLH",
+      "date": "2020-02-06",
       "score": -1,
-      "price": 26.56,
-      "return_30d": -41.6
+      "price": 55.1,
+      "return_30d": -84.17
     },
     {
-      "ticker": "MARA",
-      "date": "2025-10-31",
+      "ticker": "NCLH",
+      "date": "2020-01-29",
       "score": -1,
-      "price": 18.27,
-      "return_30d": -41.43
+      "price": 56.02,
+      "return_30d": -82.77
     },
     {
-      "ticker": "HOOD",
-      "date": "2025-12-22",
-      "score": -1,
-      "price": 122.37,
-      "return_30d": -40.61
-    },
-    {
-      "ticker": "PINS",
-      "date": "2025-12-31",
+      "ticker": "NCLH",
+      "date": "2020-02-20",
       "score": -3,
-      "price": 25.89,
-      "return_30d": -40.44
+      "price": 48.51,
+      "return_30d": -82.68
     },
     {
-      "ticker": "MARA",
-      "date": "2025-11-04",
+      "ticker": "CVE",
+      "date": "2020-02-05",
       "score": -1,
-      "price": 16.62,
-      "return_30d": -40.25
+      "price": 9.14,
+      "return_30d": -82.06
     },
     {
-      "ticker": "AAL",
-      "date": "2025-02-25",
+      "ticker": "NCLH",
+      "date": "2020-02-21",
+      "score": -1,
+      "price": 46.97,
+      "return_30d": -81.99
+    },
+    {
+      "ticker": "CVE",
+      "date": "2020-02-07",
       "score": -3,
-      "price": 15.13,
-      "return_30d": -40.05
+      "price": 8.93,
+      "return_30d": -81.97
     },
     {
-      "ticker": "AAL",
-      "date": "2025-02-20",
+      "ticker": "CVE",
+      "date": "2020-02-06",
       "score": -1,
-      "price": 15.86,
-      "return_30d": -40.04
+      "price": 9.15,
+      "return_30d": -81.86
     },
     {
-      "ticker": "MARA",
-      "date": "2025-11-03",
+      "ticker": "NCLH",
+      "date": "2020-02-07",
       "score": -1,
-      "price": 17.81,
-      "return_30d": -39.98
+      "price": 52.81,
+      "return_30d": -81.69
     }
   ],
   "worst_sell_calls": [
     {
-      "ticker": "INTC",
-      "date": "2026-03-27",
-      "score": -1,
-      "price": 43.13,
-      "return_30d": 200.12
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-30",
-      "score": -1,
-      "price": 41.19,
-      "return_30d": 192.81
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-26",
-      "score": -1,
-      "price": 44.1,
-      "return_30d": 183.27
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-24",
-      "score": -1,
-      "price": 44.06,
-      "return_30d": 156.49
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-23",
-      "score": -1,
-      "price": 44.01,
-      "return_30d": 145.74
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-20",
-      "score": -1,
-      "price": 43.87,
-      "return_30d": 118.33
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-17",
-      "score": -1,
-      "price": 44.06,
-      "return_30d": 115.05
-    },
-    {
-      "ticker": "INTC",
-      "date": "2026-03-18",
-      "score": -1,
-      "price": 45.03,
-      "return_30d": 109.82
-    },
-    {
       "ticker": "RIOT",
-      "date": "2026-03-30",
-      "score": -3,
-      "price": 11.83,
-      "return_30d": 107.19
+      "date": "2017-11-03",
+      "score": -1,
+      "price": 6.75,
+      "return_30d": 440.3
     },
     {
-      "ticker": "RIOT",
-      "date": "2024-10-01",
+      "ticker": "MARA",
+      "date": "2020-11-12",
+      "score": -1,
+      "price": 2.3,
+      "return_30d": 432.61
+    },
+    {
+      "ticker": "MARA",
+      "date": "2020-11-10",
+      "score": -1,
+      "price": 2.19,
+      "return_30d": 393.61
+    },
+    {
+      "ticker": "GME",
+      "date": "2021-02-18",
+      "score": -1,
+      "price": 10.17,
+      "return_30d": 370.51
+    },
+    {
+      "ticker": "GME",
+      "date": "2021-02-19",
+      "score": -1,
+      "price": 10.15,
+      "return_30d": 360.58
+    },
+    {
+      "ticker": "MARA",
+      "date": "2017-10-27",
+      "score": -1,
+      "price": 5.6,
+      "return_30d": 350.0
+    },
+    {
+      "ticker": "MARA",
+      "date": "2017-11-03",
+      "score": -1,
+      "price": 5.76,
+      "return_30d": 340.28
+    },
+    {
+      "ticker": "GME",
+      "date": "2024-04-02",
       "score": -3,
-      "price": 7.08,
-      "return_30d": 104.1
+      "price": 11.28,
+      "return_30d": 332.18
+    },
+    {
+      "ticker": "GME",
+      "date": "2024-04-24",
+      "score": -1,
+      "price": 10.93,
+      "return_30d": 325.89
+    },
+    {
+      "ticker": "GME",
+      "date": "2021-02-17",
+      "score": -1,
+      "price": 11.48,
+      "return_30d": 313.19
     }
   ],
   "signal_distribution": {
-    "SELL": 3469,
-    "BUY": 3844,
-    "STRONG_BUY": 4993,
-    "STRONG_SELL": 3028
+    "BUY": 18185,
+    "STRONG_BUY": 20904,
+    "SELL": 17605,
+    "STRONG_SELL": 18027
   },
   "BBTC_standalone_30d": {
-    "total": 10201,
-    "buys": 5981,
-    "sells": 4220,
-    "buy_win_rate": 57.7,
-    "sell_win_rate": 40.8,
-    "combined_win_rate": 50.7
+    "total": 52535,
+    "buys": 27601,
+    "sells": 24934,
+    "buy_win_rate": 51.3,
+    "sell_win_rate": 46.4,
+    "combined_win_rate": 49.0
   },
   "VER_standalone_30d": {
-    "total": 347,
-    "buys": 128,
-    "sells": 219,
-    "buy_win_rate": 46.9,
-    "sell_win_rate": 42.9,
-    "combined_win_rate": 44.4
+    "total": 1993,
+    "buys": 929,
+    "sells": 1064,
+    "buy_win_rate": 48.7,
+    "sell_win_rate": 50.0,
+    "combined_win_rate": 49.4
   }
 }
