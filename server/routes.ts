@@ -3251,8 +3251,6 @@ export async function registerRoutes(
       const bbtcResult = computeBBTC({ closes, highs, lows, ema9, ema21, ema50, atr14, rsi14 });
       const bbtcSignals = bbtcResult.signals;
       const bbtcSignalSides = bbtcResult.signalSides;
-      const entryPrice = bbtcResult.entryPrice;
-      const highestSinceEntry = bbtcResult.highestSinceEntry;
 
       // ---- Strategy 2: VER (Volume Exhaustion Reversal) ----
       const verResult = computeVER({ closes, highs, lows, volumes, rsi14, bbUpper, bbLower, volAvg20, atr14 });
@@ -3275,9 +3273,16 @@ export async function registerRoutes(
       else bbtcSignalDetail = "EMAs converging, no clear directional bias";
 
       const lastAtr = isNaN(atr14[lastIdx]) ? null : Number(atr14[lastIdx].toFixed(2));
-      const stopPrice = entryPrice && lastAtr ? Number((entryPrice - lastAtr * 2.0).toFixed(2)) : null;
-      const targetPrice = entryPrice && lastAtr ? Number((entryPrice + lastAtr * 3.0).toFixed(2)) : null;
-      const trailStop = lastAtr ? Number((highestSinceEntry - lastAtr * 1.5).toFixed(2)) : null;
+      // Stops come from the BBTC strategy itself (single source of truth) and are
+      // only meaningful while a position is OPEN. Hard stop is locked to entry-bar
+      // ATR × 2.5; trail = highest-since-entry − current ATR × 3.0. BBTC has NO
+      // profit target — winners run on the trail — so targetPrice stays null.
+      // Display null when flat so we never surface a phantom level off a closed trade.
+      const stopPrice = bbtcResult.inPosition && bbtcResult.hardStop != null
+        ? Number(bbtcResult.hardStop.toFixed(2)) : null;
+      const trailStop = bbtcResult.inPosition && bbtcResult.trailStop != null
+        ? Number(bbtcResult.trailStop.toFixed(2)) : null;
+      const targetPrice: number | null = null;
 
       // Recent BBTC signals
       const bbtcRecent: {date: string; signal: string; price: number}[] = [];

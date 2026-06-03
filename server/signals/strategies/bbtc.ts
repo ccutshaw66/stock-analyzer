@@ -59,6 +59,18 @@ export interface BBTCResult {
   bias: BBTCBias;
   entryPrice: number;
   highestSinceEntry: number;
+  /** True while a long position is currently open (no exit since the last BUY).
+   *  Consumers MUST gate any displayed stop/target on this — entryPrice and
+   *  highestSinceEntry retain their last-trade values after an exit. */
+  inPosition: boolean;
+  /** Entry-bar ATR — the hard stop is locked to this, NOT the current bar's ATR. */
+  entryATR: number;
+  /** Live exit levels for the OPEN position (null when flat). Single source of
+   *  truth — callers must NOT recompute stops from raw ATR multipliers.
+   *  BBTC has NO profit target (trail-only), so none is exposed. */
+  hardStop: number | null;
+  trailStop: number | null;
+  effectiveStop: number | null;
 }
 
 // ─── Tunable constants ─────────────────────────────────────────────────
@@ -358,5 +370,23 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
         : "FLAT"
     : "FLAT";
 
-  return { signals, signalSides, lastSignal, topSignal, trend, bias, entryPrice, highestSinceEntry };
+  // Live exit levels for an OPEN long, computed exactly as the in-loop manager
+  // does: hard stop locked to entry-bar ATR × 2.5, trail = highest-since-entry
+  // minus current-bar ATR × 3.0, effective = the higher (closer) of the two.
+  // Null when flat so no caller can render a phantom stop off a closed trade.
+  const lastAtr = atr14[lastIdx];
+  const isLong = inPosition && positionSide === "LONG";
+  const hardStop = isLong ? entryPrice - entryATR * ATR_STOP_MULT : null;
+  const trailStop = isLong && !isNaN(lastAtr) && highestSinceEntry > 0
+    ? highestSinceEntry - lastAtr * ATR_TRAIL_MULT
+    : null;
+  const effectiveStop = hardStop != null && trailStop != null
+    ? Math.max(hardStop, trailStop)
+    : (hardStop ?? trailStop);
+
+  return {
+    signals, signalSides, lastSignal, topSignal, trend, bias,
+    entryPrice, highestSinceEntry,
+    inPosition, entryATR, hardStop, trailStop, effectiveStop,
+  };
 }

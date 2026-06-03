@@ -13,7 +13,7 @@
 import type { OHLCV } from "../../data/types";
 import type { ScanHit } from "@shared/scanner/types";
 import { MIN_GREEN } from "@shared/scanner/types";
-import { scanHtf } from "../../signals/strategies/htf";
+import { scanHtf, HTF_MAX_CHASE_PCT } from "../../signals/strategies/htf";
 import { scanRoundingBottom } from "../../signals/strategies/rounding-bottom";
 import { scanWyckoffSpring } from "../../signals/strategies/wyckoff-spring";
 import { scanPipeBottom } from "../../signals/strategies/pipe-bottom";
@@ -23,8 +23,36 @@ import {
   RSI_PERIOD, ATR_PERIOD, EMA_FAST, EMA_MID, EMA_SLOW,
 } from "@shared/indicators/constants";
 
-const FRESHNESS_BARS = 3;        // a hit counts if it fired within the last N bars
 const DAY_MS = 86_400_000;
+
+// A hit counts only if it fired within this many CALENDAR days of the latest
+// bar. Daily patterns use ~3 days; WEEKLY patterns (pipe-bottom resamples to
+// weekly internally, so its breakoutDate lands on a weekly bar up to ~7 days
+// before the latest daily bar) need a wider window or every hit is silently
+// filtered out and the strategy never surfaces.
+const FRESHNESS_DAYS: Record<string, number> = {
+  "htf": 3,
+  "rounding-bottom": 3,
+  "wyckoff-spring": 3,
+  "amc": 3,
+  "pipe-bottom": 12,
+};
+const DEFAULT_FRESHNESS_DAYS = 3;
+
+/**
+ * Is a long-only hit still LIVE at the current price, or has it already played
+ * out? Mirrors htfLiveStatus' price guards (shared chase tolerance) so the
+ * scanner never surfaces a green GO for a setup that has already hit its stop,
+ * reached its target, or been chased too far past entry to take cleanly.
+ */
+function isLiveAtPrice(hit: RawHit, price: number): boolean {
+  if (!Number.isFinite(price) || price <= 0) return true; // no price → don't drop
+  if (hit.direction !== "long") return true;              // engine adapters are long-only
+  if (price <= hit.stop) return false;                    // already stopped out
+  if (price >= hit.target) return false;                  // target already reached
+  if (price > hit.entry * (1 + HTF_MAX_CHASE_PCT)) return false; // chased past clean entry
+  return true;
+}
 
 export interface UniverseRow {
   symbol: string;
@@ -179,8 +207,10 @@ export function scanOne(
   for (const id of strategyIds) {
     const adapter = PATTERN_ADAPTERS[id] ?? indicatorAdapterFor(id);
     if (!adapter) continue;
+    const freshnessMs = (FRESHNESS_DAYS[id] ?? DEFAULT_FRESHNESS_DAYS) * DAY_MS;
     const fresh = adapter(bars, row.symbol)
-      .filter(h => (now - h.asOf.getTime()) <= FRESHNESS_BARS * DAY_MS)
+      .filter(h => (now - h.asOf.getTime()) <= freshnessMs)
+      .filter(h => isLiveAtPrice(h, row.price))
       .sort((a, b) => b.asOf.getTime() - a.asOf.getTime());
     const latest = fresh[0];
     if (!latest || latest.score < MIN_GREEN) continue;

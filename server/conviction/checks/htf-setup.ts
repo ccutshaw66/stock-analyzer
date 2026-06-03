@@ -42,7 +42,12 @@ export const htfSetupCheck: Check = (ctx) => {
     // still live and the breakout is fresh. Uses the SHARED predicate so we never
     // recommend a setup that has already played out, been chased, or gone stale.
     const lastBar = ctx.bars[ctx.bars.length - 1];
-    const status = htfLiveStatus(recent, lastBar.c, lastBar.t, TRIGGER_MAX_DAYS_SINCE_BREAKOUT);
+    // Use the LIVE quote for the price-based guards (stopped / target-hit /
+    // chased), not the last daily bar's close which can be up to a full trading
+    // day stale on an intraday on-demand check. Fall back to the bar close only
+    // when no live quote is available.
+    const livePrice = ctx.snapshot.quote.value?.price ?? lastBar.c;
+    const status = htfLiveStatus(recent, livePrice, lastBar.t, TRIGGER_MAX_DAYS_SINCE_BREAKOUT);
 
     if (!status.live) {
       switch (status.reason) {
