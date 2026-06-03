@@ -70,6 +70,8 @@ const TTL_BY_PREFIX: Array<{ prefix: string; ttlMs: number }> = [
   // Universe scanning — refreshed once/day
   { prefix: "/company-screener", ttlMs: 24 * 60 * 60 * 1000 },   // 24h
   { prefix: "/stock-list", ttlMs: 24 * 60 * 60 * 1000 },         // 24h
+  // Corporate actions: splits change at most once or twice a year
+  { prefix: "/splits", ttlMs: 7 * 24 * 60 * 60 * 1000 },         // 7d
   // Default: 5m
 ];
 const DEFAULT_TTL_MS = 5 * 60 * 1000;

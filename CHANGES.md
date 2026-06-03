@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Reverse-split warning badge (split-adjusted prices no longer mislead)
+
+**Why:** Chris asked why Energous (WATT) appeared to crash from "$2,200" to $31 over 5 years.
+It didn't trade at $2,200 — that's the *split-adjusted* figure. WATT actually changed hands
+around $2–3 in 2021, then did a 1-for-20 reverse split (Aug 2023) and a 1-for-30 (Aug 2025) =
+a cumulative **600-to-1**. The site charts split-adjusted prices, so heavily-reverse-split
+penny stocks read like former blue-chips that collapsed. This badge flags them so the number
+isn't mistaken for a real past price.
+
+**What changed (foundation-first; self-contained moveable widget):**
+- **Data:** new `server/data/providers/fmp.splits.ts` → `getReverseSplitSummary(symbol)`. Pulls
+  FMP's stable `/splits`, keeps only true reverse splits (denominator > numerator) in the last
+  6 years, multiplies them into a cumulative factor, and returns `{ ratio, sinceDate, ... }` —
+  or `null` for normal tickers (forward splits like AAPL's 4-for-1 are ignored). Splits change
+  ~once a year, so `/splits` is cached 7d in `fmp.client.ts` (new TTL_BY_PREFIX entry).
+- **API:** new `GET /api/ticker/:symbol/reverse-split` in `server/routes.ts` (returns the
+  summary or `null`; never 500s — it's a nice-to-have signal).
+- **UI:** new `client/src/components/ReverseSplitBadge.tsx` — a self-fetching amber pill
+  ("⚠ 600:1 reverse split") with a tooltip explaining split-adjusted prices. Renders nothing
+  when there's no qualifying reverse split, so it drops into any ticker header. Wired into the
+  global ticker header in `AppLayout.tsx` so it shows on **every** page when a flagged ticker is
+  active (covers chart, verdict, scanner, etc. in one place).
+
+---
 ## 2026-06-03 — Research nav → scientific funnel (Regime→Screen→Company→Setup→Decision)
 
 **Why:** The research pages were a hodgepodge across four nav groups in no order — you couldn't

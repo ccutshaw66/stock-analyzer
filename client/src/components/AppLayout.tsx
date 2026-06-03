@@ -30,6 +30,7 @@ import { getNavGroups, lookupPageByPath } from "@/lib/page-registry";
 import { useTickerNavigate, isCompanyResearchRoute } from "@/lib/useTickerNavigate";
 import { TimeframePicker } from "@/components/TimeframePicker";
 import { AlertsBell } from "@/components/AlertsBell";
+import { ReverseSplitBadge } from "@/components/ReverseSplitBadge";
 import { TRADE_TYPES, type TradeTypeCode } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -236,6 +237,9 @@ function StickyHeader({
               <span className="mx-1">·</span>{analysisData.sector}
             </p>
           </div>
+
+          {/* Reverse-split warning — renders nothing for normal tickers */}
+          <ReverseSplitBadge symbol={analysisData.ticker} />
 
           {/* Price + Change */}
           <div className="text-right shrink-0">

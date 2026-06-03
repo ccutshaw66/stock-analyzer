@@ -29,6 +29,7 @@ import {
 } from "./polygon";
 import { fmpAdapter, fmpSearchTickers, getFmpProfileBeta, fmpScreenerSymbols } from "./data/providers/fmp.adapter";
 import { getFmpDividendData } from "./data/providers/fmp.dividends";
+import { getReverseSplitSummary } from "./data/providers/fmp.splits";
 import { getInstitutionalSummary, getInstitutionalSummaryStaleOk } from "./data/providers/edgar.adapter";
 import { logger as rootLogger } from "./lib/logger";
 import { getFmpEarningsRow } from "./fmp-earnings";
@@ -2741,6 +2742,20 @@ export async function registerRoutes(
   // /search-symbol + /search-name happens inside fmpSearchTickers; this
   // route re-ranks locally so an exact symbol match always lands first
   // (typing "TSLA" must surface Tesla before name-substring hits).
+  // Reverse-split summary for a ticker — powers the header warning badge so a
+  // split-adjusted price (e.g. WATT "$1,680 five years ago") isn't mistaken for
+  // a real former price. Returns null when the ticker has no large reverse
+  // splits (the badge then renders nothing). Cached 7d at the FMP layer.
+  app.get("/api/ticker/:symbol/reverse-split", async (req, res) => {
+    try {
+      const summary = await getReverseSplitSummary(req.params.symbol);
+      res.json(summary);
+    } catch (error: any) {
+      // Non-essential signal — never 500 the page over it.
+      res.json(null);
+    }
+  });
+
   app.get("/api/search", async (req, res) => {
     const q = (req.query.q as string || "").trim();
     if (!q || q.length < 1) return res.json([]);
