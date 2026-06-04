@@ -84,6 +84,7 @@ export interface GammaSnapshotRow {
   squeezeBias: "up" | "down" | "neutral";
   squeezeStrength: number; // 0..1
   gammaWall: number | null;
+  atmIV: number | null;    // nearest-the-money implied vol (the price of vol)
 }
 
 /** Tickers already recorded for `dateStr` — used to avoid double-snapshotting
@@ -139,6 +140,7 @@ export async function snapshotGammaForUniverse(): Promise<{
         squeezeBias: mm.squeezeBias,
         squeezeStrength: mm.squeezeStrength,
         gammaWall: mm.gammaWall,
+        atmIV: mm.atmIV,
       };
       fs.appendFileSync(FILE, JSON.stringify(row) + "\n");
       written++;

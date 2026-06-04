@@ -53,6 +53,7 @@ export interface MMExposure {
   // Interpretive flags
   squeezeBias: "up" | "down" | "neutral";
   squeezeStrength: number; // 0..1
+  atmIV: number | null;    // implied vol of the nearest-the-money contract (the "price of vol")
 }
 
 const UNUSUAL_VOL_OI_RATIO = 3.0;
@@ -121,6 +122,8 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
   let callVol = 0, putVol = 0;
   const gexByStrikeMap = new Map<number, number>();
   const unusual: UnusualContract[] = [];
+  let atmIV: number | null = null;
+  let atmDist = Infinity;
 
   for (const c of contracts) {
     const type = c.details?.contract_type as "call" | "put" | undefined;
@@ -133,6 +136,12 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
     const iv = typeof c.implied_volatility === "number" ? c.implied_volatility : null;
 
     if (!type || !strike) continue;
+
+    // Track the nearest-the-money implied vol = the "price of vol" we trade against
+    if (iv && iv > 0 && spot) {
+      const dist = Math.abs(strike - spot);
+      if (dist < atmDist) { atmDist = dist; atmIV = iv; }
+    }
 
     // OI / volume totals
     if (type === "call") { callOI += oi; callVol += vol; }
@@ -226,5 +235,6 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
     gammaWall,
     squeezeBias,
     squeezeStrength: Number(squeezeStrength.toFixed(3)),
+    atmIV,
   };
 }

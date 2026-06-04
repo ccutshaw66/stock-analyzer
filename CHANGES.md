@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Gamma-vol paper-trader (deterministic rules engine) + ATM IV in the collector
+
+**Why:** Chris wants to forward-test the gamma-vol strategy mechanically — *"no emotion, no
+hesitation, just play by the rules"* — to see if it's consistent, **without risking capital on an
+unvalidated edge.** A deterministic paper engine is the honest way to do that: it plays the rules,
+logs a track record, and measures consistency. To simulate selling/buying vol it needs the *price*
+of vol (implied vol), which the collector wasn't storing yet.
+
+**What changed:**
+- **`server/mm-exposure.ts`** — `computeMMExposure` now also returns **`atmIV`** (the
+  nearest-the-money implied vol — "the price of vol"). Additive field on `MMExposure`.
+- **`server/gamma-tracker.ts`** — the daily snapshot now stores `atmIV`, so a strategy can price vol.
+- **`server/gamma-paper-trader.ts`** (new) — a **deterministic, stateless** paper engine. Replays
+  the snapshots and plays two rules with zero discretion: **SHORT vol** when GEX>0 & IV-rank high
+  (vol rich), **LONG vol** when GEX<0 & IV-rank low (compression). P&L = realized-vs-implied vol in
+  vol-points over a 10-day hold. Point-in-time (IV-rank uses past only, P&L forward only), **no
+  broker, no real money**. Reports win rate / per-trade Sharpe / max drawdown / a consistency
+  verdict; self-guards until ≥40 closed trades. Run: `npx tsx server/gamma-paper-trader.ts`.
+- Verified: both new scripts run clean (0 trades locally — they accrue on prod once `atmIV` ships);
+  `npm run build` passes. Paper / research-grade only — nothing live, nothing on the main site.
+
+---
 ## 2026-06-04 — Widened gamma collector to ~95 big-caps + staged the gamma→vol validation harness
 
 **Why:** The GME dealer-gamma study (both 2021 squeezes, hand-collected) + the quant strategist
