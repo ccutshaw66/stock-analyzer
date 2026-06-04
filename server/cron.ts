@@ -10,6 +10,7 @@ import { isMarketHours as isMarketPulseMarketHours } from "./data/providers/mark
 import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
 import { snapshotGammaForUniverse } from "./gamma-tracker";
+import { runBotOnStored } from "./gamma-bot";
 import type { GetCompanySnapshotOpts } from "./snapshot";
 
 // Yahoo Finance helpers will be passed in from routes
@@ -244,6 +245,22 @@ export function initCron(
     },
   });
   console.log("[CRON] Gamma snapshot registered (30 21 * * 1-5)");
+
+  // Gamma-vol paper bot — process the day's fresh snapshots into paper trades.
+  // Runs 20 min after the snapshot so the basket is fully collected first.
+  registerJob({
+    id: "gamma-bot",
+    description: "Daily gamma-vol paper-bot evaluation (opens/closes paper trades from the day's snapshots)",
+    cron: "50 21 * * 1-5", // 5:50pm ET, weekdays only
+    timeoutMs: 15 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await runBotOnStored();
+      console.log(`[CRON] gamma-bot: processed ${res.processed} new day(s)`);
+    },
+  });
+  console.log("[CRON] Gamma paper-bot registered (50 21 * * 1-5)");
 
   // ─── Market Pulse ─────────────────────────────────────────────────────────
   //

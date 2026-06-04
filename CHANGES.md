@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Gamma-Vol paper BOT + watchable Admin-Playground page (adjustable money/risk)
+
+**Why:** Chris wanted to *watch* the gamma-vol strategy run like HERMES — a real bot with adjustable
+money + risk management, "no emotion, no hesitation, just play by the rules" — and a page in the
+Admin Playground to watch it (HERMES is slow; this one's active across ~95 names with a risk dial).
+
+**What changed:**
+- **`server/gamma-bot.ts`** (new) — deterministic in-process paper bot. Plays **SHORT-vol** (dealers
+  long gamma + IV rich) / **LONG-vol** (dealers short gamma + IV cheap) on the big-cap basket, using
+  **cross-sectional IV rank** (rank within the basket each day) so signals work from day one with no
+  long IV history. Adjustable config — account size, risk %/trade, max positions, hold days, IV
+  thresholds. Equity realized-only; state in gitignored `data/gamma-bot/` (survives redeploys).
+  **Paper only, no broker, no real money.**
+- **`server/routes.ts`** — owner-gated `/api/gamma-bot` (view / config / reset / run-now-live-pull).
+- **`server/cron.ts`** — daily `gamma-bot` job (50 21 * * 1-5) turns the day's snapshots into trades.
+- **`client/src/pages/gamma-bot.tsx`** (new) — watchable dashboard: equity / P&L / return / win-rate
+  cards, money+risk controls, equity sparkline, today's *firing* signals across the basket, open
+  positions with a hold countdown, and the closed-trade log. Auto-refreshes; "Run now" does a live
+  pull. Registered in **Admin Playground, owner-only** (`page-registry` + `App.tsx`).
+- Verified: `npm run build` passes; engine smoke-tested (config persists, view sane, reset clean).
+  Research-grade — paper, owner-only, nothing on the public site.
+
+---
 ## 2026-06-04 — Gamma-vol paper-trader (deterministic rules engine) + ATM IV in the collector
 
 **Why:** Chris wants to forward-test the gamma-vol strategy mechanically — *"no emotion, no

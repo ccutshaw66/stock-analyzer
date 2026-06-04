@@ -1682,6 +1682,23 @@ export async function registerRoutes(
   console.log(`[kairos-proxy] /api/kairos/* -> ${KAIROS_URL}`);
   mountInternalProxy(app, "/api/kairos", KAIROS_URL);
 
+  // ─── Gamma-Vol Paper Bot (owner-only, in-process) ───────────────────────────────
+  app.use("/api/gamma-bot", requireTier("owner"));
+  {
+    const bot = await import("./gamma-bot");
+    app.get("/api/gamma-bot", (_req, res) => res.json(bot.getBotView()));
+    app.post("/api/gamma-bot/config", (req, res) => {
+      const cfg = bot.updateConfig(req.body || {});
+      res.json({ ok: true, config: cfg, view: bot.getBotView() });
+    });
+    app.post("/api/gamma-bot/reset", (_req, res) => { bot.resetBot(); res.json({ ok: true, view: bot.getBotView() }); });
+    app.post("/api/gamma-bot/run", (_req, res) => {
+      bot.runBotLive().catch(e => console.error("[gamma-bot] live run failed:", e?.message || e));
+      res.json({ started: true, note: "Pulling live gamma for the basket in the background (~a few minutes); poll GET /api/gamma-bot." });
+    });
+    console.log("[gamma-bot] owner-only routes mounted at /api/gamma-bot");
+  }
+
   // ─── Feature Gating ─────────────────────────────────────────────────────────────
   // Implementation lives in server/middleware/tier.ts.
   // Imported: getDailyUsage, checkFeatureAccess, checkScanRateLimit, getUsageSnapshot.
