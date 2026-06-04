@@ -121,7 +121,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // the premium automated-trading layer.
   { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Experimental", subtitle: "Live status, stats, and trades from the self-hosted HERMES service.", requiresTier: "elite" },
   { path: "/kairos",              label: "KAIROS Auto Trader",    icon: Rocket,          group: "Experimental", subtitle: "Experimental HTF + BBTC paper trader. Conviction-tagged entries (HTF / BBTC / BOTH).", requiresTier: "elite" },
-  { path: "/wheel",               label: "Wheel Strategy",        icon: RefreshCw,       group: "Experimental", subtitle: "Cash-secured puts → covered calls — the wheel mechanics.", requiresTier: "elite" },
+  { path: "/wheel",               label: "Wheel Strategy",        icon: RefreshCw,       group: "Admin Playground", subtitle: "Cash-secured puts → covered calls — the wheel mechanics.", requiresTier: "owner" },
 
   // ─── Admin Playground ──────────────────────────────────────────────────
   // OWNER ONLY (Chris). The private workbench for unproven / in-test surfaces.

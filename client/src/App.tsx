@@ -227,7 +227,7 @@ function AuthenticatedApp() {
               </RequireTier>
             </Route>
             <Route path="/wheel">
-              <RequireTier min="elite" feature="Wheel Strategy"
+              <RequireTier min="owner" feature="Wheel Strategy"
                 description="Cash-secured puts → covered calls — the wheel mechanics.">
                 <WheelCalculator />
               </RequireTier>
