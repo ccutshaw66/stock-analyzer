@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Demoted strategies removed from the trade-selection dropdown too
+
+**Why:** Per Chris — "take it off the trade selection, whatever we demote." A demoted (failed
+OOS validation, owner-only) strategy shouldn't be pickable when tagging a NEW trade, the same as
+it's gone from the scanner and the chart.
+
+**What changed:**
+- **`shared/strategies/registry.ts`** — new `isStrategyDemoted(m)` (true when `liveScan.ownerOnly`
+  or `chartBacktest.ownerOnly` is set) as the single source of truth, plus
+  `listTradeSelectableStrategies(isOwner)` which excludes demoted strategies for non-owners.
+- **`client/src/pages/trade-tracker.tsx`** — the add-trade strategy dropdown now lists
+  `listTradeSelectableStrategies(...)` instead of the whole registry. Demoted strategies
+  (BBTC+VER, AMC, Rounding Bottom, Wyckoff, Pipe) no longer appear as options for a new trade;
+  the owner still sees them. The currently-selected strategy is always kept visible so editing an
+  existing trade tagged with a now-demoted strategy still resolves. `npm run build` passes.
+
+---
 ## 2026-06-03 — BBTC + AMC moved off the public /chart (owner-only); scrub the "$5.28M" TFT claim
 
 **Why:** Validation discipline applied to the /chart backtest strategies. BBTC enters on

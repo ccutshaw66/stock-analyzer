@@ -1143,3 +1143,25 @@ export function isKnownStrategy(id: string | null | undefined): boolean {
 export function listScannableStrategies(): StrategyManifest[] {
   return Object.values(STRATEGY_REGISTRY).filter(m => m.liveScan);
 }
+
+/**
+ * A strategy is "demoted" (owner-only) when it failed out-of-sample validation
+ * and was pulled off the public product — flagged via liveScan.ownerOnly
+ * (scanner) or chartBacktest.ownerOnly (chart). The single source of truth for
+ * "should the public see this strategy anywhere?" — used by the scanner, the
+ * /chart toggle, AND the trade-selection dropdown so a demoted strategy can't
+ * be picked for a new trade. Validated-only-on-main (CLAUDE.md rule).
+ */
+export function isStrategyDemoted(m: StrategyManifest): boolean {
+  return m.liveScan?.ownerOnly === true || m.chartBacktest?.ownerOnly === true;
+}
+
+/**
+ * Strategies a non-owner may TAG a new trade with: everything except demoted
+ * ones. (Existing trades already tagged with a demoted strategy still resolve
+ * via getStrategyManifest — this only governs the picker.) Pass isOwner=true to
+ * include demoted strategies (the owner can still tag experimental trades).
+ */
+export function listTradeSelectableStrategies(isOwner = false): StrategyManifest[] {
+  return Object.values(STRATEGY_REGISTRY).filter(m => isOwner || !isStrategyDemoted(m));
+}

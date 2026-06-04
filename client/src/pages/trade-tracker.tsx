@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/format";
 import { TRADE_TYPES, BEHAVIOR_TAGS, type TradeTypeCode } from "@shared/schema";
-import { STRATEGY_REGISTRY, getStrategyManifest, type StrategyManifest, type StrategyTradeView, type DisplayPoint } from "@shared/strategies/registry";
+import { STRATEGY_REGISTRY, getStrategyManifest, listTradeSelectableStrategies, type StrategyManifest, type StrategyTradeView, type DisplayPoint } from "@shared/strategies/registry";
+import { useSubscription } from "@/hooks/useSubscription";
 import { useHtfScanner, type HtfSetupRow } from "@/compartments/htf-scanner";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
@@ -351,6 +352,15 @@ function TradeForm({ mode, initial, settings, onClose }: {
   // 'manual' (or whatever was saved). 'other' reveals the reason text input.
   const [strategy, setStrategy] = useState<string>(initial?.strategy || "manual");
   const [strategyReason, setStrategyReason] = useState<string>(initial?.strategyReason || "");
+  // Trade-selection list: demoted strategies (failed OOS validation, owner-only)
+  // are NOT offered for new trades. Owner sees all. The currently-selected
+  // strategy is always kept visible so editing an existing trade tagged with a
+  // now-demoted strategy still shows its strategy.
+  const { tier: userTier } = useSubscription();
+  let tradeStrategies = listTradeSelectableStrategies(userTier === "owner");
+  if (strategy && !tradeStrategies.some(m => m.id === strategy)) {
+    tradeStrategies = [...tradeStrategies, getStrategyManifest(strategy)];
+  }
 
   // CTV dual-vertical fields
   const [ctvBuyStrikes, setCtvBuyStrikes] = useState(""); // e.g. "65/70"
@@ -517,7 +527,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
             <select id="tf-strategy" name="strategy" value={strategy} onChange={e => setStrategy(e.target.value)}
               className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground"
               data-testid="select-strategy" required>
-              {Object.values(STRATEGY_REGISTRY).map(m => (
+              {tradeStrategies.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
