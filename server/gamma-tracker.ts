@@ -22,35 +22,39 @@ import fs from "fs";
 import path from "path";
 import { computeMMExposure } from "./mm-exposure";
 
-// Sector-balanced liquid big-caps. All 11 GICS sectors + broad-market ETFs, with
-// tech deliberately capped at 3 names so it doesn't dominate the basket. Every
-// name here has deep, liquid options, which is what makes its GEX reading
-// trustworthy.
+// Sector-balanced liquid big-caps — ~95 names, deliberately widened from the
+// original 28 to ~3.5x the daily name-count so the forward dataset reaches
+// statistical power faster (the gamma→forward-vol test needs thousands of
+// name-days). All 11 GICS sectors + broad ETFs; tech held to ~16% so it doesn't
+// dominate. Every name here has deep, liquid options — that's what makes its GEX
+// reading trustworthy.
 export const GAMMA_UNIVERSE: ReadonlyArray<string> = [
   // Broad-market ETFs
-  "SPY", "QQQ", "IWM",
+  "SPY", "QQQ", "IWM", "DIA",
   // Technology
-  "NVDA", "AAPL", "MSFT",
+  "AAPL", "MSFT", "NVDA", "AVGO", "AMD", "ORCL", "CRM", "ADBE", "CSCO", "QCOM", "TXN", "MU", "AMAT", "PLTR", "SMCI",
   // Communication Services
-  "GOOGL", "META", "NFLX",
+  "GOOGL", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS",
   // Consumer Discretionary
-  "AMZN", "TSLA", "HD",
+  "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "BKNG", "ABNB",
   // Consumer Staples
-  "WMT", "COST", "KO",
+  "WMT", "COST", "PG", "KO", "PEP", "MO", "PM", "MDLZ",
   // Financials
-  "JPM", "BAC", "GS",
+  "JPM", "BAC", "WFC", "GS", "MS", "C", "SCHW", "AXP", "BLK", "V", "MA", "PYPL", "COIN",
   // Health Care
-  "UNH", "LLY", "JNJ",
+  "UNH", "LLY", "JNJ", "ABBV", "MRK", "PFE", "TMO", "ABT", "BMY", "AMGN", "GILD", "CVS",
   // Energy
-  "XOM", "CVX",
+  "XOM", "CVX", "COP", "SLB", "OXY", "MPC",
   // Industrials
-  "CAT", "BA",
+  "CAT", "BA", "GE", "HON", "UPS", "RTX", "LMT", "DE", "UBER",
   // Materials
-  "FCX",
+  "LIN", "FCX", "NEM", "NUE",
   // Utilities
-  "NEE",
+  "NEE", "DUK", "SO",
   // Real Estate
-  "AMT",
+  "AMT", "PLD",
+  // High options-volume / momentum
+  "F", "GM", "BABA", "SOFI",
 ];
 
 const DIR = path.resolve(process.cwd(), "data", "gamma-snapshots");
@@ -142,8 +146,9 @@ export async function snapshotGammaForUniverse(): Promise<{
       console.error(`[gamma-tracker] ${T}: ${String(e?.message || e).slice(0, 160)}`);
       errors++;
     }
-    // Gentle on the Polygon options endpoint — one name at a time.
-    await new Promise(r => setTimeout(r, 200));
+    // Gentle on the Polygon options endpoint — one name at a time. With ~95
+    // names this paces the run to a few minutes (well within the 30-min cron).
+    await new Promise(r => setTimeout(r, 250));
   }
 
   return { written, skipped, errors };

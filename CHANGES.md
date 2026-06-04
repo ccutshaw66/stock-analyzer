@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Widened gamma collector to ~95 big-caps + staged the gamma→vol validation harness
+
+**Why:** The GME dealer-gamma study (both 2021 squeezes, hand-collected) + the quant strategist
+memo confirmed the finding — **dealer gamma is a volatility-regime signal, not a direction signal**
+— and that it matches the peer-reviewed consensus (negative GEX → higher forward realized vol). The
+cheapest honest next step is a $0, point-in-time test of exactly that on big-caps, which needs (a)
+more daily name-coverage to reach statistical power faster and (b) a harness ready to fire when the
+data accrues. PDT rule effectively changed ~6/4, so the options pivot is now, not later.
+
+**What changed:**
+- **`server/gamma-tracker.ts`** — `GAMMA_UNIVERSE` widened from 28 to **~95 liquid optionable
+  big-caps**, sector-balanced (all 11 GICS sectors + broad ETFs, tech held to ~16%) — ~3.5× the
+  daily name-days so the forward dataset reaches significance faster. Inter-call delay 200→250ms to
+  stay gentle on Polygon across the larger basket.
+- **`server/gamma-vol-validation.ts`** (new) — staged harness that joins the accumulated EOD GEX
+  snapshots against **forward realized vol** (from `getHtfBars`, strictly point-in-time, no
+  look-ahead): within-ticker z-scored correlation of GEX vs forward RV, plus a negative-vs-positive
+  GEX vol-expansion comparison, and writes a pulse/NO-pulse verdict JSON. Self-guards "INSUFFICIENT
+  DATA" until ≥150 complete observations. Run: `npx tsx server/gamma-vol-validation.ts`.
+- Verified: harness runs clean (0 snapshots locally as expected — they accrue on prod); `npm run
+  build` passes. Still research-grade — nothing ships to the main site until the OOS test clears.
+
+---
 ## 2026-06-03 — Dealer-gamma forward tracker (groundwork for the options pivot)
 
 **Why:** Two threads. (1) Mean-reversion was validated as a possible stock-side edge and came
