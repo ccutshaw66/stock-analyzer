@@ -84,7 +84,8 @@ class TradingLoop:
         self.state_dir = state_dir
         self.mode = "live" if _is_live_mode() else "paper"
         self.positions: Dict[str, Position] = {}
-        self.equity: float = 10_000.0
+        self.equity: float = 10_000.0          # mark-to-market: cash + open position value
+        self.cash: float = 10_000.0            # uninvested buying power
         self.equity_curve: List[float] = []
         self.equity_timestamps: List[str] = []
         self.watchlist: List[str] = []
@@ -117,7 +118,9 @@ class TradingLoop:
 
     def _load_state(self):
         self.goal = self._load_goal()
-        self.equity = float(self.goal.get("starting_equity", 10_000.0))
+        starting = float(self.goal.get("starting_equity", 10_000.0))
+        self.equity = starting
+        stored_cash: Optional[float] = None
         if self.equity_file.exists():
             try:
                 eq = json.loads(self.equity_file.read_text())
@@ -125,6 +128,8 @@ class TradingLoop:
                 self.equity_timestamps = list(eq.get("timestamps", []))
                 if self.equity_curve:
                     self.equity = float(self.equity_curve[-1])
+                if eq.get("cash") is not None:
+                    stored_cash = float(eq["cash"])
             except Exception:
                 pass
         # Positions: restore from positions.json so bot restarts don't
@@ -146,6 +151,23 @@ class TradingLoop:
             except Exception as e:
                 print(f"[state] positions.json load failed: {e} — starting flat", flush=True)
 
+        # Buying power. Prefer the persisted cash field; otherwise reconstruct
+        # from (last equity − cost basis of open positions), which recovers the
+        # right number from old state files written before the cash model.
+        if stored_cash is not None:
+            self.cash = stored_cash
+        else:
+            cost_basis = sum(p.shares * p.entry_price for p in self.positions.values())
+            self.cash = (self.equity_curve[-1] if self.equity_curve else starting) - cost_basis
+        if self.cash < 0:
+            print(
+                f"[state] WARNING: reconstructed cash is ${self.cash:,.0f} (NEGATIVE) — the account "
+                f"is over-deployed across {len(self.positions)} open positions. New entries are "
+                f"blocked until positions close. To start clean: stop the bot, delete equity.json + "
+                f"positions.json, set starting_equity in goal.yaml, restart.",
+                flush=True,
+            )
+
     async def _write_heartbeat(self, current_prices: Dict[str, float]):
         open_positions = [
             p.to_status_dict(current_prices.get(p.symbol, p.entry_price))
@@ -160,9 +182,20 @@ class TradingLoop:
             "consecutive_failures": self.consecutive_failures,
             "loop_count": self.loop_count,
             "equity": round(self.equity, 2),
+            "cash": round(self.cash, 2),
+            "invested": round(self._invested(current_prices), 2),
+            "open_position_count": len(self.positions),
         }
         async with aiofiles.open(self.heartbeat_file, "w") as f:
             await f.write(json.dumps(heartbeat, indent=2))
+
+    def _invested(self, prices: Dict[str, float]) -> float:
+        """Current market value of all open positions."""
+        return sum(p.shares * prices.get(p.symbol, p.entry_price) for p in self.positions.values())
+
+    def _account_equity(self, prices: Dict[str, float]) -> float:
+        """Mark-to-market account value = uninvested cash + open position value."""
+        return self.cash + self._invested(prices)
 
     async def _write_watchlist(self):
         async with aiofiles.open(self.watchlist_file, "w") as f:
@@ -184,7 +217,7 @@ class TradingLoop:
         if len(self.equity_curve) > 2000:
             self.equity_curve = self.equity_curve[-2000:]
             self.equity_timestamps = self.equity_timestamps[-2000:]
-        payload = {"equity": self.equity_curve, "timestamps": self.equity_timestamps}
+        payload = {"equity": self.equity_curve, "timestamps": self.equity_timestamps, "cash": round(self.cash, 2)}
         async with aiofiles.open(self.equity_file, "w") as f:
             await f.write(json.dumps(payload, indent=2))
 
@@ -288,9 +321,12 @@ class TradingLoop:
         return "BBTC"
 
     def _position_size_shares(self, entry_price: float) -> float:
-        pct = float(self.goal.get("position_size_pct", 0.02))
-        dollars = self.equity * pct
         if entry_price <= 0:
+            return 0
+        pct = float(self.goal.get("position_size_pct", 0.02))
+        # Size off equity, but NEVER commit more than the cash actually on hand.
+        dollars = min(self.equity * pct, self.cash)
+        if dollars <= 0:
             return 0
         return round(dollars / entry_price, 4)
 
@@ -298,6 +334,11 @@ class TradingLoop:
 
     async def _try_open(self, symbol: str, signals: dict):
         if symbol in self.positions:
+            return
+        # Hard cap on concurrent positions (diversification + sanity guard so a
+        # rotating watchlist can't pile up dozens of open positions).
+        max_open = int(self.goal.get("max_open_positions", 25))
+        if len(self.positions) >= max_open:
             return
         htf = signals.get("htf_hit")
         bbtc_top = signals.get("bbtc_top_signal", "HOLD")
@@ -324,6 +365,9 @@ class TradingLoop:
         shares = self._position_size_shares(entry_price)
         if shares <= 0:
             return
+        cost = shares * entry_price
+        if cost > self.cash + 1e-6:
+            return  # not enough buying power — can't open what we can't afford
 
         pos = Position(
             symbol=symbol,
@@ -337,7 +381,8 @@ class TradingLoop:
             highest_since_entry=entry_price,
         )
         self.positions[symbol] = pos
-        print(f"[{symbol}] OPEN {pos.entry_strategy} @ ${entry_price:.2f} stop=${stop_price:.2f} target={target_price}", flush=True)
+        self.cash -= cost  # buying power is now committed to this position
+        print(f"[{symbol}] OPEN {pos.entry_strategy} {shares}sh @ ${entry_price:.2f} cost=${cost:,.0f} cash_left=${self.cash:,.0f}", flush=True)
 
     async def _try_close(self, symbol: str, signals: dict) -> bool:
         pos = self.positions.get(symbol)
@@ -395,9 +440,11 @@ class TradingLoop:
             "mode": self.mode,
         }
         await self._log_trade(trade)
-        self.equity += pnl_dollars
+        # Return proceeds to cash. Realized P&L is implicit: `cost` (shares×entry)
+        # left cash on open; shares×exit comes back now → net change = pnl_dollars.
+        self.cash += pos.shares * latest_close
         del self.positions[symbol]
-        print(f"[{symbol}] CLOSE {exit_reason} @ ${latest_close:.2f} pnl={pnl_pct:+.2f}%", flush=True)
+        print(f"[{symbol}] CLOSE {exit_reason} @ ${latest_close:.2f} pnl={pnl_pct:+.2f}% cash=${self.cash:,.0f}", flush=True)
         return True
 
     # ─── Main loop ────────────────────────────────────────────────────────
@@ -444,6 +491,9 @@ class TradingLoop:
                     if not closed:
                         await self._try_open(symbol, signals)
 
+                # Mark the account to market (cash + open position value) before
+                # persisting, so equity reflects reality not just realized P&L.
+                self.equity = self._account_equity(current_prices)
                 await self._write_heartbeat(current_prices)
                 await self._write_watchlist()
                 await self._write_equity()

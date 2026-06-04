@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — KAIROS: real cash/buying-power model (fixes phantom over-deployment)
+
+**Why:** Chris's KAIROS paper account showed **91 open positions / ~$62K invested on a $20K
+account** and bleeding. Root cause: the bot had no concept of cash. `self.equity` was a single
+number that only changed on a *close*; opening a position deducted nothing and there was no cap on
+concurrent positions. So as the watchlist rotated, the bot kept opening a new position for every
+fresh signal — unbounded — and "invested" ballooned far past the account size (~3× phantom
+leverage), amplifying drawdowns. Paper money only, but the account math was meaningless.
+
+**What changed (`python/kairos/kairos_trading/loop.py`):**
+- **Cash tracking** — new `self.cash` (buying power). Opening a position now subtracts its cost
+  from cash; closing returns the proceeds. Persisted in `equity.json` (`cash` field); reconstructed
+  from `(last equity − open cost basis)` for old state files, with a loud warning if it comes out
+  negative (= legacy over-deployed state).
+- **Can't spend money it doesn't have** — `_try_open` refuses a trade whose cost exceeds available
+  cash, and `_position_size_shares` caps the size at remaining cash.
+- **Concurrent-position cap** — `max_open_positions` (default 25, configurable in goal.yaml) so a
+  rotating watchlist can't pile up dozens of positions.
+- **Honest equity** — `equity` is now marked-to-market each cycle (`cash + value of open
+  positions`), not just realized P&L. Heartbeat now also reports `cash`, `invested`, and
+  `open_position_count`.
+- Verified: `py_compile` clean; standalone test proves total invested never exceeds the account,
+  the position cap holds, realized P&L flows correctly, and legacy over-deployed state blocks new
+  entries. (Runs on the air-gapped superotter VM — deployed by hand, see notes; this commit is the
+  source-of-truth copy.)
+
+---
 ## 2026-06-03 — Restore owner access (awisper@me.com) + move unvalidated strategies owner-only
 
 **Why:** Chris's Admin Playground nav never showed because his actual login email
