@@ -171,3 +171,39 @@ export function readAllGammaSnapshots(): GammaSnapshotRow[] {
   }
   return out;
 }
+
+/** Dashboard view of the collector: progress, coverage, and the latest gamma
+ *  landscape (most short-gamma first). For the owner-only watch page. */
+export function getCollectorView() {
+  const snaps = readAllGammaSnapshots();
+  const dates = Array.from(new Set(snaps.map(s => s.takenDate))).sort();
+  const lastDate = dates[dates.length - 1] ?? null;
+  const latestByTicker = new Map<string, GammaSnapshotRow>();
+  for (const s of snaps) {
+    const k = s.ticker.toUpperCase();
+    const cur = latestByTicker.get(k);
+    if (!cur || s.takenDate > cur.takenDate) latestByTicker.set(k, s);
+  }
+  const latest = Array.from(latestByTicker.values())
+    .map(s => ({
+      ticker: s.ticker, date: s.takenDate, spot: s.spot, totalGEX: s.totalGEX,
+      regime: s.totalGEX > 0 ? "long-γ" : "short-γ",
+      squeezeBias: s.squeezeBias, squeezeStrength: s.squeezeStrength, atmIV: s.atmIV,
+    }))
+    .sort((a, b) => a.totalGEX - b.totalGEX); // most negative (short gamma) first
+  const collectedOnLast = lastDate ? snaps.filter(s => s.takenDate === lastDate).length : 0;
+  const TARGET_DAYS = 45; // ~ when the forward-vol test gets a first real read
+  return {
+    basketSize: GAMMA_UNIVERSE.length,
+    basket: GAMMA_UNIVERSE.slice(),
+    totalSnapshots: snaps.length,
+    daysCollected: dates.length,
+    firstDate: dates[0] ?? null,
+    lastDate,
+    collectedOnLast,
+    coveragePct: GAMMA_UNIVERSE.length ? Math.round((collectedOnLast / GAMMA_UNIVERSE.length) * 100) : 0,
+    targetDays: TARGET_DAYS,
+    progressPct: Math.min(100, Math.round((dates.length / TARGET_DAYS) * 100)),
+    latest,
+  };
+}

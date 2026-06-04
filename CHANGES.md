@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Gamma Collector watch page (owner Admin Playground)
+
+**Why:** Chris wanted the quietly-accumulating dealer-gamma collector kept *in front of him* so he
+doesn't forget it's running toward the validation milestone — a watch page with a progress bar and
+the live gamma landscape.
+
+**What changed:**
+- **`server/gamma-tracker.ts`** — `getCollectorView()`: progress (days collected vs ~45-day target),
+  basket coverage, and the current gamma landscape (latest snapshot per name, sorted most-short-gamma).
+- **`server/routes.ts`** — owner-gated `GET /api/gamma-collector`.
+- **`client/src/pages/gamma-collector.tsx`** (new) — progress bar to first validation read, basket /
+  coverage / last-run stats, and a live table (regime, GEX, squeeze bias, ATM IV). Auto-refreshes.
+  Registered in **Admin Playground, owner-only**.
+- `npm run build` passes.
+
+---
 ## 2026-06-04 — Gamma-Vol paper BOT + watchable Admin-Playground page (adjustable money/risk)
 
 **Why:** Chris wanted to *watch* the gamma-vol strategy run like HERMES — a real bot with adjustable

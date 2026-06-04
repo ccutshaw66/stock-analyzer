@@ -130,6 +130,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // everyone else and reappears here for the owner — one line, no deletes.
   { path: "/markov",              label: "Markov Strategy",       icon: Network,         group: "Admin Playground", subtitle: "Markov-chain regime model — Python stub awaiting implementation.", requiresTier: "owner" },
   { path: "/gamma-bot",           label: "Gamma Vol Bot",         icon: Bot,             group: "Admin Playground", subtitle: "Deterministic dealer-gamma vol paper bot — adjustable money/risk, live signals, paper P&L.", requiresTier: "owner" },
+  { path: "/gamma-collector",     label: "Gamma Collector",       icon: Activity,        group: "Admin Playground", subtitle: "Watch the dealer-gamma collector accumulate — progress to validation + the live gamma landscape.", requiresTier: "owner" },
 
   // ─── Help ──────────────────────────────────────────────────────────────
   { path: "/help",                label: "Help / FAQ",            icon: BookOpen,        group: "Help", subtitle: "Glossary, common questions, and how Stock Otter works." },

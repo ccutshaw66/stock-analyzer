@@ -1699,6 +1699,14 @@ export async function registerRoutes(
     console.log("[gamma-bot] owner-only routes mounted at /api/gamma-bot");
   }
 
+  // ─── Gamma Collector watch (owner-only) ─────────────────────────────────────────
+  app.use("/api/gamma-collector", requireTier("owner"));
+  {
+    const { getCollectorView } = await import("./gamma-tracker");
+    app.get("/api/gamma-collector", (_req, res) => res.json(getCollectorView()));
+    console.log("[gamma-collector] owner-only route mounted at /api/gamma-collector");
+  }
+
   // ─── Feature Gating ─────────────────────────────────────────────────────────────
   // Implementation lives in server/middleware/tier.ts.
   // Imported: getDailyUsage, checkFeatureAccess, checkScanRateLimit, getUsageSnapshot.
