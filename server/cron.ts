@@ -9,6 +9,7 @@ import { warmIntradaySnapshot, warmDailyBreadth } from "./market-pulse-warmup";
 import { isMarketHours as isMarketPulseMarketHours } from "./data/providers/market-pulse.adapter";
 import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
+import { snapshotGammaForUniverse } from "./gamma-tracker";
 import type { GetCompanySnapshotOpts } from "./snapshot";
 
 // Yahoo Finance helpers will be passed in from routes
@@ -222,6 +223,27 @@ export function initCron(
     },
   });
   console.log("[CRON] Conviction forward-returns updater registered (45 21 * * 1-5)");
+
+  // ─── Dealer-gamma forward tracker ─────────────────────────────────────────
+  //
+  // GEX can only be read from the LIVE options snapshot (no historical chains),
+  // so we cannot backtest whether dealer gamma leads price. Instead we record a
+  // daily post-close snapshot for a sector-balanced big-cap basket and measure
+  // forward returns later — building the dataset needed to validate the signal
+  // ahead of the options pivot. Appends to data/gamma-snapshots/ (gitignored).
+  registerJob({
+    id: "gamma-snapshot",
+    description: "Daily dealer-gamma (GEX) snapshot for the big-cap basket (post-close)",
+    cron: "30 21 * * 1-5", // 5:30pm ET, weekdays only
+    timeoutMs: 30 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await snapshotGammaForUniverse();
+      console.log(`[CRON] gamma-snapshot: ${res.written} written, ${res.skipped} skipped (already today), ${res.errors} errors`);
+    },
+  });
+  console.log("[CRON] Gamma snapshot registered (30 21 * * 1-5)");
 
   // ─── Market Pulse ─────────────────────────────────────────────────────────
   //

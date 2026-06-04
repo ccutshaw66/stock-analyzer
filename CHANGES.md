@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — Dealer-gamma forward tracker (groundwork for the options pivot)
+
+**Why:** Two threads. (1) Mean-reversion was validated as a possible stock-side edge and came
+back **NO-GO** — RSI(2)/Bollinger/2-3-day-pullback all lose to SPY out-of-sample net of costs on
+the $5–75 universe (thin +0.1–0.3%/trade gross edge eaten by turnover, propped up by 5 tickers);
+HTF remains the only validated stock edge. (2) The real edge Chris is chasing is dealer-gamma →
+price for the options pivot, but **GEX can only be read from the LIVE options snapshot** — Polygon
+gives no historical option chains, so there is no way to *backtest* whether gamma leads price. The
+only honest path is to start recording it now and measure forward returns later.
+
+**What changed:**
+- **`server/gamma-tracker.ts`** (new) — daily post-close snapshot of GEX / squeeze bias for a
+  **sector-balanced** big-cap basket (all 11 GICS sectors + broad ETFs; tech capped at 3 names so
+  it doesn't dominate — Chris's call). Reuses the existing `computeMMExposure` (one source of
+  truth). Appends one JSONL row per ticker to `data/gamma-snapshots/` — gitignored, so it survives
+  the deploy's `git reset --hard` like the long-range disk cache (no DB table, no migration step).
+  Forward returns are NOT stored; they're computed later from price history (getHtfBars), so the
+  same price source feeds every analysis.
+- **`server/cron.ts`** — registered `gamma-snapshot` job at 21:30 UTC weekdays (5:30pm ET,
+  post-close), mirroring the conviction tracker's cadence.
+- **`.gitignore`** — added `data/gamma-snapshots/`.
+- Verified: `computeMMExposure` returns sane cross-sector gamma (SPY +2.65B vol-suppressing,
+  AAPL −2.12B short-gamma 0.74 strength, XOM short-gamma); `npm run build` passes. The dataset
+  accumulates from today so it's ready to validate "does gamma lead price" by the time options
+  go live on the 8th.
+
+---
 ## 2026-06-03 — Demoted strategies removed from the trade-selection dropdown too
 
 **Why:** Per Chris — "take it off the trade selection, whatever we demote." A demoted (failed
