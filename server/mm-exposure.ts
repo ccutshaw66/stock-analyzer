@@ -122,8 +122,9 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
   let callVol = 0, putVol = 0;
   const gexByStrikeMap = new Map<number, number>();
   const unusual: UnusualContract[] = [];
-  let atmIV: number | null = null;
-  let atmDist = Infinity;
+  const atmIVs: number[] = [];      // near-money, front-month (5–60 DTE)
+  const atmIVsWide: number[] = [];  // near-money, any expiration (fallback)
+  const nowMs = Date.now();
 
   for (const c of contracts) {
     const type = c.details?.contract_type as "call" | "put" | undefined;
@@ -137,10 +138,16 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
 
     if (!type || !strike) continue;
 
-    // Track the nearest-the-money implied vol = the "price of vol" we trade against
-    if (iv && iv > 0 && spot) {
-      const dist = Math.abs(strike - spot);
-      if (dist < atmDist) { atmDist = dist; atmIV = iv; }
+    // Collect near-the-money IVs; we take the MEDIAN after the loop so one
+    // junk contract can't set the "price of vol" (fixes the SPY/IWM ~3% glitch).
+    if (iv && iv > 0 && iv < 5 && spot) {
+      const nearWide = Math.abs(strike - spot) <= spot * 0.10;
+      if (nearWide) {
+        atmIVsWide.push(iv);
+        let dte = NaN;
+        if (exp) dte = (new Date(exp + "T00:00:00Z").getTime() - nowMs) / 86400000;
+        if (Math.abs(strike - spot) <= spot * 0.05 && dte >= 5 && dte <= 60) atmIVs.push(iv);
+      }
     }
 
     // OI / volume totals
@@ -218,6 +225,10 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
 
   const putCallOI = callOI > 0 ? putOI / callOI : 0;
   const putCallVolume = callVol > 0 ? putVol / callVol : 0;
+
+  // Median near-money front-month IV (robust "price of vol"); fall back to a wider band.
+  const medianOf = (a: number[]): number | null => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+  const atmIV = medianOf(atmIVs) ?? medianOf(atmIVsWide);
 
   // Top 20 unusual contracts by ratio, filtered for quality
   unusual.sort((a, b) => b.volOiRatio - a.volOiRatio);

@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Fix bogus ATM IV on the big ETFs (SPY/IWM were reading ~3%)
+
+**Why:** The collector's `atmIV` grabbed the single nearest-strike contract, which on deep ETF chains
+could land on a junk contract reporting ~3% (SPY's real IV is ~13%). That made the vol bot flag the
+big ETFs as dirt-cheap and "buy vol" on a bogus number.
+
+**What changed:**
+- **`server/mm-exposure.ts`** — `atmIV` is now the **median** of near-the-money (±5%), front-month
+  (5–60 DTE) implied vols (fallback: a wider band), instead of one nearest-strike pick. A single junk
+  contract can no longer set the price of vol. Verified live: SPY 12.8%, IWM 21%, QQQ 19%, AAPL 25%,
+  MU 105% — all sane. Build passes.
+
+---
 ## 2026-06-04 — Gamma Collector watch page (owner Admin Playground)
 
 **Why:** Chris wanted the quietly-accumulating dealer-gamma collector kept *in front of him* so he
