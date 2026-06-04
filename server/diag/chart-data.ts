@@ -10,7 +10,7 @@
  *   - "amc"       — AMC-only entries (ENTER → SELL pairing)
  *   - "tft-40w"   — TFT with 40W core stop (default TFT)
  *   - "tft-60w"   — TFT with 60W core stop
- *   - "tft-cat"   — TFT with catastrophic-only core (the $5.28M winner)
+ *   - "tft-cat"   — TFT with catastrophic-only core (UNVALIDATED out-of-sample)
  *                   Legacy aliases "tft-catastrophic" / "tft-catastrophic-only"
  *                   are normalized to "tft-cat" by the route handler.
  *
@@ -912,7 +912,7 @@ export async function getChartData(
   } else if (tftMode === "60w") {
     notes.push("TFT 60W: same exits as 40W mode but uses 60-week SMA. Slower trigger; designed to capture longer secular runs.");
   } else if (tftMode === "catastrophic-only") {
-    notes.push("TFT catastrophic-only: CORE exits ONLY on -15% catastrophic from entry. SMA/regime exits SKIPPED for the core. Maximum moonshot capture; the $5.28M basket result on the 80-ticker eval.");
+    notes.push("TFT catastrophic-only: CORE exits ONLY on -15% catastrophic from entry. SMA/regime exits SKIPPED for the core. NOTE: the old “$5.28M” figure was IN-SAMPLE on an 80-ticker MEGA-CAP basket (NVDA/AMD-driven) — NOT validated out-of-sample on the $5–75 universe. Treat as unproven pending the OOS test.");
   }
   notes.push(`Position size: $${positionSize.toLocaleString()} per unit. ${tftMode ? "TFT can deploy up to 2.0 units total = 2× notional." : "Strategy deploys 1× notional per trade."}`);
   notes.push("totalPnLIncludingUnrealized adds open positions marked-to-last-close. Compare across strategies for honest moonshot capture.");

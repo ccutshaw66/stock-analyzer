@@ -34,6 +34,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useTicker } from "@/contexts/TickerContext";
 import { useTimeframe } from "@/contexts/TimeframeContext";
+import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageTemplate } from "@/components/PageTemplate";
@@ -150,14 +151,18 @@ interface ChartDataResponse {
 // to this file. Strategies with their own dedicated pages (HTF, Wyckoff
 // Spring) deliberately omit `chartBacktest` and don't appear here.
 
-const STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string }[] =
+const ALL_STRATEGY_OPTIONS: { value: ChartStrategy; label: string; description: string; ownerOnly: boolean }[] =
   Object.entries(STRATEGY_REGISTRY)
     .filter(([, m]) => m.chartBacktest != null)
     .map(([id, m]) => ({
-      value: id,
+      value: id as ChartStrategy,
       label: m.chartBacktest!.label,
       description: m.chartBacktest!.description,
+      ownerOnly: m.chartBacktest!.ownerOnly ?? false,
     }));
+// First strategy a non-owner can see — used as the safe default so the chart
+// never auto-loads an owner-only (failed/unvalidated) strategy for the public.
+const DEFAULT_PUBLIC_STRATEGY = (ALL_STRATEGY_OPTIONS.find(o => !o.ownerOnly)?.value ?? "tft-40w") as ChartStrategy;
 
 const TIMEFRAME_OPTIONS: { value: number; label: string }[] = [
   { value: 365, label: "1Y" },
@@ -623,7 +628,15 @@ function TradeList({
 export default function ChartPage() {
   const { activeTicker } = useTicker();
   const { timeframe } = useTimeframe();
-  const [strategy, setStrategy] = useState<ChartStrategy>("bbtc-ver");
+  const { tier: userTier } = useSubscription();
+  const isOwner = userTier === "owner";
+  // Public users only see validated strategies; ownerOnly ones (failed OOS
+  // validation, kept for owner experimentation) appear only for the owner.
+  const STRATEGY_OPTIONS = useMemo(
+    () => ALL_STRATEGY_OPTIONS.filter(o => isOwner || !o.ownerOnly),
+    [isOwner],
+  );
+  const [strategy, setStrategy] = useState<ChartStrategy>(DEFAULT_PUBLIC_STRATEGY);
   const [days, setDays] = useState<number>(1825); // 5y default
   const [highlightedTradeNum, setHighlightedTradeNum] = useState<number | null>(null);
   // Confluence layer (MACD/RSI + dashboard) merged in from the old page.

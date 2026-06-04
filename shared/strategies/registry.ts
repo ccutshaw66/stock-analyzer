@@ -131,6 +131,9 @@ export interface StrategyManifest {
     label: string;
     /** Tooltip text shown on hover. */
     description: string;
+    /** Owner-only: hide from the PUBLIC /chart toggle (failed/unvalidated
+     *  strategies kept for owner experimentation). Same idea as liveScan.ownerOnly. */
+    ownerOnly?: boolean;
   };
   /**
    * Ordered list of `DisplayPoint.label`s the Current Positions table renders
@@ -636,6 +639,10 @@ const BBTC_VER_MANIFEST: StrategyManifest = {
   chartBacktest: {
     label: "BBTC + VER",
     description: "Current website Ready/Set/Go strategy",
+    // ownerOnly 2026-06-03: BBTC enters on average at RSI ~60 (buys strength, never
+    // dips) and loses to SPY OOS; the buy-the-pullback adjustment tested WORSE. Moved
+    // off the public chart into owner-only per the validated-only-on-main rule.
+    ownerOnly: true,
   },
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -907,6 +914,9 @@ const AMC_MANIFEST: StrategyManifest = {
   chartBacktest: {
     label: "AMC only",
     description: "Adaptive Momentum Confluence (the 'Set' indicator alone)",
+    // ownerOnly 2026-06-03: validated NO-GO (loses to SPY OOS, N=7,137). Off the
+    // public chart, owner-only, per the validated-only-on-main rule.
+    ownerOnly: true,
   },
   evaluate(trade) {
     return BBTC_VER_MANIFEST.evaluate(trade); // same lifecycle as BBTC+VER

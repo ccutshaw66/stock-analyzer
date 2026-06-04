@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — BBTC + AMC moved off the public /chart (owner-only); scrub the "$5.28M" TFT claim
+
+**Why:** Validation discipline applied to the /chart backtest strategies. BBTC enters on
+average at **RSI ~60** (a "buy strength, never the dip" engine — measured: 49% of buys >60,
+23% >65, never below 40) and **loses to SPY out-of-sample**; the buy-the-pullback adjustment
+Chris asked for tested **worse** (−1.47%/trade excess vs −0.25% as-is — the falling-knife
+problem). AMC was already a confirmed NO-GO (N=7,137). Per the validated-only-on-main rule,
+both come off the public chart. Also: the code's "$5.28M winner" label for TFT-catastrophic was
+an IN-SAMPLE result on a mega-cap (NVDA/AMD) basket — misleading; scrubbed.
+
+**What changed:**
+- **`shared/strategies/registry.ts`** — `chartBacktest` gains an `ownerOnly` flag; set on
+  **bbtc-ver** and **amc**. They no longer appear on the public /chart toggle; only the owner
+  sees/runs them (kept for experimentation).
+- **`client/src/pages/chart.tsx`** — the strategy toggle filters out `ownerOnly` strategies
+  unless the user is the owner, and the default strategy falls back to the first public one (so
+  a non-owner never silently loads BBTC).
+- **`server/diag/chart-data.ts`** — removed the "$5.28M winner" claim from the TFT-cat header
+  comment and chart note; replaced with an honest "in-sample on a mega-cap basket, NOT OOS
+  validated on the $5–75 universe" caveat.
+- TFT (40w/60w/cat) stays on the public chart **pending the running OOS validation** — if it
+  fails, it follows BBTC/AMC into owner-only. `npm run build` passes.
+
+---
 ## 2026-06-03 — KAIROS dashboard: fix "Free Cash" math (Invested = market value, not cost)
 
 **Why:** After the KAIROS cash-model fix, Chris spotted the account card math would mislead. The
