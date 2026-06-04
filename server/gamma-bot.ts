@@ -34,9 +34,9 @@ const DEFAULT_CONFIG: BotConfig = {
   startingEquity: 20000, riskPctPerTrade: 0.02, maxPositions: 20, holdDays: 10, shortIvRank: 0.6, longIvRank: 0.4,
 };
 
-interface OpenPos { id: string; ticker: string; side: "SHORT" | "LONG"; entryDate: string; entryIV: number; entrySpot: number; sizeDollars: number; ivRank: number; }
+interface OpenPos { id: string; ticker: string; side: "SHORT" | "LONG"; entryDate: string; entryIV: number; entrySpot: number; sizeDollars: number; ivRank: number; markVol?: number; unrealPnlPct?: number; unrealPnlDollars?: number; }
 interface ClosedTrade extends OpenPos { exitDate: string; realizedVol: number; pnlVolPts: number; pnlPct: number; pnl$: number; }
-interface Signal { ticker: string; gex: number; regime: "long-γ" | "short-γ"; atmIV: number; ivRank: number; side: "SHORT" | "LONG" | "—"; }
+interface Signal { ticker: string; gex: number; regime: "long-γ" | "short-γ"; atmIV: number; ivRank: number; ivRankPos: number; basketN: number; side: "SHORT" | "LONG" | "—"; }
 
 interface BotState {
   startedAt: string;
@@ -116,6 +116,16 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
       state.equity += pnl$;
       state.closedTrades.push({ ...p, exitDate: date, realizedVol: rv, pnlVolPts, pnlPct, pnl$ });
     } else {
+      // mark-to-model so the unrealized numbers are VISIBLE while the trade is open
+      if (eIdx !== undefined && cIdx !== undefined && cIdx - eIdx >= 2) {
+        const rvSoFar = realizedVol(bars.slice(eIdx, cIdx + 1).map((b: any) => b.c));
+        if (rvSoFar !== null) {
+          const vp = p.side === "SHORT" ? p.entryIV - rvSoFar : rvSoFar - p.entryIV;
+          p.markVol = rvSoFar;
+          p.unrealPnlPct = Math.max(-1, Math.min(1, vp / p.entryIV));
+          p.unrealPnlDollars = p.sizeDollars * p.unrealPnlPct;
+        }
+      }
       stillOpen.push(p);
     }
   }
@@ -123,13 +133,15 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
 
   // 2) cross-sectional IV rank + signals
   const ivs = usable.map(s => s.atmIV).sort((a, b) => a - b);
-  const rankOf = (iv: number) => ivs.filter(x => x <= iv).length / ivs.length;
+  const N = ivs.length;
+  const rankOf = (iv: number) => ivs.filter(x => x <= iv).length / N;
+  const posOf = (iv: number) => ivs.filter(x => x < iv).length + 1; // 1 = cheapest vol in the basket
   const signals: Signal[] = usable.map(s => {
     const ivRank = rankOf(s.atmIV);
     let side: "SHORT" | "LONG" | "—" = "—";
     if (s.gex > 0 && ivRank >= cfg.shortIvRank) side = "SHORT";
     else if (s.gex < 0 && ivRank <= cfg.longIvRank) side = "LONG";
-    return { ticker: s.ticker, gex: s.gex, regime: s.gex > 0 ? "long-γ" : "short-γ", atmIV: s.atmIV, ivRank, side };
+    return { ticker: s.ticker, gex: s.gex, regime: s.gex > 0 ? "long-γ" : "short-γ", atmIV: s.atmIV, ivRank, ivRankPos: posOf(s.atmIV), basketN: N, side };
   }).sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
   state.lastSignals = signals;
 
@@ -194,11 +206,13 @@ export function getBotView() {
   const closed = s.closedTrades;
   const wins = closed.filter(t => t.pnl$ > 0).length;
   const totalPnl = s.equity - cfg.startingEquity;
+  const openPnl = s.openPositions.reduce((a, p) => a + (p.unrealPnlDollars || 0), 0);
   return {
     config: cfg,
     equity: Math.round(s.equity),
     startingEquity: cfg.startingEquity,
     totalPnl: Math.round(totalPnl),
+    openPnl: Math.round(openPnl),
     totalReturnPct: cfg.startingEquity ? +(totalPnl / cfg.startingEquity * 100).toFixed(2) : 0,
     openCount: s.openPositions.length,
     closedCount: closed.length,

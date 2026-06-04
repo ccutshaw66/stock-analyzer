@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Gamma bot: show the actual entry/exit/P&L numbers (WARM AND FUZZY rule)
+
+**Why:** Chris's standing rule — he can't trust or validate a bot whose numbers all happen in the
+background. Every trade must show its **entry, exit, and P&L numbers** so they're eyeball-checkable.
+Plus: IV rank shown as an actual position (1st of 95), not a confusing "%", and tighter columns.
+
+**What changed:**
+- **`server/gamma-bot.ts`** — open positions now **mark-to-model**: realized-vol-so-far vs the entry
+  IV → live unrealized P&L ($ and %), exposed on each position. Signals carry an **ordinal IV rank**
+  (1 = cheapest vol in the basket, of N). `getBotView` adds `openPnl`.
+- **`client/src/pages/gamma-bot.tsx`** — signals now show the **actual IV** + **"Vol rank 1/95"**
+  (no more bare "%"); open positions show **Entry IV · Now(RV) · Unreal P&L $ · Unreal % · Hold**;
+  closed trades show **Entry IV · Exit(RV) · P&L $ · Return · date**. New **Open P&L** stat. Column
+  width hints fix the gappy spread. Build passes.
+
+---
 ## 2026-06-04 — Gamma bot + collector tables → shared sortable DataTable
 
 **Why:** The new gamma pages hand-rolled raw `<table>`s instead of the project's standard sortable

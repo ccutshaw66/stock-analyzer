@@ -32,25 +32,36 @@ function Sparkline({ pts }: { pts: { date: string; equity: number }[] }) {
   );
 }
 
+const ivCell = (v: number | null | undefined) => (v != null ? `${(v * 100).toFixed(0)}%` : "—");
+const moneyCell = (v: number | null | undefined, pending = false) =>
+  v != null ? <span className={v >= 0 ? "text-bull-light" : "text-bear-light"}>{fmt$(v)}</span> : <span className="text-muted-foreground">{pending ? "pending" : "—"}</span>;
+const pctCell = (v: number | null | undefined) =>
+  v != null ? <span className={v >= 0 ? "text-bull-light" : "text-bear-light"}>{(v * 100).toFixed(1)}%</span> : <span className="text-muted-foreground">—</span>;
+
 const signalCols: DataTableColumn<any>[] = [
-  { key: "ticker", header: "Ticker", accessor: s => <span className="font-medium text-foreground">{s.ticker}</span>, sortValue: s => s.ticker },
-  { key: "regime", header: "Regime", accessor: s => s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>, sortValue: s => s.gex },
-  { key: "ivrank", header: "IV rank", type: "number", accessor: s => `${(s.ivRank * 100).toFixed(0)}%`, sortValue: s => s.ivRank },
-  { key: "signal", header: "Signal", accessor: s => sideTag(s.side), sortValue: s => (s.side === "SHORT" ? 2 : s.side === "LONG" ? 1 : 0) },
+  { key: "ticker", header: "Ticker", width: "w-20", accessor: s => <span className="font-medium text-foreground">{s.ticker}</span>, sortValue: s => s.ticker },
+  { key: "regime", header: "Regime", width: "w-24", accessor: s => s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>, sortValue: s => s.gex },
+  { key: "iv", header: "IV", type: "number", width: "w-16", accessor: s => ivCell(s.atmIV), sortValue: s => s.atmIV },
+  { key: "rank", header: "Vol rank", type: "number", width: "w-24", accessor: s => `${s.ivRankPos} / ${s.basketN}`, sortValue: s => s.ivRankPos },
+  { key: "signal", header: "Signal", width: "w-28", accessor: s => sideTag(s.side), sortValue: s => (s.side === "SHORT" ? 2 : s.side === "LONG" ? 1 : 0) },
 ];
 const posCols: DataTableColumn<any>[] = [
-  { key: "ticker", header: "Ticker", accessor: p => <span className="font-medium text-foreground">{p.ticker}</span>, sortValue: p => p.ticker },
-  { key: "side", header: "Side", accessor: p => sideTag(p.side), sortValue: p => p.side },
-  { key: "iv", header: "Entry IV", type: "number", accessor: p => `${(p.entryIV * 100).toFixed(0)}%`, sortValue: p => p.entryIV },
-  { key: "size", header: "Size", type: "price", accessor: p => fmt$(p.sizeDollars), sortValue: p => p.sizeDollars },
-  { key: "hold", header: "Hold", type: "number", accessor: p => `${p.daysHeld}/${p.holdDays}d`, sortValue: p => p.daysHeld },
+  { key: "ticker", header: "Ticker", width: "w-20", accessor: p => <span className="font-medium text-foreground">{p.ticker}</span>, sortValue: p => p.ticker },
+  { key: "side", header: "Side", width: "w-24", accessor: p => sideTag(p.side), sortValue: p => p.side },
+  { key: "entryIV", header: "Entry IV", type: "number", width: "w-20", accessor: p => ivCell(p.entryIV), sortValue: p => p.entryIV },
+  { key: "markVol", header: "Now (RV)", type: "number", width: "w-20", accessor: p => ivCell(p.markVol), sortValue: p => p.markVol ?? -1 },
+  { key: "upnl", header: "Unreal P&L", type: "price", width: "w-24", accessor: p => moneyCell(p.unrealPnlDollars, true), sortValue: p => p.unrealPnlDollars ?? 0 },
+  { key: "upnlpct", header: "Unreal %", type: "number", width: "w-20", accessor: p => pctCell(p.unrealPnlPct), sortValue: p => p.unrealPnlPct ?? 0 },
+  { key: "hold", header: "Hold", type: "number", width: "w-20", accessor: p => `${p.daysHeld}/${p.holdDays}d`, sortValue: p => p.daysHeld },
 ];
 const tradeCols: DataTableColumn<any>[] = [
-  { key: "ticker", header: "Ticker", accessor: t => <span className="font-medium text-foreground">{t.ticker}</span>, sortValue: t => t.ticker },
-  { key: "side", header: "Side", accessor: t => sideTag(t.side), sortValue: t => t.side },
-  { key: "exit", header: "Exit", accessor: t => t.exitDate, sortValue: t => t.exitDate },
-  { key: "pnl", header: "P&L", type: "price", accessor: t => <span className={t.pnl$ >= 0 ? "text-bull-light" : "text-bear-light"}>{fmt$(t.pnl$)}</span>, sortValue: t => t.pnl$ },
-  { key: "ret", header: "Return", type: "number", accessor: t => <span className={t.pnlPct >= 0 ? "text-bull-light" : "text-bear-light"}>{(t.pnlPct * 100).toFixed(1)}%</span>, sortValue: t => t.pnlPct },
+  { key: "ticker", header: "Ticker", width: "w-20", accessor: t => <span className="font-medium text-foreground">{t.ticker}</span>, sortValue: t => t.ticker },
+  { key: "side", header: "Side", width: "w-24", accessor: t => sideTag(t.side), sortValue: t => t.side },
+  { key: "entryIV", header: "Entry IV", type: "number", width: "w-20", accessor: t => ivCell(t.entryIV), sortValue: t => t.entryIV },
+  { key: "exitRV", header: "Exit (RV)", type: "number", width: "w-20", accessor: t => ivCell(t.realizedVol), sortValue: t => t.realizedVol },
+  { key: "pnl", header: "P&L", type: "price", width: "w-24", accessor: t => moneyCell(t.pnl$), sortValue: t => t.pnl$ },
+  { key: "ret", header: "Return", type: "number", width: "w-20", accessor: t => pctCell(t.pnlPct), sortValue: t => t.pnlPct },
+  { key: "exit", header: "Exit date", width: "w-28", accessor: t => t.exitDate, sortValue: t => t.exitDate },
 ];
 
 export default function GammaBotPage() {
@@ -97,9 +108,10 @@ export default function GammaBotPage() {
     >
       <div className="space-y-5 max-w-[1100px] mx-auto p-1">
         {/* Equity row */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           <Stat label="Equity" value={data ? fmt$(data.equity) : "…"} />
-          <Stat label="Total P&L" value={data ? fmt$(data.totalPnl) : "…"} color={data && data.totalPnl >= 0 ? "text-bull-light" : "text-bear-light"} />
+          <Stat label="Realized P&L" value={data ? fmt$(data.totalPnl) : "…"} color={data && data.totalPnl >= 0 ? "text-bull-light" : "text-bear-light"} />
+          <Stat label="Open P&L" value={data ? fmt$(data.openPnl ?? 0) : "…"} color={data && (data.openPnl ?? 0) >= 0 ? "text-bull-light" : "text-bear-light"} />
           <Stat label="Return" value={data ? pct(data.totalReturnPct) : "…"} color={data && data.totalReturnPct >= 0 ? "text-bull-light" : "text-bear-light"} />
           <Stat label="Win Rate" value={data ? pct(data.winRate) : "…"} />
           <Stat label="Open" value={data ? `${data.openCount}/${data.config?.maxPositions}` : "…"} />
@@ -150,7 +162,7 @@ export default function GammaBotPage() {
         {/* Today's signals */}
         <DataTable
           title="Today's signals"
-          rightSlot={data ? <span className="text-2xs text-muted-foreground">{data.activeSignalCount} firing of {data.signals?.length ?? 0}</span> : null}
+          rightSlot={data ? <span className="text-2xs text-muted-foreground">{data.activeSignalCount} firing of {data.signals?.length ?? 0} · vol rank 1 = cheapest</span> : null}
           dense
           columns={signalCols}
           data={data?.signals ?? []}
