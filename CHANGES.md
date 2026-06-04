@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-03 — KAIROS dashboard: fix "Free Cash" math (Invested = market value, not cost)
+
+**Why:** After the KAIROS cash-model fix, Chris spotted the account card math would mislead. The
+client computed **Free Cash = Current Value − Invested**, but **Invested** was the cost basis
+(entry_price × shares) while **Current Value** is mark-to-market (cash + current value of
+positions). Those only agree while nothing has moved — so it read $0 correctly at a fresh fill,
+but the moment a position ticked, Free Cash would silently absorb the unrealized P/L (showing
+cash that isn't there, or negative cash that isn't).
+
+**What changed:**
+- **`client/src/compartments/kairos/useKairos.ts`** — `totalInvestedDollars` now sums
+  `current_price × shares` (current market value) instead of `entry_price × shares` (cost). That
+  makes the allocation row exact at all times: **Current Value = Invested + Free Cash**, and
+  `Free Cash = Current − market value = real uninvested cash`. Falls back to entry_price if a
+  position is missing current_price.
+- Client-only fix — no change to the air-gapped dashboard service needed (the bot's equity curve
+  is already mark-to-market, so the client derives true cash exactly). `npm run build` passes.
+
+---
 ## 2026-06-03 — KAIROS: real cash/buying-power model (fixes phantom over-deployment)
 
 **Why:** Chris's KAIROS paper account showed **91 open positions / ~$62K invested on a $20K

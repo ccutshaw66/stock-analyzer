@@ -216,11 +216,20 @@ export function totalPnlDollars(eq: number[] | undefined, startingEquity: number
   return Number((currentEquityDollars(eq, startingEquity) - startingEquity).toFixed(2));
 }
 
-/** Sum of (entry_price × shares) across all open positions — capital locked up. */
+/**
+ * Current MARKET value of all open positions (current_price × shares).
+ *
+ * This is the "Invested" figure in the allocation row, chosen so that
+ *   Current Value = Invested + Free Cash
+ * holds exactly at all times. Using entry_price (cost basis) here was the bug:
+ * once a position moved, Free Cash (computed as Current − Invested) silently
+ * absorbed the unrealized P/L — showing cash that wasn't really there. Market
+ * value keeps the split honest (Current − market value = real uninvested cash).
+ */
 export function totalInvestedDollars(positions: KairosPosition[] | undefined): number {
   if (!positions || positions.length === 0) return 0;
   return Number(
-    positions.reduce((sum, p) => sum + (p.entry_price ?? 0) * (p.shares ?? 0), 0).toFixed(2)
+    positions.reduce((sum, p) => sum + (p.current_price ?? p.entry_price ?? 0) * (p.shares ?? 0), 0).toFixed(2)
   );
 }
 
