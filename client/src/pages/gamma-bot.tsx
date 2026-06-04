@@ -4,14 +4,19 @@
  * Watchable dashboard for the in-process deterministic vol bot: live equity,
  * adjustable money + risk, today's signals across the basket, open paper
  * positions (with a hold countdown), closed-trade log, and an equity sparkline.
- * Self-contained — talks to /api/gamma-bot.
+ * Self-contained — talks to /api/gamma-bot. Tables use the shared DataTable.
  */
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, DataTableColumn } from "@/components/DataTable";
 
 const fmt$ = (n: number) => "$" + Math.round(n).toLocaleString();
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? "—" : n.toFixed(1) + "%");
+const sideTag = (s: string) =>
+  s === "SHORT" ? <span className="text-bear-light font-medium">SELL VOL</span>
+  : s === "LONG" ? <span className="text-bull-light font-medium">BUY VOL</span>
+  : <span className="text-muted-foreground">—</span>;
 
 function Sparkline({ pts }: { pts: { date: string; equity: number }[] }) {
   if (!pts || pts.length < 2) return <div className="text-2xs text-muted-foreground">Equity curve appears once trades close.</div>;
@@ -26,6 +31,27 @@ function Sparkline({ pts }: { pts: { date: string; equity: number }[] }) {
     </svg>
   );
 }
+
+const signalCols: DataTableColumn<any>[] = [
+  { key: "ticker", header: "Ticker", accessor: s => <span className="font-medium text-foreground">{s.ticker}</span>, sortValue: s => s.ticker },
+  { key: "regime", header: "Regime", accessor: s => s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>, sortValue: s => s.gex },
+  { key: "ivrank", header: "IV rank", type: "number", accessor: s => `${(s.ivRank * 100).toFixed(0)}%`, sortValue: s => s.ivRank },
+  { key: "signal", header: "Signal", accessor: s => sideTag(s.side), sortValue: s => (s.side === "SHORT" ? 2 : s.side === "LONG" ? 1 : 0) },
+];
+const posCols: DataTableColumn<any>[] = [
+  { key: "ticker", header: "Ticker", accessor: p => <span className="font-medium text-foreground">{p.ticker}</span>, sortValue: p => p.ticker },
+  { key: "side", header: "Side", accessor: p => sideTag(p.side), sortValue: p => p.side },
+  { key: "iv", header: "Entry IV", type: "number", accessor: p => `${(p.entryIV * 100).toFixed(0)}%`, sortValue: p => p.entryIV },
+  { key: "size", header: "Size", type: "price", accessor: p => fmt$(p.sizeDollars), sortValue: p => p.sizeDollars },
+  { key: "hold", header: "Hold", type: "number", accessor: p => `${p.daysHeld}/${p.holdDays}d`, sortValue: p => p.daysHeld },
+];
+const tradeCols: DataTableColumn<any>[] = [
+  { key: "ticker", header: "Ticker", accessor: t => <span className="font-medium text-foreground">{t.ticker}</span>, sortValue: t => t.ticker },
+  { key: "side", header: "Side", accessor: t => sideTag(t.side), sortValue: t => t.side },
+  { key: "exit", header: "Exit", accessor: t => t.exitDate, sortValue: t => t.exitDate },
+  { key: "pnl", header: "P&L", type: "price", accessor: t => <span className={t.pnl$ >= 0 ? "text-bull-light" : "text-bear-light"}>{fmt$(t.pnl$)}</span>, sortValue: t => t.pnl$ },
+  { key: "ret", header: "Return", type: "number", accessor: t => <span className={t.pnlPct >= 0 ? "text-bull-light" : "text-bear-light"}>{(t.pnlPct * 100).toFixed(1)}%</span>, sortValue: t => t.pnlPct },
+];
 
 export default function GammaBotPage() {
   const { data, refetch } = useQuery<any>({
@@ -50,11 +76,6 @@ export default function GammaBotPage() {
     </div>
   );
 
-  const sideTag = (s: string) =>
-    s === "SHORT" ? <span className="text-bear-light font-medium">SELL VOL</span>
-    : s === "LONG" ? <span className="text-bull-light font-medium">BUY VOL</span>
-    : <span className="text-muted-foreground">—</span>;
-
   return (
     <PageTemplate
       howItWorksTitle="How the Gamma-Vol bot plays"
@@ -69,8 +90,7 @@ export default function GammaBotPage() {
           </p>
           <p className="text-2xs italic text-muted-foreground">
             Paper only — no broker, no real money. It's the consistency test before any edge is trusted.
-            Honest heads-up: "watchable" ≠ "rich by Friday" — a real edge compounds slowly. Crank the risk
-            dial to see it move faster, but that's volatility, not magic.
+            Honest heads-up: "watchable" ≠ "rich by Friday" — a real edge compounds slowly.
           </p>
         </>
       }
@@ -128,74 +148,38 @@ export default function GammaBotPage() {
         </div>
 
         {/* Today's signals */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold text-foreground mb-2">
-            Today's signals {data ? <span className="text-2xs text-muted-foreground">({data.activeSignalCount} firing of {data.signals?.length ?? 0})</span> : null}
-          </div>
-          {data?.signals?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-2xs">
-                <thead><tr className="text-muted-foreground text-left"><th className="py-1 pr-4">Ticker</th><th className="pr-4">Regime</th><th className="pr-4">IV rank</th><th className="pr-4">Signal</th></tr></thead>
-                <tbody>
-                  {data.signals.slice(0, 30).map((s: any) => (
-                    <tr key={s.ticker} className="border-t border-border/50">
-                      <td className="py-1 pr-4 font-medium text-foreground">{s.ticker}</td>
-                      <td className="pr-4">{s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>}</td>
-                      <td className="pr-4 text-foreground">{(s.ivRank * 100).toFixed(0)}%</td>
-                      <td className="pr-4">{sideTag(s.side)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <div className="text-2xs text-muted-foreground">No signals yet — warming up. Click "Run now" for a live pull, or wait for tonight's close.</div>}
-        </div>
+        <DataTable
+          title="Today's signals"
+          rightSlot={data ? <span className="text-2xs text-muted-foreground">{data.activeSignalCount} firing of {data.signals?.length ?? 0}</span> : null}
+          dense
+          columns={signalCols}
+          data={data?.signals ?? []}
+          getRowKey={(s: any) => s.ticker}
+          defaultSort={{ key: "signal", direction: "desc" }}
+          emptyMessage='No signals yet — warming up. Click "Run now" for a live pull, or wait for tonight.'
+        />
 
         {/* Open positions */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold text-foreground mb-2">Open paper positions</div>
-          {data?.openPositions?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-2xs">
-                <thead><tr className="text-muted-foreground text-left"><th className="py-1 pr-4">Ticker</th><th className="pr-4">Side</th><th className="pr-4">Entry IV</th><th className="pr-4">Size</th><th className="pr-4">Hold</th></tr></thead>
-                <tbody>
-                  {data.openPositions.map((p: any) => (
-                    <tr key={p.id} className="border-t border-border/50">
-                      <td className="py-1 pr-4 font-medium text-foreground">{p.ticker}</td>
-                      <td className="pr-4">{sideTag(p.side)}</td>
-                      <td className="pr-4 text-foreground">{(p.entryIV * 100).toFixed(0)}%</td>
-                      <td className="pr-4 text-foreground">{fmt$(p.sizeDollars)}</td>
-                      <td className="pr-4 text-muted-foreground">{p.daysHeld}/{p.holdDays}d</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <div className="text-2xs text-muted-foreground">No open positions.</div>}
-        </div>
+        <DataTable
+          title="Open paper positions"
+          dense
+          columns={posCols}
+          data={data?.openPositions ?? []}
+          getRowKey={(p: any) => p.id}
+          defaultSort={{ key: "hold", direction: "desc" }}
+          emptyMessage="No open positions."
+        />
 
         {/* Recent trades */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold text-foreground mb-2">Recent closed trades</div>
-          {data?.recentTrades?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-2xs">
-                <thead><tr className="text-muted-foreground text-left"><th className="py-1 pr-4">Ticker</th><th className="pr-4">Side</th><th className="pr-4">Exit</th><th className="pr-4">P&L</th><th className="pr-4">Return</th></tr></thead>
-                <tbody>
-                  {data.recentTrades.map((t: any, i: number) => (
-                    <tr key={i} className="border-t border-border/50">
-                      <td className="py-1 pr-4 font-medium text-foreground">{t.ticker}</td>
-                      <td className="pr-4">{sideTag(t.side)}</td>
-                      <td className="pr-4 text-muted-foreground">{t.exitDate}</td>
-                      <td className={`pr-4 ${t.pnl$ >= 0 ? "text-bull-light" : "text-bear-light"}`}>{fmt$(t.pnl$)}</td>
-                      <td className={`pr-4 ${t.pnlPct >= 0 ? "text-bull-light" : "text-bear-light"}`}>{(t.pnlPct * 100).toFixed(1)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <div className="text-2xs text-muted-foreground">No closed trades yet.</div>}
-        </div>
+        <DataTable
+          title="Recent closed trades"
+          dense
+          columns={tradeCols}
+          data={data?.recentTrades ?? []}
+          getRowKey={(t: any, i: number) => `${t.ticker}-${t.exitDate}-${i}`}
+          defaultSort={{ key: "exit", direction: "desc" }}
+          emptyMessage="No closed trades yet."
+        />
       </div>
     </PageTemplate>
   );

@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Gamma bot + collector tables → shared sortable DataTable
+
+**Why:** The new gamma pages hand-rolled raw `<table>`s instead of the project's standard sortable
+`DataTable` — so the columns didn't sort. Fixed to follow the table rule like everywhere else.
+
+**What changed:**
+- **`client/src/pages/gamma-bot.tsx`** — signals, open positions, and closed-trades tables converted
+  to `DataTable` with `sortValue` accessors (so the colored-JSX cells still sort by the underlying
+  number). Defaults: signals by firing, positions by hold countdown, trades by exit date.
+- **`client/src/pages/gamma-collector.tsx`** — the gamma landscape converted to `DataTable`, default
+  sort most-short-gamma first. Every column now clickable-sortable. Build passes.
+
+---
 ## 2026-06-04 — Fix bogus ATM IV on the big ETFs (SPY/IWM were reading ~3%)
 
 **Why:** The collector's `atmIV` grabbed the single nearest-strike contract, which on deep ETF chains

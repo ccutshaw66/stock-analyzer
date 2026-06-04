@@ -4,9 +4,11 @@
  * Keeps the quietly-accumulating dealer-gamma collector in front of you: a
  * progress bar toward the validation milestone, basket coverage, last run, and
  * the current gamma landscape (which big-caps are most short-gamma right now).
+ * The landscape uses the shared sortable DataTable.
  */
 import { useQuery } from "@tanstack/react-query";
 import { PageTemplate } from "@/components/PageTemplate";
+import { DataTable, DataTableColumn } from "@/components/DataTable";
 
 const fmtGex = (g: number) => {
   const a = Math.abs(g);
@@ -14,6 +16,26 @@ const fmtGex = (g: number) => {
   if (a >= 1e6) return (g / 1e6).toFixed(1) + "M";
   return Math.round(g).toLocaleString();
 };
+
+const cols: DataTableColumn<any>[] = [
+  { key: "ticker", header: "Ticker", accessor: s => <span className="font-medium text-foreground">{s.ticker}</span>, sortValue: s => s.ticker },
+  { key: "regime", header: "Regime", accessor: s => s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>, sortValue: s => s.totalGEX },
+  { key: "gex", header: "GEX ($/1%)", type: "number", accessor: s => <span className={s.totalGEX < 0 ? "text-bear-light" : "text-bull-light"}>{fmtGex(s.totalGEX)}</span>, sortValue: s => s.totalGEX },
+  {
+    key: "bias", header: "Squeeze bias",
+    accessor: s => (
+      <>
+        {s.squeezeBias === "up" ? <span className="text-bull-light">↑ up</span>
+          : s.squeezeBias === "down" ? <span className="text-bear-light">↓ down</span>
+          : <span className="text-muted-foreground">neutral</span>}
+        {s.squeezeStrength ? <span className="text-muted-foreground"> ({(s.squeezeStrength * 100).toFixed(0)})</span> : null}
+      </>
+    ),
+    sortValue: s => (s.squeezeBias === "up" ? s.squeezeStrength : s.squeezeBias === "down" ? -s.squeezeStrength : 0),
+  },
+  { key: "iv", header: "ATM IV", type: "number", accessor: s => s.atmIV ? (s.atmIV * 100).toFixed(0) + "%" : "—", sortValue: s => s.atmIV ?? -1 },
+  { key: "date", header: "As of", accessor: s => s.date, sortValue: s => s.date },
+];
 
 export default function GammaCollectorPage() {
   const { data } = useQuery<any>({
@@ -74,44 +96,16 @@ export default function GammaCollectorPage() {
         </div>
 
         {/* Current gamma landscape */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold text-foreground mb-2">
-            Current gamma landscape <span className="text-2xs text-muted-foreground">(most short-gamma first — squeeze-prone at top)</span>
-          </div>
-          {data?.latest?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-2xs">
-                <thead>
-                  <tr className="text-muted-foreground text-left">
-                    <th className="py-1 pr-4">Ticker</th><th className="pr-4">Regime</th><th className="pr-4">GEX ($/1%)</th>
-                    <th className="pr-4">Squeeze bias</th><th className="pr-4">ATM IV</th><th className="pr-4">As of</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.latest.map((s: any) => (
-                    <tr key={s.ticker} className="border-t border-border/50">
-                      <td className="py-1 pr-4 font-medium text-foreground">{s.ticker}</td>
-                      <td className="pr-4">{s.regime === "short-γ" ? <span className="text-bear-light">short-γ</span> : <span className="text-bull-light">long-γ</span>}</td>
-                      <td className={`pr-4 ${s.totalGEX < 0 ? "text-bear-light" : "text-bull-light"}`}>{fmtGex(s.totalGEX)}</td>
-                      <td className="pr-4 text-foreground">
-                        {s.squeezeBias === "up" ? <span className="text-bull-light">↑ up</span>
-                          : s.squeezeBias === "down" ? <span className="text-bear-light">↓ down</span>
-                          : <span className="text-muted-foreground">neutral</span>}
-                        {s.squeezeStrength ? <span className="text-muted-foreground"> ({(s.squeezeStrength * 100).toFixed(0)})</span> : null}
-                      </td>
-                      <td className="pr-4 text-foreground">{s.atmIV ? (s.atmIV * 100).toFixed(0) + "%" : "—"}</td>
-                      <td className="pr-4 text-muted-foreground">{s.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-2xs text-muted-foreground">
-              No snapshots yet — the collector runs at the next market close (21:30 UTC, weekdays). Check back after tonight.
-            </div>
-          )}
-        </div>
+        <DataTable
+          title="Current gamma landscape"
+          rightSlot={<span className="text-2xs text-muted-foreground">most short-gamma first — squeeze-prone at top</span>}
+          dense
+          columns={cols}
+          data={data?.latest ?? []}
+          getRowKey={(s: any) => s.ticker}
+          defaultSort={{ key: "gex", direction: "asc" }}
+          emptyMessage="No snapshots yet — the collector runs at the next market close (21:30 UTC, weekdays)."
+        />
       </div>
     </PageTemplate>
   );
