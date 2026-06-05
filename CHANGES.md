@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Vol-calc: add a Delta & Hedge map (gamma-scalp readout)
+
+**Why:** Hedging lesson follow-on — turn the calculator into a working hedge tool so the delta-hedge /
+gamma-scalp pattern is visible in numbers.
+
+**What changed:** `client/src/pages/vol-calc.tsx` — new "Delta & hedge map" table. Across a price
+range (strike ±5%, current time still on the clock) it shows the straddle delta (`2·N(d1)−1`) and the
+**exact shares to trade to flatten** — separately for the long straddle (sell-high/buy-low gamma
+scalp) and the short straddle (the mirror). Scales by contracts. Build passes.
+
+---
 ## 2026-06-04 — Fix vol-calc input focus loss
 
 **Why:** The Sell/Buy call/put price inputs lost focus after every keystroke — the row component was

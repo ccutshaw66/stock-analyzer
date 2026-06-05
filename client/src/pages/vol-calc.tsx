@@ -22,6 +22,12 @@ function bs(S: number, K: number, T: number, sig: number) {
   const d2 = d1 - sig * Math.sqrt(T);
   return { call: S * N(d1) - K * N(d2), put: K * N(-d2) - S * N(-d1) };
 }
+// Long-straddle delta per share = call Δ + put Δ = 2·N(d1) − 1.
+function straddleDelta(S: number, K: number, T: number, sig: number) {
+  if (T <= 0 || sig <= 0 || S <= 0 || K <= 0) return S > K ? 1 : S < K ? -1 : 0;
+  const d1 = (Math.log(S / K) + 0.5 * sig * sig * T) / (sig * Math.sqrt(T));
+  return 2 * N(d1) - 1;
+}
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const $2 = (n: number) => "$" + n.toFixed(2);
 
@@ -90,6 +96,14 @@ export default function VolCalcPage() {
   };
   const sellP = panel(sCall, sPut, true);
   const buyP = panel(bCall, bPut, false);
+
+  // Delta & hedge map across a price range (current time still on the clock)
+  const hedgeRows = [0.95, 0.975, 1.0, 1.025, 1.05].map(m => {
+    const px = K * m;
+    const d = straddleDelta(px, K, T, sig);
+    const shares = Math.round(d * mult);
+    return { px, d, shares, atm: m === 1.0 };
+  });
 
   return (
     <PageTemplate
@@ -160,6 +174,46 @@ export default function VolCalcPage() {
             </div>
           </div>
         </div>
+        {/* Delta & hedge map */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="text-sm font-semibold text-foreground mb-1">
+            Delta &amp; hedge map <span className="text-2xs text-muted-foreground">(at {iv}% IV, {days} days still on the clock)</span>
+          </div>
+          <div className="text-2xs text-muted-foreground mb-2">
+            Shares to trade to flatten your delta as the stock moves. Notice the <span className="text-bull-light">long</span> straddle
+            sells-high / buys-low (the gamma scalp), and the <span className="text-bear-light">short</span> straddle does the opposite.
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-2xs">
+              <thead>
+                <tr className="text-muted-foreground text-left">
+                  <th className="py-1 pr-4">If stock at</th><th className="pr-4">Straddle Δ</th>
+                  <th className="pr-4"><span className="text-bull-light">LONG</span>: hedge</th>
+                  <th className="pr-4"><span className="text-bear-light">SHORT</span>: hedge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hedgeRows.map((r, i) => {
+                  const longH = r.shares === 0 ? "flat" : r.shares > 0 ? `SELL ${r.shares} sh` : `BUY ${Math.abs(r.shares)} sh`;
+                  const shortH = r.shares === 0 ? "flat" : r.shares > 0 ? `BUY ${r.shares} sh` : `SELL ${Math.abs(r.shares)} sh`;
+                  return (
+                    <tr key={i} className="border-t border-border/50">
+                      <td className="py-1 pr-4 text-foreground tabular-nums">{$2(r.px)}{r.atm ? " (ATM)" : ""}</td>
+                      <td className={`pr-4 tabular-nums ${r.d >= 0 ? "text-bull-light" : "text-bear-light"}`}>{r.d >= 0 ? "+" : ""}{r.d.toFixed(2)}</td>
+                      <td className="pr-4 text-bull-light tabular-nums">{longH}</td>
+                      <td className="pr-4 text-bear-light tabular-nums">{shortH}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-2xs text-muted-foreground mt-2">
+            Δ is per-share for {Math.max(1, contracts || 1)} contract(s) = {mult} shares. Long straddle: above the strike you're long → sell;
+            below → buy (harvest the swing). Short straddle: the mirror — you chase the move and pay for it (theta covers you if it stays calm).
+          </div>
+        </div>
+
         <div className="text-2xs text-muted-foreground px-1">
           Prices default to Black-Scholes fair from your IV (r = 0). Override either side's call/put with real chain quotes
           to price the actual trade. "Price at expiry" drives both P&amp;L lines so you can stress a calm vs. wild outcome.
