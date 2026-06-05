@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: add CDSF / PDSF (Call/Put Double-Spread Fly = long condor)
+
+**Why:** Chris trades a "Double-Spread Fly" — two *separate* verticals (no shared strike) forming a
+flat-top fly; you keep the same profit anywhere price lands in the body band.
+
+**What (`client/src/pages/strategy-lab.tsx`):** Added **CDSF** (`+call K1 −call K2 −call K3 +call K4`)
+and **PDSF** (all-puts equivalent) to the Butterflies group — i.e. a **long call/put condor**: a bull
+spread + a bear spread that don't share a strike, so the fly has a FLAT top between the inner strikes
+K2..K3. Same max profit anywhere in that band; **defined** max loss = the net debit beyond the outer
+wings (not risk-free — there's still a loss zone past K1/K4). Four-strike, runs through the existing
+leg engine with the condor strike seed. Lab now covers 24 structures.
+
+---
 ## 2026-06-05 — Strategy Lab: complete the structure set + smart strike seeding
 
 **Why:** Chris wanted the Lab "complete" — broken-wing butterflies (his "DT" variant) plus the

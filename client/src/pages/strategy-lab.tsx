@@ -81,6 +81,11 @@ const STRATS: Strat[] = [
   { id: "bw_put_butterfly", name: "Broken-Wing Put Butterfly", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }], seed: S => ({ K1: rnd(S * 0.97), K2: rnd(S), K3: rnd(S * 1.06) }) },
   // Iron butterfly = short ATM straddle (body K2) + long wings (K1/K3). Credit, peaks pinned at K2.
   { id: "iron_butterfly", name: "Iron Butterfly (credit)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: fly },
+  // Double-Spread Fly (CDSF/PDSF) = a long condor: two SEPARATE verticals (no shared strike) → a
+  // fly with a FLAT top between the inner strikes K2..K3. You keep the same max profit anywhere in
+  // that body band; defined max loss = net debit beyond the outer wings (K1 / K4). NOT risk-free.
+  { id: "cdsf", name: "Call Double-Spread Fly (CDSF)", group: "Butterflies", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K3 }, { side: 1, kind: "call", strike: k.K4 }], seed: condor },
+  { id: "pdsf", name: "Put Double-Spread Fly (PDSF)", group: "Butterflies", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K3 }, { side: 1, kind: "put", strike: k.K4 }], seed: condor },
 ];
 const STRIKE_LABEL: Record<string, string> = { K1: "K1 (low)", K2: "K2 (mid/ATM)", K3: "K3 (high)", K4: "K4 (far)" };
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
