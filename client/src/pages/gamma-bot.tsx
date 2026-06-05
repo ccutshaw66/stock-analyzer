@@ -61,7 +61,13 @@ const tradeCols: DataTableColumn<any>[] = [
   { key: "exitRV", header: "Exit (RV)", type: "number", width: "w-20", accessor: t => ivCell(t.realizedVol), sortValue: t => t.realizedVol },
   { key: "pnl", header: "P&L", type: "price", width: "w-24", accessor: t => moneyCell(t.pnl$), sortValue: t => t.pnl$ },
   { key: "ret", header: "Return", type: "number", width: "w-20", accessor: t => pctCell(t.pnlPct), sortValue: t => t.pnlPct },
-  { key: "exit", header: "Exit date", width: "w-28", accessor: t => t.exitDate, sortValue: t => t.exitDate },
+  { key: "why", header: "Exit", width: "w-20", accessor: t => {
+      const r = t.exitReason;
+      return r === "target" ? <span className="text-bull-light">target</span>
+        : r === "stop" ? <span className="text-bear-light">stop</span>
+        : <span className="text-muted-foreground">{r ?? "expiry"}</span>;
+    }, sortValue: t => t.exitReason ?? "" },
+  { key: "exit", header: "Date", width: "w-28", accessor: t => t.exitDate, sortValue: t => t.exitDate },
 ];
 
 export default function GammaBotPage() {
@@ -140,8 +146,20 @@ export default function GammaBotPage() {
                 <input type="number" value={cfg.maxPositions} onChange={e => setCfg({ ...cfg, maxPositions: +e.target.value })}
                   className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground" />
               </label>
-              <label className="text-2xs text-muted-foreground">Hold (days)
+              <label className="text-2xs text-muted-foreground">Hold / time-stop (days)
                 <input type="number" value={cfg.holdDays} onChange={e => setCfg({ ...cfg, holdDays: +e.target.value })}
+                  className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground" />
+              </label>
+              <label className="text-2xs text-muted-foreground">Profit target (%)
+                <input type="number" step="5" value={+((cfg.profitTargetPct ?? 0.5) * 100).toFixed(0)} onChange={e => setCfg({ ...cfg, profitTargetPct: +e.target.value / 100 })}
+                  className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground" />
+              </label>
+              <label className="text-2xs text-muted-foreground">Stop loss (%)
+                <input type="number" step="5" value={+((cfg.stopLossPct ?? 0.75) * 100).toFixed(0)} onChange={e => setCfg({ ...cfg, stopLossPct: +e.target.value / 100 })}
+                  className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground" />
+              </label>
+              <label className="text-2xs text-muted-foreground">Daily-loss lockout (%)
+                <input type="number" step="1" value={+((cfg.dailyLossLimitPct ?? 0.04) * 100).toFixed(1)} onChange={e => setCfg({ ...cfg, dailyLossLimitPct: +e.target.value / 100 })}
                   className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground" />
               </label>
             </div>

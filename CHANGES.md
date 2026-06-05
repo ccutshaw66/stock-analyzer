@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Gamma bot: ported the iMetro risk-exit ladder (profit target / stop / daily-loss lockout)
+
+**Why:** Auditing Chris's folder of paid trading courses turned up the best-built thing in the whole
+pile — his OWN MT5 "iMetro RiskExec" EA, a proper risk-first execution framework. Ported that
+discipline into the gamma vol bot, which until now just held every paper trade N days and prayed.
+
+**What changed:**
+- **`server/gamma-bot.ts`** — open positions are now managed with an iMetro-style ladder adapted to a
+  vol trade's realized-vs-implied P&L: **profit target** (close early once captured edge ≥ X% of entry
+  IV), **stop loss** (cut once the loss exceeds X%), **time-stop** (the existing hold), and a
+  **daily-loss lockout** (open no new trades on a day whose realized losses exceed X% of equity).
+  Closed trades record `exitReason` (target / stop / expiry). Config-adjustable: `profitTargetPct`
+  (0.5), `stopLossPct` (0.75), `dailyLossLimitPct` (0.04).
+- **`client/src/pages/gamma-bot.tsx`** — three new risk dials (profit target / stop loss / daily-loss
+  lockout) and an **Exit** reason column on the closed-trades table. Build passes.
+
+---
 ## 2026-06-04 — Vol-calc: add a Delta & Hedge map (gamma-scalp readout)
 
 **Why:** Hedging lesson follow-on — turn the calculator into a working hedge tool so the delta-hedge /

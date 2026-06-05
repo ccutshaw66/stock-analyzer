@@ -26,16 +26,21 @@ export interface BotConfig {
   startingEquity: number;
   riskPctPerTrade: number; // fraction of equity risked per trade
   maxPositions: number;
-  holdDays: number;
+  holdDays: number;        // max hold = the time-stop
   shortIvRank: number; // sell vol only when cross-sectional IV rank >= this
   longIvRank: number;  // buy vol only when IV rank <= this
+  // iMetro-style risk ladder (ported from Chris's RiskExec EA discipline):
+  profitTargetPct: number;   // close early once captured edge >= this fraction of entry IV
+  stopLossPct: number;       // cut the trade once the loss exceeds this fraction of entry IV
+  dailyLossLimitPct: number; // lock out NEW entries on a day whose realized losses exceed this % of equity
 }
 const DEFAULT_CONFIG: BotConfig = {
   startingEquity: 20000, riskPctPerTrade: 0.02, maxPositions: 20, holdDays: 10, shortIvRank: 0.6, longIvRank: 0.4,
+  profitTargetPct: 0.5, stopLossPct: 0.75, dailyLossLimitPct: 0.04,
 };
 
 interface OpenPos { id: string; ticker: string; side: "SHORT" | "LONG"; entryDate: string; entryIV: number; entrySpot: number; sizeDollars: number; ivRank: number; markVol?: number; unrealPnlPct?: number; unrealPnlDollars?: number; }
-interface ClosedTrade extends OpenPos { exitDate: string; realizedVol: number; pnlVolPts: number; pnlPct: number; pnl$: number; }
+interface ClosedTrade extends OpenPos { exitDate: string; realizedVol: number; pnlVolPts: number; pnlPct: number; pnl$: number; exitReason: "target" | "stop" | "expiry"; }
 interface Signal { ticker: string; gex: number; regime: "long-γ" | "short-γ"; atmIV: number; ivRank: number; ivRankPos: number; basketN: number; side: "SHORT" | "LONG" | "—"; }
 
 interface BotState {
@@ -76,6 +81,9 @@ export function updateConfig(partial: Partial<BotConfig>): BotConfig {
   c.holdDays = Math.max(2, Math.min(60, Math.round(+c.holdDays || DEFAULT_CONFIG.holdDays)));
   c.shortIvRank = Math.max(0.5, Math.min(0.95, +c.shortIvRank || DEFAULT_CONFIG.shortIvRank));
   c.longIvRank = Math.max(0.05, Math.min(0.5, +c.longIvRank || DEFAULT_CONFIG.longIvRank));
+  c.profitTargetPct = Math.max(0.1, Math.min(1, +c.profitTargetPct || DEFAULT_CONFIG.profitTargetPct));
+  c.stopLossPct = Math.max(0.25, Math.min(1, +c.stopLossPct || DEFAULT_CONFIG.stopLossPct));
+  c.dailyLossLimitPct = Math.max(0.01, Math.min(0.5, +c.dailyLossLimitPct || DEFAULT_CONFIG.dailyLossLimitPct));
   saveConfig(c);
   return c;
 }
@@ -98,8 +106,11 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
   const usable = snaps.filter(s => s.atmIV > 0 && s.spot > 0);
   if (usable.length < 5) return; // not enough basket to rank
 
-  // 1) close positions that reached the hold horizon
+  // 1) manage open positions — iMetro-style risk ladder: take profit early, cut losses,
+  //    time-stop. (Ported from Chris's RiskExec EA discipline, adapted to a vol trade's
+  //    realized-vs-implied P&L instead of a price-based ATR trail.)
   const stillOpen: OpenPos[] = [];
+  let dayRealized = 0;
   for (const p of state.openPositions) {
     let bars: any[] = [];
     try { bars = await getHtfBars(p.ticker, { lookbackDays: 400 }); } catch {}
@@ -107,29 +118,27 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
     bars.forEach((b, i) => idxByDate.set(b.t.toISOString().slice(0, 10), i));
     const eIdx = idxByDate.get(p.entryDate);
     const cIdx = idxByDate.get(date);
-    const heldBars = eIdx !== undefined && cIdx !== undefined ? cIdx - eIdx : 0;
-    if (heldBars >= cfg.holdDays && eIdx !== undefined && cIdx !== undefined) {
-      const rv = realizedVol(bars.slice(eIdx, cIdx + 1).map((b: any) => b.c)) ?? p.entryIV;
-      const pnlVolPts = p.side === "SHORT" ? p.entryIV - rv : rv - p.entryIV;
-      const pnlPct = Math.max(-1, Math.min(1, pnlVolPts / p.entryIV));
+    if (eIdx === undefined || cIdx === undefined || cIdx - eIdx < 2) { stillOpen.push(p); continue; } // too fresh to mark
+    const heldBars = cIdx - eIdx;
+    const rv = realizedVol(bars.slice(eIdx, cIdx + 1).map((b: any) => b.c)) ?? p.entryIV;
+    const pnlVolPts = p.side === "SHORT" ? p.entryIV - rv : rv - p.entryIV;
+    const pnlPct = Math.max(-1, Math.min(1, pnlVolPts / p.entryIV));
+    let exitReason: "target" | "stop" | "expiry" | null = null;
+    if (pnlPct >= cfg.profitTargetPct) exitReason = "target";     // banked enough edge
+    else if (pnlPct <= -cfg.stopLossPct) exitReason = "stop";     // cut the loser
+    else if (heldBars >= cfg.holdDays) exitReason = "expiry";     // time-stop
+    if (exitReason) {
       const pnl$ = p.sizeDollars * pnlPct;
-      state.equity += pnl$;
-      state.closedTrades.push({ ...p, exitDate: date, realizedVol: rv, pnlVolPts, pnlPct, pnl$ });
+      state.equity += pnl$; dayRealized += pnl$;
+      state.closedTrades.push({ ...p, exitDate: date, realizedVol: rv, pnlVolPts, pnlPct, pnl$, exitReason });
     } else {
-      // mark-to-model so the unrealized numbers are VISIBLE while the trade is open
-      if (eIdx !== undefined && cIdx !== undefined && cIdx - eIdx >= 2) {
-        const rvSoFar = realizedVol(bars.slice(eIdx, cIdx + 1).map((b: any) => b.c));
-        if (rvSoFar !== null) {
-          const vp = p.side === "SHORT" ? p.entryIV - rvSoFar : rvSoFar - p.entryIV;
-          p.markVol = rvSoFar;
-          p.unrealPnlPct = Math.max(-1, Math.min(1, vp / p.entryIV));
-          p.unrealPnlDollars = p.sizeDollars * p.unrealPnlPct;
-        }
-      }
+      p.markVol = rv; p.unrealPnlPct = pnlPct; p.unrealPnlDollars = p.sizeDollars * pnlPct; // mark-to-model (visible)
       stillOpen.push(p);
     }
   }
   state.openPositions = stillOpen;
+  // Daily-loss lockout: if today's realized losses blew past the limit, take NO new trades today.
+  const lockedOut = dayRealized < 0 && Math.abs(dayRealized) >= cfg.dailyLossLimitPct * Math.max(state.equity, 1);
 
   // 2) cross-sectional IV rank + signals
   const ivs = usable.map(s => s.atmIV).sort((a, b) => a - b);
@@ -148,7 +157,7 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
   // 3) open new positions (skip names already held; respect maxPositions)
   const held = new Set(state.openPositions.map(p => p.ticker));
   const size = state.equity * cfg.riskPctPerTrade;
-  for (const sig of signals) {
+  for (const sig of (lockedOut ? [] : signals)) {
     if (state.openPositions.length >= cfg.maxPositions) break;
     if (sig.side === "—" || held.has(sig.ticker)) continue;
     const snap = usable.find(s => s.ticker === sig.ticker)!;
