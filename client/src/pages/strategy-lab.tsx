@@ -59,6 +59,10 @@ const STRATS: Strat[] = [
   { id: "short_straddle", name: "Short Straddle", group: "Vol", uses: ["K2"], legs: k => [{ side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }] },
   { id: "long_strangle", name: "Long Strangle", group: "Vol", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: 1, kind: "call", strike: k.K3 }] },
   { id: "iron_condor", name: "Iron Condor (credit)", group: "Vol", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K3 }, { side: 1, kind: "call", strike: k.K4 }] },
+  // Butterfly = two verticals sharing the body strike (a bull spread + a bear spread).
+  // Long 1 wing / short 2 body / long 1 wing → debit, peaks at the body strike K2 at expiry.
+  { id: "call_butterfly", name: "Call Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }] },
+  { id: "put_butterfly", name: "Put Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }] },
 ];
 const STRIKE_LABEL: Record<string, string> = { K1: "K1 (low)", K2: "K2 (mid/ATM)", K3: "K3 (high)", K4: "K4 (far)" };
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -104,8 +108,14 @@ export default function StrategyLabPage() {
     }
     prev = pnl;
   }
-  const profitUncapped = argMax >= hi * 0.999;
-  const lossUncapped = argMin >= hi * 0.999 || argMin <= lo * 1.001;
+  // Truly uncapped only if P&L is still SLOPING at the right edge (calls → ∞ on
+  // the upside). A flat plateau at the edge (butterfly, condor, vertical) is a
+  // DEFINED max — report the number, don't cry "uncapped". Downside is always
+  // finite (price can't go below 0), so the scan's minP captures it.
+  const dPedge = (hi - lo) / steps;
+  const slopeHi = pnlAt(hi) - pnlAt(hi - dPedge);
+  const profitUncapped = slopeHi > 1e-4;
+  const lossUncapped = slopeHi < -1e-4;
   const pnlNow = pnlAt(Px);
 
   // payoff svg path
@@ -137,7 +147,7 @@ export default function StrategyLabPage() {
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-2xs text-muted-foreground">Strategy
               <select value={stratId} onChange={e => setStratId(e.target.value)} className="mt-1 block w-56 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground">
-                {["Singles", "Verticals", "Income", "Vol"].map(g => (
+                {["Singles", "Verticals", "Butterflies", "Income", "Vol"].map(g => (
                   <optgroup key={g} label={g}>{STRATS.filter(s => s.group === g).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>
                 ))}
               </select>

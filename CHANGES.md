@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: add Call/Put Butterflies + fix defined-risk "uncapped" mislabel
+
+**Why:** Chris's "double vertical" is a **butterfly** (a long fly = a bull spread + a bear spread
+sharing the body strike). Added Call Butterfly and Put Butterfly to the Lab.
+
+**What:**
+- **`client/src/pages/strategy-lab.tsx`** — new **Butterflies** group: `Call Butterfly (long)` and
+  `Put Butterfly (long)` — +1 wing / −2 body / +1 wing, debit, peaks at the body strike K2 at
+  expiry. Uses the existing generic leg engine (the −2 body is two short legs at K2).
+- **Bug fix (same file):** max-loss/profit "uncapped" detection was flagging on *where* the
+  scan extreme fell, which wrongly labeled a butterfly's (and could mislabel a condor's) **defined**
+  risk as "↓ uncapped". Now it tests the **payoff slope at the right edge** — uncapped only if P&L is
+  still sloping (a real naked-call tail); a flat plateau is a defined max and shows the dollar number.
+  Verified: Call Butterfly (S600, K 570/600/630, 25% IV, 30d) → debit ≈$820, max profit ≈$2,180 at
+  $600, max loss = the $820 debit, break-evens ≈$578 / $622.
+
+---
 ## 2026-06-05 — Strategy Lab: the (honest) Magic Dashboard — all options structures in one compact page
 
 **Why:** Chris wanted "everything rolled into one" options calculator — verticals, single calls/puts,
