@@ -38,6 +38,7 @@ import MarkovPage from "@/pages/markov";
 import GammaBotPage from "@/pages/gamma-bot";
 import GammaCollectorPage from "@/pages/gamma-collector";
 import VolCalcPage from "@/pages/vol-calc";
+import StrategyLabPage from "@/pages/strategy-lab";
 import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
 import AccountPage from "@/pages/account";
@@ -269,6 +270,12 @@ function AuthenticatedApp() {
               <RequireTier min="owner" feature="Vol / Straddle Calculator"
                 description="Straddle calculator — expected move, fair prices, and sell-vol vs buy-vol P&L.">
                 <VolCalcPage />
+              </RequireTier>
+            </Route>
+            <Route path="/strategy-lab">
+              <RequireTier min="owner" feature="Strategy Lab"
+                description="Options strategy lab — singles, verticals, covered calls, straddles, condors: net debit/credit, max P/L, break-evens, probability of profit, payoff, and hedging.">
+                <StrategyLabPage />
               </RequireTier>
             </Route>
 

@@ -132,6 +132,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/gamma-bot",           label: "Gamma Vol Bot",         icon: Bot,             group: "Admin Playground", subtitle: "Deterministic dealer-gamma vol paper bot — adjustable money/risk, live signals, paper P&L.", requiresTier: "owner" },
   { path: "/gamma-collector",     label: "Gamma Collector",       icon: Activity,        group: "Admin Playground", subtitle: "Watch the dealer-gamma collector accumulate — progress to validation + the live gamma landscape.", requiresTier: "owner" },
   { path: "/vol-calc",            label: "Vol / Straddle Calc",   icon: Calculator,      group: "Admin Playground", subtitle: "Straddle calculator — expected move, fair prices, and sell-vol vs buy-vol P&L side by side.", requiresTier: "owner" },
+  { path: "/strategy-lab",        label: "Strategy Lab",          icon: FlaskConical,    group: "Admin Playground", subtitle: "All options structures in one page — singles, verticals, covered calls, straddles, condors: P/L, break-evens, prob-of-profit, payoff, hedging.", requiresTier: "owner" },
 
   // ─── Help ──────────────────────────────────────────────────────────────
   { path: "/help",                label: "Help / FAQ",            icon: BookOpen,        group: "Help", subtitle: "Glossary, common questions, and how Stock Otter works." },

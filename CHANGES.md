@@ -9,6 +9,33 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: the (honest) Magic Dashboard — all options structures in one compact page
+
+**Why:** Chris wanted "everything rolled into one" options calculator — verticals, single calls/puts,
+covered calls, straddles, condors — each with Vol/Straddle-Calc-grade outputs *and* hedging, but
+**without** a mile-long scroll. The honest version of the recycled "magic dashboard" he won't pay for.
+
+**What:** New owner-only page **`/strategy-lab`** (Admin Playground). A single **selector-driven**
+surface — pick a structure and the inputs, outputs, payoff, and hedge readout all reconfigure; you
+only ever see the one strategy you're working on. Pure client-side Black-Scholes (r=0), same engine
+as the vol calc / ToS.
+- **12 structures** via a generic leg engine: Long Call/Put · Bull-Call/Bear-Put debit verticals ·
+  Bull-Put/Bear-Call credit verticals · Covered Call · Cash-Secured Put · Long/Short Straddle ·
+  Long Strangle · Iron Condor. Adding more = one leg-template line.
+- **Outputs per structure:** net DEBIT/CREDIT, max profit, max loss (with ↑/↓ uncapped detection),
+  break-even(s), **probability of profit** (lognormal payoff>0 at expiry), P&L at a chosen expiry
+  price, plus a compact **payoff curve** (spot + break-even guides).
+- **Two-layer hedging** (the part Chris flagged): *per-trade* net delta → shares to flatten (+ the
+  note that verticals/condors are self-hedged — the short leg caps delta); *portfolio* — **SPY**
+  hedges direction (delta-$ exposure), **VIX** hedges vol (net vega/vol-pt; short-vol → long VIX is
+  the tail hedge, i.e. the hedge for what the gamma bot does).
+- Verified the engine by hand on a bull-call spread (S600, K600/630, 25% IV, 30d): net debit $1,055,
+  max profit $1,945, break-even $610.55 — matches width−debit / debit / K1+debit exactly.
+
+Files: `client/src/pages/strategy-lab.tsx` (new), `client/src/App.tsx` (route + import),
+`client/src/lib/page-registry.ts` (Admin Playground nav entry).
+
+---
 ## 2026-06-05 — Vol/gamma trio: P.O.P. + cone in the calc, bot exit-breakdown, basket gamma tape
 
 Three connected upgrades after the ToS probability-analysis discussion:
