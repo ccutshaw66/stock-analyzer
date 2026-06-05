@@ -9,6 +9,15 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Fix vol-calc input focus loss
+
+**Why:** The Sell/Buy call/put price inputs lost focus after every keystroke — the row component was
+defined *inside* the page, so each keystroke re-created it and remounted the input.
+
+**What changed:** `client/src/pages/vol-calc.tsx` — moved `PriceRow`/`Line` to stable module scope
+(pass `fairCall`/`fairPut` as props); clearing a field now reverts to the BS fair value. Build passes.
+
+---
 ## 2026-06-04 — Vol / Straddle calculator (owner Admin Playground)
 
 **Why:** Chris wanted a hands-on calculator for the straddle vol strategy — type in strike / time /

@@ -38,6 +38,25 @@ function Num({ label, value, set, step = 1, suffix }: { label: string; value: nu
   );
 }
 
+// Module-scope (stable identity) so inputs don't lose focus on each keystroke.
+function PriceRow({ side, cOv, pOv, setC, setP, fairCall, fairPut }: any) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <label className="text-2xs text-muted-foreground">Call {side}
+        <input type="number" step={0.01} value={cOv ?? +fairCall.toFixed(2)} onChange={e => setC(e.target.value === "" ? null : parseFloat(e.target.value))}
+          className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground tabular-nums" />
+      </label>
+      <label className="text-2xs text-muted-foreground">Put {side}
+        <input type="number" step={0.01} value={pOv ?? +fairPut.toFixed(2)} onChange={e => setP(e.target.value === "" ? null : parseFloat(e.target.value))}
+          className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground tabular-nums" />
+      </label>
+    </div>
+  );
+}
+function Line({ k, v, color }: { k: string; v: string; color?: string }) {
+  return <div className="flex justify-between text-2xs py-0.5"><span className="text-muted-foreground">{k}</span><span className={`tabular-nums ${color ?? "text-foreground"}`}>{v}</span></div>;
+}
+
 export default function VolCalcPage() {
   const [S, setS] = useState(600);
   const [K, setK] = useState(600);
@@ -71,23 +90,6 @@ export default function VolCalcPage() {
   };
   const sellP = panel(sCall, sPut, true);
   const buyP = panel(bCall, bPut, false);
-
-  const PriceRow = ({ side, p, cOv, pOv, setC, setP }: any) => (
-    <div className="grid grid-cols-2 gap-2">
-      <label className="text-2xs text-muted-foreground">Call {side}
-        <input type="number" step={0.01} value={cOv ?? +fair.call.toFixed(2)} onChange={e => setC(parseFloat(e.target.value))}
-          className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground tabular-nums" />
-      </label>
-      <label className="text-2xs text-muted-foreground">Put {side}
-        <input type="number" step={0.01} value={pOv ?? +fair.put.toFixed(2)} onChange={e => setP(parseFloat(e.target.value))}
-          className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm text-foreground tabular-nums" />
-      </label>
-    </div>
-  );
-
-  const Line = ({ k, v, color }: { k: string; v: string; color?: string }) => (
-    <div className="flex justify-between text-2xs py-0.5"><span className="text-muted-foreground">{k}</span><span className={`tabular-nums ${color ?? "text-foreground"}`}>{v}</span></div>
-  );
 
   return (
     <PageTemplate
@@ -129,7 +131,7 @@ export default function VolCalcPage() {
           {/* SELL */}
           <div className="rounded-lg border border-bear-light/30 bg-card p-4">
             <div className="text-sm font-semibold text-bear-light mb-2">SELL VOL — short straddle</div>
-            <PriceRow side="(sell)" p={sellP} cOv={sCall} pOv={sPut} setC={setSCall} setP={setSPut} />
+            <PriceRow side="(sell)" cOv={sCall} pOv={sPut} setC={setSCall} setP={setSPut} fairCall={fair.call} fairPut={fair.put} />
             <div className="mt-3 border-t border-border pt-2">
               <Line k="Premium COLLECTED" v={`${$2(sellP.prem)}/sh → ${$(sellP.cash)}`} color="text-bull-light" />
               <Line k="Break-evens (keep $ between)" v={`${$2(sellP.beLo)} ── ${$2(sellP.beHi)}`} />
@@ -145,7 +147,7 @@ export default function VolCalcPage() {
           {/* BUY */}
           <div className="rounded-lg border border-bull-light/30 bg-card p-4">
             <div className="text-sm font-semibold text-bull-light mb-2">BUY VOL — long straddle</div>
-            <PriceRow side="(buy)" p={buyP} cOv={bCall} pOv={bPut} setC={setBCall} setP={setBPut} />
+            <PriceRow side="(buy)" cOv={bCall} pOv={bPut} setC={setBCall} setP={setBPut} fairCall={fair.call} fairPut={fair.put} />
             <div className="mt-3 border-t border-border pt-2">
               <Line k="Premium PAID" v={`${$2(buyP.prem)}/sh → ${$(buyP.cash)}`} color="text-bear-light" />
               <Line k="Break-evens (profit OUTSIDE)" v={`${$2(buyP.beLo)} ── ${$2(buyP.beHi)}`} />
