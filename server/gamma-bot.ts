@@ -216,8 +216,14 @@ export function getBotView() {
   const wins = closed.filter(t => t.pnl$ > 0).length;
   const totalPnl = s.equity - cfg.startingEquity;
   const openPnl = s.openPositions.reduce((a, p) => a + (p.unrealPnlDollars || 0), 0);
+  const exitBreakdown = {
+    target: closed.filter(t => t.exitReason === "target").length,
+    stop: closed.filter(t => t.exitReason === "stop").length,
+    expiry: closed.filter(t => t.exitReason === "expiry").length,
+  };
   return {
     config: cfg,
+    exitBreakdown,
     equity: Math.round(s.equity),
     startingEquity: cfg.startingEquity,
     totalPnl: Math.round(totalPnl),

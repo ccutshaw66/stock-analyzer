@@ -203,6 +203,7 @@ export default function GammaBotPage() {
         {/* Recent trades */}
         <DataTable
           title="Recent closed trades"
+          rightSlot={data?.exitBreakdown ? <span className="text-2xs text-muted-foreground">exits: <span className="text-bull-light">{data.exitBreakdown.target} target</span> · <span className="text-bear-light">{data.exitBreakdown.stop} stop</span> · {data.exitBreakdown.expiry} expiry</span> : null}
           dense
           columns={tradeCols}
           data={data?.recentTrades ?? []}

@@ -192,6 +192,19 @@ export function getCollectorView() {
     }))
     .sort((a, b) => a.totalGEX - b.totalGEX); // most negative (short gamma) first
   const collectedOnLast = lastDate ? snaps.filter(s => s.takenDate === lastDate).length : 0;
+  // Basket-wide net gamma per day — the macro regime tape.
+  const dayAgg = new Map<string, { sum: number; n: number }>();
+  for (const s of snaps) {
+    const d = dayAgg.get(s.takenDate) ?? { sum: 0, n: 0 };
+    d.sum += s.totalGEX; d.n++; dayAgg.set(s.takenDate, d);
+  }
+  const gexTrend = Array.from(dayAgg.entries()).sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({ date, totalGex: v.sum, shortPct: 0 }));
+  // share of the basket that's short-gamma each day
+  for (const row of gexTrend) {
+    const day = snaps.filter(s => s.takenDate === row.date);
+    row.shortPct = day.length ? day.filter(s => s.totalGEX < 0).length / day.length : 0;
+  }
   const TARGET_DAYS = 45; // ~ when the forward-vol test gets a first real read
   return {
     basketSize: GAMMA_UNIVERSE.length,
@@ -205,5 +218,6 @@ export function getCollectorView() {
     targetDays: TARGET_DAYS,
     progressPct: Math.min(100, Math.round((dates.length / TARGET_DAYS) * 100)),
     latest,
+    gexTrend,
   };
 }

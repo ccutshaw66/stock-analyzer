@@ -28,6 +28,12 @@ function straddleDelta(S: number, K: number, T: number, sig: number) {
   const d1 = (Math.log(S / K) + 0.5 * sig * sig * T) / (sig * Math.sqrt(T));
   return 2 * N(d1) - 1;
 }
+// Lognormal P(price < x) at expiry, r=0 — matches ToS Probability Analysis.
+function popBelow(S: number, x: number, T: number, sig: number) {
+  if (T <= 0 || sig <= 0 || S <= 0 || x <= 0) return x > S ? 1 : 0;
+  const d2 = (Math.log(S / x) - 0.5 * sig * sig * T) / (sig * Math.sqrt(T));
+  return N(-d2);
+}
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const $2 = (n: number) => "$" + n.toFixed(2);
 
@@ -96,6 +102,11 @@ export default function VolCalcPage() {
   };
   const sellP = panel(sCall, sPut, true);
   const buyP = panel(bCall, bPut, false);
+
+  // Probability of profit (lognormal, matches ToS) + the price cone
+  const sellPOP = popBelow(S, sellP.beHi, T, sig) - popBelow(S, sellP.beLo, T, sig);
+  const buyPOP = 1 - (popBelow(S, buyP.beHi, T, sig) - popBelow(S, buyP.beLo, T, sig));
+  const coneAt = (k: number) => S * Math.exp(-0.5 * sig * sig * T + k * sig * Math.sqrt(T));
 
   // Delta & hedge map across a price range (current time still on the clock)
   const hedgeRows = [0.95, 0.975, 1.0, 1.025, 1.05].map(m => {
@@ -174,6 +185,24 @@ export default function VolCalcPage() {
             </div>
           </div>
         </div>
+        {/* Probability of profit + price cone (matches ToS Probability Analysis) */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="text-sm font-semibold text-foreground mb-2">
+            Probability &amp; price cone <span className="text-2xs text-muted-foreground">(lognormal at {iv}% IV, {days}d — same engine ToS draws)</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-2xs">
+            <div><div className="text-muted-foreground">SELL-vol P.O.P.</div><div className="text-lg font-semibold text-bear-light tabular-nums">{(sellPOP * 100).toFixed(0)}%</div></div>
+            <div><div className="text-muted-foreground">BUY-vol P.O.P.</div><div className="text-lg font-semibold text-bull-light tabular-nums">{(buyPOP * 100).toFixed(0)}%</div></div>
+            <div><div className="text-muted-foreground">±1σ cone (68%)</div><div className="text-foreground tabular-nums">${coneAt(-1).toFixed(2)} – ${coneAt(1).toFixed(2)}</div></div>
+            <div><div className="text-muted-foreground">±2σ cone (95%)</div><div className="text-foreground tabular-nums">${coneAt(-2).toFixed(2)} – ${coneAt(2).toFixed(2)}</div></div>
+          </div>
+          <div className="text-2xs text-muted-foreground mt-2">
+            P.O.P. = chance the trade finishes in profit by expiry. Sell-vol wins if price stays <em>between</em> the break-evens;
+            buy-vol wins if it breaks <em>outside</em>. The cone is the lognormal expected move (slightly asymmetric — more room up) —
+            it's exactly the band ToS's Probability Analysis draws.
+          </div>
+        </div>
+
         {/* Delta & hedge map */}
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="text-sm font-semibold text-foreground mb-1">

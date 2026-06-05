@@ -95,6 +95,27 @@ export default function GammaCollectorPage() {
           <Stat label="Last collected" value={data?.lastDate ?? "—"} />
         </div>
 
+        {/* Basket gamma tape — macro regime */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-foreground">Basket gamma tape <span className="text-2xs text-muted-foreground">(net dealer gamma across all names, by day)</span></div>
+            {data?.gexTrend?.length ? <div className="text-2xs text-muted-foreground">{(data.gexTrend[data.gexTrend.length - 1].shortPct * 100).toFixed(0)}% of basket short-γ today</div> : null}
+          </div>
+          {data?.gexTrend?.length >= 2 ? (() => {
+            const g = data.gexTrend; const ys = g.map((r: any) => r.totalGex);
+            const min = Math.min(...ys, 0), max = Math.max(...ys, 0), range = max - min || 1;
+            const W = 600, H = 56, zeroY = H - ((0 - min) / range) * H;
+            const d = g.map((r: any, i: number) => `${(i / (g.length - 1)) * W},${H - ((r.totalGex - min) / range) * H}`).join(" ");
+            return (
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14" preserveAspectRatio="none">
+                <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#6b7280" strokeWidth="1" strokeDasharray="3" />
+                <polyline points={d} fill="none" stroke="#f59e0b" strokeWidth="2" />
+              </svg>
+            );
+          })() : <div className="text-2xs text-muted-foreground">Tape fills in as days accrue.</div>}
+          <div className="text-2xs text-muted-foreground mt-1">Below the dashed zero-line = basket net <span className="text-bear-light">short-γ</span> (vol-amplifying, fragile); above = net <span className="text-bull-light">long-γ</span> (vol-suppressed, calm). This is the whole-market regime in one line.</div>
+        </div>
+
         {/* Current gamma landscape */}
         <DataTable
           title="Current gamma landscape"

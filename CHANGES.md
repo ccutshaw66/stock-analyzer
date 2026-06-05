@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Vol/gamma trio: P.O.P. + cone in the calc, bot exit-breakdown, basket gamma tape
+
+Three connected upgrades after the ToS probability-analysis discussion:
+- **`client/src/pages/vol-calc.tsx`** — new **Probability & price cone** card: lognormal
+  **Probability-of-Profit** for sell-vol and buy-vol (chance the trade finishes green), plus the
+  **±1σ / ±2σ price cone** — i.e. the calculator now reproduces ToS's Probability Analysis band.
+- **`server/gamma-bot.ts` + `client/src/pages/gamma-bot.tsx`** — `getBotView` returns an
+  **`exitBreakdown`** (counts of target / stop / expiry closes); shown on the closed-trades header so
+  you can read what the ported risk rules actually did.
+- **`server/gamma-tracker.ts` + `client/src/pages/gamma-collector.tsx`** — collector view now returns
+  a daily **`gexTrend`** (basket-wide net gamma + % short-γ); rendered as a **"basket gamma tape"**
+  sparkline with a zero-line, so the whole-market regime (net short vs long gamma) is visible at a glance.
+- `npm run build` passes.
+
+---
 ## 2026-06-05 — Gamma bot: ported the iMetro risk-exit ladder (profit target / stop / daily-loss lockout)
 
 **Why:** Auditing Chris's folder of paid trading courses turned up the best-built thing in the whole
