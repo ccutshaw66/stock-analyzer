@@ -9,6 +9,21 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-04 — Vol / Straddle calculator (owner Admin Playground)
+
+**Why:** Chris wanted a hands-on calculator for the straddle vol strategy — type in strike / time /
+IV and see the full math for *both* selling and buying vol, with **Buy and Sell as separate panels**
+(each with its own editable call/put prices). Reinforces the worked-numbers lesson.
+
+**What changed:**
+- **`client/src/pages/vol-calc.tsx`** (new) — pure client-side straddle calculator (Black-Scholes,
+  no server). Inputs: spot, strike, days, IV, contracts, price-at-expiry. Shows the **expected 1σ
+  move** (`S×σ×√T`), the **BS fair call/put**, and two side-by-side panels — **SELL vol** and **BUY
+  vol** — each with editable call/put prices, premium collected/paid, break-evens, max profit/loss,
+  and live P&L at a chosen expiry price. Mirrors the chalkboard lesson exactly.
+- **`page-registry` + `App.tsx`** — `/vol-calc` in Admin Playground, owner-only. Build passes.
+
+---
 ## 2026-06-04 — Gamma bot: show the actual entry/exit/P&L numbers (WARM AND FUZZY rule)
 
 **Why:** Chris's standing rule — he can't trust or validate a bot whose numbers all happen in the

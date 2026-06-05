@@ -37,6 +37,7 @@ import KairosPage from "@/pages/kairos";
 import MarkovPage from "@/pages/markov";
 import GammaBotPage from "@/pages/gamma-bot";
 import GammaCollectorPage from "@/pages/gamma-collector";
+import VolCalcPage from "@/pages/vol-calc";
 import AuthPage from "@/pages/auth";
 import LandingPage from "@/pages/landing";
 import AccountPage from "@/pages/account";
@@ -262,6 +263,12 @@ function AuthenticatedApp() {
               <RequireTier min="owner" feature="Gamma Collector"
                 description="Watch the dealer-gamma collector accumulate toward validation, plus the live gamma landscape.">
                 <GammaCollectorPage />
+              </RequireTier>
+            </Route>
+            <Route path="/vol-calc">
+              <RequireTier min="owner" feature="Vol / Straddle Calculator"
+                description="Straddle calculator — expected move, fair prices, and sell-vol vs buy-vol P&L.">
+                <VolCalcPage />
               </RequireTier>
             </Route>
 
