@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: real-fill price override (type the actual chain price)
+
+**Why:** The Lab prices legs at Black-Scholes fair value from the IV input. Chris's long call read
+~$10.61 (at 22.24% IV) but the real Jun-15 737 call was $7.48 — because that fill implies ~15% IV
+(the 10-day option's own vol, not the 30-day headline). He needs to enter the real price, not guess IV.
+
+**What (`client/src/pages/strategy-lab.tsx`):** Added an optional **"Actual fill ($/share)"** input on
+every non-DSF structure. Blank = theoretical (unchanged). When filled, it keeps the structure's natural
+debit/credit direction and swaps in the typed magnitude, so break-even, P&L, and max loss all use the
+real number. Shows the theoretical BS price beside it for reference. (DSF already had its dual-vertical
+fills.) Per Chris's "show-me-real-numbers" rule. Note: probability-of-profit still uses the IV field for
+the stock's forward distribution — set IV to match if you want POP aligned with the fill.
+
+---
 ## 2026-06-05 — Strategy Lab: fix CDSF/PDSF — it's a butterfly (shared body), not a condor
 
 **Why:** Chris's Double-Spread Fly is a **butterfly** legged in as two verticals that SHARE the body

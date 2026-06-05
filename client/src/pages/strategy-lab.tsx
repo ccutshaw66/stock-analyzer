@@ -120,6 +120,9 @@ export default function StrategyLabPage() {
   // pay), sell = upper vertical (credit you collect). Net credit = sell − buy = your floor.
   const [buySpread, setBuySpread] = useState(2.0);
   const [sellSpread, setSellSpread] = useState(2.5);
+  // Optional real fill (per share, magnitude). Blank = use the Black-Scholes theoretical price.
+  // The structure keeps its natural debit/credit DIRECTION; you just type the price off the chain.
+  const [priceOverride, setPriceOverride] = useState("");
 
   const strat = STRATS.find(s => s.id === stratId)!;
   const isDsf = strat.id === "cdsf" || strat.id === "pdsf";
@@ -131,10 +134,14 @@ export default function StrategyLabPage() {
   const legEntry = (l: Leg) => l.kind === "stock" ? S : legPrice(l);
   // gross expiry value of the structure (no entry cost) — used with netCost below.
   const grossAt = (P: number) => legs.reduce((a, l) => a + l.side * legIntrinsic(l, P) * mult, 0);
-  // net cost: +debit (you pay) / −credit (you collect). For a DSF we use the actual entered spread
-  // fills (buy debit − sell credit); everything else is priced at Black-Scholes fair.
+  // net cost: +debit (you pay) / −credit (you collect). Black-Scholes fair by default.
   const netCostBS = legs.reduce((a, l) => a + l.side * legEntry(l) * mult, 0);
-  const netCost = isDsf ? (buySpread - sellSpread) * mult : netCostBS;
+  // Real-fill override: keep the structure's debit/credit sign, swap in the typed magnitude.
+  const ovr = priceOverride.trim() === "" ? null : parseFloat(priceOverride);
+  const dir = netCostBS >= 0 ? 1 : -1;
+  const netCost = isDsf
+    ? (buySpread - sellSpread) * mult
+    : (ovr != null && Number.isFinite(ovr) ? dir * Math.abs(ovr) * mult : netCostBS);
   const pnlAt = (P: number) => grossAt(P) - netCost;
   const netDelta = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 1 : bsDelta(S, l.strike, T, sig, l.kind === "call")) * mult, 0);
   const netVega = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 0 : bsVega(S, l.strike, T, sig)) * mult, 0);
@@ -202,6 +209,23 @@ export default function StrategyLabPage() {
               <Inp key={key} label={STRIKE_LABEL[key]} val={k[key]} set={(v: number) => setK({ ...k, [key]: v })} />
             ))}
           </div>
+          {!isDsf && (
+            <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <div className="flex flex-wrap items-end gap-4">
+                <label className="text-2xs text-muted-foreground">Actual fill ($/share) — blank = theoretical
+                  <div className="mt-1">
+                    <input type="number" step={0.05} value={priceOverride} onChange={e => setPriceOverride(e.target.value)} placeholder={Math.abs(netCostBS / mult).toFixed(2)}
+                      className="w-40 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground tabular-nums" />
+                  </div>
+                </label>
+                <div className="text-2xs text-muted-foreground pb-1.5">
+                  Theoretical (BS @ {iv}% IV): <span className="text-foreground tabular-nums">${Math.abs(netCostBS / mult).toFixed(2)}/sh</span>
+                  {ovr != null && Number.isFinite(ovr) && <span className="text-primary"> · using your real fill ${Math.abs(ovr).toFixed(2)} (model price ignored)</span>}
+                </div>
+              </div>
+              <div className="text-2xs text-muted-foreground mt-2">Type the price you'd actually pay/collect off the chain and every number below — break-even, P&amp;L, max loss — uses it instead of the model price. The debit/credit direction is kept from the structure.</div>
+            </div>
+          )}
           {isDsf && (
             <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <div className="text-2xs font-semibold text-primary mb-2">Dual-vertical entry (your actual fills) — buy the K1/K2 spread, sell the K2/K3 spread; they share the body K2.</div>
