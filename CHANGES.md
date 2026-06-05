@@ -9,6 +9,17 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: fix input focus loss (kicked out every keystroke)
+
+**Why:** Chris reported the Strategy Lab inputs lost focus after each digit — the same React bug
+fixed earlier in the vol calc.
+
+**What (`client/src/pages/strategy-lab.tsx`):** The `Inp` and `Stat` helper components were defined
+*inside* the page function, so React saw a new component type every render and remounted the
+`<input>` on each keystroke (dropping focus). Moved both to module scope so element identity is
+stable across renders. No behavior change otherwise.
+
+---
 ## 2026-06-05 — Strategy Lab: add CDSF / PDSF (Call/Put Double-Spread Fly = long condor)
 
 **Why:** Chris trades a "Double-Spread Fly" — two *separate* verticals (no shared strike) forming a

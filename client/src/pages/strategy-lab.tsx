@@ -90,6 +90,22 @@ const STRATS: Strat[] = [
 const STRIKE_LABEL: Record<string, string> = { K1: "K1 (low)", K2: "K2 (mid/ATM)", K3: "K3 (high)", K4: "K4 (far)" };
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
+// Defined at MODULE scope (not inside the component) so React keeps the same
+// element identity across renders — otherwise every keystroke remounts the
+// input and the field loses focus.
+const Inp = ({ label, val, set, step = 1, suffix }: any) => (
+  <label className="text-2xs text-muted-foreground">{label}
+    <div className="relative mt-1">
+      <input type="number" step={step} value={Number.isFinite(val) ? val : ""} onChange={e => set(parseFloat(e.target.value))}
+        className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground tabular-nums" />
+      {suffix && <span className="absolute right-2 top-1.5 text-2xs text-muted-foreground">{suffix}</span>}
+    </div>
+  </label>
+);
+const Stat = ({ label, value, color }: any) => (
+  <div><div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div><div className={`text-base font-semibold tabular-nums ${color ?? "text-foreground"}`}>{value}</div></div>
+);
+
 export default function StrategyLabPage() {
   const [stratId, setStratId] = useState("bull_call");
   const [S, setS] = useState(600);
@@ -147,19 +163,6 @@ export default function StrategyLabPage() {
   const xOf = (P: number) => ((P - lo) / (hi - lo)) * W;
   const yOf = (v: number) => H - ((v - ymin) / yr) * H;
   const path = curve.filter((_, i) => i % 2 === 0).map((c, i) => `${i === 0 ? "M" : "L"}${xOf(c.P).toFixed(1)},${yOf(c.pnl).toFixed(1)}`).join(" ");
-
-  const Inp = ({ label, val, set, step = 1, suffix }: any) => (
-    <label className="text-2xs text-muted-foreground">{label}
-      <div className="relative mt-1">
-        <input type="number" step={step} value={Number.isFinite(val) ? val : ""} onChange={e => set(parseFloat(e.target.value))}
-          className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground tabular-nums" />
-        {suffix && <span className="absolute right-2 top-1.5 text-2xs text-muted-foreground">{suffix}</span>}
-      </div>
-    </label>
-  );
-  const Stat = ({ label, value, color }: any) => (
-    <div><div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div><div className={`text-base font-semibold tabular-nums ${color ?? "text-foreground"}`}>{value}</div></div>
-  );
 
   return (
     <PageTemplate howItWorksTitle="Strategy Lab"
