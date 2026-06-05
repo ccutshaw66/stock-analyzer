@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: complete the structure set + smart strike seeding
+
+**Why:** Chris wanted the Lab "complete" — broken-wing butterflies (his "DT" variant) plus the
+obvious remaining structures.
+
+**What (`client/src/pages/strategy-lab.tsx`):**
+- **Broken-Wing Call/Put Butterfly** — unequal wings (body off-center) so one side carries no risk;
+  defaults seeded to a proper no-upside-risk (call) / no-downside-risk (put) skew.
+- **Iron Butterfly (credit)** — short ATM straddle + long wings, peaks pinned at the body.
+- **Short Call / Short Put (naked)** — completes the singles; naked call correctly flags "↓ uncapped",
+  naked put shows its (large but defined) dollar max loss.
+- **Short Strangle** — completes the strangle/straddle family.
+- **Collar (stock + put − call)** and **Protective Put (married put)** — round out the hedged/income
+  structures alongside the covered call.
+- **Smart strike seeding:** switching structures now auto-positions the strikes for that structure
+  (singles → ATM, verticals/strangles → ±5%, condor → 4 legs, flies → centered wings) instead of
+  leaving stale values. The "↺ center strikes" button still does a manual reset.
+
+Lab now covers 22 structures across Singles / Verticals / Butterflies / Income / Vol — all through
+the one generic Black-Scholes leg engine, one structure on screen at a time.
+
+---
 ## 2026-06-05 — Strategy Lab: add Call/Put Butterflies + fix defined-risk "uncapped" mislabel
 
 **Why:** Chris's "double vertical" is a **butterfly** (a long fly = a bull spread + a bear spread

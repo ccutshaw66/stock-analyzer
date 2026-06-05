@@ -45,24 +45,42 @@ const lognPdf = (P: number, S: number, T: number, sig: number) => {
 };
 
 type Leg = { side: 1 | -1; kind: "call" | "put" | "stock"; strike: number };
-type Strat = { id: string; name: string; group: string; uses: string[]; legs: (k: Record<string, number>) => Leg[] };
+type Strat = { id: string; name: string; group: string; uses: string[]; legs: (k: Record<string, number>) => Leg[]; seed: (S: number) => Record<string, number> };
+// round strike to a sensible tick for the price level (defaults the user can adjust)
+const rnd = (x: number) => x >= 100 ? Math.round(x) : x >= 20 ? Math.round(x * 2) / 2 : Math.round(x * 10) / 10;
+const atm = (S: number) => ({ K2: rnd(S) });
+const wings = (S: number) => ({ K1: rnd(S * 0.95), K3: rnd(S * 1.05) });
+const fly = (S: number) => ({ K1: rnd(S * 0.94), K2: rnd(S), K3: rnd(S * 1.06) });
+const condor = (S: number) => ({ K1: rnd(S * 0.90), K2: rnd(S * 0.95), K3: rnd(S * 1.05), K4: rnd(S * 1.10) });
 const STRATS: Strat[] = [
-  { id: "long_call", name: "Long Call", group: "Singles", uses: ["K2"], legs: k => [{ side: 1, kind: "call", strike: k.K2 }] },
-  { id: "long_put", name: "Long Put", group: "Singles", uses: ["K2"], legs: k => [{ side: 1, kind: "put", strike: k.K2 }] },
-  { id: "bull_call", name: "Bull Call Spread (debit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K3 }] },
-  { id: "bear_put", name: "Bear Put Spread (debit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K3 }, { side: -1, kind: "put", strike: k.K1 }] },
-  { id: "bull_put", name: "Bull Put Spread (credit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K3 }] },
-  { id: "bear_call", name: "Bear Call Spread (credit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: -1, kind: "call", strike: k.K1 }, { side: 1, kind: "call", strike: k.K3 }] },
-  { id: "covered_call", name: "Covered Call", group: "Income", uses: ["K3"], legs: k => [{ side: 1, kind: "stock", strike: 0 }, { side: -1, kind: "call", strike: k.K3 }] },
-  { id: "csp", name: "Cash-Secured Put", group: "Income", uses: ["K1"], legs: k => [{ side: -1, kind: "put", strike: k.K1 }] },
-  { id: "long_straddle", name: "Long Straddle", group: "Vol", uses: ["K2"], legs: k => [{ side: 1, kind: "call", strike: k.K2 }, { side: 1, kind: "put", strike: k.K2 }] },
-  { id: "short_straddle", name: "Short Straddle", group: "Vol", uses: ["K2"], legs: k => [{ side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }] },
-  { id: "long_strangle", name: "Long Strangle", group: "Vol", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: 1, kind: "call", strike: k.K3 }] },
-  { id: "iron_condor", name: "Iron Condor (credit)", group: "Vol", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K3 }, { side: 1, kind: "call", strike: k.K4 }] },
+  { id: "long_call", name: "Long Call", group: "Singles", uses: ["K2"], legs: k => [{ side: 1, kind: "call", strike: k.K2 }], seed: atm },
+  { id: "long_put", name: "Long Put", group: "Singles", uses: ["K2"], legs: k => [{ side: 1, kind: "put", strike: k.K2 }], seed: atm },
+  { id: "short_call", name: "Short Call (naked)", group: "Singles", uses: ["K2"], legs: k => [{ side: -1, kind: "call", strike: k.K2 }], seed: atm },
+  { id: "short_put", name: "Short Put (naked)", group: "Singles", uses: ["K2"], legs: k => [{ side: -1, kind: "put", strike: k.K2 }], seed: atm },
+  { id: "bull_call", name: "Bull Call Spread (debit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K3 }], seed: wings },
+  { id: "bear_put", name: "Bear Put Spread (debit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K3 }, { side: -1, kind: "put", strike: k.K1 }], seed: wings },
+  { id: "bull_put", name: "Bull Put Spread (credit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K3 }], seed: wings },
+  { id: "bear_call", name: "Bear Call Spread (credit)", group: "Verticals", uses: ["K1", "K3"], legs: k => [{ side: -1, kind: "call", strike: k.K1 }, { side: 1, kind: "call", strike: k.K3 }], seed: wings },
+  { id: "covered_call", name: "Covered Call", group: "Income", uses: ["K3"], legs: k => [{ side: 1, kind: "stock", strike: 0 }, { side: -1, kind: "call", strike: k.K3 }], seed: S => ({ K3: rnd(S * 1.05) }) },
+  { id: "csp", name: "Cash-Secured Put", group: "Income", uses: ["K1"], legs: k => [{ side: -1, kind: "put", strike: k.K1 }], seed: S => ({ K1: rnd(S * 0.95) }) },
+  { id: "collar", name: "Collar (stock + put − call)", group: "Income", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "stock", strike: 0 }, { side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "call", strike: k.K3 }], seed: wings },
+  { id: "protective_put", name: "Protective Put (married put)", group: "Income", uses: ["K1"], legs: k => [{ side: 1, kind: "stock", strike: 0 }, { side: 1, kind: "put", strike: k.K1 }], seed: S => ({ K1: rnd(S * 0.97) }) },
+  { id: "long_straddle", name: "Long Straddle", group: "Vol", uses: ["K2"], legs: k => [{ side: 1, kind: "call", strike: k.K2 }, { side: 1, kind: "put", strike: k.K2 }], seed: atm },
+  { id: "short_straddle", name: "Short Straddle", group: "Vol", uses: ["K2"], legs: k => [{ side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }], seed: atm },
+  { id: "long_strangle", name: "Long Strangle", group: "Vol", uses: ["K1", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: 1, kind: "call", strike: k.K3 }], seed: wings },
+  { id: "short_strangle", name: "Short Strangle", group: "Vol", uses: ["K1", "K3"], legs: k => [{ side: -1, kind: "put", strike: k.K1 }, { side: -1, kind: "call", strike: k.K3 }], seed: wings },
+  { id: "iron_condor", name: "Iron Condor (credit)", group: "Vol", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K3 }, { side: 1, kind: "call", strike: k.K4 }], seed: condor },
   // Butterfly = two verticals sharing the body strike (a bull spread + a bear spread).
   // Long 1 wing / short 2 body / long 1 wing → debit, peaks at the body strike K2 at expiry.
-  { id: "call_butterfly", name: "Call Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }] },
-  { id: "put_butterfly", name: "Put Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }] },
+  { id: "call_butterfly", name: "Call Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: fly },
+  { id: "put_butterfly", name: "Put Butterfly (long)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }], seed: fly },
+  // Broken-wing: unequal wings (body off-center) → done for a credit / removes one side's risk.
+  // Call BWB: wider LOWER wing, narrow upper → keeps a residual above = no upside risk.
+  { id: "bw_call_butterfly", name: "Broken-Wing Call Butterfly", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: S => ({ K1: rnd(S * 0.95), K2: rnd(S), K3: rnd(S * 1.03) }) },
+  // Put BWB: narrow lower wing, wider UPPER → keeps a residual below = no downside risk.
+  { id: "bw_put_butterfly", name: "Broken-Wing Put Butterfly", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }], seed: S => ({ K1: rnd(S * 0.97), K2: rnd(S), K3: rnd(S * 1.06) }) },
+  // Iron butterfly = short ATM straddle (body K2) + long wings (K1/K3). Credit, peaks pinned at K2.
+  { id: "iron_butterfly", name: "Iron Butterfly (credit)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: fly },
 ];
 const STRIKE_LABEL: Record<string, string> = { K1: "K1 (low)", K2: "K2 (mid/ATM)", K3: "K3 (high)", K4: "K4 (far)" };
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -146,7 +164,7 @@ export default function StrategyLabPage() {
         <div className="rounded-lg border border-border bg-card p-3">
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-2xs text-muted-foreground">Strategy
-              <select value={stratId} onChange={e => setStratId(e.target.value)} className="mt-1 block w-56 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground">
+              <select value={stratId} onChange={e => { const id = e.target.value; setStratId(id); const sd = STRATS.find(s => s.id === id)?.seed(S); if (sd) setK(prev => ({ ...prev, ...sd })); }} className="mt-1 block w-64 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground">
                 {["Singles", "Verticals", "Butterflies", "Income", "Vol"].map(g => (
                   <optgroup key={g} label={g}>{STRATS.filter(s => s.group === g).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</optgroup>
                 ))}
