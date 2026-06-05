@@ -81,11 +81,13 @@ const STRATS: Strat[] = [
   { id: "bw_put_butterfly", name: "Broken-Wing Put Butterfly", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }], seed: S => ({ K1: rnd(S * 0.97), K2: rnd(S), K3: rnd(S * 1.06) }) },
   // Iron butterfly = short ATM straddle (body K2) + long wings (K1/K3). Credit, peaks pinned at K2.
   { id: "iron_butterfly", name: "Iron Butterfly (credit)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: fly },
-  // Double-Spread Fly (CDSF/PDSF) = a long condor: two SEPARATE verticals (no shared strike) → a
-  // fly with a FLAT top between the inner strikes K2..K3. You keep the same max profit anywhere in
-  // that body band; defined max loss = net debit beyond the outer wings (K1 / K4). NOT risk-free.
-  { id: "cdsf", name: "Call Double-Spread Fly (CDSF)", group: "Butterflies", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K3 }, { side: 1, kind: "call", strike: k.K4 }], seed: condor },
-  { id: "pdsf", name: "Put Double-Spread Fly (PDSF)", group: "Butterflies", uses: ["K1", "K2", "K3", "K4"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K3 }, { side: 1, kind: "put", strike: k.K4 }], seed: condor },
+  // Double-Spread Fly (CDSF/PDSF) = a BUTTERFLY legged in as two verticals that SHARE the body
+  // strike K2: buy the lower vertical (K1/K2, debit) + sell the upper vertical (K2/K3, credit). If
+  // the credit collected > the debit paid, you bank a net credit that is your FLOOR — at the body
+  // K2 you get (width + credit); away from it the fly dies but you keep the credit (no loss). Enter
+  // your ACTUAL two spread fills below — that net is what drives the P&L (not theoretical BS value).
+  { id: "cdsf", name: "Call Double-Spread Fly (CDSF)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "call", strike: k.K1 }, { side: -1, kind: "call", strike: k.K2 }, { side: -1, kind: "call", strike: k.K2 }, { side: 1, kind: "call", strike: k.K3 }], seed: fly },
+  { id: "pdsf", name: "Put Double-Spread Fly (PDSF)", group: "Butterflies", uses: ["K1", "K2", "K3"], legs: k => [{ side: 1, kind: "put", strike: k.K1 }, { side: -1, kind: "put", strike: k.K2 }, { side: -1, kind: "put", strike: k.K2 }, { side: 1, kind: "put", strike: k.K3 }], seed: fly },
 ];
 const STRIKE_LABEL: Record<string, string> = { K1: "K1 (low)", K2: "K2 (mid/ATM)", K3: "K3 (high)", K4: "K4 (far)" };
 const $ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -114,17 +116,26 @@ export default function StrategyLabPage() {
   const [qty, setQty] = useState(1);
   const [Px, setPx] = useState(600);
   const [k, setK] = useState<Record<string, number>>({ K1: 570, K2: 600, K3: 630, K4: 660 });
+  // Double-Spread Fly: the two actual vertical fills (per share). Buy = lower vertical (debit you
+  // pay), sell = upper vertical (credit you collect). Net credit = sell − buy = your floor.
+  const [buySpread, setBuySpread] = useState(2.0);
+  const [sellSpread, setSellSpread] = useState(2.5);
 
   const strat = STRATS.find(s => s.id === stratId)!;
+  const isDsf = strat.id === "cdsf" || strat.id === "pdsf";
   const T = days / 365, sig = iv / 100, mult = 100 * Math.max(1, qty || 1);
   const legs = strat.legs(k);
 
   const legPrice = (l: Leg) => l.kind === "stock" ? S : bsPrice(S, l.strike, T, sig, l.kind === "call");
   const legIntrinsic = (l: Leg, P: number) => l.kind === "stock" ? P : Math.max(0, l.kind === "call" ? P - l.strike : l.strike - P);
   const legEntry = (l: Leg) => l.kind === "stock" ? S : legPrice(l);
-  const pnlAt = (P: number) => legs.reduce((a, l) => a + l.side * (legIntrinsic(l, P) - legEntry(l)) * mult, 0);
-  // net cost: +debit (you pay) / -credit (you collect)
-  const netCost = legs.reduce((a, l) => a + l.side * legEntry(l) * mult, 0);
+  // gross expiry value of the structure (no entry cost) — used with netCost below.
+  const grossAt = (P: number) => legs.reduce((a, l) => a + l.side * legIntrinsic(l, P) * mult, 0);
+  // net cost: +debit (you pay) / −credit (you collect). For a DSF we use the actual entered spread
+  // fills (buy debit − sell credit); everything else is priced at Black-Scholes fair.
+  const netCostBS = legs.reduce((a, l) => a + l.side * legEntry(l) * mult, 0);
+  const netCost = isDsf ? (buySpread - sellSpread) * mult : netCostBS;
+  const pnlAt = (P: number) => grossAt(P) - netCost;
   const netDelta = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 1 : bsDelta(S, l.strike, T, sig, l.kind === "call")) * mult, 0);
   const netVega = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 0 : bsVega(S, l.strike, T, sig)) * mult, 0);
 
@@ -191,6 +202,20 @@ export default function StrategyLabPage() {
               <Inp key={key} label={STRIKE_LABEL[key]} val={k[key]} set={(v: number) => setK({ ...k, [key]: v })} />
             ))}
           </div>
+          {isDsf && (
+            <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <div className="text-2xs font-semibold text-primary mb-2">Dual-vertical entry (your actual fills) — buy the K1/K2 spread, sell the K2/K3 spread; they share the body K2.</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <Inp label="Buy spread — debit ($)" val={buySpread} set={setBuySpread} step={0.05} />
+                <Inp label="Sell spread — credit ($)" val={sellSpread} set={setSellSpread} step={0.05} />
+              </div>
+              <div className="text-2xs text-muted-foreground mt-2">
+                Net {sellSpread - buySpread >= 0
+                  ? <><span className="text-bull-light font-semibold">credit ${(sellSpread - buySpread).toFixed(2)}/sh</span> = your floor. At the body ${k.K2} you collect width (${(k.K2 - k.K1).toFixed(2)}) + the credit; away from it the fly dies but you keep the credit — no loss.</>
+                  : <><span className="text-bear-light font-semibold">debit ${(buySpread - sellSpread).toFixed(2)}/sh</span> = your max risk. A symmetric fly normally fills for a small debit — the "no-loss" floor only exists if you genuinely sell the upper spread for more than the lower costs.</>}
+              </div>
+            </div>
+          )}
           <div className="text-2xs text-muted-foreground mt-2">
             Legs: {legs.map((l, i) => <span key={i} className={l.side > 0 ? "text-bull-light" : "text-bear-light"}>{i ? " · " : ""}{l.side > 0 ? "+" : "−"}{l.kind === "stock" ? "100 shares" : `${l.kind} ${l.strike}`}</span>)}
           </div>
@@ -202,7 +227,11 @@ export default function StrategyLabPage() {
             <Stat label={netCost >= 0 ? "Net DEBIT (you pay)" : "Net CREDIT (you collect)"} value={$(Math.abs(netCost))} color={netCost >= 0 ? "text-bear-light" : "text-bull-light"} />
             <Stat label="Prob. of profit" value={`${(pop * 100).toFixed(0)}%`} />
             <Stat label="Max profit" value={profitUncapped ? "↑ uncapped" : $(maxP)} color="text-bull-light" />
-            <Stat label="Max loss" value={lossUncapped ? "↓ large/uncapped" : $(minP)} color="text-bear-light" />
+            {lossUncapped
+              ? <Stat label="Max loss" value="↓ large/uncapped" color="text-bear-light" />
+              : minP >= 0
+                ? <Stat label="Floor (worst case)" value={`+${$(minP)}`} color="text-bull-light" />
+                : <Stat label="Max loss" value={$(minP)} color="text-bear-light" />}
             <Stat label="Break-even(s)" value={breakevens.length ? breakevens.map(b => "$" + b.toFixed(2)).join(" / ") : "—"} />
             <Stat label={`P&L @ $${Px}`} value={$(pnlNow)} color={pnlNow >= 0 ? "text-bull-light" : "text-bear-light"} />
           </div>

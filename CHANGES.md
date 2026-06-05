@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: fix CDSF/PDSF — it's a butterfly (shared body), not a condor
+
+**Why:** Chris's Double-Spread Fly is a **butterfly** legged in as two verticals that SHARE the body
+strike (buy 10/20 + sell 20/30 = a 10/20/30 fly), and the whole point is that the credit collected on
+the upper spread can exceed the debit paid on the lower — a net credit that becomes a no-loss floor.
+My first pass modeled it as a long condor (4 separate strikes). Wrong structure.
+
+**What (`client/src/pages/strategy-lab.tsx`):**
+- CDSF/PDSF legs changed from condor (4 strikes) → **butterfly** `+K1 / −2·K2 / +K3` (two verticals
+  sharing body K2), matching the trade-tracker's "Dual Vertical Entry (2 spreads = butterfly)" model.
+- Added **dual-vertical entry**: enter your *actual* two spread fills (buy spread debit, sell spread
+  credit). The net (buy − sell) drives the P&L instead of Black-Scholes fair value — Chris's
+  show-me-real-numbers rule. Net credit is shown as the floor.
+- Max-loss readout now flips to a green **"Floor (worst case)"** when the worst outcome is still
+  positive (a credit fly can't lose) instead of mislabeling it a red "max loss."
+- Honest note: a *symmetric* fly normally fills for a small debit; the no-loss floor only exists if
+  you genuinely sell the upper spread for more than the lower costs (skew / broken wing / favorable
+  fill). Verified his example (10/20/30, buy 2.0 / sell 2.5): floor +$50, peak $1,050 at the body.
+- Minor: refactored the payoff engine to `grossAt(P) − netCost` so the entered-net override is clean
+  (all other structures unchanged).
+
+---
 ## 2026-06-05 — Strategy Lab: fix input focus loss (kicked out every keystroke)
 
 **Why:** Chris reported the Strategy Lab inputs lost focus after each digit — the same React bug
