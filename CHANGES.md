@@ -9,6 +9,24 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — Stock Analysis: fix the lying MACD sub-pane (made BUYs look like they sat on bearish crosses)
+
+**Why:** Chris reported the in/out triggers on the Stock Analysis page (/trade-analysis, BBAI) looked
+"exactly 180° backwards" — BUYs appearing right as MACD crossed down. Root cause (verified against the
+real strategy output, not just code reading): the API's `chartData` is subsampled to ~120 points for
+payload size and did NOT include MACD, so the chart's MACD sub-pane RECOMPUTED MACD client-side from the
+thinned closes. EMA(12/26/9) on every-other-bar data crosses at the wrong bars — so a correctly-placed
+BUY (derived from the full-series MACD) could visually land on a bearish client-side MACD cross. The
+displayed MACD disagreed with the MACD the signals were actually based on.
+
+**What (`server/routes.ts`, `rowAt` in /api/trade-analysis):** Emit the server-computed `macd` /
+`macdSignal` / `macdHist` (the full-daily-series 12/26/9 already computed for AMC) on each chart row.
+`CandlePane` now uses these instead of recomputing — the MACD pane matches the signals. Note: this fixes
+the DISPLAY only. Two strategy-behavior issues found in the same investigation (BBTC's RSI-rising
+exception allowing overbought long entries up to RSI 75; info-only non-tradeable SHORT setups rendering
+at oversold bottoms) are separate and gated behind OOS validation — tracked, not changed here.
+
+---
 ## 2026-06-06 — Charts: Heikin Ashi candles (default) with a toggle back to real candlesticks
 
 **Why:** Chris prefers Heikin Ashi candles — the smoothed body/wick make trends read cleaner. Per the

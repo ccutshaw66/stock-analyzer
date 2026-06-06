@@ -3469,6 +3469,14 @@ export async function registerRoutes(
         ema50: isNaN(ema50[i]) ? null : Number(ema50[i].toFixed(2)),
         sma200: isNaN(sma200Daily[i]) ? null : Number(sma200Daily[i].toFixed(2)),
         rsi: isNaN(rsi14[i]) ? null : Number(rsi14[i].toFixed(2)),
+        // Emit the server-computed MACD (full daily series) so the chart's MACD
+        // sub-pane uses THESE values instead of recomputing from the thinned
+        // (subsampled) chartData closes — that recompute produced crossovers at
+        // the wrong bars, making correct BUYs appear to sit on a bearish MACD
+        // cross. Same 12/26/9 series the signals are derived from.
+        macd: isNaN(macdLineArr[i]) ? null : Number(macdLineArr[i].toFixed(4)),
+        macdSignal: isNaN(macdSignalArr[i]) ? null : Number(macdSignalArr[i].toFixed(4)),
+        macdHist: isNaN(histogram[i]) ? null : Number(histogram[i].toFixed(4)),
         bbtcSignal: bbtcSignals[i] || null,
         verSignal: verSignals[i] || null,
         bbtcSide: bbtcSignalSides[i] || null,
