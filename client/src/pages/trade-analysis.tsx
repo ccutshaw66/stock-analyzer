@@ -361,7 +361,11 @@ export default function TradeAnalysis() {
   // Side filter for the price-chart dots: "both" / "long" / "short".
   // Both sides are ALWAYS computed by the strategies — this just hides the
   // dot for the side the user isn't focused on.
-  const [chartSideFilter, setChartSideFilter] = useState<"both" | "long" | "short">("both");
+  // Default to the LONG view: the strategy is long-only (shorts are info-only,
+  // no edge), so the tradeable signals are the long entries/exits. Showing the
+  // info-only SHORT dots by default put non-tradeable markers on oversold
+  // bottoms, which read as "inverted". Still available via the Short/Both toggle.
+  const [chartSideFilter, setChartSideFilter] = useState<"both" | "long" | "short">("long");
   const chartDataWithFilter = useMemo(() => {
     if (!data?.chartData) return data?.chartData;
     return data.chartData.map((row: any) => ({ ...row, sideFilter: chartSideFilter }));

@@ -9,6 +9,29 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — BBTC: cap long entries at RSI 65 (stop chasing overbought tops) — OOS-validated GO
+
+**Why:** Chris flagged BBAI's 2026-06-01 BUY at RSI 74 → stopped -21% in four days ("buy right before it
+drops"). Root cause: BBTC's long entry normally caps at RSI 65 but had an exception allowing up to RSI 75
+when RSI was rising — which on a vertical spike = buying the last green candle before the reversal.
+
+**Validation (server/diag/bbtc-validation.ts, new):** Out-of-sample (post-2023-10), SPY-relative, on 97
+names from the live $5-75 HTF universe, $1,000/trade. BBTC as-is was already a GO (+$38,284 OOS, +2.22%
+SPY-excess). Trading it INVERTED (Chris's "backwards would win" hunch) was a clear NO-GO (exact mirror:
+-$38k, -4.2% vs SPY, double drawdown). Capping entries at RSI 65 came out **better on every axis**:
+OOS +$41,322 (vs +$38,284), +2.63% SPY-excess (vs +2.22%), drawdown $9,539 (vs $10,073) — because the
+strategy re-enters the same trend a few bars later once RSI cools instead of buying the top.
+
+**What:**
+- `server/signals/strategies/bbtc.ts` — removed the rising-RSI "allow up to 75" long-entry exception;
+  long entries now hard-cap at RSI < 65. (Single source of truth → scanner, Trade Analysis, Track Record
+  all inherit the cleaner entry.) Removed now-dead `RSI_CEILING_LONG_RISING` / `rsiTurningUp`.
+- `client/src/pages/trade-analysis.tsx` — default the price-chart side filter to **Long** (was Both), so
+  the info-only/non-tradeable SHORT dots (which sat on oversold bottoms and read as "inverted") no longer
+  clutter the default view. Still available via the Long/Short/Both toggle.
+- `server/diag/bbtc-validation.ts` — new read-only OOS+SPY-relative validation harness (3 variants).
+
+---
 ## 2026-06-06 — Stock Analysis: fix the lying MACD sub-pane (made BUYs look like they sat on bearish crosses)
 
 **Why:** Chris reported the in/out triggers on the Stock Analysis page (/trade-analysis, BBAI) looked

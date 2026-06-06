@@ -81,11 +81,7 @@ const ATR_TRAIL_MULT = 3.0;       // trail distance below highestSinceEntry, in 
                                   // As price runs up, trail ratchets up and eventually
                                   // takes over. Classic futures stop-ladder.
 const MIN_ADX_FOR_ENTRY = 20;     // ADX < 20 = chop, skip entry
-const RSI_CEILING_LONG = 65;      // base RSI ceiling for long entries
-const RSI_CEILING_LONG_RISING = 75;  // higher ceiling allowed when RSI is turning up
-                                     // from a pullback (catches continuation entries
-                                     // where the underlying trend is intact and RSI
-                                     // is recovering from a dip).
+const RSI_CEILING_LONG = 65;      // hard RSI ceiling for long entries (no overbought chase)
 const RSI_FLOOR_SHORT = 35;
 const RSI_FLOOR_SHORT_FALLING = 25;
 const SMA200_SLOPE_LOOKBACK = 20; // bars to compare SMA200 vs SMA200[i-N] for slope check
@@ -232,19 +228,18 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
     const longRegimeOk = isNaN(sma200Now) ? true : (closes[i] > sma200Now || sma200Rising);
     const shortRegimeOk = isNaN(sma200Now) ? true : (closes[i] < sma200Now || sma200Falling);
 
-    // RSI direction over last 3 bars. Used as the "rising from pullback"
-    // / "falling from rebound" qualifier that lets entries fire at a
-    // higher absolute RSI than the base ceiling/floor would normally allow.
-    const rsiTurningUp =
-      i >= 2 && !isNaN(rsi14[i]) && !isNaN(rsi14[i - 1]) && !isNaN(rsi14[i - 2]) &&
-      rsi14[i] > rsi14[i - 1] && rsi14[i - 1] > rsi14[i - 2];
+    // RSI falling over last 3 bars — the "falling from rebound" qualifier that
+    // lets the (info-only) short setup fire at a lower absolute RSI than the
+    // base floor. Long side no longer uses a rising-RSI exception (see below).
     const rsiTurningDown =
       i >= 2 && !isNaN(rsi14[i]) && !isNaN(rsi14[i - 1]) && !isNaN(rsi14[i - 2]) &&
       rsi14[i] < rsi14[i - 1] && rsi14[i - 1] < rsi14[i - 2];
-    const longRSIok = isNaN(rsi14[i])
-      ? true
-      : (rsi14[i] < RSI_CEILING_LONG) ||
-        (rsi14[i] < RSI_CEILING_LONG_RISING && rsiTurningUp);
+    // Hard cap long entries at RSI 65. The old "rising RSI → allow up to 75"
+    // exception chased overbought spike tops (e.g. BBAI 2026-06-01 BUY @ RSI 74
+    // → stopped -21% in 4 days). OOS-validated on the $5-75 HTF universe: dropping
+    // the >65 chase-entries lifts the per-trade SPY-relative edge (+2.22% → +2.81%)
+    // and lowers drawdown. See server/diag/bbtc-validation.ts.
+    const longRSIok = isNaN(rsi14[i]) ? true : rsi14[i] < RSI_CEILING_LONG;
     const shortRSIok = isNaN(rsi14[i])
       ? true
       : (rsi14[i] > RSI_FLOOR_SHORT) ||
