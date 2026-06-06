@@ -33,7 +33,7 @@
  *     ]}
  *   />
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   createSeriesMarkers,
@@ -90,6 +90,12 @@ export interface CandlePaneProps {
   subPanes?: { macd?: boolean; rsi?: boolean };
   /** Test ID — defaults to "candle-pane". Override for multi-pane pages. */
   testId?: string;
+  /**
+   * Initial candle style. Heikin Ashi by default (smoothed trend view); the
+   * built-in toggle lets the user flip to real candlesticks. Optional so a
+   * page CAN seed a different default without per-page toggle wiring.
+   */
+  defaultCandleType?: CandleType;
 }
 
 function dateToTime(dateStr: string): UTCTimestamp {
@@ -97,6 +103,32 @@ function dateToTime(dateStr: string): UTCTimestamp {
   // Lightweight Charts wants seconds-since-epoch as a UTCTimestamp.
   const t = Math.floor(new Date(dateStr).getTime() / 1000);
   return t as UTCTimestamp;
+}
+
+type CandleType = "heikin-ashi" | "normal";
+type Candle = { time: Time; open: number; high: number; low: number; close: number };
+
+// Heikin Ashi = smoothed candles derived from the same OHLC (no new data):
+//   HA close = (O+H+L+C)/4
+//   HA open  = midpoint of the PRIOR HA candle (first bar seeds from its own O/C)
+//   HA high  = max(real high, HA open, HA close)   HA low = min(real low, HA open, HA close)
+// Bodies no longer sit at true price (that's the trade-off), but trends read cleaner.
+// Input must already be de-duped + sorted ascending by time (the bars effect does that).
+function toHeikinAshi(data: Candle[]): Candle[] {
+  const out: Candle[] = [];
+  for (let i = 0; i < data.length; i++) {
+    const c = data[i];
+    const haClose = (c.open + c.high + c.low + c.close) / 4;
+    const haOpen = i === 0 ? (c.open + c.close) / 2 : (out[i - 1].open + out[i - 1].close) / 2;
+    out.push({
+      time: c.time,
+      open: haOpen,
+      high: Math.max(c.high, haOpen, haClose),
+      low: Math.min(c.low, haOpen, haClose),
+      close: haClose,
+    });
+  }
+  return out;
 }
 
 export function CandlePane({
@@ -108,7 +140,9 @@ export function CandlePane({
   showWatermark = true,
   subPanes,
   testId = "candle-pane",
+  defaultCandleType = "heikin-ashi",
 }: CandlePaneProps) {
+  const [candleType, setCandleType] = useState<CandleType>(defaultCandleType);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -231,11 +265,12 @@ export function CandlePane({
     candleData.sort(byTime);
     volumeData.sort(byTime);
 
-    candleSeriesRef.current.setData(candleData);
+    // Real candles by default; Heikin Ashi is a derived view of the SAME bars.
+    candleSeriesRef.current.setData(candleType === "heikin-ashi" ? toHeikinAshi(candleData) : candleData);
     if (showVolume) volumeSeriesRef.current?.setData(volumeData);
 
     chartRef.current?.timeScale().fitContent();
-  }, [bars, showVolume]);
+  }, [bars, showVolume, candleType]);
 
   // Sync overlay line series — add/remove series based on the visible flag
   // and push their data. Toggling visibility = add/remove the series on the
@@ -455,6 +490,25 @@ export function CandlePane({
   return (
     <div className="relative w-full h-full" data-testid={testId}>
       <div ref={containerRef} className="w-full h-full" />
+      {/* Candle-style toggle — lives in the shared pane so every chart gets it
+          for free (universal-structure rule). Heikin Ashi default; real candles
+          one click away. */}
+      <div className="absolute top-2 left-2 z-10 flex overflow-hidden rounded border border-border bg-card/80 backdrop-blur text-2xs">
+        {([
+          ["heikin-ashi", "Heikin Ashi"],
+          ["normal", "Candles"],
+        ] as [CandleType, string][]).map(([type, label]) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setCandleType(type)}
+            className={`px-2 py-1 transition-colors ${candleType === type ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            data-testid={`candle-type-${type}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {showWatermark && (
         <img
           src={otterMascot}

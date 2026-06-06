@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — Charts: Heikin Ashi candles (default) with a toggle back to real candlesticks
+
+**Why:** Chris prefers Heikin Ashi candles — the smoothed body/wick make trends read cleaner. Per the
+config-over-forks / never-delete rules, this is added as a switchable view, not a replacement: real
+candlesticks stay one click away.
+
+**What (`client/src/components/chart/CandlePane.tsx`):** Added a candle-style toggle to the shared
+candle pane, so every chart on the site (/chart, /trade-analysis, /htf/:symbol) gets it for free with
+zero per-page wiring (universal-structure rule). Heikin Ashi is the default. HA is derived from the
+SAME OHLC bars (HA close = (O+H+L+C)/4; HA open = midpoint of the prior HA candle; HA high/low clamp
+to the real high/low) — no new data, one source of truth. Overlays, markers, volume, and price lines
+are untouched and stay on real prices (HA bodies are synthetic, so entry/target/stop lines float
+slightly off the smoothed candles — inherent to Heikin Ashi, hence the one-click toggle to true
+candles). Optional `defaultCandleType` prop lets a page seed a different default later.
+
+---
 ## 2026-06-05 — Strategy Lab: fix override wiping stock cost (covered call "cost a penny")
 
 **Why:** Chris entered a $0.01 option fill on a Covered Call and the Lab showed a $392K max profit /
