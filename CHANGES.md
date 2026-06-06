@@ -9,6 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-05 — Strategy Lab: fix override wiping stock cost (covered call "cost a penny")
+
+**Why:** Chris entered a $0.01 option fill on a Covered Call and the Lab showed a $392K max profit /
+$5 cost — because the real-fill override replaced the WHOLE net cost, including the ~$368K of shares
+he owns. The override was meant for the option premium only.
+
+**What (`client/src/pages/strategy-lab.tsx`):** Split stock cost from option premium in the net-cost
+math. The override now swaps only the **option** leg's price (keeping its debit/credit direction); the
+cost of owned shares stays at the real spot price. Hint/label/placeholder now show the option premium
+(not the stock-inclusive net) and note the share cost separately for stock structures. Covered call now
+reads its true ~$368K cost / ~$24K cap gain / real downside instead of a fantasy. Pure-option structures
+unchanged.
+
+---
 ## 2026-06-05 — Strategy Lab: real-fill price override (type the actual chain price)
 
 **Why:** The Lab prices legs at Black-Scholes fair value from the IV input. Chris's long call read

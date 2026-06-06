@@ -136,12 +136,14 @@ export default function StrategyLabPage() {
   const grossAt = (P: number) => legs.reduce((a, l) => a + l.side * legIntrinsic(l, P) * mult, 0);
   // net cost: +debit (you pay) / −credit (you collect). Black-Scholes fair by default.
   const netCostBS = legs.reduce((a, l) => a + l.side * legEntry(l) * mult, 0);
-  // Real-fill override: keep the structure's debit/credit sign, swap in the typed magnitude.
+  // Split stock cost from option premium: the real-fill override must only swap the OPTION price,
+  // never the cost of owned shares (else a covered call "costs a penny" — the bug Chris caught).
+  const stockCost = legs.reduce((a, l) => a + (l.kind === "stock" ? l.side * S * mult : 0), 0);
+  const optionNetBS = netCostBS - stockCost;
   const ovr = priceOverride.trim() === "" ? null : parseFloat(priceOverride);
-  const dir = netCostBS >= 0 ? 1 : -1;
-  const netCost = isDsf
-    ? (buySpread - sellSpread) * mult
-    : (ovr != null && Number.isFinite(ovr) ? dir * Math.abs(ovr) * mult : netCostBS);
+  const optDir = optionNetBS >= 0 ? 1 : -1; // keep option leg's debit/credit direction
+  const optionNet = (ovr != null && Number.isFinite(ovr)) ? optDir * Math.abs(ovr) * mult : optionNetBS;
+  const netCost = isDsf ? (buySpread - sellSpread) * mult : stockCost + optionNet;
   const pnlAt = (P: number) => grossAt(P) - netCost;
   const netDelta = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 1 : bsDelta(S, l.strike, T, sig, l.kind === "call")) * mult, 0);
   const netVega = legs.reduce((a, l) => a + l.side * (l.kind === "stock" ? 0 : bsVega(S, l.strike, T, sig)) * mult, 0);
@@ -212,18 +214,19 @@ export default function StrategyLabPage() {
           {!isDsf && (
             <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <div className="flex flex-wrap items-end gap-4">
-                <label className="text-2xs text-muted-foreground">Actual fill ($/share) — blank = theoretical
+                <label className="text-2xs text-muted-foreground">{stockCost !== 0 ? "Actual option fill ($/share) — blank = theoretical" : "Actual fill ($/share) — blank = theoretical"}
                   <div className="mt-1">
-                    <input type="number" step={0.05} value={priceOverride} onChange={e => setPriceOverride(e.target.value)} placeholder={Math.abs(netCostBS / mult).toFixed(2)}
+                    <input type="number" step={0.05} value={priceOverride} onChange={e => setPriceOverride(e.target.value)} placeholder={Math.abs(optionNetBS / mult).toFixed(2)}
                       className="w-40 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground tabular-nums" />
                   </div>
                 </label>
                 <div className="text-2xs text-muted-foreground pb-1.5">
-                  Theoretical (BS @ {iv}% IV): <span className="text-foreground tabular-nums">${Math.abs(netCostBS / mult).toFixed(2)}/sh</span>
+                  Theoretical option (BS @ {iv}% IV): <span className="text-foreground tabular-nums">${Math.abs(optionNetBS / mult).toFixed(2)}/sh</span>
                   {ovr != null && Number.isFinite(ovr) && <span className="text-primary"> · using your real fill ${Math.abs(ovr).toFixed(2)} (model price ignored)</span>}
+                  {stockCost !== 0 && <span> · plus {Math.round(stockCost / S / 100) * 100} shares @ ${S} (the real cost)</span>}
                 </div>
               </div>
-              <div className="text-2xs text-muted-foreground mt-2">Type the price you'd actually pay/collect off the chain and every number below — break-even, P&amp;L, max loss — uses it instead of the model price. The debit/credit direction is kept from the structure.</div>
+              <div className="text-2xs text-muted-foreground mt-2">Type the <strong className="text-foreground">option</strong> price you'd actually pay/collect off the chain — break-even, P&amp;L, max loss all use it. {stockCost !== 0 && "The cost of the shares you own is kept at the real spot price (not overridden)."}</div>
             </div>
           )}
           {isDsf && (
