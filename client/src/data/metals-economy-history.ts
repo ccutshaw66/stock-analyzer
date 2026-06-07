@@ -23,9 +23,10 @@ export type CrisisType = "policy" | "financial" | "war" | "pandemic";
 
 export interface Crisis {
   start: number;   // year
-  end: number;     // year (==start for a point event)
+  end: number;     // year (==start for a point event); for ongoing, the current year
   label: string;
   type: CrisisType;
+  ongoing?: boolean; // still active — render as "start–present", band runs to now
   note?: string;
 }
 
@@ -102,5 +103,6 @@ export const CRISES: Crisis[] = [
   { start: 2007, end: 2009, label: "Global Financial Crisis", type: "financial", note: "QE money-printing begins in earnest; gold ~2x into 2011." },
   { start: 2010, end: 2012, label: "EU sovereign-debt crisis", type: "financial" },
   { start: 2020, end: 2020, label: "COVID-19 pandemic", type: "pandemic", note: "Largest peacetime money-printing; gold to records." },
-  { start: 2022, end: 2023, label: "Russia–Ukraine war + inflation", type: "war", note: "40-yr-high inflation; fastest rate hikes in decades." },
+  { start: 2022, end: 2026, label: "Russia–Ukraine war", type: "war", ongoing: true, note: "Still active. Energy/food shock + 40-yr-high inflation, fastest rate hikes in decades." },
+  { start: 2025, end: 2026, label: "Iran war + Strait of Hormuz shut", type: "war", ongoing: true, note: "Hormuz closed → oil squeeze; massive safe-haven bid drives gold past $4,000 and silver to ~$70." },
 ];

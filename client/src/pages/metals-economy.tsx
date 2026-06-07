@@ -105,7 +105,7 @@ export default function MetalsEconomyPage() {
 
   const cols: DataTableColumn<any>[] = [
     { key: "crisis", header: "Crisis", width: "w-52",
-      accessor: c => <span><span className="text-foreground font-medium">{c.start}{c.end !== c.start ? `–${c.end}` : ""}</span> <span className="text-muted-foreground">{c.label}</span></span>,
+      accessor: c => <span><span className="text-foreground font-medium">{c.start}{c.ongoing ? "–present" : c.end !== c.start ? `–${c.end}` : ""}</span> <span className="text-muted-foreground">{c.label}</span></span>,
       sortValue: c => c.start },
     { key: "gold", header: "Gold", type: "price", width: "w-44",
       accessor: c => <span>{usd(c.goldStart)} → <span className="text-foreground">{usd(c.goldPeak)}</span> <span className="text-bull-light">({pct(c.goldPct)})</span></span>,
