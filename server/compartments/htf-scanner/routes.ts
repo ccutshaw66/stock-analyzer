@@ -257,6 +257,55 @@ export function mountRoutes(app: Express): void {
     }
   });
 
+  // ─── Metals & mining watch (full complex, any price) ──────────────────
+  // Separate HTF scan over the whole mining sector with NO price cap. Same
+  // detector + sizing as /htf; different universe. Read serves the cached
+  // snapshot (or scans if stale); ?refresh=true forces a fresh scan.
+  app.get("/api/htf/metals-watch", requireAuth, async (req: Request, res: Response) => {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+    try {
+      const config = await loadAccountConfig(userId);
+      const portfolio = await loadPortfolio(userId);
+      const forceRefresh = req.query.refresh === "true";
+      const scan = forceRefresh
+        ? await htfScannerData.runMetalsWatch({ config, portfolio })
+        : await htfScannerData.getMetalsWatch({ config, portfolio });
+      res.json({
+        scannedAt: scan.scannedAt,
+        durationMs: scan.durationMs,
+        universeSize: scan.universeSize,
+        rows: scan.rows,
+      });
+    } catch (err: any) {
+      console.error("[htf] GET /metals-watch failed:", err?.message || err);
+      res.status(500).json({ error: "metals_watch_read_failed", message: String(err?.message || err) });
+    }
+  });
+
+  app.post("/api/htf/metals-watch/run", requireAuth, async (req: Request, res: Response) => {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+    try {
+      const config = await loadAccountConfig(userId);
+      const portfolio = await loadPortfolio(userId);
+      const minScore = typeof req.body?.minScore === "number" ? req.body.minScore : 0;
+      const result = await htfScannerData.runMetalsWatch({ config, portfolio, minScore });
+      res.json({
+        scannedAt: result.scannedAt,
+        durationMs: result.durationMs,
+        universeSize: result.universeSize,
+        scanned: result.scanned,
+        hits: result.rows.length,
+        actionable: result.rows.filter(r => r.actionable).length,
+        errors: result.errors,
+      });
+    } catch (err: any) {
+      console.error("[htf] POST /metals-watch/run failed:", err?.message || err);
+      res.status(500).json({ error: "metals_watch_run_failed", message: String(err?.message || err) });
+    }
+  });
+
   // ─── Position-size recommendation (Phase 1/2/3) ───────────────────────
   // Reads the user's cumulative HTF realized P&L from the trades table,
   // returns the recommended position size + capital + maxPositionPct based

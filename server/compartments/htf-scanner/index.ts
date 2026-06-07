@@ -21,6 +21,7 @@ import {
   type HtfScanResult,
   type HtfLiveSetupRow,
 } from "./orchestrator";
+import { runMetalsWatch, getMetalsWatch, peekMetalsWatch } from "./metals-watch";
 import { mountRoutes } from "./routes";
 import {
   sizePosition,
@@ -178,6 +179,22 @@ export const htfScannerData = {
   /** Drop the in-memory cache. */
   invalidate(): void {
     invalidateScanCache();
+  },
+
+  // ─── Metals & mining watch (full complex, any price) ──────────────────
+  /** Force a fresh metals-watch scan. Keeps its own snapshot. */
+  runMetalsWatch(opts: HtfScanOptions = {}): Promise<HtfScanResult> {
+    return runMetalsWatch(opts);
+  },
+
+  /** Read the metals watch (cached <30min, else scans). */
+  getMetalsWatch(opts: HtfScanOptions = {}): Promise<HtfScanResult> {
+    return getMetalsWatch(opts);
+  },
+
+  /** Snapshot of the metals watch without triggering a scan. */
+  peekMetalsWatch(): HtfScanResult | null {
+    return peekMetalsWatch();
   },
 };
 

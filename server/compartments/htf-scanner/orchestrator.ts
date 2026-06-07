@@ -31,7 +31,7 @@ export type HtfLiveSetupRow = InsertHtfSetup & {
    */
   pctFromEntry: number;
 };
-import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow } from "../../signals/universe/htf-universe";
+import { getHtfUniverse, formatUniverseCounts, type HtfUniverseRow, type HtfUniverseFilters } from "../../signals/universe/htf-universe";
 import { getHtfBars } from "../../data/htf-ohlcv-cache";
 import { scanHtf, scanFormingHtf, htfLiveStatus, type HtfHit } from "../../signals/strategies/htf";
 
@@ -65,8 +65,19 @@ export interface HtfScanOptions {
   concurrency?: number;
   /** Override the universe — useful for testing or limited admin runs. */
   universeOverride?: HtfUniverseRow[];
+  /**
+   * Override the universe *filters* (e.g. the metals watch uncaps price and
+   * sector-screens). Ignored when `universeOverride` is supplied.
+   */
+  universeFilters?: Partial<HtfUniverseFilters>;
   /** Force-refresh OHLCV cache (skip TTL). */
   forceRefresh?: boolean;
+  /**
+   * Write the result to the shared in-memory `latestScan` cache (what the
+   * /htf page reads). Default true. Alternate universes (e.g. the metals
+   * watch) pass false so they don't clobber the main scan's snapshot.
+   */
+  writeCache?: boolean;
   /** Logger; defaults to console.log. */
   log?: (msg: string) => void;
 }
@@ -233,6 +244,7 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanResu
   const portfolio = opts.portfolio ?? new PortfolioState();
   const concurrency = opts.concurrency ?? 6;
   const forceRefresh = opts.forceRefresh ?? false;
+  const writeCache = opts.writeCache ?? true;
   const log = opts.log ?? ((msg: string) => console.log(`[htf-scan] ${msg}`));
 
   const startedAt = new Date();
@@ -243,7 +255,7 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanResu
     universe = opts.universeOverride;
     log(`universe override: ${universe.length} tickers`);
   } else {
-    const u = await getHtfUniverse();
+    const u = await getHtfUniverse(opts.universeFilters ?? {});
     log(formatUniverseCounts(u));
     universe = u.tickers;
   }
@@ -268,7 +280,7 @@ export async function runHtfScan(opts: HtfScanOptions = {}): Promise<HtfScanResu
     errors,
     rows: allRows,
   };
-  latestScan = result;
+  if (writeCache) latestScan = result;
 
   const actionable = allRows.filter(r => r.actionable).length;
   log(

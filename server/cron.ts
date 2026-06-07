@@ -67,6 +67,31 @@ export function initCron(
     },
   });
 
+  // Nightly HTF metals & mining watch. Scans the FULL mining complex at any
+  // price (vs the on-demand /htf scan's $5–$75 equity universe) and refreshes
+  // the watch's own in-memory snapshot. Runs pre-market weekdays at 6am ET
+  // (11:00 UTC) so EOD bars are final; the /api/htf/metals-watch route then
+  // serves the warm snapshot. 20-min cap is ample for one sector.
+  registerJob({
+    id: "htf-metals-watch",
+    description: "Nightly HTF scan over the full metals & mining complex (any price)",
+    cron: "0 11 * * 1-5", // 6am ET, weekdays
+    timeoutMs: 20 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const { runMetalsWatch } = await import("./compartments/htf-scanner/metals-watch");
+      const res = await runMetalsWatch();
+      const actionable = res.rows.filter(r => r.actionable).length;
+      console.log(
+        `[CRON] htf-metals-watch: ${res.universeSize} tickers, ${res.rows.length} live hits ` +
+          `(${actionable} actionable), ${res.errors} errors`,
+      );
+    },
+  });
+
+  console.log("[CRON] HTF metals watch registered with scheduler (0 11 * * 1-5)");
+
   // Daily refresh of EDGAR top-500 filer ranking at 3am ET (08:00 UTC).
   // Primes the 24h cache so user-facing requests never hit the 25-min cold path.
   // Pre-market hour, low SEC load. Hard 45-min cap.

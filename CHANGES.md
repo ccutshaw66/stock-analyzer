@@ -9,6 +9,38 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-07 — HTF metals & mining watch (full complex, any price)
+
+**Why:** With the PDT day-trade-frequency cap lifting, Chris wants an HTF watch over the entire mining
+complex at ANY price — not just the $5–$75 band. Key clarification: that price band is a *backtest-realism*
+constraint (keep validation off mega-caps so a small account sees realistic numbers), NOT a tradeability
+rule — so the watch uncaps price entirely while the default `/htf` scan is left untouched. Precious-metals
+miners just had a complex-wide washout, but rare-earth/critical-minerals/steel/copper trade on different
+drivers and can set up independently, so a broad metals watch earns its keep.
+
+**What (all additive — default `/htf` scan unchanged):**
+- `server/signals/universe/htf-universe.ts` — `HtfUniverseFilters` gains optional `sector` (screener
+  passthrough), `industryMatch` (case-insensitive industry-substring narrowing, robust to FMP's exact
+  enum strings), and `includeEtfs`; `priceMin/priceMax` are now nullable (omit the screener bound when
+  null = uncapped). New `METALS_MINING_WATCH_FILTERS` preset (Basic Materials, uncapped price, narrowed
+  to metals/mining industries incl. "industrial materials" for rare-earth/critical-minerals; excludes
+  chemicals/agri/construction/paper). Liquidity + market-cap floors stay (only PRICE was uncapped).
+- `server/compartments/htf-scanner/orchestrator.ts` — `runHtfScan` gains `universeFilters` and a
+  `writeCache` flag so an alternate-universe scan reuses the exact detector + sizing path WITHOUT
+  clobbering the shared `/htf` snapshot.
+- `server/compartments/htf-scanner/metals-watch.ts` (NEW) — thin watch module with its own 30-min cache
+  slot: `runMetalsWatch` / `getMetalsWatch` / `peekMetalsWatch`.
+- `server/compartments/htf-scanner/index.ts` — exposes the watch via the canonical `htfScannerData` accessor.
+- `server/compartments/htf-scanner/routes.ts` — `GET /api/htf/metals-watch` (cached read, `?refresh=true`)
+  and `POST /api/htf/metals-watch/run` (force).
+- `server/cron.ts` — nightly `htf-metals-watch` job (6am ET weekdays) primes the watch snapshot.
+
+Known follow-ups: uranium miners are sector=Energy in FMP (not covered by the Basic Materials screen);
+miner ETFs (GDX/SIL) aren't included (FMP ETF sector tagging is unreliable and a hardcoded list would
+break the no-hardcoded-universe rule) — both are easy additive passes if wanted. UI surfacing of the
+watch (a page/widget) is a separate `verdict-ui-surfacer` follow-up; this change is API + nightly job only.
+
+---
 ## 2026-06-06 — Analyzer + KAIROS: onto one source of truth (shared cache + validated BBTC)
 
 **Why:** Two remaining one-source-of-truth gaps after the bot sweep. (1) The Analyzer (`/trade-analysis`)
