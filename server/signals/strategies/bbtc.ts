@@ -16,7 +16,7 @@
  * Track Record, and any future caller must import from here.
  */
 
-import { RSI_PERIOD, ADX_PERIOD, ATR_PERIOD } from "@shared/indicators/constants";
+import { RSI_PERIOD, ADX_PERIOD, ATR_PERIOD, TREND_RIDE_EMA, TREND_RIDE_CONFIRM_BARS } from "@shared/indicators/constants";
 
 export type BBTCSignal =
   | "BUY"        // open long
@@ -48,6 +48,20 @@ export interface BBTCInput {
   /** Optional SMA(200). Used for regime check (long entries above/rising,
    *  short entries below/falling). Computed inline from closes if not passed. */
   sma200?: number[];
+  /**
+   * Long-exit behavior:
+   *   "current"   — exit when EMA9 < EMA21 AND close < EMA50, on top of the
+   *                 ATR hard+trail stop (fast; default; preserves prior behavior).
+   *   "trendRide" — OOS-validated trend ride: NO ATR trail. Exit only on a
+   *                 *significant* break = `breakConfirmBars` consecutive closes
+   *                 below EMA(`exitEmaPeriod`), with the entry-bar ATR hard stop
+   *                 as the catastrophe floor. Far fewer trades, much longer holds.
+   */
+  exitMode?: "current" | "trendRide";
+  /** trendRide trend EMA period. Default TREND_RIDE_EMA (168). */
+  exitEmaPeriod?: number;
+  /** trendRide: # of consecutive closes below the EMA that count as a break. Default 2. */
+  breakConfirmBars?: number;
 }
 
 export interface BBTCResult {
@@ -161,6 +175,18 @@ function computeRSISeries(closes: number[], period: number): number[] {
   return rsi;
 }
 
+// EMA series. Used for the optional EMA100 trend-exit (exitMode="ema100").
+function computeEMASeries(data: number[], period: number): number[] {
+  const out = new Array(data.length).fill(NaN);
+  if (data.length < period) return out;
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += data[i];
+  out[period - 1] = sum / period;
+  const k = 2 / (period + 1);
+  for (let i = period; i < data.length; i++) out[i] = data[i] * k + out[i - 1] * (1 - k);
+  return out;
+}
+
 // SMA series. Used for SMA200 (regime check).
 function computeSMA(data: number[], period: number): number[] {
   const out = new Array(data.length).fill(NaN);
@@ -190,6 +216,11 @@ export function computeBBTCIndicators(
 // ─── Main strategy ─────────────────────────────────────────────────────
 export function computeBBTC(input: BBTCInput): BBTCResult {
   const { closes, highs, lows, ema9, ema21, ema50, atr14 } = input;
+  const exitMode = input.exitMode ?? "current";
+  const exitEmaPeriod = input.exitEmaPeriod ?? TREND_RIDE_EMA;
+  const breakConfirmBars = Math.max(1, input.breakConfirmBars ?? TREND_RIDE_CONFIRM_BARS);
+  // Trend-ride exit line (e.g. EMA168). Only needed in trendRide mode.
+  const trendExitEma = exitMode === "trendRide" ? computeEMASeries(closes, exitEmaPeriod) : [];
   const adx14 = input.adx14 ?? computeADX(highs, lows, closes, 14);
   const rsi14 = input.rsi14 ?? computeRSISeries(closes, RSI_PERIOD);
   const sma200 = input.sma200 ?? computeSMA(closes, 200);
@@ -281,21 +312,39 @@ export function computeBBTC(input: BBTCInput): BBTCResult {
       // to live volatility). Wider multiplier than hard stop so trail
       // starts BELOW hard stop — hard stop active early, trail takes
       // over once it climbs above hard stop level.
-      const trailStop = highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
+      // trendRide drops the ATR trail (it was clipping trends); only the entry-bar
+      // hard stop acts as a catastrophe floor. "current" keeps the trail.
+      const trailStop = exitMode === "trendRide"
+        ? Number.NEGATIVE_INFINITY
+        : highestSinceEntry - atr14[i] * ATR_TRAIL_MULT;
       // Effective stop = whichever is HIGHER (closer to current price).
       // Early in trade: hardStop > trailStop, hard active.
       // After price runs: trailStop > hardStop, trail active.
       const effectiveStop = Math.max(hardStop, trailStop);
+
+      // Trend-break exit depends on exitMode:
+      //   current   → fast EMA9<EMA21 & close<EMA50 (clips trends on pullbacks)
+      //   trendRide → a SIGNIFICANT break = `breakConfirmBars` consecutive closes
+      //               below EMA(exitEmaPeriod). One poke below doesn't count.
+      let trendBroken: boolean;
+      if (exitMode === "trendRide") {
+        trendBroken = true;
+        for (let k = 0; k < breakConfirmBars; k++) {
+          const j = i - k;
+          if (j < 0 || isNaN(trendExitEma[j]) || closes[j] >= trendExitEma[j]) { trendBroken = false; break; }
+        }
+      } else {
+        trendBroken = ema9[i] < ema21[i] && closes[i] < ema50[i];
+      }
 
       if (lows[i] <= effectiveStop) {
         signals[i] = "STOP_HIT";
         signalSides[i] = "LONG";
         inPosition = false;
         positionSide = null;
-      } else if (ema9[i] < ema21[i] && closes[i] < ema50[i]) {
-        // State-based exit: trend stack inverted (EMA9 below EMA21 AND
-        // close below EMA50). Confirms genuine trend weakness, not a
-        // single-bar dip. Mirrors the entry stack check.
+      } else if (trendBroken) {
+        // State-based exit: trend stack inverted. Confirms genuine trend
+        // weakness, not a single-bar dip. Mirrors the entry stack check.
         signals[i] = "SELL";
         signalSides[i] = "LONG";
         inPosition = false;

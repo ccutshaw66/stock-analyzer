@@ -49,6 +49,16 @@ export const VOLUME_MA_PERIOD = 20;
 /** SMA 200 — long-term trend line used by TFT and others. */
 export const SMA_TREND_PERIOD = 200;
 
+/**
+ * BBTC Trend-Ride exit — OOS-validated 2026-06-06 (server/diag/bbtc-ema-sweep.ts).
+ * Ride the trend defined by a long EMA; exit only on a *significant* break
+ * (N consecutive closes below the line), no fast ATR trail. Swept EMA 100-200:
+ * 168 is the center of the robust 158-178 plateau (regular candles, 2-close
+ * break). ~3× the per-trade SPY edge of the fast-exit BBTC at half the churn.
+ */
+export const TREND_RIDE_EMA = 168;
+export const TREND_RIDE_CONFIRM_BARS = 2;
+
 // ─── RSI standard levels ────────────────────────────────────────────────
 
 /** RSI overbought threshold — classical level. */

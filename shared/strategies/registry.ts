@@ -1103,6 +1103,68 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
 };
 
+/**
+ * BBTC Trend-Ride — BBTC's validated long entry, then RIDE the trend until a
+ * significant break of the long EMA (default 168, 2 consecutive closes), with a
+ * 2.5×ATR catastrophe stop as the only floor (no fast trail). OOS-validated
+ * 2026-06-06 (server/diag/bbtc-ema-sweep.ts): ~3× the per-trade SPY edge of the
+ * fast-exit BBTC at half the churn, ~6-week holds. Long-only.
+ */
+const BBTC_TREND_RIDE_MANIFEST: StrategyManifest = {
+  id: "bbtc-trend-ride",
+  name: "BBTC Trend-Ride",
+  shortName: "Trend-Ride",
+  description: "BBTC entry, ride the trend until a 2-close break of the 168-EMA (OOS-validated). Winners run.",
+  color: "bull",
+  requiresReason: false,
+  columnOrder: ["Cat. stop", "Trend exit"],
+  evaluate(trade) {
+    const data = trade.strategyData ?? {};
+    const live = trade.lifecycleState ?? {};
+    const entry = Math.abs(trade.openPrice);
+    const current = trade.currentPrice;
+    const shares = trade.contractsShares ?? 0;
+    const points: DisplayPoint[] = [];
+    const alerts: LifecycleAlert[] = [];
+
+    points.push({ label: "Entry", value: shares > 0 ? `${shares} @ ${fmt$(entry)}` : fmt$(entry), state: "past" });
+
+    // Catastrophe stop (locked at entry; the only hard floor).
+    const catStop = typeof data.stopPrice === "number" ? data.stopPrice : null;
+    if (catStop != null) {
+      const risk = shares > 0 ? Math.max(0, shares * (entry - catStop)) : null;
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current <= catStop) state = "triggered";
+      else if (current != null && current <= catStop * 1.03) state = "armed";
+      points.push({ label: "Cat. stop", value: risk != null ? `${fmt$(catStop)} (risk ${fmt$0(risk)})` : fmt$(catStop), state });
+      if (state === "triggered") {
+        alerts.push({ severity: "critical", action: "dump", actionShares: shares > 0 ? shares : null, actionLabel: shares > 0 ? `DUMP ${shares}` : "DUMP", message: `Catastrophe stop hit ${fmt$(current!)} ≤ ${fmt$(catStop)} — exit now` });
+      }
+    }
+
+    // Trend exit line = the long EMA (live value if the walker provides it).
+    const trendEma = typeof live.trendEma === "number" ? live.trendEma : (typeof data.trendEma === "number" ? data.trendEma : null);
+    if (trendEma != null) {
+      let state: DisplayPoint["state"] = "pending";
+      if (current != null && current < trendEma) state = "armed"; // one close below — needs a 2nd to confirm
+      points.push({ label: "Trend exit", value: `2 closes below ${fmt$(trendEma)}`, state });
+      if (state === "armed") {
+        alerts.push({ severity: "warn", action: "hold", actionShares: null, message: `Below the trend EMA (${fmt$(trendEma)}) — a 2nd consecutive close below = exit the ride.` });
+      }
+    } else {
+      points.push({ label: "Trend exit", value: "ride the 168-EMA (2-close break)", state: "pending" });
+    }
+
+    const pctFromEntry = pctChange(entry, current);
+    if (pctFromEntry != null) {
+      const unrealized = current != null && shares > 0 ? shares * (current - entry) : null;
+      points.push({ label: "vs entry", value: unrealized != null ? `${fmtPct(pctFromEntry)} (${fmt$0(unrealized)})` : fmtPct(pctFromEntry), state: pctFromEntry >= 0 ? "past" : "pending" });
+    }
+
+    return { displayPoints: points, alerts };
+  },
+};
+
 // ─── Registry ─────────────────────────────────────────────────────────────
 
 export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
@@ -1111,6 +1173,7 @@ export const STRATEGY_REGISTRY: Record<string, StrategyManifest> = {
   "pipe-bottom": PIPE_BOTTOM_MANIFEST,
   "rounding-bottom": ROUNDING_BOTTOM_MANIFEST,
   "bbtc-ver": BBTC_VER_MANIFEST,
+  "bbtc-trend-ride": BBTC_TREND_RIDE_MANIFEST,
   "insider-trigger": INSIDER_TRIGGER_MANIFEST,
   "tft-40w": TFT_40W_MANIFEST,
   "tft-60w": TFT_60W_MANIFEST,

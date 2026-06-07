@@ -36,6 +36,7 @@ import HermesPage from "@/pages/hermes";
 import KairosPage from "@/pages/kairos";
 import MarkovPage from "@/pages/markov";
 import GammaBotPage from "@/pages/gamma-bot";
+import TrendRideBotPage from "@/pages/trend-ride-bot";
 import GammaCollectorPage from "@/pages/gamma-collector";
 import VolCalcPage from "@/pages/vol-calc";
 import StrategyLabPage from "@/pages/strategy-lab";
@@ -258,6 +259,12 @@ function AuthenticatedApp() {
               <RequireTier min="owner" feature="Gamma Vol Bot"
                 description="Deterministic dealer-gamma volatility paper bot — adjustable money/risk, live signals, paper P&L.">
                 <GammaBotPage />
+              </RequireTier>
+            </Route>
+            <Route path="/trend-ride-bot">
+              <RequireTier min="owner" feature="Trend-Ride Bot"
+                description="BBTC Trend-Ride paper bot — rides the trend to a significant break of the 168-EMA. Adjustable money/rules, real seeded trades, paper P&L.">
+                <TrendRideBotPage />
               </RequireTier>
             </Route>
             <Route path="/gamma-collector">

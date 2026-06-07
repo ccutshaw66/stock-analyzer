@@ -11,6 +11,7 @@ import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
 import { snapshotGammaForUniverse } from "./gamma-tracker";
 import { runBotOnStored } from "./gamma-bot";
+import { runBot as runTrendRideBot } from "./trend-ride-bot";
 import type { GetCompanySnapshotOpts } from "./snapshot";
 
 // Yahoo Finance helpers will be passed in from routes
@@ -261,6 +262,23 @@ export function initCron(
     },
   });
   console.log("[CRON] Gamma paper-bot registered (50 21 * * 1-5)");
+
+  // Trend-Ride paper bot — the OOS-validated BBTC 168-EMA trend ride. Processes
+  // each new trading day forward (seeds from history on first run). Runs after
+  // the close so the day's EOD bars are final.
+  registerJob({
+    id: "trend-ride-bot",
+    description: "Daily BBTC Trend-Ride paper-bot evaluation (opens/closes paper trades on the $5-75 universe)",
+    cron: "10 22 * * 1-5", // 6:10pm ET, weekdays only
+    timeoutMs: 20 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await runTrendRideBot();
+      console.log(`[CRON] trend-ride-bot: ${res.processedDays} day(s), +${res.openedTrades} opened, ${res.closedTrades} closed`);
+    },
+  });
+  console.log("[CRON] Trend-Ride paper-bot registered (10 22 * * 1-5)");
 
   // ─── Market Pulse ─────────────────────────────────────────────────────────
   //

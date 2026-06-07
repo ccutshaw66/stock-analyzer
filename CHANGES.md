@@ -9,6 +9,41 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — BBTC Trend-Ride: new OOS-validated strategy + paper auto-trader (owner)
+
+**Why:** Chris's point that "a trend isn't a day or two" was right — the live BBTC exit (EMA9<EMA21 &
+close<EMA50) clipped trends after ~2 weeks. We swept the trend-exit EMA 100→200 (regular vs Heikin-Ashi
+candles, 2-consecutive-close vs ATR-margin break; server/diag/bbtc-ema-sweep.ts). Winner = **regular
+candles, EMA 168 (center of the robust 158–178 plateau), exit on 2 consecutive closes below, 2.5×ATR
+catastrophe stop, no fast trail.** OOS (post-2023, $5–75 universe, SPY-relative): +$50,746, **+8.1%
+SPY-excess/trade, 2.1 trades/name/yr, ~43-day holds** — roughly 3× the live BBTC's per-trade edge at
+half the churn. (HA didn't beat regular; "EMA so big it never stops out" rolls over past ~170.)
+
+**What:**
+- `shared/indicators/constants.ts` — `TREND_RIDE_EMA=168`, `TREND_RIDE_CONFIRM_BARS=2`.
+- `server/signals/strategies/bbtc.ts` — new `exitMode:"trendRide"` (configurable `exitEmaPeriod` /
+  `breakConfirmBars`): drops the ATR trail, exits only on a *significant* break (N consecutive closes
+  below EMA168) with the entry-bar 2.5×ATR hard stop as the catastrophe floor. Default exit unchanged.
+- `shared/strategies/registry.ts` — registered **BBTC Trend-Ride** (`bbtc-trend-ride`) as a first-class
+  strategy (entry / catastrophe stop / trend-exit lifecycle).
+- `server/trend-ride-bot.ts` — NEW in-process **paper auto-trader** (gamma-bot pattern): pulls the
+  $5–75 universe, runs `computeBBTC(trendRide)`, simulates fills at the close, sizes positions for a
+  small account (% equity, max-positions cap), **seeds from real recent history** then runs forward.
+  **Mark-to-market** account value (realized + open) — realized-only badly understates a rider that
+  holds winners open for a year+. Persists to gitignored `data/trend-ride-bot/`.
+- `server/cron.ts` — daily `trend-ride-bot` job (10 22 * * 1-5).
+- `server/routes.ts` — owner-only `/api/trend-ride-bot` (view / config / reset / run).
+- `client/src/pages/trend-ride-bot.tsx` + `App.tsx` + `page-registry.ts` — owner-only **Trend-Ride Bot**
+  page in Admin Playground: account value, equity curve, open positions (riding), closed-trade log,
+  adjustable money/rules. Seed run verified: rode UUUU +190% (closed on a real break) and holds
+  PL/WBD/KOPN open — ~+100% mark-to-market on the 18-month seed.
+- Validation harnesses (read-only): `server/diag/bbtc-ema-sweep.ts`, `bbtc-validation.ts`,
+  `bbtc-momentum-profile.ts`, `bbai-trigger-check.ts`.
+
+Follow-up (not in this ship): chart-backtest toggle + scanner detector for Trend-Ride (needs a
+chart-data adapter + a 0–100 score rubric).
+
+---
 ## 2026-06-06 — BBTC: cap long entries at RSI 65 (stop chasing overbought tops) — OOS-validated GO
 
 **Why:** Chris flagged BBAI's 2026-06-01 BUY at RSI 74 → stopped -21% in four days ("buy right before it

@@ -1699,6 +1699,23 @@ export async function registerRoutes(
     console.log("[gamma-bot] owner-only routes mounted at /api/gamma-bot");
   }
 
+  // ─── Trend-Ride Paper Bot (owner-only, in-process) ──────────────────────────────
+  app.use("/api/trend-ride-bot", requireTier("owner"));
+  {
+    const bot = await import("./trend-ride-bot");
+    app.get("/api/trend-ride-bot", (_req, res) => res.json(bot.getBotView()));
+    app.post("/api/trend-ride-bot/config", (req, res) => {
+      const cfg = bot.updateConfig(req.body || {});
+      res.json({ ok: true, config: cfg, view: bot.getBotView() });
+    });
+    app.post("/api/trend-ride-bot/reset", (_req, res) => { bot.resetBot(); res.json({ ok: true, view: bot.getBotView() }); });
+    app.post("/api/trend-ride-bot/run", (_req, res) => {
+      bot.runBot().catch(e => console.error("[trend-ride-bot] run failed:", e?.message || e));
+      res.json({ started: true, note: "Running the trend-ride paper bot over the $5-75 universe in the background (~a minute); poll GET /api/trend-ride-bot." });
+    });
+    console.log("[trend-ride-bot] owner-only routes mounted at /api/trend-ride-bot");
+  }
+
   // ─── Gamma Collector watch (owner-only) ─────────────────────────────────────────
   app.use("/api/gamma-collector", requireTier("owner"));
   {
