@@ -37,6 +37,7 @@ import KairosPage from "@/pages/kairos";
 import MarkovPage from "@/pages/markov";
 import GammaBotPage from "@/pages/gamma-bot";
 import TrendRideBotPage from "@/pages/trend-ride-bot";
+import MetalsEconomyPage from "@/pages/metals-economy";
 import GammaCollectorPage from "@/pages/gamma-collector";
 import VolCalcPage from "@/pages/vol-calc";
 import StrategyLabPage from "@/pages/strategy-lab";
@@ -265,6 +266,12 @@ function AuthenticatedApp() {
               <RequireTier min="owner" feature="Trend-Ride Bot"
                 description="BBTC Trend-Ride paper bot — rides the trend to a significant break of the 168-EMA. Adjustable money/rules, real seeded trades, paper P&L.">
                 <TrendRideBotPage />
+              </RequireTier>
+            </Route>
+            <Route path="/metals-economy">
+              <RequireTier min="owner" feature="Metals vs Economy"
+                description="World GDP vs US GDP vs Gold & Silver across major crises since 1971.">
+                <MetalsEconomyPage />
               </RequireTier>
             </Route>
             <Route path="/gamma-collector">

@@ -134,6 +134,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/gamma-collector",     label: "Gamma Collector",       icon: Activity,        group: "Admin Playground", subtitle: "Watch the dealer-gamma collector accumulate — progress to validation + the live gamma landscape.", requiresTier: "owner" },
   { path: "/vol-calc",            label: "Vol / Straddle Calc",   icon: Calculator,      group: "Admin Playground", subtitle: "Straddle calculator — expected move, fair prices, and sell-vol vs buy-vol P&L side by side.", requiresTier: "owner" },
   { path: "/strategy-lab",        label: "Strategy Lab",          icon: FlaskConical,    group: "Admin Playground", subtitle: "All options structures in one page — singles, verticals, covered calls, straddles, condors: P/L, break-evens, prob-of-profit, payoff, hedging.", requiresTier: "owner" },
+  { path: "/metals-economy",      label: "Metals vs Economy",     icon: BarChart3,       group: "Admin Playground", subtitle: "World GDP vs US GDP vs Gold & Silver across major crises since 1971 (Nixon off gold). Indexed + year-over-year views, crisis bands.", requiresTier: "owner" },
 
   // ─── Help ──────────────────────────────────────────────────────────────
   { path: "/help",                label: "Help / FAQ",            icon: BookOpen,        group: "Help", subtitle: "Glossary, common questions, and how Stock Otter works." },

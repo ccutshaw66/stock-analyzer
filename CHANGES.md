@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-07 — Metals vs the Economy page (owner-only, Admin Playground)
+
+**Why:** Chris wanted to see precious metals vs the world/US economy through major crises since the
+dollar left the gold standard (1971).
+
+**What:** New owner-only page `/metals-economy` — World GDP vs US GDP vs Gold & Silver, 1971→present,
+with major shocks (wars, financial crashes, COVID, policy) shaded; two views (indexed-to-100 log scale,
+and year-over-year %). `client/src/data/metals-economy-history.ts` (static annual public-record data),
+`client/src/pages/metals-economy.tsx` (recharts, design tokens), route + Admin Playground nav.
+
+**Data note:** FMP carries metals only from 2007 and has no world-GDP series, and Yahoo's metals don't
+reach 1971 either (and it has no GDP) — so the 1971–2006 deep history has NO live source and is bundled
+as static annual figures (which never change = correct cache-forever pattern). FOLLOW-UP option: refresh
+the 2007→now tail (gold/silver + US GDP) from FMP for exactness; deep history stays static.
+
+---
 ## 2026-06-06 — Analyzer + KAIROS: onto one source of truth (shared cache + validated BBTC)
 
 **Why:** Two remaining one-source-of-truth gaps after the bot sweep. (1) The Analyzer (`/trade-analysis`)
