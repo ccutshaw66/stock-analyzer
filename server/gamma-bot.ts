@@ -116,9 +116,21 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
     try { bars = await getHtfBars(p.ticker, { lookbackDays: 400 }); } catch {}
     const idxByDate = new Map<string, number>();
     bars.forEach((b, i) => idxByDate.set(b.t.toISOString().slice(0, 10), i));
-    const eIdx = idxByDate.get(p.entryDate);
-    const cIdx = idxByDate.get(date);
-    if (eIdx === undefined || cIdx === undefined || cIdx - eIdx < 2) { stillOpen.push(p); continue; } // too fresh to mark
+    // Resolve to the latest bar ON OR BEFORE the target date. The run fires at
+    // ~4:50pm ET (and "Run now" any time incl. weekends) — FMP's EOD bar for
+    // `date` usually hasn't landed yet, so an exact-date lookup returned
+    // undefined and EVERY position was skipped as "too fresh" → never marked,
+    // never closed, book stayed jammed full. Mark against the most recent close
+    // available instead. (No look-ahead: it's the latest bar <= date.)
+    const lastBarOnOrBefore = (target: string): number => {
+      for (let k = bars.length - 1; k >= 0; k--) {
+        if (bars[k].t.toISOString().slice(0, 10) <= target) return k;
+      }
+      return -1;
+    };
+    const eIdx = idxByDate.get(p.entryDate) ?? lastBarOnOrBefore(p.entryDate);
+    const cIdx = idxByDate.get(date) ?? lastBarOnOrBefore(date);
+    if (eIdx < 0 || cIdx < 0 || cIdx - eIdx < 2) { stillOpen.push(p); continue; } // too fresh to mark
     const heldBars = cIdx - eIdx;
     const rv = realizedVol(bars.slice(eIdx, cIdx + 1).map((b: any) => b.c)) ?? p.entryIV;
     const pnlVolPts = p.side === "SHORT" ? p.entryIV - rv : rv - p.entryIV;

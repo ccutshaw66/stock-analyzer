@@ -9,6 +9,22 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — Gamma Vol Bot: fix frozen positions (never marked, never closed)
+
+**Why:** Chris reported the bot stuck for days — ~20 positions all "pending" / "—", nothing closing,
+no new trades. Root cause: position marking looked up the EOD bar for the *exact* run date, but the bot
+fires ~4:50pm ET (and "Run now" any time, incl. weekends) BEFORE FMP's same-day bar lands — so the
+lookup returned undefined and every position was skipped as "too fresh." Nothing ever marked → nothing
+ever closed → the book filled to maxPositions on day one and jammed (no free slots = no new entries).
+One bug, whole frozen screen.
+
+**What (`server/gamma-bot.ts`, processDay marking):** Resolve entry/current to the **latest bar on or
+before** the target date (Friday's close on a weekend, yesterday's if today's hasn't landed) instead of
+demanding an exact same-day bar. No look-ahead (latest bar ≤ date). Positions now mark-to-market and
+hit their target/stop/time-stop every run; slots free up so new signals can fill. Verified the date
+resolution on the exact failure case (aged position, Saturday run → marks vs Friday close).
+
+---
 ## 2026-06-06 — BBTC Trend-Ride: new OOS-validated strategy + paper auto-trader (owner)
 
 **Why:** Chris's point that "a trend isn't a day or two" was right — the live BBTC exit (EMA9<EMA21 &
