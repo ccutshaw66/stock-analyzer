@@ -513,34 +513,33 @@ async function fmpChartWithWarmup(
   // Trading-days → calendar-days conversion factor ≈ 365/252 = 1.45.
   const warmupCalendarDays = Math.round(warmupTradingDays * 1.45);
   const totalDays = displayDays + warmupCalendarDays;
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - totalDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   try {
-    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol, from, to });
-    const rows: any[] = Array.isArray(raw) ? raw : (raw?.historical || []);
-    if (rows.length === 0) return null;
-    const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    // ONE source of truth: read bars from the shared getHtfBars cache (the same
+    // layer the scanner and the bots use) instead of a parallel FMP pull —
+    // fetched once, cached, reused, no cross-page drift. Same return shape.
+    const { getHtfBars } = await import("./data/htf-ohlcv-cache");
+    const bars = await getHtfBars(symbol, { lookbackDays: totalDays });
+    if (bars.length === 0) return null;
     const displayStartTs = Math.floor((Date.now() - displayDays * 24 * 60 * 60 * 1000) / 1000);
     let displayStartIdx = 0;
-    for (let i = 0; i < asc.length; i++) {
-      const ts = Math.floor(new Date(asc[i].date).getTime() / 1000);
-      if (ts >= displayStartTs) { displayStartIdx = i; break; }
+    for (let i = 0; i < bars.length; i++) {
+      if (Math.floor(bars[i].t.getTime() / 1000) >= displayStartTs) { displayStartIdx = i; break; }
     }
     return {
       chart: {
-        timestamp: asc.map(r => Math.floor(new Date(r.date).getTime() / 1000)),
+        timestamp: bars.map(b => Math.floor(b.t.getTime() / 1000)),
         indicators: { quote: [{
-          close: asc.map(r => Number(r.close)),
-          open: asc.map(r => Number(r.open)),
-          high: asc.map(r => Number(r.high)),
-          low: asc.map(r => Number(r.low)),
-          volume: asc.map(r => Number(r.volume)),
+          close: bars.map(b => b.c),
+          open: bars.map(b => b.o),
+          high: bars.map(b => b.h),
+          low: bars.map(b => b.l),
+          volume: bars.map(b => b.v),
         }] },
       },
       displayStartIdx,
     };
   } catch (err) {
-    console.log(`[chart-warmup] FMP failed for ${symbol} ${range}:`, (err as Error).message);
+    console.log(`[chart-warmup] shared-cache failed for ${symbol} ${range}:`, (err as Error).message);
     return null;
   }
 }

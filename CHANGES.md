@@ -9,6 +9,23 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — Analyzer + KAIROS: onto one source of truth (shared cache + validated BBTC)
+
+**Why:** Two remaining one-source-of-truth gaps after the bot sweep. (1) The Analyzer (`/trade-analysis`)
+fetched its own bars via `fmpChartWithWarmup`'s direct FMP pull. (2) KAIROS runs a Python port of BBTC
+that had drifted from the TS strategy — it still had the rising-RSI exception (buy up to RSI 75) that
+today's OOS-validated TS change removed, so KAIROS was trading the old, worse BBTC.
+
+**What:**
+- `server/routes.ts` (`fmpChartWithWarmup`) — now reads bars from the shared `getHtfBars` cache (same
+  layer the scanner and bots use) instead of its own FMP pull. Same return shape; every caller (incl.
+  the Analyzer) now shares one cached series. Last in-repo surface on a parallel price path, closed.
+- `python/kairos/kairos_trading/strategies/bbtc.py` — hard-cap long entries at RSI 65, drop the
+  rising-to-75 exception, to match the TS `computeBBTC`. KAIROS now trades the validated BBTC.
+  NOTE: KAIROS runs on a separate VM (10.209.32.8) — the main webhook does NOT deploy it; it needs a
+  manual pull + restart on that host for this to take effect. Parity test not run locally (no pytest env).
+
+---
 ## 2026-06-06 — Trend-Ride Bot: read bars from the shared cache (one source of truth)
 
 **Why:** The new Trend-Ride bot pulled prices via a direct FMP fetch — a parallel data path, which

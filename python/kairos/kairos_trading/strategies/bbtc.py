@@ -34,8 +34,7 @@ SMA_TREND = 200
 ATR_STOP_MULT = 2.5
 ATR_TRAIL_MULT = 3.0
 MIN_ADX_FOR_ENTRY = 20
-RSI_CEILING_LONG = 65
-RSI_CEILING_LONG_RISING = 75
+RSI_CEILING_LONG = 65  # hard ceiling for long entries (no overbought chase)
 RSI_FLOOR_SHORT = 35
 RSI_FLOOR_SHORT_FALLING = 25
 SMA200_SLOPE_LOOKBACK = 20
@@ -135,21 +134,15 @@ def compute_bbtc(
         long_regime_ok = True if _isnan(sma_now) else (closes[i] > sma_now or sma_rising)
         short_regime_ok = True if _isnan(sma_now) else (closes[i] < sma_now or sma_falling)
 
-        rsi_turning_up = (
-            i >= 2
-            and not _isnan(rsi14[i]) and not _isnan(rsi14[i - 1]) and not _isnan(rsi14[i - 2])
-            and rsi14[i] > rsi14[i - 1] and rsi14[i - 1] > rsi14[i - 2]
-        )
         rsi_turning_down = (
             i >= 2
             and not _isnan(rsi14[i]) and not _isnan(rsi14[i - 1]) and not _isnan(rsi14[i - 2])
             and rsi14[i] < rsi14[i - 1] and rsi14[i - 1] < rsi14[i - 2]
         )
-        long_rsi_ok = (
-            True if _isnan(rsi14[i])
-            else (rsi14[i] < RSI_CEILING_LONG)
-                 or (rsi14[i] < RSI_CEILING_LONG_RISING and rsi_turning_up)
-        )
+        # Hard cap at RSI 65 — matches the TS computeBBTC OOS-validated change
+        # (2026-06-06): the old rising-RSI exception (allow up to 75) chased
+        # overbought spike tops. See server/signals/strategies/bbtc.ts.
+        long_rsi_ok = True if _isnan(rsi14[i]) else (rsi14[i] < RSI_CEILING_LONG)
         short_rsi_ok = (
             True if _isnan(rsi14[i])
             else (rsi14[i] > RSI_FLOOR_SHORT)
