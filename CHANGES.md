@@ -9,6 +9,16 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-06 — Trend-Ride Bot: read bars from the shared cache (one source of truth)
+
+**Why:** The new Trend-Ride bot pulled prices via a direct FMP fetch — a parallel data path, which
+violates the one-source-of-truth rule (global rule #2). Every surface must read the same cached series.
+
+**What (`server/trend-ride-bot.ts`):** `loadNameSignals` now reads bars from `getHtfBars` (the canonical
+shared OHLCV cache the charts / scanner / gamma bot all use) instead of its own `fmpGet` call — fetched
+once, cached, reused, no drift. Verified behavior-identical (same trades, +102.6% on the seed).
+
+---
 ## 2026-06-06 — Gamma Vol Bot: fix frozen positions (never marked, never closed)
 
 **Why:** Chris reported the bot stuck for days — ~20 positions all "pending" / "—", nothing closing,

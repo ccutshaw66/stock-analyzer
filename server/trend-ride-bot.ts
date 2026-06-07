@@ -24,7 +24,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { fmpGet } from "./data/providers/fmp.client";
+import { getHtfBars } from "./data/htf-ohlcv-cache";
 import { computeBBTC } from "./signals/strategies/bbtc";
 import { getHtfUniverse } from "./signals/universe/htf-universe";
 import {
@@ -103,16 +103,16 @@ interface NameSignals { ticker: string; dates: string[]; close: number[]; sig: (
 
 async function loadNameSignals(symbol: string, cfg: BotConfig): Promise<NameSignals | null> {
   try {
-    const to = new Date().toISOString().slice(0, 10);
-    // enough history for EMA168/SMA200 warmup + the seed window
-    const days = Math.round(cfg.seedMonths * 31) + 420;
-    const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-    const data: any = await fmpGet("/historical-price-eod/full", { symbol, from, to });
-    const arr: any[] = Array.isArray(data) ? data : (data?.historical || []);
-    if (arr.length < 220) return null;
-    const s = [...arr].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const dates: string[] = [], close: number[] = [], high: number[] = [], low: number[] = [];
-    for (const r of s) { const c = Number(r.close); if (!Number.isFinite(c)) continue; dates.push(String(r.date)); close.push(c); high.push(Number(r.high)); low.push(Number(r.low)); }
+    // ONE source of truth: read bars from the shared getHtfBars cache (the same
+    // layer the charts / scanner / gamma bot use) — not a parallel FMP pull.
+    // enough history for EMA168/SMA200 warmup + the seed window.
+    const lookbackDays = Math.round(cfg.seedMonths * 31) + 420;
+    const bars = await getHtfBars(symbol, { lookbackDays });
+    if (bars.length < 220) return null;
+    const dates = bars.map(b => b.t.toISOString().slice(0, 10));
+    const close = bars.map(b => b.c);
+    const high = bars.map(b => b.h);
+    const low = bars.map(b => b.l);
     const rsi = computeRSI(close, RSI_PERIOD);
     const ema9 = computeEMA(close, EMA_FAST), ema21 = computeEMA(close, EMA_MID), ema50 = computeEMA(close, EMA_SLOW);
     const atr = computeATR(high, low, close, ATR_PERIOD);
