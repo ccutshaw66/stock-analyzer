@@ -18,7 +18,11 @@ dollar left the gold standard (1971).
 with major shocks (wars, financial crashes, COVID, policy) shaded — BRIGHT bands. **Numbers-first**
 (per Chris): chart shows ACTUAL dollar values (Gold/Silver $/oz log, GDP $T), not an index, plus a
 per-crisis table spelling out "$X -> $Y (+Z%)" for gold, silver, and the gold/silver ratio so every %
-is tied to a real price. Views: Gold&Silver ($/oz) · World&US GDP ($T) · Year-over-year %. `client/src/data/metals-economy-history.ts` (static annual public-record data),
+is tied to a real price. Views: Gold&Silver ($/oz) · World&US GDP ($T) · Year-over-year %.
+**Live tail + TODAY (added per Chris — "you left out now"):** `GET /api/metals-economy` pulls everything
+FMP has — gold/silver year-end 2007→now, US GDP 1970→now, and the current spot — merged over the static
+deep history, so the chart reaches today and recent years are real (gold 2025 ~$4,341, not the hand-typed
+$2,700). A "Today" readout shows current gold/silver + G/S ratio. World GDP + pre-2007 metals stay static. `client/src/data/metals-economy-history.ts` (static annual public-record data),
 `client/src/pages/metals-economy.tsx` (recharts, design tokens), route + Admin Playground nav.
 
 **Data note:** FMP carries metals only from 2007 and has no world-GDP series, and Yahoo's metals don't

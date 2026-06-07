@@ -1715,6 +1715,55 @@ export async function registerRoutes(
     console.log("[trend-ride-bot] owner-only routes mounted at /api/trend-ride-bot");
   }
 
+  // ─── Metals vs Economy: live tail (gold/silver + US GDP from FMP) ────────────────
+  // The page bundles deep static history (pre-2007 metals, world GDP — no live
+  // source). This refreshes everything FMP DOES have — gold/silver 2007→now and
+  // US GDP 1970→now, plus the current spot ("today") — so the chart reaches now
+  // and recent years are real, not hand-typed estimates. Cached 6h.
+  app.get("/api/metals-economy", async (_req, res) => {
+    const cacheKey = "metals-economy-live";
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const annualLast = (rows: any[], key: string): Record<number, number> => {
+        const best: Record<number, { date: string; val: number }> = {};
+        for (const r of rows || []) {
+          const y = Number(String(r.date).slice(0, 4));
+          const v = Number(r[key]);
+          if (!Number.isFinite(v) || !y) continue;
+          if (!best[y] || String(r.date) > best[y].date) best[y] = { date: String(r.date), val: v };
+        }
+        const out: Record<number, number> = {};
+        for (const y of Object.keys(best)) out[+y] = best[+y].val;
+        return out;
+      };
+      const latest = (rows: any[]) => (rows || []).reduce((a: any, b: any) => (String(b.date) > String(a?.date ?? "") ? b : a), null);
+      const [goldRaw, silverRaw, gdpRaw] = await Promise.all([
+        fmpGet(`/historical-price-eod/full`, { symbol: "GCUSD", from: "2005-01-01", to: today }) as Promise<any>,
+        fmpGet(`/historical-price-eod/full`, { symbol: "SIUSD", from: "2005-01-01", to: today }) as Promise<any>,
+        fmpGet(`/economic-indicators`, { name: "GDP", from: "1970-01-01", to: today }) as Promise<any>,
+      ]);
+      const gArr = Array.isArray(goldRaw) ? goldRaw : (goldRaw?.historical || []);
+      const sArr = Array.isArray(silverRaw) ? silverRaw : (silverRaw?.historical || []);
+      const gdpArr = Array.isArray(gdpRaw) ? gdpRaw : [];
+      const gNow = latest(gArr), sNow = latest(sArr);
+      const usGdpRaw = annualLast(gdpArr, "value");
+      const usGdpByYear: Record<number, number> = {};
+      for (const y of Object.keys(usGdpRaw)) usGdpByYear[+y] = +(usGdpRaw[+y] / 1000).toFixed(2); // $B → $T
+      const payload = {
+        goldByYear: annualLast(gArr, "close"),
+        silverByYear: annualLast(sArr, "close"),
+        usGdpByYear,
+        now: gNow && sNow ? { gold: Number(gNow.close), silver: Number(sNow.close), asOf: String(gNow.date) } : null,
+      };
+      setCache(cacheKey, payload, 6 * 60 * 60 * 1000);
+      res.json(payload);
+    } catch (e: any) {
+      res.json({ error: String(e?.message || e), goldByYear: {}, silverByYear: {}, usGdpByYear: {}, now: null });
+    }
+  });
+
   // ─── Gamma Collector watch (owner-only) ─────────────────────────────────────────
   app.use("/api/gamma-collector", requireTier("owner"));
   {

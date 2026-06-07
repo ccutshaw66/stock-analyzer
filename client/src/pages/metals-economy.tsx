@@ -7,6 +7,7 @@
  * 1971 (Nixon off gold) -> present. Static annual public-record data.
  */
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend,
   CartesianGrid, ReferenceArea,
@@ -29,20 +30,51 @@ const CRISIS_COLOR: Record<CrisisType, string> = {
 
 const usd = (n: number) => "$" + (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(2).replace(/\.00$/, ""));
 const pct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(0) + "%";
-const at = (year: number): MacroYear => MACRO_HISTORY.find(r => r.year === year) ?? MACRO_HISTORY[MACRO_HISTORY.length - 1];
 
 export default function MetalsEconomyPage() {
   const [view, setView] = useState<View>("metals");
 
-  const chartData = useMemo(() => MACRO_HISTORY.map((row, i) => {
+  // Live tail from FMP (gold/silver 2007→now + US GDP 1970→now + current spot),
+  // merged over the static deep history so the chart reaches TODAY and recent
+  // years are real, not hand-typed. Falls back to static if the fetch fails.
+  const { data: live } = useQuery<any>({
+    queryKey: ["/api/metals-economy"],
+    queryFn: () => fetch("/api/metals-economy").then(r => r.json()),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const history = useMemo<MacroYear[]>(() => {
+    const rows = MACRO_HISTORY.map(r => ({ ...r }));
+    if (live && !live.error) {
+      for (const r of rows) {
+        if (live.goldByYear?.[r.year] != null) r.gold = live.goldByYear[r.year];
+        if (live.silverByYear?.[r.year] != null) r.silver = live.silverByYear[r.year];
+        if (live.usGdpByYear?.[r.year] != null) r.usGdpT = live.usGdpByYear[r.year];
+      }
+      if (live.now) {
+        const nowYear = Number(String(live.now.asOf).slice(0, 4));
+        const last = rows[rows.length - 1];
+        const usNow = live.usGdpByYear?.[nowYear] ?? last.usGdpT;
+        const existing = rows.find(r => r.year === nowYear);
+        if (existing) { existing.gold = live.now.gold; existing.silver = live.now.silver; existing.usGdpT = usNow; }
+        else rows.push({ year: nowYear, worldGdpT: last.worldGdpT, usGdpT: usNow, gold: live.now.gold, silver: live.now.silver });
+      }
+    }
+    return rows;
+  }, [live]);
+
+  const atH = (year: number): MacroYear => history.find(r => r.year === year) ?? history[history.length - 1];
+  const maxYear = history[history.length - 1].year;
+
+  const chartData = useMemo(() => history.map((row, i) => {
     if (view === "yoy") {
-      const p = MACRO_HISTORY[i - 1];
+      const p = history[i - 1];
       const yoy = (a: number, b: number) => (p ? +(((a - b) / b) * 100).toFixed(1) : 0);
       return { year: row.year, gold: p ? yoy(row.gold, p.gold) : 0, silver: p ? yoy(row.silver, p.silver) : 0,
         us: p ? yoy(row.usGdpT, p.usGdpT) : 0, world: p ? yoy(row.worldGdpT, p.worldGdpT) : 0 };
     }
     return { year: row.year, gold: row.gold, silver: row.silver, us: row.usGdpT, world: row.worldGdpT };
-  }), [view]);
+  }), [view, history]);
 
   const series = view === "gdp"
     ? [{ key: "world", label: "World GDP ($T)", color: CHART_RSI }, { key: "us", label: "US GDP ($T)", color: SIGNAL_BULL }]
@@ -57,19 +89,19 @@ export default function MetalsEconomyPage() {
 
   // Per-crisis numbers: gold/silver start -> peak (+%), and the G/S ratio at each.
   const crisisStats = useMemo(() => CRISES.map(c => {
-    const start = at(c.start);
-    const win = MACRO_HISTORY.filter(r => r.year >= c.start && r.year <= Math.min(c.end + 2, 2025));
+    const start = atH(c.start);
+    const win = history.filter(r => r.year >= c.start && r.year <= Math.min(c.end + 2, maxYear));
     const gPeak = win.reduce((a, b) => (b.gold > a.gold ? b : a), start);
     const sPeak = win.reduce((a, b) => (b.silver > a.silver ? b : a), start);
-    const endRow = at(Math.min(c.end, 2025));
+    const endRow = atH(Math.min(c.end, maxYear));
     return {
       ...c,
       goldStart: start.gold, goldPeak: gPeak.gold, goldPct: (gPeak.gold / start.gold - 1) * 100,
       silverStart: start.silver, silverPeak: sPeak.silver, silverPct: (sPeak.silver / start.silver - 1) * 100,
-      ratioStart: start.gold / start.silver, ratioPeak: gPeak.gold / at(gPeak.year).silver,
+      ratioStart: start.gold / start.silver, ratioPeak: gPeak.gold / atH(gPeak.year).silver,
       usPct: (endRow.usGdpT / start.usGdpT - 1) * 100, worldPct: (endRow.worldGdpT / start.worldGdpT - 1) * 100,
     };
-  }), []);
+  }), [history, maxYear]);
 
   const cols: DataTableColumn<any>[] = [
     { key: "crisis", header: "Crisis", width: "w-52",
@@ -95,7 +127,9 @@ export default function MetalsEconomyPage() {
     </button>
   );
 
-  const g71 = MACRO_HISTORY[0];
+  const g71 = history[0];
+  const now = live && !live.error ? live.now : null;
+  const ratioNow = now ? now.gold / now.silver : null;
 
   return (
     <PageTemplate
@@ -111,10 +145,20 @@ export default function MetalsEconomyPage() {
       }
     >
       <div className="space-y-4 max-w-[1100px] mx-auto p-1">
-        <div className="flex items-center gap-2">
-          <Btn v="metals">Gold &amp; Silver ($/oz)</Btn>
-          <Btn v="gdp">World &amp; US GDP ($T)</Btn>
-          <Btn v="yoy">Year-over-year %</Btn>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Btn v="metals">Gold &amp; Silver ($/oz)</Btn>
+            <Btn v="gdp">World &amp; US GDP ($T)</Btn>
+            <Btn v="yoy">Year-over-year %</Btn>
+          </div>
+          {now && (
+            <div className="text-2xs text-muted-foreground">
+              <span className="uppercase tracking-wide">Today ({now.asOf}):</span>{" "}
+              <span className="text-bull-light font-semibold">Gold {usd(now.gold)}</span> ·{" "}
+              <span className="text-foreground font-semibold">Silver {usd(now.silver)}</span> ·{" "}
+              <span className="text-foreground">G/S ratio {ratioNow!.toFixed(0)}</span>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-border bg-card p-3">
@@ -125,7 +169,7 @@ export default function MetalsEconomyPage() {
                 <ReferenceArea key={i} x1={c.start - 0.4} x2={c.end + 0.4}
                   fill={CRISIS_COLOR[c.type]} fillOpacity={0.22} stroke={CRISIS_COLOR[c.type]} strokeOpacity={0.5} ifOverflow="extendDomain" />
               ))}
-              <XAxis dataKey="year" type="number" domain={[1971, 2025]} tick={{ fontSize: 11, fill: CHART_TEXT }} tickCount={12} stroke={OVERLAY_NEUTRAL_8} />
+              <XAxis dataKey="year" type="number" domain={[1971, maxYear]} tick={{ fontSize: 11, fill: CHART_TEXT }} tickCount={12} stroke={OVERLAY_NEUTRAL_8} />
               <YAxis scale={view === "metals" ? "log" : "auto"} domain={view === "metals" ? [1, "auto"] : ["auto", "auto"]}
                 tick={{ fontSize: 11, fill: CHART_TEXT }} stroke={OVERLAY_NEUTRAL_8} width={56} tickFormatter={fmtAxis} allowDataOverflow />
               <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
