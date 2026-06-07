@@ -1,14 +1,10 @@
 /**
  * /metals-economy — Metals vs the Economy through history (owner-only, Admin Playground).
  *
- * World GDP vs US GDP vs Gold & Silver from 1971 (Nixon off the gold standard)
- * to present, with major crises (wars, financial crashes, pandemics, policy
- * shocks) shaded. Two views: indexed-to-100 (log) to compare 50-yr growth, and
- * year-over-year % to see how each moved THROUGH each crisis.
- *
- * Static annual data (see client/src/data/metals-economy-history.ts) — FMP only
- * has metals from 2007 and no world GDP, and 50-yr-old annual figures never
- * change, so it's the right cache-forever one-source pattern.
+ * Numbers-first: the chart shows ACTUAL dollar values (Gold/Silver $/oz, GDP $T),
+ * not an index, and a per-crisis table spells out "$X -> $Y (+Z%)" for gold,
+ * silver, and the gold/silver ratio so every percentage is tied to a real price.
+ * 1971 (Nixon off gold) -> present. Static annual public-record data.
  */
 import { useMemo, useState } from "react";
 import {
@@ -16,57 +12,81 @@ import {
   CartesianGrid, ReferenceArea,
 } from "recharts";
 import { PageTemplate } from "@/components/PageTemplate";
-import { MACRO_HISTORY, CRISES, type CrisisType } from "@/data/metals-economy-history";
+import { DataTable, DataTableColumn } from "@/components/DataTable";
+import { MACRO_HISTORY, CRISES, type CrisisType, type MacroYear } from "@/data/metals-economy-history";
 import {
-  SIGNAL_BULL, CHART_RSI, SIGNAL_WATCH_SHORT, CHART_TEXT,
-  OVERLAY_BEAR_40, OVERLAY_BULL_40, OVERLAY_NEUTRAL_8,
+  SIGNAL_BULL, SIGNAL_BEAR, CHART_RSI, SIGNAL_WATCH_SHORT, CHART_TEXT, OVERLAY_NEUTRAL_8,
 } from "@/lib/design-tokens";
 
-const SERIES = [
-  { key: "world", label: "World GDP", color: CHART_RSI },
-  { key: "us", label: "US GDP", color: SIGNAL_BULL },
-  { key: "gold", label: "Gold", color: SIGNAL_WATCH_SHORT },
-  { key: "silver", label: "Silver", color: CHART_TEXT },
-] as const;
+type View = "metals" | "gdp" | "yoy";
 
-const CRISIS_FILL: Record<CrisisType, string> = {
-  war: OVERLAY_BEAR_40,
+const CRISIS_COLOR: Record<CrisisType, string> = {
+  war: SIGNAL_BEAR,
   financial: SIGNAL_WATCH_SHORT,
   pandemic: CHART_RSI,
-  policy: OVERLAY_BULL_40,
-};
-const CRISIS_DOT: Record<CrisisType, string> = {
-  war: OVERLAY_BEAR_40, financial: SIGNAL_WATCH_SHORT, pandemic: CHART_RSI, policy: SIGNAL_BULL,
+  policy: SIGNAL_BULL,
 };
 
-type View = "indexed" | "yoy";
+const usd = (n: number) => "$" + (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(2).replace(/\.00$/, ""));
+const pct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(0) + "%";
+const at = (year: number): MacroYear => MACRO_HISTORY.find(r => r.year === year) ?? MACRO_HISTORY[MACRO_HISTORY.length - 1];
 
 export default function MetalsEconomyPage() {
-  const [view, setView] = useState<View>("indexed");
+  const [view, setView] = useState<View>("metals");
 
-  const data = useMemo(() => {
-    const base = MACRO_HISTORY[0];
-    return MACRO_HISTORY.map((row, i) => {
-      if (view === "indexed") {
-        return {
-          year: row.year,
-          world: +(row.worldGdpT / base.worldGdpT * 100).toFixed(1),
-          us: +(row.usGdpT / base.usGdpT * 100).toFixed(1),
-          gold: +(row.gold / base.gold * 100).toFixed(1),
-          silver: +(row.silver / base.silver * 100).toFixed(1),
-        };
-      }
-      const prev = MACRO_HISTORY[i - 1];
-      const yoy = (a: number, b: number) => (prev ? +(((a - b) / b) * 100).toFixed(1) : 0);
-      return {
-        year: row.year,
-        world: prev ? yoy(row.worldGdpT, prev.worldGdpT) : 0,
-        us: prev ? yoy(row.usGdpT, prev.usGdpT) : 0,
-        gold: prev ? yoy(row.gold, prev.gold) : 0,
-        silver: prev ? yoy(row.silver, prev.silver) : 0,
-      };
-    });
-  }, [view]);
+  const chartData = useMemo(() => MACRO_HISTORY.map((row, i) => {
+    if (view === "yoy") {
+      const p = MACRO_HISTORY[i - 1];
+      const yoy = (a: number, b: number) => (p ? +(((a - b) / b) * 100).toFixed(1) : 0);
+      return { year: row.year, gold: p ? yoy(row.gold, p.gold) : 0, silver: p ? yoy(row.silver, p.silver) : 0,
+        us: p ? yoy(row.usGdpT, p.usGdpT) : 0, world: p ? yoy(row.worldGdpT, p.worldGdpT) : 0 };
+    }
+    return { year: row.year, gold: row.gold, silver: row.silver, us: row.usGdpT, world: row.worldGdpT };
+  }), [view]);
+
+  const series = view === "gdp"
+    ? [{ key: "world", label: "World GDP ($T)", color: CHART_RSI }, { key: "us", label: "US GDP ($T)", color: SIGNAL_BULL }]
+    : view === "yoy"
+      ? [{ key: "gold", label: "Gold %", color: SIGNAL_WATCH_SHORT }, { key: "silver", label: "Silver %", color: CHART_TEXT },
+         { key: "us", label: "US GDP %", color: SIGNAL_BULL }, { key: "world", label: "World GDP %", color: CHART_RSI }]
+      : [{ key: "gold", label: "Gold ($/oz)", color: SIGNAL_WATCH_SHORT }, { key: "silver", label: "Silver ($/oz)", color: CHART_TEXT }];
+
+  const fmtAxis = (v: number) => view === "yoy" ? `${v}%` : view === "gdp" ? `$${v}T` : `$${v}`;
+  const fmtTip = (v: number, name: string) =>
+    [view === "yoy" ? `${v}%` : view === "gdp" ? `$${v}T` : usd(v), name];
+
+  // Per-crisis numbers: gold/silver start -> peak (+%), and the G/S ratio at each.
+  const crisisStats = useMemo(() => CRISES.map(c => {
+    const start = at(c.start);
+    const win = MACRO_HISTORY.filter(r => r.year >= c.start && r.year <= Math.min(c.end + 2, 2025));
+    const gPeak = win.reduce((a, b) => (b.gold > a.gold ? b : a), start);
+    const sPeak = win.reduce((a, b) => (b.silver > a.silver ? b : a), start);
+    const endRow = at(Math.min(c.end, 2025));
+    return {
+      ...c,
+      goldStart: start.gold, goldPeak: gPeak.gold, goldPct: (gPeak.gold / start.gold - 1) * 100,
+      silverStart: start.silver, silverPeak: sPeak.silver, silverPct: (sPeak.silver / start.silver - 1) * 100,
+      ratioStart: start.gold / start.silver, ratioPeak: gPeak.gold / at(gPeak.year).silver,
+      usPct: (endRow.usGdpT / start.usGdpT - 1) * 100, worldPct: (endRow.worldGdpT / start.worldGdpT - 1) * 100,
+    };
+  }), []);
+
+  const cols: DataTableColumn<any>[] = [
+    { key: "crisis", header: "Crisis", width: "w-52",
+      accessor: c => <span><span className="text-foreground font-medium">{c.start}{c.end !== c.start ? `–${c.end}` : ""}</span> <span className="text-muted-foreground">{c.label}</span></span>,
+      sortValue: c => c.start },
+    { key: "gold", header: "Gold", type: "price", width: "w-44",
+      accessor: c => <span>{usd(c.goldStart)} → <span className="text-foreground">{usd(c.goldPeak)}</span> <span className="text-bull-light">({pct(c.goldPct)})</span></span>,
+      sortValue: c => c.goldPct },
+    { key: "silver", header: "Silver", type: "price", width: "w-44",
+      accessor: c => <span>{usd(c.silverStart)} → <span className="text-foreground">{usd(c.silverPeak)}</span> <span className="text-bull-light">({pct(c.silverPct)})</span></span>,
+      sortValue: c => c.silverPct },
+    { key: "ratio", header: "G/S ratio", type: "number", width: "w-28",
+      accessor: c => <span>{c.ratioStart.toFixed(0)} → <span className="text-foreground">{c.ratioPeak.toFixed(0)}</span></span>,
+      sortValue: c => c.ratioPeak },
+    { key: "us", header: "US GDP", type: "number", width: "w-24", accessor: c => pct(c.usPct), sortValue: c => c.usPct },
+    { key: "world", header: "World GDP", type: "number", width: "w-24", accessor: c => pct(c.worldPct), sortValue: c => c.worldPct },
+  ];
 
   const Btn = ({ v, children }: { v: View; children: any }) => (
     <button onClick={() => setView(v)}
@@ -75,84 +95,71 @@ export default function MetalsEconomyPage() {
     </button>
   );
 
+  const g71 = MACRO_HISTORY[0];
+
   return (
     <PageTemplate
       howItWorksTitle="Metals vs the Economy, 1971 → today"
       howItWorks={
-        <>
-          <p>
-            Since <strong className="text-foreground">1971</strong>, when the dollar came off the gold
-            standard and began floating, this tracks <strong className="text-foreground">World GDP</strong> and{" "}
-            <strong className="text-foreground">US GDP</strong> against <strong className="text-bull-light">Gold</strong> and{" "}
-            <strong className="text-foreground">Silver</strong>, with the era's major shocks shaded.
-            <strong className="text-foreground"> Indexed</strong> (log) compares 50-year growth on one
-            scale; <strong className="text-foreground">Year-over-year %</strong> shows how each moved
-            through each crisis.
-          </p>
-          <p className="text-2xs italic text-muted-foreground">
-            Annual figures from public records (World Bank nominal GDP; London-fix gold/silver averages) —
-            FMP carries metals only from 2007 and no world-GDP series, so the deep history is bundled.
-          </p>
-        </>
+        <p>
+          Actual prices, not an index. In <strong className="text-foreground">1971</strong> the dollar left
+          the gold standard with <strong className="text-bull-light">gold at {usd(g71.gold)}/oz</strong> and{" "}
+          <strong className="text-foreground">silver at {usd(g71.silver)}/oz</strong>. The chart tracks the
+          real dollar values through every major shock (shaded); the table below spells out what gold, silver,
+          and the gold/silver ratio actually did in each one.
+        </p>
       }
     >
       <div className="space-y-4 max-w-[1100px] mx-auto p-1">
         <div className="flex items-center gap-2">
-          <Btn v="indexed">Indexed to 100 (1971)</Btn>
+          <Btn v="metals">Gold &amp; Silver ($/oz)</Btn>
+          <Btn v="gdp">World &amp; US GDP ($T)</Btn>
           <Btn v="yoy">Year-over-year %</Btn>
         </div>
 
         <div className="rounded-lg border border-border bg-card p-3">
           <ResponsiveContainer width="100%" height={420}>
-            <LineChart data={data} margin={{ top: 10, right: 16, bottom: 4, left: 4 }}>
+            <LineChart data={chartData} margin={{ top: 10, right: 16, bottom: 4, left: 4 }}>
               <CartesianGrid stroke={OVERLAY_NEUTRAL_8} vertical={false} />
               {CRISES.map((c, i) => (
                 <ReferenceArea key={i} x1={c.start - 0.4} x2={c.end + 0.4}
-                  fill={CRISIS_FILL[c.type]} fillOpacity={0.12} stroke="none" ifOverflow="extendDomain" />
+                  fill={CRISIS_COLOR[c.type]} fillOpacity={0.22} stroke={CRISIS_COLOR[c.type]} strokeOpacity={0.5} ifOverflow="extendDomain" />
               ))}
-              <XAxis dataKey="year" type="number" domain={[1971, 2025]} tick={{ fontSize: 11, fill: CHART_TEXT }}
-                tickCount={12} stroke={OVERLAY_NEUTRAL_8} />
-              <YAxis
-                scale={view === "indexed" ? "log" : "auto"}
-                domain={view === "indexed" ? [80, "auto"] : ["auto", "auto"]}
-                tick={{ fontSize: 11, fill: CHART_TEXT }}
-                stroke={OVERLAY_NEUTRAL_8}
-                width={48}
-                tickFormatter={(v: number) => view === "yoy" ? `${v}%` : `${v}`}
-                allowDataOverflow
-              />
-              <Tooltip
-                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: CHART_TEXT }}
-                formatter={(val: number, name: string) => [view === "yoy" ? `${val}%` : val, name]}
-              />
+              <XAxis dataKey="year" type="number" domain={[1971, 2025]} tick={{ fontSize: 11, fill: CHART_TEXT }} tickCount={12} stroke={OVERLAY_NEUTRAL_8} />
+              <YAxis scale={view === "metals" ? "log" : "auto"} domain={view === "metals" ? [1, "auto"] : ["auto", "auto"]}
+                tick={{ fontSize: 11, fill: CHART_TEXT }} stroke={OVERLAY_NEUTRAL_8} width={56} tickFormatter={fmtAxis} allowDataOverflow />
+              <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: CHART_TEXT }} formatter={fmtTip as any} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              {SERIES.map(s => (
-                <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color}
-                  strokeWidth={2} dot={false} isAnimationActive={false} />
+              {series.map(s => (
+                <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} dot={false} isAnimationActive={false} />
               ))}
             </LineChart>
           </ResponsiveContainer>
           <div className="text-2xs text-muted-foreground mt-1 px-1">
-            Shaded = crisis/shock years. {view === "indexed" ? "Log scale: a steeper slope = faster growth; gold's climb is the dollar losing purchasing power." : "Watch the metals spike while GDP growth stalls or goes negative through each shock."}
+            {view === "metals" ? "Log scale so $1.55 silver and $2,700 gold both read clearly — hover any year for the exact price." : view === "gdp" ? "World vs US economic output, trillions of dollars." : "Annual % move — watch metals spike while GDP growth stalls through each shock."}
           </div>
         </div>
 
-        {/* Crisis legend / timeline */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="text-sm font-semibold text-foreground mb-3">Major shocks on the chart</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-            {CRISES.map((c, i) => (
-              <div key={i} className="flex items-start gap-2 text-2xs">
-                <span className="mt-1 h-2 w-2 rounded-full shrink-0" style={{ background: CRISIS_DOT[c.type] }} />
-                <div>
-                  <span className="text-foreground font-medium">{c.start}{c.end !== c.start ? `–${c.end}` : ""} · {c.label}</span>
-                  <span className="text-muted-foreground capitalize"> ({c.type})</span>
-                  {c.note && <div className="text-muted-foreground">{c.note}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* The numbers, per crisis */}
+        <DataTable
+          title="What gold & silver did in each crisis"
+          rightSlot={<span className="text-2xs text-muted-foreground">start → peak (% move). G/S ratio = oz of silver per oz of gold.</span>}
+          dense
+          columns={cols}
+          data={crisisStats}
+          getRowKey={(c: any) => `${c.start}-${c.label}`}
+          defaultSort={{ key: "crisis", direction: "asc" }}
+          emptyMessage="No crises."
+        />
+
+        {/* Color key for the bands */}
+        <div className="flex flex-wrap gap-x-5 gap-y-1 px-1 text-2xs text-muted-foreground">
+          {(["policy", "war", "financial", "pandemic"] as CrisisType[]).map(t => (
+            <span key={t} className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: CRISIS_COLOR[t] }} /> {t}
+            </span>
+          ))}
         </div>
       </div>
     </PageTemplate>

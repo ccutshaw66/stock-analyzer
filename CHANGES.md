@@ -15,8 +15,10 @@ during the prior Perplexity/Claude session).
 dollar left the gold standard (1971).
 
 **What:** New owner-only page `/metals-economy` — World GDP vs US GDP vs Gold & Silver, 1971→present,
-with major shocks (wars, financial crashes, COVID, policy) shaded; two views (indexed-to-100 log scale,
-and year-over-year %). `client/src/data/metals-economy-history.ts` (static annual public-record data),
+with major shocks (wars, financial crashes, COVID, policy) shaded — BRIGHT bands. **Numbers-first**
+(per Chris): chart shows ACTUAL dollar values (Gold/Silver $/oz log, GDP $T), not an index, plus a
+per-crisis table spelling out "$X -> $Y (+Z%)" for gold, silver, and the gold/silver ratio so every %
+is tied to a real price. Views: Gold&Silver ($/oz) · World&US GDP ($T) · Year-over-year %. `client/src/data/metals-economy-history.ts` (static annual public-record data),
 `client/src/pages/metals-economy.tsx` (recharts, design tokens), route + Admin Playground nav.
 
 **Data note:** FMP carries metals only from 2007 and has no world-GDP series, and Yahoo's metals don't
