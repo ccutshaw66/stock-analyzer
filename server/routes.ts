@@ -1764,6 +1764,33 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Strangle / Volatility Scanner (owner) ───────────────────────────────────────
+  // Reads the latest gamma snapshot (same dealer-gamma + IV source the gamma bot
+  // uses) and ranks the basket into SELL-VOL vs BUY-VOL strangle setups with real
+  // strikes / premium / break-evens. No new Polygon calls.
+  app.get("/api/strangle-scanner", requireTier("owner"), async (_req, res) => {
+    try {
+      const { getStrangleScan } = await import("./strangle-scanner");
+      res.json(getStrangleScan());
+    } catch (e: any) {
+      res.status(500).json({ error: String(e?.message || e), rows: [] });
+    }
+  });
+
+  // ─── Strangle Paper Bot (owner) ──────────────────────────────────────────────────
+  app.use("/api/strangle-bot", requireTier("owner"));
+  {
+    const bot = await import("./strangle-bot");
+    app.get("/api/strangle-bot", (_req, res) => res.json(bot.getBotView()));
+    app.post("/api/strangle-bot/config", (req, res) => { const c = bot.updateConfig(req.body || {}); res.json({ ok: true, config: c, view: bot.getBotView() }); });
+    app.post("/api/strangle-bot/reset", (_req, res) => { bot.resetBot(); res.json({ ok: true, view: bot.getBotView() }); });
+    app.post("/api/strangle-bot/run", (_req, res) => {
+      bot.runBot().catch(e => console.error("[strangle-bot] run failed:", e?.message || e));
+      res.json({ started: true, note: "Running the strangle paper bot in the background; poll GET /api/strangle-bot." });
+    });
+    console.log("[strangle-bot] owner-only routes mounted at /api/strangle-bot");
+  }
+
   // ─── Gamma Collector watch (owner-only) ─────────────────────────────────────────
   app.use("/api/gamma-collector", requireTier("owner"));
   {

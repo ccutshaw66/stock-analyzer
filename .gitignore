@@ -15,6 +15,7 @@ data/htf-ohlcv-cache/
 data/gamma-snapshots/
 data/gamma-bot/
 data/trend-ride-bot/
+data/strangle-bot/
 
 # Claude Code — keep skills + shared settings, exclude local/runtime state
 .claude/settings.local.json

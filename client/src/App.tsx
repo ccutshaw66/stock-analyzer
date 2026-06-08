@@ -38,6 +38,7 @@ import MarkovPage from "@/pages/markov";
 import GammaBotPage from "@/pages/gamma-bot";
 import TrendRideBotPage from "@/pages/trend-ride-bot";
 import MetalsEconomyPage from "@/pages/metals-economy";
+import StrangleScannerPage from "@/pages/strangle-scanner";
 import GammaCollectorPage from "@/pages/gamma-collector";
 import VolCalcPage from "@/pages/vol-calc";
 import StrategyLabPage from "@/pages/strategy-lab";
@@ -272,6 +273,12 @@ function AuthenticatedApp() {
               <RequireTier min="owner" feature="Metals vs Economy"
                 description="World GDP vs US GDP vs Gold & Silver across major crises since 1971.">
                 <MetalsEconomyPage />
+              </RequireTier>
+            </Route>
+            <Route path="/strangle-scanner">
+              <RequireTier min="owner" feature="Strangle Scanner"
+                description="Volatility scanner — ranks the options basket into SELL-VOL / BUY-VOL strangle setups, with a paper auto-trader.">
+                <StrangleScannerPage />
               </RequireTier>
             </Route>
             <Route path="/gamma-collector">

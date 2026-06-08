@@ -9,6 +9,25 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-08 — Strangle / Volatility Scanner + paper auto-trader (owner-only)
+
+**Why:** Chris wanted a scanner that finds volatility trades to express as a strangle, and to auto-trade
+it on paper to test for a while.
+
+**What:** New owner page `/strangle-scanner` (Admin Playground).
+- **Scanner** (`server/strangle-scanner.ts`) reads the latest gamma snapshot (same dealer-gamma + IV the
+  gamma bot uses — ONE source of truth, no new Polygon calls) and ranks the basket into **SELL VOL**
+  (rich IV + dealers long gamma → collect premium, the validated lean) vs **BUY VOL** (cheap IV + short
+  gamma → pay for a move). Per name: ATM IV, cross-sectional IV rank, ±1σ expected move, the actual
+  ≈1σ strangle strikes, total premium, break-evens, and P-inside (short-strangle win zone). BS-priced.
+- **Paper bot** (`server/strangle-bot.ts`, gamma-bot pattern) opens strangles from the signals
+  (short on SELL VOL, long on BUY VOL), settles each at expiry against the real underlying close
+  (shared getHtfBars), mark-to-market account value; cron `20 22 * * 1-5`; `/api/strangle-bot`;
+  config (account, contracts, max positions, DTE, sides, min score) + Run now on the page.
+  Gitignored `data/strangle-bot/`.
+- **Depends on the gamma collector** producing snapshots — if it hasn't run, the page shows that note.
+
+---
 ## 2026-06-07 — Metals vs the Economy page (owner-only, Admin Playground)
 
 **Why:** Chris wanted to see precious metals vs the world/US economy through major crises since the

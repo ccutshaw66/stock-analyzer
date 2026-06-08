@@ -12,6 +12,7 @@ import { snapshotConvictionForUniverse, updateForwardReturns } from "./convictio
 import { snapshotGammaForUniverse } from "./gamma-tracker";
 import { runBotOnStored } from "./gamma-bot";
 import { runBot as runTrendRideBot } from "./trend-ride-bot";
+import { runBot as runStrangleBot } from "./strangle-bot";
 import type { GetCompanySnapshotOpts } from "./snapshot";
 
 // Yahoo Finance helpers will be passed in from routes
@@ -279,6 +280,22 @@ export function initCron(
     },
   });
   console.log("[CRON] Trend-Ride paper-bot registered (10 22 * * 1-5)");
+
+  // Strangle paper bot — runs after the gamma snapshot/bot so the scanner has
+  // fresh dealer-gamma + IV to build strangle signals from.
+  registerJob({
+    id: "strangle-bot",
+    description: "Daily strangle/vol paper-bot (opens strangles from the scanner, settles at expiry)",
+    cron: "20 22 * * 1-5", // 6:20pm ET, weekdays
+    timeoutMs: 15 * 60 * 1000,
+    preventOverrun: true,
+    runOnStart: false,
+    handler: async () => {
+      const res = await runStrangleBot();
+      console.log(`[CRON] strangle-bot: +${res.opened} opened, ${res.settled} settled`);
+    },
+  });
+  console.log("[CRON] Strangle paper-bot registered (20 22 * * 1-5)");
 
   // ─── Market Pulse ─────────────────────────────────────────────────────────
   //
