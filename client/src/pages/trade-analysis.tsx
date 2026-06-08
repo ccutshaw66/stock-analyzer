@@ -349,7 +349,11 @@ function SignalDot(props: any) {
 
 export default function TradeAnalysis() {
   const { activeTicker, tradeData: data, isTradeLoading: isLoading, tradeError: error } = useTicker();
-  const { isAnalysisExhausted } = useSubscription();
+  const { isAnalysisExhausted, tier } = useSubscription();
+  // BBTC+VER is ownerOnly in the strategy registry (failed OOS validation —
+  // "buys strength, never dips"). Its BUY/STOP/EXIT markers must not render for
+  // non-owners, who'd otherwise see buy-the-top arrows. Same gate /chart uses.
+  const isOwner = tier === "owner";
   const { timeframe } = useTimeframe();
   const tfLabel = TIMEFRAME_LABELS[timeframe];
 
@@ -970,7 +974,9 @@ export default function TradeAnalysis() {
                   <EmaToggleStrip state={emaState} onChange={setEmaState} />
                   {/* Side filter — toggle which signal dots to display.
                       Both sides are ALWAYS computed by the strategy; this just
-                      controls visibility on this chart. */}
+                      controls visibility on this chart. Owner-only: it only acts
+                      on the ownerOnly BBTC+VER markers, which non-owners don't see. */}
+                  {isOwner && (
                   <div className="inline-flex rounded-md border border-card-border overflow-hidden text-micro font-semibold">
                     {(["both", "long", "short"] as const).map((opt) => (
                       <button
@@ -988,6 +994,7 @@ export default function TradeAnalysis() {
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -999,7 +1006,7 @@ export default function TradeAnalysis() {
                 <CandlePane
                   bars={chartDataWithFilter ?? []}
                   overlays={emaOverlays(emaState)}
-                  markers={buildTradeAnalysisMarkers(chartDataWithFilter, chartSideFilter)}
+                  markers={isOwner ? buildTradeAnalysisMarkers(chartDataWithFilter, chartSideFilter) : []}
                   subPanes={{ macd: true, rsi: true }}
                   testId="trade-analysis-candle-pane"
                 />
@@ -1017,12 +1024,20 @@ export default function TradeAnalysis() {
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-purple-500 rounded border-dashed" style={{ borderTop: `1px dashed ${CHART_EMA_200}`, height: 0 }} /> SMA 200
                 </span>
+                {/* Signal-dot legend — only meaningful when the ownerOnly
+                    BBTC+VER markers render (owner). Hidden for non-owners so the
+                    legend never describes dots that aren't on the chart. */}
+                {isOwner && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-bull" /> Long entry
                 </span>
+                )}
+                {isOwner && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-watch" /> Long watch (RSI 35-45)
                 </span>
+                )}
+                {isOwner && (<>
                 <span className="flex items-center gap-1.5" title="REDUCE — profit target hit at 5×ATR. This is a winning trade.">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: SIGNAL_REDUCE }} /> Profit target (WIN)
                 </span>
@@ -1044,6 +1059,7 @@ export default function TradeAnalysis() {
                     style={{ background: "transparent", border: `1.5px dashed ${SIGNAL_WATCH_SHORT}` }}
                   /> Short watch (info-only, RSI 65-80)
                 </span>
+                </>)}
               </div>
             </CardContent>
           </Card>

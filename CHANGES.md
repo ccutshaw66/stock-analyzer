@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-08 — Trade Analysis: stop leaking benched BBTC BUY/STOP/EXIT to non-owners
+
+**Why:** The Trade Analysis page (`/api/analyze`) renders BBTC+VER BUY/STOP/EXIT markers to ALL users,
+but BBTC+VER is `ownerOnly` in the strategy registry (failed OOS validation — "buys strength, never
+dips; loses to SPY OOS", demoted 2026-06-03). On STM (1Y) it produced the textbook bad readout: churned
+the $28–35 base, EXITed right before the $32→$80 move, then printed a fresh BUY at ~$72 near the 52-week
+high into a rolling-over RSI. A green "BUY" arrow under a 52-week high on a public page is a retail trap,
+not a signal — and `/chart` already hides ownerOnly strategies from non-owners. The Trade Analysis page
+wasn't honoring that same gate.
+
+**What (`client/src/pages/trade-analysis.tsx` — containment only; `/api/analyze` unchanged):**
+- Derive `isOwner` from `useSubscription().tier` (same gate `/chart` uses).
+- Gate the chart's signal markers: non-owners get `markers={[]}` — no BBTC/VER BUY/STOP/EXIT arrows.
+  Owner view is unchanged (ownerOnly = the owner still sees it).
+- Hide the marker side-filter (both/long/short) and the signal-dot legend for non-owners, so the chart
+  never shows a control or legend for dots that aren't there. EMA overlays + RSI/MACD panes still render.
+
+Scope note: this is the low-risk half of the fix — it removes the harmful markers from the public
+surface today. The deeper items the indicator audit surfaced (BBTC's missing post-stop cooldown,
+no overextension guard, single-bar trend-exit; and swapping this page's strategy layer to the validated
+TFT/trend-ride, which `/api/analyze` warns is "a much bigger change") are a separate validated follow-up.
+The score/verdict header and the per-strategy detail cards are unchanged in this pass.
+
+---
 ## 2026-06-07 — HTF metals & mining watch (full complex, any price)
 
 **Why:** With the PDT day-trade-frequency cap lifting, Chris wants an HTF watch over the entire mining
