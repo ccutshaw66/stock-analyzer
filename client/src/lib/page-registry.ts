@@ -95,7 +95,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Research ── everything about ONE ticker (the methods) ──
   { path: "/profile",             label: "Profile",               icon: BarChart3,       group: "Research", subtitle: "Quote, fundamentals, ratings, next earnings date, and quick snapshot." },
   { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "Research", subtitle: "13F-tracked institutional ownership and flows — is smart money in or out?", requiresTier: "pro" },
-  { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "Research", subtitle: "Per-ticker signal walk-through with chart overlays." },
+  { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "Admin Playground", subtitle: "Per-ticker BBTC / VER / AMC walk-through. Owner-only — built on strategies that haven't passed OOS validation.", requiresTier: "owner" },
   { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Research", subtitle: "Dealer positioning, gamma exposure, max pain — the options/bearish read: strikes + timing.", requiresTier: "elite" },
   { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Research", subtitle: "Final check before you pull the trigger — one verdict, direction, plain-English reasons.", requiresTier: "pro" },
   { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "Research", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },

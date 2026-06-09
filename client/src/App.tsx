@@ -116,7 +116,12 @@ function AuthenticatedApp() {
             <Route path="/dashboard" component={Dashboard} />
             <Route path="/market-pulse" component={MarketPulse} />
             <Route path="/profile" component={Home} />
-            <Route path="/trade" component={TradeAnalysis} />
+            <Route path="/trade">
+              <RequireTier min="owner" feature="Trade Analysis"
+                description="Per-ticker BBTC / VER / AMC signal walk-through. Owner-only — built on strategies that haven't passed out-of-sample validation.">
+                <TradeAnalysis />
+              </RequireTier>
+            </Route>
             <Route path="/scanner" component={UnifiedScannerPage} />
             <Route path="/scanner-legacy" component={Scanner} />
             <Route path="/htf" component={HtfSetupsPage} />

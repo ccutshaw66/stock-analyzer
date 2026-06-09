@@ -1,1 +1,17 @@
-{}
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "git pull --ff-only --quiet 2>/dev/null; echo '=== StockOtter repo auto-synced to origin/main on session start ==='; echo '--- Latest CHANGES.md (read this so you start current) ---'; head -n 30 CHANGES.md 2>/dev/null; echo '--- Recent commits ---'; git log --oneline -8 2>/dev/null",
+            "timeout": 30,
+            "statusMessage": "Syncing repo to origin/main…"
+          }
+        ]
+      }
+    ]
+  }
+}

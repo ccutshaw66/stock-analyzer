@@ -9,6 +9,30 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — Trade Analysis (/trade) page moved to owner-only
+
+**Why:** The entire `/trade` page is hard-built on the BBTC / VER / AMC "Ready/Set/Go" chain — and
+two of those (VER, AMC) failed out-of-sample validation while BBTC is only a soft GO. It was sitting
+on the PUBLIC site with no tier gate, which is exactly the "site full of stuff that doesn't work"
+problem. Per validated-only-on-main, it can't be public.
+
+**What:** Gated `/trade` behind `RequireTier min="owner"` in `client/src/App.tsx` and moved its
+nav entry to the **Admin Playground** group with `requiresTier: "owner"` in
+`client/src/lib/page-registry.ts`. Page + code kept intact for owner experimentation (trim, don't
+delete) — it just leaves the public product.
+
+---
+## 2026-06-09 — Session-start auto-sync hook (multi-machine fix)
+
+**Why:** Chris works across iPad / laptop / desktop and each one kept starting on stale code, so
+sessions had no idea what the others had shipped. CLAUDE.md is only advice — it can't force a pull.
+
+**What:** Added a `SessionStart` hook to the committed `.claude/settings.json`. On every session, on
+every machine, it runs `git pull --ff-only` (never clobbers uncommitted work) and prints the latest
+CHANGES.md + recent commits into context. Because it's in the committed settings, it travels via git
+to all three machines. No more "go read the changes first."
+
+---
 ## 2026-06-09 — TFT strategies moved to owner-only (validated-only-on-main)
 
 **Why:** The three TFT variants (40W / 60W / catastrophic) were showing on the PUBLIC `/chart`
