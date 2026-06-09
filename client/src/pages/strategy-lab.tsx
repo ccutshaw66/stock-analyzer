@@ -123,6 +123,8 @@ export default function StrategyLabPage() {
   // Optional real fill (per share, magnitude). Blank = use the Black-Scholes theoretical price.
   // The structure keeps its natural debit/credit DIRECTION; you just type the price off the chain.
   const [priceOverride, setPriceOverride] = useState("");
+  // Stop-loss reality check (credit trades): exit when the loss = this % of the credit collected.
+  const [stopPct, setStopPct] = useState(60);
 
   const strat = STRATS.find(s => s.id === stratId)!;
   const isDsf = strat.id === "cdsf" || strat.id === "pdsf";
@@ -176,6 +178,19 @@ export default function StrategyLabPage() {
   const profitUncapped = slopeHi > 1e-4;
   const lossUncapped = slopeHi < -1e-4;
   const pnlNow = pnlAt(Px);
+
+  // ── stop-loss reality check (credit trades only) ──────────────────────────
+  // The credit is NOT banked — you're SHORT the structure and owe it back. A
+  // "−X% stop" is a real LOSS of X% of the credit, not "keep (100−X)%". Win the
+  // full credit, or buy it back at a loss. Breakeven win rate falls straight out
+  // of that risk:reward; a stop can't move it.
+  const isCredit = netCost < 0 && stockCost === 0;
+  const creditMag = -netCost;                       // total $ credit collected
+  const creditPerSh = creditMag / mult;
+  const lossAtStop = (stopPct / 100) * creditMag;   // real net loss if stopped
+  const buybackPerSh = creditPerSh * (1 + stopPct / 100); // sold here, bought back here
+  const buybackTotal = buybackPerSh * mult;         // total $ to close the short at the stop
+  const beWinRate = stopPct / (100 + stopPct);      // loss/(win+loss), win=credit loss=stop%·credit
 
   // payoff svg path
   const W = 560, H = 150;
@@ -272,6 +287,78 @@ export default function StrategyLabPage() {
             <div className="text-2xs text-muted-foreground">dashed vertical = spot ${S}; horizontal = break-even line</div>
           </div>
         </div>
+
+        {/* stop-loss reality check — credit trades only */}
+        {isCredit && (
+          <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
+              <div className="text-sm font-semibold text-foreground">Stop-loss reality check</div>
+              <label className="text-2xs text-muted-foreground">Stop at % of credit
+                <div className="relative mt-1">
+                  <input type="number" step={5} value={Number.isFinite(stopPct) ? stopPct : ""} onChange={e => setStopPct(parseFloat(e.target.value))}
+                    className="w-28 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground tabular-nums" />
+                  <span className="absolute right-2 top-1.5 text-2xs text-muted-foreground">%</span>
+                </div>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3">
+              <Stat label="Credit collected" value={`+${$(creditMag)}`} color="text-bull-light" />
+              <Stat label={`If stopped (−${stopPct}%)`} value={$(-lossAtStop)} color="text-bear-light" />
+              <Stat label="Buy back at" value={`$${buybackPerSh.toFixed(2)}/sh`} />
+              <Stat label="Breakeven win rate" value={`${(beWinRate * 100).toFixed(0)}%`} />
+            </div>
+
+            {/* the ledger — where the money ACTUALLY is. The credit is cancelled by the
+                short-spread IOU, so the only thing that moves is the IOU growing. */}
+            <div className="mt-3 overflow-x-auto">
+              <div className="text-2xs font-semibold text-foreground mb-1">Where your money actually is — you're <span className="text-bear-light">short</span> the spread (you owe it back)</div>
+              <table className="w-full text-2xs tabular-nums border-collapse">
+                <thead>
+                  <tr className="text-muted-foreground text-left">
+                    <th className="py-1 pr-2 font-medium">Moment</th>
+                    <th className="py-1 px-2 font-medium text-right">Cash</th>
+                    <th className="py-1 px-2 font-medium text-right">Spread you OWE</th>
+                    <th className="py-1 pl-2 font-medium text-right">Net P&amp;L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-border">
+                    <td className="py-1 pr-2 text-foreground">1. You sell it (credit + IOU cancel)</td>
+                    <td className="py-1 px-2 text-right text-bull-light">+{$(creditMag)}</td>
+                    <td className="py-1 px-2 text-right text-bear-light">{$(-creditMag)}</td>
+                    <td className="py-1 pl-2 text-right text-foreground">$0</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="py-1 pr-2 text-foreground">2. It moves against you (IOU grows)</td>
+                    <td className="py-1 px-2 text-right text-bull-light">+{$(creditMag)}</td>
+                    <td className="py-1 px-2 text-right text-bear-light">{$(-buybackTotal)}</td>
+                    <td className="py-1 pl-2 text-right text-bear-light">{$(-lossAtStop)}</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="py-1 pr-2 text-foreground">3. You buy it back (−{stopPct}% stop)</td>
+                    <td className="py-1 px-2 text-right text-bear-light">{$(-lossAtStop)}</td>
+                    <td className="py-1 px-2 text-right text-foreground">$0</td>
+                    <td className="py-1 pl-2 text-right text-bear-light font-semibold">{$(-lossAtStop)}</td>
+                  </tr>
+                  <tr className="border-t border-border bg-bull-light/5">
+                    <td className="py-1 pr-2 text-muted-foreground italic">…or it expires worthless (you win)</td>
+                    <td className="py-1 px-2 text-right text-bull-light">+{$(creditMag)}</td>
+                    <td className="py-1 px-2 text-right text-foreground">$0</td>
+                    <td className="py-1 pl-2 text-right text-bull-light font-semibold">+{$(creditMag)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="text-2xs text-muted-foreground mt-1.5">The +{$(creditMag)} cash never moves — it was cancelled by the IOU in row 1. The only thing that changes is the <strong className="text-foreground">IOU growing from {$(-creditMag)} to {$(-buybackTotal)}</strong>. That {$(lossAtStop)} of growth is your loss. (It's short-selling: you got cash up front, but you owe the position back — profit only if you buy it back for less.)</p>
+            </div>
+
+            <div className="mt-3 space-y-1.5 text-2xs text-muted-foreground">
+              <p>The credit isn't banked — you're <strong className="text-foreground">short</strong> this structure and owe it back. A −{stopPct}% stop is a <strong className="text-bear-light">real loss of {$(lossAtStop)}</strong> (sold for ${creditPerSh.toFixed(2)}/sh, bought back at ${buybackPerSh.toFixed(2)}/sh). You keep <strong className="text-foreground">$0</strong> of the credit — not {100 - stopPct}%.</p>
+              <p>You win the full <span className="text-bull-light">+{$(creditMag)}</span> or you lose <span className="text-bear-light">{$(-lossAtStop)}</span> → you must win <strong className="text-foreground">{(beWinRate * 100).toFixed(0)}%</strong> of trades just to break even. A fairly-priced trade's real odds sit right on that line, so <strong className="text-foreground">no stop turns it positive</strong> — expectancy ≈ $0 before costs, negative after.</p>
+              <p><strong className="text-foreground">Gaps ignore your stop.</strong> A stop only caps the loss if it fills. Price gapping through your strikes overnight skips it → full max loss {lossUncapped ? <span className="text-bear-light">large / uncapped</span> : <span className="text-bear-light">{$(minP)}</span>}.</p>
+              <p><strong className="text-foreground">Trailing stop?</strong> Same math. It locks open profit on winners but whipsaws you out of eventual winners on noise and is equally useless on a gap — it can't move the {(beWinRate * 100).toFixed(0)}% breakeven above.</p>
+            </div>
+          </div>
+        )}
 
         {/* hedge: two layers */}
         <div className="rounded-lg border border-border bg-card p-4">

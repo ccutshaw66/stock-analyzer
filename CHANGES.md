@@ -9,6 +9,28 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — Strategy Lab: "Stop-loss reality check" panel for credit trades
+
+**Why:** Chris asked why you can't just sell credit spreads all day with a 60% (trailing) stop and
+cash out — believing a −60% stop still nets a gain (keep 40% of the credit). That's the classic
+"the credit is banked" illusion: you're SHORT the structure and owe it back, so a −60% stop is a
+real loss of 60% of the credit, not 40% kept. The lab only showed expiry-only P&L, so the
+misconception had nowhere to get corrected with live numbers.
+
+**What:** Added a `Stop-loss reality check` card (shown only for net-credit, no-stock structures —
+credit verticals, iron condor/fly, short straddle/strangle, CSP, credit DSF) in
+`client/src/pages/strategy-lab.tsx`. Set a stop % of credit and it shows: credit collected, the real
+net loss if stopped (−X% of credit, in red), the buy-back price/share, and the breakeven win rate
+`stop%/(100+stop%)`. Added a **step-by-step account ledger** ("Where your money actually is") with
+Cash / Spread-you-OWE / Net columns across sell → moves-against-you → buy-back (+ a win row), to
+make the short-seller mechanics concrete: the credit cash is cancelled by the IOU at entry, and the
+only thing that moves is the IOU growing — that growth is the loss. Plain-English notes spell out
+that you keep $0 of the credit (not 100−X%), that
+a fairly-priced trade's odds sit on the breakeven line so no stop turns it positive, that gaps skip
+the stop entirely (full max loss), and that a trailing stop has the same math. Pure client-side, no
+new data/deps. Build passes.
+
+---
 ## 2026-06-09 — BBTC / VER / AMC / "Ready-Set-Go" pulled from the entire PUBLIC site
 
 **Why:** BBTC + the Ready/Set/Go chain (VER → AMC → BBTC) was the old centerpiece, but VER and AMC
