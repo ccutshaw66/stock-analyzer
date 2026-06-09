@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — TFT strategies moved to owner-only (validated-only-on-main)
+
+**Why:** The three TFT variants (40W / 60W / catastrophic) were showing on the PUBLIC `/chart`
+backtester despite never passing an out-of-sample test. That violates the validated-only-on-main rule
+and is part of why the public product looked like it was full of strategies that "don't work" — they
+were unproven. Only HTF (and the data-driven Verdict factors) are validated for public display.
+
+**What:** Added `chartBacktest.ownerOnly: true` to `tft-40w`, `tft-60w`, `tft-cat` in
+`shared/strategies/registry.ts`. Same lever already used for BBTC+VER and AMC — `isStrategyDemoted()`
+now hides all three from the public chart toggle and the trade picker, but keeps the code intact in the
+owner-only Admin area for experimentation (trim, don't delete). HTF remains the lone public green edge.
+
+---
 ## 2026-06-08 — Strangle / Volatility Scanner + paper auto-trader (owner-only)
 
 **Why:** Chris wanted a scanner that finds volatility trades to express as a strangle, and to auto-trade

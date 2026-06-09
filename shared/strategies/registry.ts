@@ -797,6 +797,7 @@ const TFT_40W_MANIFEST: StrategyManifest = {
   chartBacktest: {
     label: "TFT 40W",
     description: "Two-Layer Trend Continuation, weekly 40W SMA stop",
+    ownerOnly: true, // UNVALIDATED — pending OOS test. Owner-only until it beats SPY (validated-only-on-main, 2026-06-09).
   },
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -877,6 +878,7 @@ const TFT_60W_MANIFEST: StrategyManifest = {
   chartBacktest: {
     label: "TFT 60W",
     description: "TFT with slower 60W stop",
+    ownerOnly: true, // UNVALIDATED — pending OOS test. Owner-only until it beats SPY (validated-only-on-main, 2026-06-09).
   },
 };
 
@@ -889,6 +891,7 @@ const TFT_CAT_MANIFEST: StrategyManifest = {
   chartBacktest: {
     label: "TFT Catastrophic",
     description: "TFT, core only exits on −15% catastrophic. Maximum moonshot capture",
+    ownerOnly: true, // UNVALIDATED — pending OOS test. Owner-only until it beats SPY (validated-only-on-main, 2026-06-09).
   },
 };
 
