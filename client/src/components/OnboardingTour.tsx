@@ -27,7 +27,7 @@ const TOUR_STEPS: TourStep[] = [
     description: "Type a ticker (AAPL) or company name (Apple) in the search bar at the top. The app loads real-time data, analysis, and scoring for that stock.",
     icon: <Search className="h-6 w-6" />,
     tip: "The search works with partial names too — try 'Tesla' or 'Nvidia'.",
-    path: "/trade",
+    path: "/profile",
   },
   {
     title: "Current Positions",
@@ -38,9 +38,9 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     title: "Scanner",
-    description: "Scans up to 25 stocks dynamically using our VER (Volume Exhaustion Reversal) and AMC strategies. Filter by sector, price, market cap, and Buy/Sell signals.",
+    description: "One scanner sweeps the full liquid market for green-grade (80+) HTF breakout setups — the validated, SPY-relative edge. Filter by sector, market-cap tier, and price band.",
     icon: <Activity className="h-6 w-6" />,
-    tip: "Start with 'All Sectors' and 10 stocks to get a feel for it. Results are cached — navigate away and come back without re-scanning.",
+    tip: "Pick a market-cap tier and price band, then scan. Results are pre-ranked nightly and cached — navigate away and come back without re-scanning.",
     path: "/scanner",
   },
   {
@@ -58,11 +58,11 @@ const TOUR_STEPS: TourStep[] = [
     path: "/dividends",
   },
   {
-    title: "Trade Analysis",
-    description: "Deep analysis on any ticker: 1-year price chart with EMA overlays, BBTC signals, fundamental scoring, stress tests, and institutional data.",
+    title: "Long-Term Outlook",
+    description: "Deep read on any ticker: fundamental scoring, stress tests, institutional flows, and a single 0–100 conviction verdict for buy-and-hold.",
     icon: <BarChart3 className="h-6 w-6" />,
-    tip: "Search a ticker first, then navigate here. The Verdict page gives a single 0-100 score.",
-    path: "/trade",
+    tip: "Search a ticker first, then open this for the full picture.",
+    path: "/verdict",
   },
   {
     title: "Calculators",

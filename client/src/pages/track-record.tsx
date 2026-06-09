@@ -104,7 +104,7 @@ export default function TrackRecord() {
       {tab === "live" && <>
 
       <HelpBlock title="How Live Signals works">
-        <p><b className="text-foreground">Live Signals</b> is our running, real-time track record. Every trading day a cron job scans top stocks, logs every VER / AMC / BBTC signal the scanner fires, and records the price at that moment. <b>7, 30, and 90 days later</b> we fill in the actual forward return and compare against SPY.</p>
+        <p><b className="text-foreground">Live Signals</b> is our running, real-time track record. Every trading day a cron job scans top stocks, logs every signal the scanner fires, and records the price at that moment. <b>7, 30, and 90 days later</b> we fill in the actual forward return and compare against SPY.</p>
         <p><b className="text-foreground">Why both tabs exist:</b> The Backtester shows how a signal <i>would have</i> performed on historical data — useful for validating a hypothesis but subject to survivorship bias. Live Signals is a <b>forward-looking, honest receipt</b> of what the live scanner actually called in real time, so there’s no hindsight cheating. Over time this becomes the more credible track record.</p>
         <p><b className="text-foreground">Hit rate tables</b> show win percentage at each horizon. <b>Recent signals</b> shows individual calls with their forward returns once enough time has passed.</p>
         <p>New signals take time to mature — a call logged today won’t have a 90-day return until 90 days from now.</p>
@@ -266,7 +266,7 @@ export default function TrackRecord() {
           {/* Methodology */}
           <div className="bg-muted/20 border border-card-border/50 rounded-lg p-4 text-xs text-muted-foreground space-y-2">
             <h4 className="font-bold text-foreground mb-1">Methodology</h4>
-            <p>Stock Otter's Track Record logs every technical signal (VER, AMC, BBTC) generated daily on a universe of 25 dynamically screened stocks plus SPY/QQQ/IWM benchmarks.</p>
+            <p>Stock Otter's Track Record logs every technical signal generated daily on a universe of dynamically screened stocks plus SPY/QQQ/IWM benchmarks.</p>
             <p>Forward returns are measured at 7, 30, and 90 calendar days from signal date. "Win" means: Buy signals resulted in positive returns, Sell signals in negative returns.</p>
             <p>Alpha is calculated as the average return of our Buy signals minus the average return of SPY over the same periods. All data is auditable and stored with timestamps.</p>
             <p className="text-muted-foreground/50 italic">Past performance does not guarantee future results. This track record is provided for transparency and educational purposes only.</p>

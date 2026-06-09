@@ -9,6 +9,31 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — BBTC / VER / AMC / "Ready-Set-Go" pulled from the entire PUBLIC site
+
+**Why:** BBTC + the Ready/Set/Go chain (VER → AMC → BBTC) was the old centerpiece, but VER and AMC
+failed OOS validation and BBTC is only a soft GO. It was still leaking onto public surfaces — including
+the landing page literally advertising "Three proven strategies (BBTC, VER, AMC)," which is false. Per
+validated-only-on-main it has to be gone from everything a regular user sees.
+
+**What — every public surface scrubbed or gated:**
+- **Landing page** (`landing.tsx`): "Three proven strategies (BBTC, VER, AMC)" card → "Validated Setups"
+  (HTF, the one validated edge).
+- **Onboarding tour** (`OnboardingTour.tsx`): dropped VER/AMC scanner copy and the BBTC Trade-Analysis
+  step; repointed the now-owner-only `/trade` steps to public `/profile` and `/verdict`.
+- **Help / knowledge base** (`help-content.tsx`): removed the BBTC, VER, AMC, BBTC+VER, TFT, and
+  legacy GO/SET/READY-pip glossary entries; rewrote "Scanner modes" to the validated green-grade scanner;
+  scrubbed BBTC mentions from the add-trade and insider-trigger entries.
+- **`/chart`** moved from pro → **owner-only** (Admin Playground): its whole backtester (BBTC+VER / AMC /
+  TFT) is unvalidated, and after the TFT demotion it had no public strategies left anyway.
+- **`/scanner-legacy`** (the old BBTC/VER/AMC scanner) gated **owner-only**.
+- **Track Record + Dashboard** help text: removed "VER / AMC / BBTC" naming.
+
+All code kept intact behind the owner gate (trim, don't delete). NOTE still pending Chris's call: the
+KAIROS / HERMES bots (elite tier) genuinely *run* BBTC — pulling it from them is a functional change,
+left for a separate decision.
+
+---
 ## 2026-06-09 — Trade Analysis (/trade) page moved to owner-only
 
 **Why:** The entire `/trade` page is hard-built on the BBTC / VER / AMC "Ready/Set/Go" chain — and

@@ -123,7 +123,12 @@ function AuthenticatedApp() {
               </RequireTier>
             </Route>
             <Route path="/scanner" component={UnifiedScannerPage} />
-            <Route path="/scanner-legacy" component={Scanner} />
+            <Route path="/scanner-legacy">
+              <RequireTier min="owner" feature="Legacy Scanner"
+                description="The old BBTC / VER / AMC scanner. Owner-only — superseded by the validated /scanner; kept for reference.">
+                <Scanner />
+              </RequireTier>
+            </Route>
             <Route path="/htf" component={HtfSetupsPage} />
             <Route path="/htf/:symbol" component={HtfChartPage} />
             <Route path="/verdict" component={Verdict} />
@@ -141,8 +146,8 @@ function AuthenticatedApp() {
               <Redirect to="/chart" />
             </Route>
             <Route path="/chart">
-              <RequireTier min="pro" feature="Chart"
-                description="Candles + EMAs + MACD/RSI + the multi-signal confluence read, with the strategy backtester (BBTC+VER, AMC, TFT).">
+              <RequireTier min="owner" feature="Chart"
+                description="Strategy backtester (BBTC+VER, AMC, TFT) — owner-only; every strategy in it is unvalidated. Public charting lives on the HTF and analysis pages.">
                 <ChartPage />
               </RequireTier>
             </Route>

@@ -102,7 +102,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
 
   // ─── Setup ── the chart / backtester (per-ticker timing) ──
   // ONE combined chart: strategy backtester + MACD/RSI + confluence dashboard.
-  { path: "/chart",               label: "Chart",                 icon: FlaskConical,    group: "Setup", subtitle: "Candles + EMAs + MACD/RSI + the multi-signal confluence read, with the strategy backtester (BBTC+VER, AMC, TFT).", requiresTier: "pro" },
+  { path: "/chart",               label: "Chart (backtester)",    icon: FlaskConical,    group: "Admin Playground", subtitle: "Strategy backtester — BBTC+VER / AMC / TFT. Owner-only; all unvalidated, kept for experimentation.", requiresTier: "owner" },
 
   // ─── Investment Opportunities ── tickers in general: income + monitoring ──
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings dates + expected moves across your watchlist.", requiresTier: "pro" },

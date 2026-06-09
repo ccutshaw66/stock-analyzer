@@ -269,8 +269,8 @@ export default function LandingPage({ onLogin, onRegister }: LandingPageProps) {
             />
             <FeatureCard
               icon={Zap}
-              title="Strategy Signals"
-              description="Three proven strategies (BBTC, VER, AMC) scan for entry signals with confluence-based confidence scoring."
+              title="Validated Setups"
+              description="The HTF (High Tight Flag) breakout scanner surfaces entry setups — out-of-sample validated and SPY-relative on a tradeable price band, not curve-fit claims."
             />
           </div>
         </div>

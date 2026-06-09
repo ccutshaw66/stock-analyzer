@@ -325,7 +325,7 @@ export default function Dashboard() {
             <li><strong className="text-foreground">Reviewed Action Queue</strong> — manage existing positions before scanning for new ones.</li>
             <li><strong className="text-foreground">Reviewed earnings exposure</strong> (auto) — surfaces any held tickers reporting in the next 14 days. Material for option holders especially.</li>
             <li><strong className="text-foreground">Reviewed Position News</strong> — heads-up on what's happening with what you own, without inviting trade-the-news behaviour.</li>
-            <li><strong className="text-foreground">Reviewed dashboard for new overnight triggers</strong> — fresh HTF / Wyckoff / BBTC setups since you last looked.</li>
+            <li><strong className="text-foreground">Reviewed dashboard for new overnight triggers</strong> — fresh HTF / Wyckoff setups since you last looked.</li>
             <li><strong className="text-foreground">Worst open position within per-trade risk cap</strong> (auto) — flags any single position whose drawdown exceeds your per-trade risk cap (default 5%, configurable in Trade Tracker → Settings via the `maxRiskPerTradePct` field).</li>
             <li><strong className="text-foreground">Today's focus</strong> — one-sentence intention. Tracks whether you followed your plan, not whether you made money.</li>
           </ul>

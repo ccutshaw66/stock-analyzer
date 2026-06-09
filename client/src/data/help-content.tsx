@@ -284,7 +284,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
           <li>Click <B>+ Add Trade</B>. The form adapts based on Stock vs. Option and the chosen trade type.</li>
           <li>Sign convention for <B>Open Price</B>: <B>positive = credit received</B> (you got paid, e.g. a credit spread); <B>negative = debit paid</B> (you spent money, e.g. buying shares or a debit spread).</li>
           <li>For stocks: buying 100 shares at $150 → enter <Code>-150</Code>. Short 100 at $150 → enter <Code>150</Code>.</li>
-          <li>Strategy field tags the trade so the per-strategy lifecycle (HTF, BBTC+VER, AMC, Insider Trigger) walks it correctly.</li>
+          <li>Strategy field tags the trade so the per-strategy lifecycle (HTF and your other tagged strategies) walks it correctly.</li>
         </Steps>
       </>
     ),
@@ -364,42 +364,20 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: "scanner-modes",
     type: "how-to",
     category: "Finding Setups",
-    title: "Scanner modes (3-Strategy / AMC / Explosive)",
-    tags: ["scanner", "v2", "explosive", "amc", "3strat", "screening"],
+    title: "How the Scanner works",
+    tags: ["scanner", "screening", "green grade", "htf"],
     body: (
       <>
-        <P>The Scanner has three modes selectable via tabs:</P>
+        <P>One scanner sweeps the full liquid market and ranks every setup by a 0–100 quality score, surfacing only <B>green-grade (80+)</B> hits from out-of-sample validated strategies.</P>
         <Bullets>
-          <li><B>3-Strategy</B> — looks for tickers where BBTC, VER, and AMC all align on the same direction. Higher confluence ⇒ stronger card.</li>
-          <li><B>AMC</B> — only the AMC strategy gates (MACD divergence + Bollinger + volume + ADX).</li>
-          <li><B>Explosive (v2)</B> — wider universe (2,000+ tickers) scanned through the v2 gating system. Click a card to drill into Trade Analysis.</li>
+          <li>Pick a <B>market-cap tier</B> and <B>price band</B> (required), and optionally a sector.</li>
+          <li>Results are pre-ranked nightly and cached, so the page loads instantly; hit <B>Refresh now</B> to recompute.</li>
         </Bullets>
-        <P>Each result card carries a verdict pip (<Code>GO ↑</Code>, <Code>SET ↑</Code>, <Code>READY ↑</Code>, <Code>PULLBACK</Code>, etc.) — same vocabulary as the watchlist and Trade Analysis pages. Results are session-cached so reloading the page keeps them around.</P>
+        <P>Click any card to drill into that ticker. Only validated strategies appear here.</P>
       </>
     ),
   },
 
-  {
-    id: "scanner-pip",
-    type: "what-it-means",
-    category: "Reading Verdicts",
-    title: "Scanner pip verdicts (GO / SET / READY / PULLBACK)",
-    tags: ["pip", "go", "set", "ready", "pullback", "scanner"],
-    body: (
-      <>
-        <P>The small pill next to each ticker tells you where the setup is in its lifecycle:</P>
-        <Bullets>
-          <li><B>GO ↑</B> / <B>GO ↓</B> — all 3 gates cleared (strongest read).</li>
-          <li><B>SET ↑</B> / <B>SET ↓</B> — 2 of 3 gates cleared.</li>
-          <li><B>READY ↑</B> / <B>READY ↓</B> — 1 gate cleared.</li>
-          <li><B>PULLBACK</B> — a prior setup is in a buyable pullback zone.</li>
-          <li><B>GATES CLOSED</B> — the conditions that fired earlier have gone stale.</li>
-          <li><B>NO SETUP</B> — nothing aligning right now.</li>
-        </Bullets>
-        <P>Up-arrow variants are bullish; down-arrow are bearish. Pip results are cached server-side for 15 minutes.</P>
-      </>
-    ),
-  },
 
   {
     id: "htf-tabs",
@@ -824,78 +802,6 @@ export const HELP_ENTRIES: HelpEntry[] = [
   // ════════════════════════════════════════════════════════════════════════
 
   {
-    id: "strategy-bbtc",
-    type: "what-it-means",
-    category: "Strategies",
-    title: "BBTC — trend follower",
-    tags: ["bbtc", "trend", "ema", "atr", "trail"],
-    body: (
-      <>
-        <P>Long-only trend follower (pivoted 2026-05-08 to state-based, no profit target — stops run the gains).</P>
-        <P><B>Entry</B> (all must hold):</P>
-        <Bullets>
-          <li>EMA9 &gt; EMA21 (short stack aligned)</li>
-          <li>Close &gt; EMA50 (above intermediate trend)</li>
-          <li>ADX ≥ 20 (trend has strength)</li>
-          <li>RSI &lt; 65 (or &lt; 75 if turning up from a pullback)</li>
-          <li>SMA200 regime OK (price above or SMA rising)</li>
-        </Bullets>
-        <P><B>Exit</B>:</P>
-        <Bullets>
-          <li><B>Hard stop</B> = entry − 2.5 × ATR</li>
-          <li><B>Trail stop</B> = peak − 3.0 × ATR</li>
-          <li><B>SELL signal</B> = EMA9 &lt; EMA21 AND close &lt; EMA50</li>
-        </Bullets>
-        <P>Strategy id in the registry: <Code>bbtc-ver</Code> (BBTC always runs paired with VER).</P>
-      </>
-    ),
-  },
-
-  {
-    id: "strategy-ver",
-    type: "what-it-means",
-    category: "Strategies",
-    title: "VER — volume exhaustion reversal",
-    tags: ["ver", "reversal", "rsi divergence", "bollinger"],
-    body: (
-      <>
-        <P>RSI-divergence reversal at Bollinger extremes. Long trades only (short side demoted to info-only 2026-05-08 — it lost across every backtested window).</P>
-        <P><B>Long entry</B>:</P>
-        <Bullets>
-          <li>Higher-low RSI divergence (lookback 5–20 bars)</li>
-          <li>Volume ≥ 2× the 20-bar average (exhaustion spike)</li>
-          <li>Price touched lower Bollinger band AND closed back inside</li>
-          <li>RSI &lt; 35 = <Code>BUY</Code> (tradeable); RSI 35–45 = <Code>WATCH_BUY</Code> (info-only)</li>
-        </Bullets>
-        <P><B>Stops</B>: long = entry × 0.93 OR entry − 2×ATR (whichever is tighter).</P>
-      </>
-    ),
-  },
-
-  {
-    id: "strategy-amc",
-    type: "what-it-means",
-    category: "Strategies",
-    title: "AMC — Adaptive Momentum Confluence",
-    tags: ["amc", "momentum", "confluence", "macd", "vami"],
-    body: (
-      <>
-        <P>Five-condition confluence score (0–5).</P>
-        <P><B>Score conditions</B>:</P>
-        <Bullets>
-          <li>MACD histogram &gt; 0 and accelerating</li>
-          <li>RSI between 45 and 65</li>
-          <li>Close &gt; ShortEMA &gt; LongEMA (stack aligned)</li>
-          <li>VAMI &gt; 0 and rising (volume-adjusted momentum)</li>
-          <li>|ShortEMA − RefEMA| / close &gt; 0.5% (real trend separation, not noise)</li>
-        </Bullets>
-        <P><B>Entry</B>: momentum entry when score ≥ 4 + green close; reversion entry on RSI &lt; 30 + price near reference + VAMI rising + green close.</P>
-        <P><B>Exit</B>: RSI &gt; 75, OR MACD histogram flips negative (was ≥ 0 prior bar).</P>
-      </>
-    ),
-  },
-
-  {
     id: "strategy-htf",
     type: "what-it-means",
     category: "Strategies",
@@ -921,48 +827,6 @@ export const HELP_ENTRIES: HelpEntry[] = [
   },
 
   {
-    id: "strategy-tft",
-    type: "what-it-means",
-    category: "Strategies",
-    title: "TFT — Two-layer Trend Follower (40W / 60W / Catastrophic)",
-    tags: ["tft", "trend follower", "40w", "60w", "catastrophic", "tactical"],
-    body: (
-      <>
-        <P>Two-layer architecture:</P>
-        <Bullets>
-          <li><B>CORE</B> — 1.0 unit held on regime confirmation. Exits only on weekly SMA break or −15% catastrophic.</li>
-          <li><B>TACTICAL</B> — 0.5-unit adds on BBTC/VER signals while CORE is bullish; 5× ATR trail on the add.</li>
-        </Bullets>
-        <P><B>Regime gating</B>: bullish = weekly close &gt; 40W SMA AND SMA rising 4 consecutive weeks. 2 weekly closes required to flip (whipsaw guard).</P>
-        <P>Three variants in the registry:</P>
-        <Bullets>
-          <li><Code>tft-40w</Code> — core exits on weekly close below 40W SMA.</li>
-          <li><Code>tft-60w</Code> — core exits on weekly close below 60W SMA (slower, fewer exits).</li>
-          <li><Code>tft-cat</Code> — core only exits on −15% catastrophic stop ("moonshot" mode).</li>
-        </Bullets>
-      </>
-    ),
-  },
-
-  {
-    id: "strategy-bbtc-ver",
-    type: "what-it-means",
-    category: "Strategies",
-    title: "BBTC+VER — combination",
-    tags: ["bbtc-ver", "combo", "shared exit"],
-    body: (
-      <>
-        <P>The registry treats BBTC and VER as one strategy id (<Code>bbtc-ver</Code>) because they share an exit framework. Either side can fire the entry; once open, the exits are:</P>
-        <Bullets>
-          <li><B>Hard stop</B> = entry × (1 − 8%)</li>
-          <li><B>Trail stop</B> = highest close × (1 − 10%)</li>
-          <li><B>Active stop</B> = max(hard, trail)</li>
-        </Bullets>
-      </>
-    ),
-  },
-
-  {
     id: "strategy-insider-trigger",
     type: "what-it-means",
     category: "Strategies",
@@ -971,7 +835,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     body: (
       <>
         <P>Entry on an organic insider conviction cluster (MRP-style multi-insider buy on the /insiders page, NOT IPO sponsor flood). Buy the day after the Form 4 files. The reason field captures filing date + insider name(s) for auditability.</P>
-        <P>Exits are identical to BBTC+VER (8% hard / 10% trail). Registry id: <Code>insider-trigger</Code>.</P>
+        <P>Exits use an 8% hard stop / 10% trailing stop. Registry id: <Code>insider-trigger</Code>.</P>
       </>
     ),
   },
