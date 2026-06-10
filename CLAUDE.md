@@ -9,6 +9,36 @@ stockotter-specific.
 Owner: Chris Cutshaw — owns stockotter.ai. Cut-and-paste coder: give exact CLI steps in
 order with what to expect.
 
+## How to take on any non-trivial request (Layers 1 → 2 → 3)
+Run these three layers, in order, before calling a job done. Skip ONLY for trivial,
+fully-specified one-line tweaks.
+
+**Layer 1 — Lock the real goal (before building).**
+- Interview Chris to surface the *actual* goal behind the request, not the literal ask. Use
+  the `interview` skill.
+- Bias toward smaller steps: propose the smallest slice that delivers value, ship that, then
+  iterate. Prefer 3 small verified steps over 1 big unverified one.
+- Verify key decisions back to Chris *explicitly* ("I'm going to do X, not Y — confirm?")
+  so nothing is assumed or missed. Confirm the goal and the slice boundary before coding.
+
+**Layer 2 — Define "great" up front, then have it checked independently (before shipping).**
+- Before starting, write down the precise criteria for a great result (what done looks like,
+  edge cases, what it must NOT do). Anchor to the Layer-1 brief.
+- Match the format of a past good example — find the closest existing widget/strategy/endpoint
+  and mirror its shape, tokens, and structure (no parallel/independent builds).
+- Have an *independent* checker review the final output against those criteria — a second
+  agent (`code-review` skill, `indicator-auditor` / `quant-validator` / `parity-checker`
+  agents, or Codex), NOT the same model that wrote it. `verify-work` is self-audit and does
+  not satisfy this on its own.
+
+**Layer 3 — Audit the rules system itself (when asked to harden the setup).**
+- Check CLAUDE.md, the knowledge base / memory, the skills, and the guardrails (hooks/
+  settings). For each of the top 5 gaps, name the **file**, the **problem**, and the **exact
+  fix**.
+- Flag which risky actions need a **hook** so they can't be bypassed in prose (e.g. push to
+  `main`, `git add -A`, `--no-verify`, re-enabling a demoted/unvalidated signal). A rule that
+  isn't enforced by a hook is a suggestion, not a guardrail.
+
 ## Deploy / shipping
 - **Verbal approval = ship directly to `origin/main`.** No PR branch, no manual-merge
   ceremony. `main` is production — pushing it auto-deploys via GitHub webhook → pm2 on
