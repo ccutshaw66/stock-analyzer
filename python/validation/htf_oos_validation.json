@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-06-10T04:29:35.946Z",
+  "method": "LIVE scanHtf (server/signals/strategies/htf.ts), lookbackDays=252, requireBreakout=true. NO LOOK-AHEAD: scanHtf run on bars [0..i] only; keep a hit whose breakoutDate==bars[i] (fresh same-bar fire). Forward +20/+60 trading-day close-to-close return; excess vs SPY over the identical window. De-dupe repeat fires per symbol within 10 trading days. IS/OOS = breakoutDate calendar 65/35 (split 2023-11-01). HAC/Newey-West t-stat (lag=horizon) on the excess series corrects for overlapping-window autocorrelation.",
+  "universe": "HTF $5-75 / vol>=750k / cap>=200M; 969 names, sampled top 100 by volume desc",
+  "window": "~7y daily bars per name (2019-01-02 .. 2026-06-09)",
+  "survivorshipCaveat": "getHtfUniverse screens on CURRENT price/vol/cap, so the basket is biased toward names that survived into today's $5-75 band — it OVER-SELECTS the 2024 low-priced moonshots (QUBT/RGTI/RCAT) that drive the entire positive mean. Absolute returns are optimistic; the median + tail-robust diagnostics are the load-bearing evidence.",
+  "harness": "server/diag/htf-validation.ts",
+  "span": {
+    "breakoutDateMin": "2019-01-02",
+    "breakoutDateMax": "2026-06-09",
+    "splitDate": "2023-11-01"
+  },
+  "counts": {
+    "sampledNames": 100,
+    "namesWithFires": 97,
+    "fetchFailures": 0,
+    "totalFires": 1953,
+    "isFires": 1033,
+    "oosFires": 920,
+    "oosFiresWithFwd20": 877,
+    "oosFiresWithFwd60": 817
+  },
+  "factor": {
+    "htf": {
+      "IS": {
+        "h20": { "n": 1033, "medFwd": -0.0059, "medExc": -0.0168, "meanExc": 0.0319, "winVsSpy": 0.458, "tStat": 1.68, "sharpe": 0.092 },
+        "h60": { "n": 1033, "medFwd": -0.0183, "medExc": -0.0409, "meanExc": 0.0953, "winVsSpy": 0.435, "tStat": 1.10, "sharpe": 0.105 }
+      },
+      "OOS": {
+        "h20": { "n": 877, "medFwd": -0.0017, "medExc": -0.0130, "meanExc": 0.0712, "winVsSpy": 0.468, "tStat": 2.93, "sharpe": 0.165 },
+        "h60": { "n": 817, "medFwd": 0.0034, "medExc": -0.0364, "meanExc": 0.1656, "winVsSpy": 0.448, "tStat": 2.27, "sharpe": 0.177 }
+      },
+      "ALL": {
+        "h20": { "n": 1910, "medFwd": -0.0040, "medExc": -0.0159, "meanExc": 0.0499, "winVsSpy": 0.462, "tStat": 3.28, "sharpe": 0.128 },
+        "h60": { "n": 1850, "medFwd": -0.0096, "medExc": -0.0392, "meanExc": 0.1264, "winVsSpy": 0.441, "tStat": 2.17, "sharpe": 0.137 }
+      },
+      "tailRobustnessOOS60": {
+        "note": "The positive OOS mean is a fat-right-tail artifact, NOT a typical-trade edge. Diagnostics on the OOS +60d excess distribution (n=817):",
+        "mean": 0.1656,
+        "median": -0.0364,
+        "pctTradesBeatingSPY": 0.448,
+        "p5": -0.469,
+        "p25": -0.221,
+        "p75": 0.260,
+        "p95": 1.352,
+        "p99": 3.276,
+        "max": 12.258,
+        "meanExcTrim5pct": 0.0493,
+        "meanExcTrim10pct": 0.0150,
+        "top5TradesShareOfExcessSum": 0.34,
+        "top1pctTradesShareOfExcessSum": 0.43,
+        "top8Winners": ["QUBT 2024-10-17 +1226%", "QUBT 2024-09-12 +1008%", "RGTI 2024-10-18 +911%", "RGTI 2024-11-07 +828%", "QUBT 2024-11-07 +607%", "RGTI 2024-11-22 +481%", "KEEL 2025-07-22 +384%", "RCAT 2024-10-01 +350%"]
+      },
+      "deflatedSharpe": "n/a — single pre-specified detector (the LIVE scanHtf), NOT best-of-N. No multiple-testing search over HTF variants was run here, so there is no inflated winner to deflate. The HAC t-stat already discounts overlapping-window autocorrelation; but note the HAC t-stat is NOT robust to the extreme right-skew here (the +60d max is +1226%), so it overstates significance — the median / trimmed-mean / win-rate are the trustworthy read.",
+      "correlationCluster": "price-momentum / breakout (pole = trailing momentum, breakout = trend continuation). Redundant with the AMC / BBTC / 1Y-return momentum vote — NOT an independent confluence confirmer.",
+      "verdict": "NO-GO"
+    }
+  },
+  "bottomLine": "HTF does NOT have a clean out-of-sample SPY edge on the $5-75 universe. Sample is well-powered (N=1953 fires; 877/817 OOS at 20d/60d), so this is not an underpowered result — it is a decisively negative one for the typical trade. The MEDIAN HTF breakout UNDERperforms SPY at both horizons (OOS median excess -1.30% @20d, -3.64% @60d) and only 44.8-46.8% of breakouts beat SPY (below a coin flip). The eye-catching POSITIVE mean (+7.1% @20d, +16.6% @60d, HAC t~2-3) is entirely a fat-right-tail artifact: the top 1% of trades supply 43% of the total excess and the top 5 supply 34% — they are the 2024 quantum/defense moonshots (QUBT +1226%/+1008%, RGTI +911%/+828%), exactly the survivorship-favored low-priced lottery tickets a CURRENT-$5-75 universe over-selects and that a ~$7-10K account cannot reliably capture or size for. Trim 10% of the tails and the mean edge collapses to +1.5% (pre-cost, still survivorship-inflated). HTF is also a momentum/breakout vote redundant with AMC/BBTC, so it cannot serve as an independent confluence confirmer. RECOMMENDATION: HTF stays owner-only — do NOT flip liveScan.ownerOnly OFF in shared/strategies/registry.ts. The current ownerOnly:true setting is correct."
+}

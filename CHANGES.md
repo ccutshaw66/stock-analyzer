@@ -9,6 +9,26 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — HTF validated SPY-relative on the $5-75 universe → NO-GO (stays owner-only)
+
+**Why:** The trust audit found HTF — the former lone public "green GO" — had never been tested
+SPY-relative on the $5-75 universe (its old "validation" was WFE-only / mega-cap). This builds the
+missing clean test and settles it.
+
+**What:** New harness `server/diag/htf-validation.ts` runs the LIVE `scanHtf` detector on
+`getHtfUniverse()` ($5-75, top 100 by volume), bars `[0..i]` only (no look-ahead, fresh same-bar
+breakouts), forward 20d/60d close-to-close minus SPY = excess, IS/OOS calendar 65/35 split at
+2023-11-01 (BBTC method), de-duped within 10 trading days. Artifact written to
+`python/validation/htf_oos_validation.json` (same shape as bbtc/amc).
+
+**Result — NO-GO.** OOS N=877@20d/817@60d (healthy). Median excess vs SPY **−1.30%@20d / −3.64%@60d**;
+win-rate vs SPY **46.8% / 44.8%** (sub-coin-flip). Mean excess is positive but a fat-tail mirage — top
+1% of trades supply 43% of all excess (2024 sub-$10 moonshots: QUBT, RGTI, RCAT); trim 10% tails and
+the edge collapses to +1.5% pre-cost, still survivorship-inflated. HTF is also momentum-redundant with
+BBTC/AMC so it can't be an independent confluence confirmer. HTF `liveScan.ownerOnly:true` stands — it
+is correctly off the public site. **BBTC remains the only OOS-validated public edge.**
+
+---
 ## 2026-06-09 — Trust cleanup: strip every unvalidated signal off the public site
 
 **Why:** The 2026-06-09 multi-agent trust audit (docs/AUDIT-2026-06-09.md) found the public site was
