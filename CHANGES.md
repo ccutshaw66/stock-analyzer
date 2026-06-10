@@ -9,7 +9,20 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
-## 2026-06-09 — HTF validated SPY-relative on the $5-75 universe → NO-GO (stays owner-only)
+## 2026-06-10 — Project rules: add the Layer 1 → 2 → 3 workflow for taking on requests
+
+**Why:** Work was being "plunged into" without locking the real goal, without an up-front
+definition of a great result, and without an independent check — and the rules system itself
+had drifted (dangling references, prose-only guardrails). This codifies the approach Chris
+wants for every non-trivial request.
+
+**What:** Added a "How to take on any non-trivial request (Layers 1 → 2 → 3)" section to
+`CLAUDE.md`: Layer 1 interviews for the real goal, biases to smaller steps, and explicitly
+verifies key decisions; Layer 2 defines "great" criteria up front, matches a past example's
+format, and routes the output to an *independent* checker (a second agent / Codex, not the
+authoring model); Layer 3 audits CLAUDE.md + knowledge base + skills + guardrails, reporting
+the top 5 gaps (file / problem / exact fix) and flagging which risky actions need a hook.
+Touched: `CLAUDE.md`.
 
 **Why:** The trust audit found HTF — the former lone public "green GO" — had never been tested
 SPY-relative on the $5-75 universe (its old "validation" was WFE-only / mega-cap). This builds the
