@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-10 — Housekeeping: commit the validated-only rule + BBTC/AMC validation artifacts
+
+**Why:** Three files had been sitting uncommitted across machines — the CLAUDE.md block that makes
+"validated-only on main" an official standing project rule, and the BBTC + AMC out-of-sample
+validation JSONs (siblings of the already-committed HTF artifact). Untracked meant the rule never
+traveled to the other machines and the OOS evidence wasn't in the repo.
+
+**What:** Committed `CLAUDE.md` (the VALIDATED-ONLY ON MAIN rule under Strategy/indicator work) and
+`python/validation/bbtc_oos_validation.json` + `python/validation/amc_oos_validation.json` (the
+evidence behind BBTC = soft GO and AMC = NO-GO). Docs + data only — no application code touched, so
+the build gate is unaffected.
+
+---
 ## 2026-06-09 — HTF validated SPY-relative on the $5-75 universe → NO-GO (stays owner-only)
 
 **Why:** The trust audit found HTF — the former lone public "green GO" — had never been tested

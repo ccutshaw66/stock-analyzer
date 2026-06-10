@@ -51,6 +51,15 @@ order with what to expect.
   can't trade mega-caps, so mega-cap numbers mislead.
 - No indicator carries weight in a score until it's validated out-of-sample, SPY-relative
   (use the `quant-validator` agent / validation harness).
+- **VALIDATED-ONLY ON MAIN (rule set 2026-06-03).** Every strategy/detector shown anywhere on
+  the MAIN site must be out-of-sample validated — SPY-relative, on the $5–$75 HTF universe
+  (NOT mega-cap baskets; in-sample "$X.XM winner" claims baked in code are NOT validation).
+  If a strategy hasn't been tested, test it. If it fails and reasonable adjustments don't make
+  it beat SPY, move it to the owner-only **Admin Playground** as its own page (kept for
+  experimentation, off the public product) — trim, don't delete. Applies to EVERYTHING:
+  scanner detectors, /chart strategies, dedicated strategy pages. As of 2026-06-03 only **HTF**
+  is validated; AMC / Rounding Bottom / Wyckoff / Pipe failed; BBTC+VER and TFT (40w/60w/cat)
+  are UNVALIDATED and pending the OOS test.
 
 ## Memory
 - Persistent project memory lives in `~/.claude/projects/I--stockotter/memory/`. `MEMORY.md`

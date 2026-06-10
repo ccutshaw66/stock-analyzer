@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-06-03",
+  "method": "Weekly walk-forward, strictly out-of-sample (no fitting). HTF universe = liquid US common $5-75, market cap 300M-20B, vol >=750k, 66 names >=5y history spread across 11 sectors. AMC firing mirrors computeAmcHits + scanOne gates from unified-scanner/engine.ts exactly (scoreAMC>=4 AND green close; fresh<=3 cal days; green>=80; live at as-of price). Outcome: first-touch target(+2.5R)/stop(-1R)/60d-timeout MtM; raw +20/+60d return; excess vs SPY over identical window. De-dupe repeat fires within 10 trading days.",
+  "window": "2016-01-01..2026-06-03",
+  "factor": {
+    "amc": {
+      "nSetups": 7137,
+      "nTickers": 66,
+      "winPctTargetBeforeStop": 0.143,
+      "avgR": 0.012,
+      "cleanExpectancyR": -0.263,
+      "perTradeSharpe": 0.009,
+      "medianFwd20": 0.0010,
+      "medianFwd60": 0.0088,
+      "medianExcessVsSPY20": -0.0096,
+      "medianExcessVsSPY60": -0.0227,
+      "meanExcessVsSPY20": -0.0054,
+      "meanExcessVsSPY60": -0.0106,
+      "pctBeatingSPY20": 0.445,
+      "pctBeatingSPY60": 0.423,
+      "tStatExcess20": -4.79,
+      "tStatExcess60": -5.18,
+      "deflatedSharpe": "n/a (single pre-specified detector, not best-of-N; per-trade Sharpe ~0.01 is statistically indistinguishable from 0 and the SPY-excess t-stats are strongly NEGATIVE, so no multiple-testing inflation to deflate)",
+      "correlationCluster": "price-momentum (MACD-hist + EMA-stack + RSI band + VAMI = one momentum vote; redundant with HTF/1Y-return cluster, NOT an independent confirmer)",
+      "verdict": "NO-GO"
+    }
+  },
+  "bottomLine": "AMC has NO out-of-sample SPY-relative edge. Across 7,137 setups it underperforms SPY-buy-and-hold at both 20d and 60d horizons (median excess -0.96% / -2.27%; t = -4.8 / -5.2), wins its own 2.5R target only 14% of the time vs the ~28.6% breakeven, and carries a negative clean expectancy (-0.26R). Recommend AMC be DEMOTED from a default green GO in the scanner (same treatment as Rounding Bottom), carrying ~0 weight."
+}

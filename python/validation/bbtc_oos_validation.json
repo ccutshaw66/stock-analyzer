@@ -1,0 +1,127 @@
+{
+  "generatedAt": "2026-06-06T13:40:51.717Z",
+  "design": {
+    "strategy": "computeBBTC (server/signals/strategies/bbtc.ts) — long-only trend follower",
+    "universe": "HTF $5–75 / vol>=750k / cap>=200M; 948 names, sampled top 100 by volume desc",
+    "positionSizeDollars": 1000,
+    "window": "~7y daily bars per name",
+    "pairing": "LONG BUY/ADD_LONG -> next SELL/STOP_HIT/REDUCE; open trades at end dropped",
+    "isOosSplit": "entryDate calendar 65/35; split=2023-10-21",
+    "spyExcessDef": "trade return - SPY return over the same hold window",
+    "beatsSpyDef": "OOS totalPnL > 0 AND OOS avg SPY-excess > 0",
+    "survivorshipCaveat": "universe filtered on CURRENT price/vol/cap; absolute $ optimistic",
+    "noLookAhead": "computeBBTC uses only data up to bar i; exits priced at the exit bar close"
+  },
+  "span": {
+    "entryDateMin": "2018-12-11",
+    "entryDateMax": "2026-06-03",
+    "splitDate": "2023-10-21"
+  },
+  "counts": {
+    "sampledNames": 100,
+    "namesWithTrips": 97,
+    "fetchFailures": 0,
+    "totalTrips": 2602,
+    "isTrips": 1486,
+    "oosTrips": 1116
+  },
+  "spyBuyHold": {
+    "isPct": 59.5,
+    "oosPct": 79.4
+  },
+  "metrics": {
+    "IS": {
+      "ASIS": {
+        "trades": 1486,
+        "winRatePct": 35.2,
+        "avgRetPct": 2.59,
+        "medianRetPct": -2.56,
+        "totalPnL$": 38473,
+        "maxDD$": 13771,
+        "avgSpyExcessPct": 1.88
+      },
+      "INVERTED": {
+        "trades": 1486,
+        "winRatePct": 63.7,
+        "avgRetPct": -2.59,
+        "medianRetPct": 2.56,
+        "totalPnL$": -38473,
+        "maxDD$": 48269,
+        "avgSpyExcessPct": -3.29
+      },
+      "FIXED": {
+        "trades": 1486,
+        "winRatePct": 35.2,
+        "avgRetPct": 2.59,
+        "medianRetPct": -2.56,
+        "totalPnL$": 38473,
+        "maxDD$": 13771,
+        "avgSpyExcessPct": 1.88
+      }
+    },
+    "OOS": {
+      "ASIS": {
+        "trades": 1116,
+        "winRatePct": 36.5,
+        "avgRetPct": 3.7,
+        "medianRetPct": -2.99,
+        "totalPnL$": 41322,
+        "maxDD$": 9539,
+        "avgSpyExcessPct": 2.63
+      },
+      "INVERTED": {
+        "trades": 1116,
+        "winRatePct": 63.2,
+        "avgRetPct": -3.7,
+        "medianRetPct": 2.99,
+        "totalPnL$": -41322,
+        "maxDD$": 48153,
+        "avgSpyExcessPct": -4.77
+      },
+      "FIXED": {
+        "trades": 1116,
+        "winRatePct": 36.5,
+        "avgRetPct": 3.7,
+        "medianRetPct": -2.99,
+        "totalPnL$": 41322,
+        "maxDD$": 9539,
+        "avgSpyExcessPct": 2.63
+      }
+    },
+    "ALL": {
+      "ASIS": {
+        "trades": 2602,
+        "winRatePct": 35.7,
+        "avgRetPct": 3.07,
+        "medianRetPct": -2.71,
+        "totalPnL$": 79795,
+        "maxDD$": 13771,
+        "avgSpyExcessPct": 2.21
+      },
+      "INVERTED": {
+        "trades": 2602,
+        "winRatePct": 63.5,
+        "avgRetPct": -3.07,
+        "medianRetPct": 2.71,
+        "totalPnL$": -79795,
+        "maxDD$": 87291,
+        "avgSpyExcessPct": -3.93
+      },
+      "FIXED": {
+        "trades": 2602,
+        "winRatePct": 35.7,
+        "avgRetPct": 3.07,
+        "medianRetPct": -2.71,
+        "totalPnL$": 79795,
+        "maxDD$": 13771,
+        "avgSpyExcessPct": 2.21
+      }
+    }
+  },
+  "verdict": {
+    "ASIS": "GO",
+    "FIXED": "GO",
+    "INVERTED": "NO-GO",
+    "fixedBeatsAsisOOS": false
+  }
+}
