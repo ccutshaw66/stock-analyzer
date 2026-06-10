@@ -216,7 +216,12 @@ const HTF_MANIFEST: StrategyManifest = {
   description: "HTF setup: 30%+ pole, tight flag, breakout on volume",
   color: "bull",
   requiresReason: false,
-  liveScan: { defaultOn: true },
+  // ownerOnly 2026-06-09 (validated-only-on-main): the 2026-06-09 trust audit found HTF's
+  // "validation" is WFE-only (OOS-$ ÷ IS-$, no SPY benchmark) and the only SPY-relative numbers
+  // are on a mega-cap basket, NOT the $5-75 universe the rule requires. So HTF is UNPROVEN, not a
+  // validated edge — off the public scanner + trade dropdown until it's re-tested SPY-relative on
+  // the HTF universe. See docs/AUDIT-2026-06-09.md.
+  liveScan: { defaultOn: true, ownerOnly: true },
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target", "Pole", "Flag"],
   evaluate(trade) {
     const data = trade.strategyData ?? {};
@@ -1046,6 +1051,10 @@ const INSIDER_TRIGGER_MANIFEST: StrategyManifest = {
   description: "CEO / cluster insider buying conviction (MRP-style). Long the day after the Form 4 prints.",
   color: "bull",
   requiresReason: true,    // capture which insider(s) + filing date
+  // ownerOnly 2026-06-09 (validated-only-on-main): zero OOS validation — no SPY-relative test, no
+  // harness, basis is prose ("long the day after the Form 4 prints"). Demoted out of the public
+  // trade-strategy dropdown until validated. See docs/AUDIT-2026-06-09.md.
+  liveScan: { defaultOn: false, ownerOnly: true },
   columnOrder: ["Stop (hard)", "Trail (10%)", "Active stop", "Target"],
   evaluate: BBTC_VER_MANIFEST.evaluate,
 };

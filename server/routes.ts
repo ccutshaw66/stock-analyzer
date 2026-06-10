@@ -5796,8 +5796,13 @@ export async function registerRoutes(
       const cacheKey = tierCacheKey(tier.id);
       const raw = readUnifiedScan(cacheKey);
       const base = raw?.payload ?? [];
+      // This is an UNAUTHENTICATED mirror — never serve owner-only/demoted detectors
+      // (HTF, AMC, Rounding, Wyckoff, Pipe), matching the public /api/unified-scanner filter.
+      const { STRATEGY_REGISTRY, isStrategyDemoted } = await import("@shared/strategies/registry");
+      const demoted = new Set(Object.values(STRATEGY_REGISTRY).filter(isStrategyDemoted).map((m: any) => m.id));
       const inBand = (p: number) => p >= band.min && (band.max == null || p <= band.max);
       const hits = base.filter((h: any) =>
+        !demoted.has(h.strategyId) &&
         h.marketCap >= tier.min && (tier.max == null || h.marketCap < tier.max) &&
         inBand(h.price) && (sector === "all" || h.sector === sector) &&
         (strategyIds.length === 0 || strategyIds.includes(h.strategyId)));

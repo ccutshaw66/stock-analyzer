@@ -44,7 +44,10 @@ export interface BotConfig {
 const DEFAULT_CONFIG: BotConfig = {
   startingEquity: 10000, positionPct: 0.2, maxPositions: 5,
   exitEmaPeriod: TREND_RIDE_EMA, breakConfirmBars: TREND_RIDE_CONFIRM_BARS,
-  seedMonths: 18, universeSize: 120,
+  // seedMonths 18 → 0 (2026-06-09): blending 18mo of replayed backtest into the displayed live
+  // P&L / win-rate / equity made the "track record" misleading (audit finding). Forward-only now —
+  // a clean paper-forward test. Existing prod state must be RESET once to flush the old seed.
+  seedMonths: 0, universeSize: 120,
 };
 
 interface OpenPos { id: string; ticker: string; entryDate: string; entryPrice: number; shares: number; sizeDollars: number; hardStop: number; markPrice?: number; unrealPnl$?: number; unrealPnlPct?: number; }

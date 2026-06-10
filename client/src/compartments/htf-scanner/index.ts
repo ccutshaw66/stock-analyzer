@@ -13,7 +13,8 @@ import { HtfTeaser } from "./HtfTeaser";
 const meta: CompartmentMeta = {
   id: "htf-scanner",
   name: "HTF Scanner — High Tight Flag",
-  tier: "free",
+  // owner 2026-06-09: HTF is UNPROVEN (never validated SPY-relative on $5-75). Owner-only until re-tested.
+  tier: "owner",
   fullPageRoute: "/htf",
   description:
     "30%+ pole / tight flag breakouts firing right now. Entry, target, and stop per the HTF ruleset.",

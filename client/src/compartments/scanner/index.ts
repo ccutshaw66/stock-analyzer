@@ -13,7 +13,8 @@ import { BestOppsWidget } from "./BestOppsWidget";
 const meta: CompartmentMeta = {
   id: "scanner-v2",
   name: "Scanner v2 — Best Opps",
-  tier: "free",
+  // owner 2026-06-09: emits BUY/SELL composite picks validated only on mega-caps (not $5-75). Owner-only until re-validated.
+  tier: "owner",
   fullPageRoute: "/scanner",
   description: "Confluence-based explosion detector. Top scoring tickers with per-signal breakdown.",
 };

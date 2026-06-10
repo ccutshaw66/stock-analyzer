@@ -9,6 +9,36 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-09 — Trust cleanup: strip every unvalidated signal off the public site
+
+**Why:** The 2026-06-09 multi-agent trust audit (docs/AUDIT-2026-06-09.md) found the public site was
+leaking unproven/failed signals everywhere — and that **HTF, the lone public "green GO," was never
+actually validated SPY-relative on the $5-75 universe** (its "validation" is WFE-only; the only SPY
+numbers are on a mega-cap basket). BBTC's long entry is the ONLY properly OOS-validated edge. Per
+validated-only-on-main, everything unproven comes off the public surface until re-tested. Nothing is
+deleted — all moved owner-only (Admin Playground), reversible.
+
+**What:**
+- **Server registry (`shared/strategies/registry.ts`):** HTF → `liveScan.ownerOnly:true` (drops it
+  from the public scanner AND the trade-strategy dropdown via `isStrategyDemoted`). Insider Trigger →
+  demoted (was publicly selectable with zero validation).
+- **Pages → owner (`App.tsx` RequireTier + `page-registry.ts`):** `/htf` + `/htf/:symbol` (HTF
+  Setups), `/conviction` (Trigger Check — leans on the unproven HTF check), `/kairos` + `/hermes`
+  (unvalidated bots, were elite-reachable), `/track-record` (logs failed VER/COMBINED on mega-caps +
+  its logger cron isn't running — being rebuilt as the real truth page).
+- **Dashboard widgets → owner tier:** `scanner-v2` (Best Opps), `confluence-chart`, `htf-scanner`,
+  `kairos`, `hermes` — all were free-addable and surfaced BUY/SELL on unproven signals.
+- **Unauthenticated diag mirror (`/api/diag/unified-scan-served`):** now excludes demoted strategies,
+  matching the public scanner filter (was a hole that could serve owner-only detectors logged-out).
+- **Trend-Ride bot seed (`trend-ride-bot.ts`):** `seedMonths` 18 → 0 so it stops blending replayed
+  backtest into the displayed live P&L/win-rate. NOTE: the existing prod bot must be **Reset once**
+  to flush the old seed.
+
+**Net public surface:** only the validated BBTC + raw indicators + the (now-sparse) green scanner
+remain public. The public green scanner list is intentionally near-empty until HTF is re-validated
+SPY-relative on the $5-75 universe (the next job). `npm run build` passes.
+
+---
 ## 2026-06-09 — Strategy Lab: "Stop-loss reality check" panel for credit trades
 
 **Why:** Chris asked why you can't just sell credit spreads all day with a 60% (trailing) stop and

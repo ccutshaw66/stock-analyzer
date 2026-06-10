@@ -129,8 +129,18 @@ function AuthenticatedApp() {
                 <Scanner />
               </RequireTier>
             </Route>
-            <Route path="/htf" component={HtfSetupsPage} />
-            <Route path="/htf/:symbol" component={HtfChartPage} />
+            <Route path="/htf">
+              <RequireTier min="owner" feature="HTF Setups"
+                description="High Tight Flag breakouts. Owner-only as of 2026-06-09 — the trust audit found HTF was never validated SPY-relative on the $5-75 universe. Back to public once it's re-tested.">
+                <HtfSetupsPage />
+              </RequireTier>
+            </Route>
+            <Route path="/htf/:symbol">
+              <RequireTier min="owner" feature="HTF Pattern"
+                description="HTF pattern chart. Owner-only until HTF is re-validated SPY-relative on the $5-75 universe.">
+                <HtfChartPage />
+              </RequireTier>
+            </Route>
             <Route path="/verdict" component={Verdict} />
             <Route path="/sectors" component={SectorHeatmap} />
             <Route path="/help" component={Help} />
@@ -158,8 +168,8 @@ function AuthenticatedApp() {
               </RequireTier>
             </Route>
             <Route path="/conviction">
-              <RequireTier min="pro" feature="Trigger Check"
-                description="The final pre-trade verdict — pulls every signal into one GO/CAUTION/NO answer with a plain-English checklist.">
+              <RequireTier min="owner" feature="Trigger Check"
+                description="The pre-trade GO/CAUTION/NO verdict. Owner-only as of 2026-06-09 — it leans on the HTF check (weight 3) and none of its inputs are independently OOS-validated. Back to public once the checks are validated.">
                 <ConvictionPage />
               </RequireTier>
             </Route>
@@ -194,8 +204,8 @@ function AuthenticatedApp() {
               </RequireTier>
             </Route>
             <Route path="/track-record">
-              <RequireTier min="pro" feature="Track Record"
-                description="Every signal logged, every outcome tracked — see how the scanner actually performs over time.">
+              <RequireTier min="owner" feature="Track Record"
+                description="Signal track record. Owner-only as of 2026-06-09 — as built it logs VER + COMBINED signals (VER failed OOS) on a mega-cap universe and its logger cron isn't running. Being rebuilt as the honest truth page (validated signals, $5-75 universe).">
                 <TrackRecord />
               </RequireTier>
             </Route>
@@ -250,14 +260,14 @@ function AuthenticatedApp() {
               </RequireTier>
             </Route>
             <Route path="/hermes">
-              <RequireTier min="elite" feature="HERMES Auto Trader"
-                description="Live status, stats, and trades from the self-hosted HERMES automated-trading service.">
+              <RequireTier min="owner" feature="HERMES Auto Trader"
+                description="Self-hosted HERMES automated trader. Owner-only as of 2026-06-09 — it runs an unvalidated strategy and shouldn't be reachable by elite users until validated.">
                 <HermesPage />
               </RequireTier>
             </Route>
             <Route path="/kairos">
-              <RequireTier min="elite" feature="KAIROS Auto Trader"
-                description="HTF + BBTC paper trader with conviction-tagged entries (HTF / BBTC / BOTH).">
+              <RequireTier min="owner" feature="KAIROS Auto Trader"
+                description="HTF + BBTC paper trader. Owner-only as of 2026-06-09 — HTF is unvalidated, so this bot shouldn't be reachable by elite users until validated.">
                 <KairosPage />
               </RequireTier>
             </Route>

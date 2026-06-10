@@ -15,7 +15,8 @@ import { HermesFullView } from "./HermesFullView";
 const meta: CompartmentMeta = {
   id: "hermes",
   name: "HERMES Auto Trader",
-  tier: "free",
+  // owner 2026-06-09: unvalidated external trader. Owner-only until validated.
+  tier: "owner",
   fullPageRoute: "/hermes",
   description:
     "Self-improving multi-asset trading agent. Live status / stats / trades " +

@@ -88,8 +88,8 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
 
   // ─── Screen ── scanners (tickers in general): "what names qualify?" ──
   { path: "/scanner",             label: "Scanner",               icon: Radar,           group: "Screen", subtitle: "One scanner, every strategy — green-grade (80+) setups across the market." },
-  { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Screen", subtitle: "High Tight Flag breakouts — 30%+ pole, tight flag, volume confirmation." },
-  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Screen", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", hideFromNav: true },
+  { path: "/htf",                 label: "HTF Setups",            icon: Flag,            group: "Admin Playground", subtitle: "High Tight Flag breakouts. Owner-only — UNPROVEN (never validated SPY-relative on $5-75); back to public once re-tested.", requiresTier: "owner" },
+  { path: "/htf/:symbol",         label: "HTF Pattern",           icon: Flag,            group: "Admin Playground", subtitle: "Pole / flag / breakout — target, stop, 20-MA trail.", requiresTier: "owner", hideFromNav: true },
   { path: "/insiders",            label: "Insider Activity",      icon: Scale,           group: "Screen", subtitle: "Insider buy/sell scanner — monthly ratio across the market + ranked ticker tables.", requiresTier: "pro" },
 
   // ─── Research ── everything about ONE ticker (the methods) ──
@@ -97,7 +97,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   { path: "/institutional",       label: "Institutions",          icon: Building2,       group: "Research", subtitle: "13F-tracked institutional ownership and flows — is smart money in or out?", requiresTier: "pro" },
   { path: "/trade",               label: "Trade Analysis",        icon: Microscope,      group: "Admin Playground", subtitle: "Per-ticker BBTC / VER / AMC walk-through. Owner-only — built on strategies that haven't passed OOS validation.", requiresTier: "owner" },
   { path: "/mm-exposure",         label: "MM Exposure",           icon: Crosshair,       group: "Research", subtitle: "Dealer positioning, gamma exposure, max pain — the options/bearish read: strikes + timing.", requiresTier: "elite" },
-  { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Research", subtitle: "Final check before you pull the trigger — one verdict, direction, plain-English reasons.", requiresTier: "pro" },
+  { path: "/conviction",          label: "Trigger Check",         icon: Compass,         group: "Admin Playground", subtitle: "Pre-trade GO/CAUTION/NO verdict. Owner-only — leans on the unproven HTF check; back to public once its inputs are validated.", requiresTier: "owner" },
   { path: "/verdict",             label: "Long-Term Outlook",     icon: Award,           group: "Research", subtitle: "Multi-horizon verdict roll-up for buy-and-hold conviction." },
 
   // ─── Setup ── the chart / backtester (per-ticker timing) ──
@@ -107,7 +107,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Investment Opportunities ── tickers in general: income + monitoring ──
   { path: "/earnings",            label: "Earnings Calendar",     icon: Calendar,        group: "Investment Opportunities", subtitle: "Upcoming earnings dates + expected moves across your watchlist.", requiresTier: "pro" },
   { path: "/dividends",           label: "Dividend Finder",       icon: DollarSign,      group: "Investment Opportunities", subtitle: "Discover, compare, and rank dividend-paying stocks.", requiresTier: "pro" },
-  { path: "/track-record",        label: "Track Record",          icon: Trophy,          group: "Investment Opportunities", subtitle: "Every signal logged. Every outcome tracked.", requiresTier: "pro" },
+  { path: "/track-record",        label: "Track Record",          icon: Trophy,          group: "Admin Playground", subtitle: "Signal track record. Owner-only — built on VER/COMBINED (failed) + mega-caps, logger not running. Being rebuilt as the honest truth page.", requiresTier: "owner" },
   { path: "/alerts",              label: "Alerts",                icon: Bell,            group: "Investment Opportunities", subtitle: "Custom alerts on signals, levels, and verdict changes.", requiresTier: "pro" },
 
   // ─── Calculators ── general sizing/options math (not ticker-specific) ──
@@ -119,8 +119,8 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // ─── Experimental ──────────────────────────────────────────────────────
   // Elite-only — these are bots/strategies that run on Chris's infra and represent
   // the premium automated-trading layer.
-  { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Experimental", subtitle: "Live status, stats, and trades from the self-hosted HERMES service.", requiresTier: "elite" },
-  { path: "/kairos",              label: "KAIROS Auto Trader",    icon: Rocket,          group: "Experimental", subtitle: "Experimental HTF + BBTC paper trader. Conviction-tagged entries (HTF / BBTC / BOTH).", requiresTier: "elite" },
+  { path: "/hermes",              label: "HERMES Auto Trader",    icon: Bot,             group: "Admin Playground", subtitle: "Self-hosted HERMES service. Owner-only — runs an unvalidated strategy.", requiresTier: "owner" },
+  { path: "/kairos",              label: "KAIROS Auto Trader",    icon: Rocket,          group: "Admin Playground", subtitle: "HTF + BBTC paper trader. Owner-only — HTF is unvalidated.", requiresTier: "owner" },
   { path: "/wheel",               label: "Wheel Strategy",        icon: RefreshCw,       group: "Admin Playground", subtitle: "Cash-secured puts → covered calls — the wheel mechanics.", requiresTier: "owner" },
 
   // ─── Admin Playground ──────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export const PAGE_REGISTRY: readonly PageEntry[] = [
   // everyone else and reappears here for the owner — one line, no deletes.
   { path: "/markov",              label: "Markov Strategy",       icon: Network,         group: "Admin Playground", subtitle: "Markov-chain regime model — Python stub awaiting implementation.", requiresTier: "owner" },
   { path: "/gamma-bot",           label: "Gamma Vol Bot",         icon: Bot,             group: "Admin Playground", subtitle: "Deterministic dealer-gamma vol paper bot — adjustable money/risk, live signals, paper P&L.", requiresTier: "owner" },
-  { path: "/trend-ride-bot",      label: "Trend-Ride Bot",        icon: Rocket,          group: "Admin Playground", subtitle: "BBTC Trend-Ride paper bot — rides the trend to a significant break of the 168-EMA. Seeded from real history, real paper P&L.", requiresTier: "owner" },
+  { path: "/trend-ride-bot",      label: "Trend-Ride Bot",        icon: Rocket,          group: "Admin Playground", subtitle: "BBTC Trend-Ride paper bot — rides the trend to a 168-EMA break. Forward-only now (no backtest seed blended into live P&L) — Reset once to flush old seed.", requiresTier: "owner" },
   { path: "/gamma-collector",     label: "Gamma Collector",       icon: Activity,        group: "Admin Playground", subtitle: "Watch the dealer-gamma collector accumulate — progress to validation + the live gamma landscape.", requiresTier: "owner" },
   { path: "/vol-calc",            label: "Vol / Straddle Calc",   icon: Calculator,      group: "Admin Playground", subtitle: "Straddle calculator — expected move, fair prices, and sell-vol vs buy-vol P&L side by side.", requiresTier: "owner" },
   { path: "/strategy-lab",        label: "Strategy Lab",          icon: FlaskConical,    group: "Admin Playground", subtitle: "All options structures in one page — singles, verticals, covered calls, straddles, condors: P/L, break-evens, prob-of-profit, payoff, hedging.", requiresTier: "owner" },

@@ -13,7 +13,8 @@ import { ConfluenceTeaser } from "./ConfluenceTeaser";
 const meta: CompartmentMeta = {
   id: "confluence-chart",
   name: "Confluence Chart",
-  tier: "free",
+  // owner 2026-06-09: renders BBTC/VER Ready-Set-Go as STRONG BUY/SELL incl. VER (failed OOS). Owner-only.
+  tier: "owner",
   fullPageRoute: "/chart/confluence",
   description: "Stock Otter-branded full-page chart with candles, signal pulse, MACD/RSI, and the confluence dashboard.",
 };

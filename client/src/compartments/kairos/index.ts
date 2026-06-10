@@ -22,7 +22,8 @@ import { KairosWidget } from "./KairosWidget";
 const meta: CompartmentMeta = {
   id: "kairos",
   name: "KAIROS Auto Trader",
-  tier: "free",
+  // owner 2026-06-09: trades the unvalidated HTF/BBTC combo. Owner-only until validated.
+  tier: "owner",
   fullPageRoute: "/kairos",
   description:
     "Experimental paper-trader powered by HTF (High Tight Flag) and BBTC (trend follower) signals. Opens on either strategy with a conviction tag (HTF / BBTC / BOTH).",
