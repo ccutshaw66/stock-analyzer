@@ -27,6 +27,8 @@ import {
   polygonHasOptions,
   getPolygonEarningsRow,
 } from "./polygon";
+import { impliedVolFromPrice, type OptionType } from "./options/greeks";
+import { getRiskFreeRate } from "./options/risk-free-rate";
 import { fmpAdapter, fmpSearchTickers, getFmpProfileBeta, fmpScreenerSymbols } from "./data/providers/fmp.adapter";
 import { getFmpDividendData } from "./data/providers/fmp.dividends";
 import { getReverseSplitSummary } from "./data/providers/fmp.splits";
@@ -2111,7 +2113,23 @@ export async function registerRoutes(
       }
 
       const now = Date.now() / 1000;
-      const r = 0.05; // risk-free rate approximation
+      // Risk-free rate: canonical cached 3-month T-bill (FMP), fallback constant.
+      const r = await getRiskFreeRate();
+
+      // Our Polygon Options Starter plan returns NO implied vol, so c.impliedVolatility
+      // is 0 and bsGamma() (which guards sigma<=0) yields 0 GEX — the feature is dead.
+      // Recover IV from the contract's market price (bid/ask mid, else last price)
+      // via Black-Scholes inversion. Returns 0 when no usable price/IV (illiquid).
+      const resolveIV = (c: any, K: number, T: number, type: OptionType): number => {
+        const given = Number(c.impliedVolatility) || 0;
+        if (given > 0) return given;
+        const bid = Number(c.bid), ask = Number(c.ask);
+        let price = bid > 0 && ask > 0 && ask >= bid ? (bid + ask) / 2 : 0;
+        if (!price) { const lp = Number(c.lastPrice); if (lp > 0) price = lp; }
+        if (!price) return 0;
+        const iv = impliedVolFromPrice(price, spot, K, T, r, type);
+        return iv ?? 0;
+      };
 
       // ── GEX by strike ──
       // Strike range: focus on +/- 15% from spot
@@ -2146,8 +2164,8 @@ export async function registerRoutes(
         if (K < lowerBound || K > upperBound) continue;
         const oi = c.openInterest || 0;
         const vol = c.volume || 0;
-        const iv = c.impliedVolatility || 0;
         const T = Math.max((c.expDate - now) / (365.25 * 24 * 3600), 1 / 365); // years to expiry
+        const iv = resolveIV(c, K, T, "call");
         const gamma = bsGamma(spot, K, T, r, iv);
         // GEX = gamma * OI * 100 * spot^2 * 0.01  ($ per 1% move)
         const gex = gamma * oi * 100 * spot * spot * 0.01;
@@ -2164,8 +2182,8 @@ export async function registerRoutes(
         if (K < lowerBound || K > upperBound) continue;
         const oi = p.openInterest || 0;
         const vol = p.volume || 0;
-        const iv = p.impliedVolatility || 0;
         const T = Math.max((p.expDate - now) / (365.25 * 24 * 3600), 1 / 365);
+        const iv = resolveIV(p, K, T, "put");
         const gamma = bsGamma(spot, K, T, r, iv);
         const gex = gamma * oi * 100 * spot * spot * 0.01 * -1; // negative for puts
         const sd = getOrCreate(K);

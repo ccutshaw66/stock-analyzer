@@ -20,8 +20,38 @@
  * expirations for a single exposure snapshot.
  */
 import { getPolygonOptionsChain, pget, apiKey } from "./polygon";
+import { blackScholesGreeks, impliedVolFromPrice, type OptionType } from "./options/greeks";
+import { getRiskFreeRate } from "./options/risk-free-rate";
 
 const CONTRACT_SIZE = 100;
+
+/**
+ * Best market price for an option contract from a Polygon snapshot.
+ * Options Starter ($29, 15-min delayed) gives us NO greeks and usually NO
+ * last_quote — only the day aggregate. Prefer the mid of last_quote bid/ask when
+ * present (live tier), else fall back to the day close/last. Returns null when
+ * there's no usable price (illiquid contract — skip it; it carries ~no gamma).
+ */
+function contractMarketPrice(c: any): number | null {
+  const bid = Number(c?.last_quote?.bid);
+  const ask = Number(c?.last_quote?.ask);
+  if (bid > 0 && ask > 0 && ask >= bid) return (bid + ask) / 2;
+  const mid = Number(c?.last_quote?.midpoint);
+  if (mid > 0) return mid;
+  const close = Number(c?.day?.close);
+  if (close > 0) return close;
+  const last = Number(c?.day?.last ?? c?.last_trade?.price);
+  if (last > 0) return last;
+  return null;
+}
+
+/** Years to expiry from a YYYY-MM-DD expiration date. Floors at ~1 hour so
+ *  same-day (0-DTE) contracts still produce finite greeks. */
+function yearsToExpiry(exp: string, nowMs: number): number {
+  if (!exp) return 0;
+  const t = (new Date(exp + "T21:00:00Z").getTime() - nowMs) / (365 * 86400000);
+  return Math.max(t, 1 / (365 * 24)); // >= 1 hour
+}
 
 export interface UnusualContract {
   contractSymbol: string;
@@ -116,6 +146,10 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
     }
   }
 
+  // Risk-free rate: one canonical cached fetch (3-month T-bill via FMP), used
+  // for every contract we have to price ourselves. Slow-moving — cached 12h.
+  const riskFree = await getRiskFreeRate();
+
   let totalGEX = 0;
   let totalDEX = 0;
   let callOI = 0, putOI = 0;
@@ -132,11 +166,33 @@ export async function computeMMExposure(symbol: string): Promise<MMExposure | nu
     const exp = c.details?.expiration_date || "";
     const oi = Number(c.open_interest) || 0;
     const vol = Number(c.day?.volume) || 0;
-    const gamma = Number(c.greeks?.gamma) || 0;
-    const delta = Number(c.greeks?.delta) || 0;
-    const iv = typeof c.implied_volatility === "number" ? c.implied_volatility : null;
 
     if (!type || !strike) continue;
+
+    // Greeks: use Polygon's if present; otherwise compute via Black-Scholes from
+    // the contract's market price (our Options Starter plan returns empty greeks).
+    let gamma = Number(c.greeks?.gamma) || 0;
+    let delta = Number(c.greeks?.delta) || 0;
+    let iv: number | null = typeof c.implied_volatility === "number" && c.implied_volatility > 0
+      ? c.implied_volatility
+      : null;
+
+    if ((!gamma || iv === null) && spot) {
+      const price = contractMarketPrice(c);
+      if (price !== null) {
+        const T = yearsToExpiry(exp, nowMs);
+        const solvedIv = impliedVolFromPrice(price, spot, strike, T, riskFree, type as OptionType);
+        if (solvedIv !== null) {
+          const g = blackScholesGreeks(spot, strike, T, riskFree, solvedIv, type as OptionType);
+          if (g) {
+            if (!gamma) gamma = g.gamma;
+            if (!delta) delta = g.delta;
+            if (iv === null) iv = solvedIv;
+          }
+        }
+      }
+      // else: no usable price — illiquid contract, skip (gamma stays 0).
+    }
 
     // Collect near-the-money IVs; we take the MEDIAN after the loop so one
     // junk contract can't set the "price of vol" (fixes the SPY/IWM ~3% glitch).
