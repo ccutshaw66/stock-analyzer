@@ -60,7 +60,7 @@ async function getPositionInsiderActivity(
     tickers.map(async (t): Promise<InsiderTxn[]> => {
       try {
         const snap = await getInsiderActivitySnapshot(t);
-        const rows = snap.value?.recent ?? [];
+        const rows = snap.value?.recentTransactions ?? [];
         const out: InsiderTxn[] = [];
         for (const r of rows) {
           if (!r.date) continue;

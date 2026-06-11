@@ -137,7 +137,11 @@ export async function runBacktest(params: {
     let bars: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> = [];
     try {
       const agg = await marketData.getAggregates(symbol, from, now, "day");
-      bars = Array.isArray(agg) ? agg : [];
+      // getAggregates returns OHLCV{ t: Date }; ScanContext bars use
+      // unix-seconds (matches scanner-v2 loadBars). Convert here.
+      bars = Array.isArray(agg)
+        ? agg.map((b) => ({ t: Math.floor(b.t.getTime() / 1000), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }))
+        : [];
     } catch {
       continue;
     }
@@ -193,7 +197,7 @@ export async function runBacktest(params: {
           bestFires.push({
             signalId: det.id,
             symbol,
-            date: new Date(todayBar.t).toISOString().slice(0, 10),
+            date: new Date(todayBar.t * 1000).toISOString().slice(0, 10),
             entryClose,
             ret1: forwardRets[1],
             ret5: forwardRets[5],

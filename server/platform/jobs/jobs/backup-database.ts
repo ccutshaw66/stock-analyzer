@@ -8,5 +8,4 @@ registerJob({
     // TODO: shell out to pg_dump, pipe to S3 via aws-sdk, email result
     throw new Error("NotImplemented: backup-database");
   },
-  maxRetries: 1,
 });

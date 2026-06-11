@@ -162,7 +162,8 @@ async function processDay(date: string, snaps: Snap[], cfg: BotConfig, state: Bo
     let side: "SHORT" | "LONG" | "—" = "—";
     if (s.gex > 0 && ivRank >= cfg.shortIvRank) side = "SHORT";
     else if (s.gex < 0 && ivRank <= cfg.longIvRank) side = "LONG";
-    return { ticker: s.ticker, gex: s.gex, regime: s.gex > 0 ? "long-γ" : "short-γ", atmIV: s.atmIV, ivRank, ivRankPos: posOf(s.atmIV), basketN: N, side };
+    const regime: "short-γ" | "long-γ" = s.gex > 0 ? "long-γ" : "short-γ";
+    return { ticker: s.ticker, gex: s.gex, regime, atmIV: s.atmIV, ivRank, ivRankPos: posOf(s.atmIV), basketN: N, side };
   }).sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
   state.lastSignals = signals;
 

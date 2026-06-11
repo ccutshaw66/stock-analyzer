@@ -35,7 +35,7 @@ jobsAdminRouter.get("/admin/jobs", requireAdmin, (_req, res) => {
   res.json({ jobs: listJobStatus() });
 });
 
-jobsAdminRouter.post("/admin/jobs/:id/run", requireAdmin, async (req, res) => {
+jobsAdminRouter.post("/admin/jobs/:id/run", requireAdmin, async (req: Request<{ id: string }>, res) => {
   const result = await runJobNow(req.params.id);
   if ((result as any).error === "not-found") {
     return res.status(404).json({ error: "job not found" });

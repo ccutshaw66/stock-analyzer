@@ -383,7 +383,7 @@ function computeConfluence(axes: AxisScore[]): { confluence: number; alignment: 
   // Sign agreement: +1 / 0 / -1 per axis
   const signs = live.map(a => (a.score >= 15 ? 1 : a.score <= -15 ? -1 : 0));
   const nonNeutral = signs.filter(s => s !== 0);
-  const netSign = signs.reduce((s, v) => s + v, 0); // -4..+4
+  const netSign = signs.reduce<number>((s, v) => s + v, 0); // -4..+4
 
   // Alignment: 1 if all non-neutral axes agree in sign, 0 if they cancel.
   let alignment = 0;

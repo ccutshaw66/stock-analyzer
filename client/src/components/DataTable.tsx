@@ -12,7 +12,7 @@ export type DataTableColumnType = "score" | "price" | "number" | "text";
 export type DataTableColumn<T> = {
   key: string;
   header: React.ReactNode;
-  accessor: (row: T, index?: number) => React.ReactNode;
+  accessor: (row: T, index: number) => React.ReactNode;
   // Returns a comparable primitive for sorting. Defaults to the accessor's
   // result coerced to string/number. Provide this when the rendered cell
   // is JSX (e.g. a colored badge) but you want to sort by an underlying value.
@@ -102,7 +102,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     return data.filter((row) => {
       const v = scoreColumn.sortValue
         ? scoreColumn.sortValue(row)
-        : coerceForSort(scoreColumn.accessor(row));
+        : coerceForSort(scoreColumn.accessor(row, 0));
       if (typeof v !== "number") return false;
       return v >= minScore;
     });
@@ -112,7 +112,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     if (!sort) return filtered;
     const col = columns.find((c) => c.key === sort.key);
     if (!col) return filtered;
-    const getVal = col.sortValue ?? ((row: T) => coerceForSort(col.accessor(row)));
+    const getVal = col.sortValue ?? ((row: T) => coerceForSort(col.accessor(row, 0)));
     const sgn = sort.direction === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => sgn * compareValues(getVal(a), getVal(b)));
   }, [filtered, sort, columns]);
