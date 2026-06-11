@@ -343,6 +343,8 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [expiration, setExpiration] = useState(initial?.expiration || "");
   const [contractsShares, setContractsShares] = useState(initial?.contractsShares || 1);
   const [openPrice, setOpenPrice] = useState(initial ? String(Math.abs(initial.openPrice)) : "");
+  const [closeDate, setCloseDate] = useState(initial?.closeDate || "");
+  const [closePrice, setClosePrice] = useState(initial?.closePrice != null ? String(Math.abs(initial.closePrice)) : "");
   const [strikes, setStrikes] = useState(initial?.strikes || "");
   const [spreadWidth, setSpreadWidth] = useState(initial?.spreadWidth ? String(initial.spreadWidth) : "");
   const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");

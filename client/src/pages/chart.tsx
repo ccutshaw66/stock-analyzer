@@ -38,7 +38,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageTemplate } from "@/components/PageTemplate";
-import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState } from "@/components/chart";
+import { CandlePane, emaOverlays, EmaToggleStrip, type ChartMarker, type EmaToggleState, type ChartBar } from "@/components/chart";
 // Merged from the old Confluence Chart page (one Chart page now): MACD/RSI
 // oscillator + the multi-signal confluence dashboard, fed by useConfluenceChart.
 import { ConfluenceDashboardPanel } from "@/compartments/confluence-chart/ConfluenceDashboardPanel";
@@ -67,14 +67,6 @@ import {
  */
 type ChartStrategy = string;
 
-interface ChartBar {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
 interface ChartSignalDot {
   date: string;
   price: number;
