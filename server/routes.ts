@@ -5797,7 +5797,8 @@ export async function registerRoutes(
       if (closedTrades.length === 0) {
         return res.json({
           totalTrades: 0, wins: 0, losses: 0, winRate: 0,
-          avgWin: 0, avgLoss: 0, largestWin: 0, largestLoss: 0,
+          avgWin: 0, avgLoss: 0, avgWinPct: 0, avgLossPct: 0, winLossRatio: 0,
+          largestWin: 0, largestLoss: 0,
           profitFactor: 0, expectancy: 0,
           avgRWin: 0, avgRLoss: 0,
           currentStreak: 0, longestWinStreak: 0, longestLossStreak: 0,
@@ -5839,6 +5840,10 @@ export async function registerRoutes(
 
         const rMultiple = initialRisk > 0 ? profit / initialRisk : 0;
 
+        // Percent return relative to capital deployed (cost to open)
+        const basis = Math.abs(costToOpen);
+        const profitPct = basis > 0 ? (profit / basis) * 100 : 0;
+
         // MFE / MAE estimation
         const mfe = t.maxProfit != null ? t.maxProfit : (t.spreadWidth ? t.spreadWidth * t.contractsShares * 100 - initialRisk : Math.abs(profit));
         const mae = initialRisk;
@@ -5854,6 +5859,7 @@ export async function registerRoutes(
           isWin,
           initialRisk,
           rMultiple: Math.round(rMultiple * 100) / 100,
+          profitPct,
           mfe,
           mae,
           exitEfficiency: Math.round(exitEfficiency * 10000) / 100,
@@ -5870,6 +5876,11 @@ export async function registerRoutes(
       const avgLoss = losses.length > 0 ? grossLosses / losses.length : 0;
       const winRate = tradeData.length > 0 ? wins.length / tradeData.length : 0;
       const lossRate = 1 - winRate;
+
+      // Average win/loss as a percent of capital deployed, and the headline win:loss size ratio
+      const avgWinPct = wins.length > 0 ? wins.reduce((s, t) => s + t.profitPct, 0) / wins.length : 0;
+      const avgLossPct = losses.length > 0 ? Math.abs(losses.reduce((s, t) => s + t.profitPct, 0) / losses.length) : 0;
+      const winLossRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
 
       // Streaks
       let currentStreak = 0;
@@ -5969,6 +5980,9 @@ export async function registerRoutes(
         winRate: Math.round(winRate * 10000) / 100,
         avgWin: Math.round(avgWin * 100) / 100,
         avgLoss: Math.round(avgLoss * 100) / 100,
+        avgWinPct: Math.round(avgWinPct * 100) / 100,
+        avgLossPct: Math.round(avgLossPct * 100) / 100,
+        winLossRatio: winLossRatio === Infinity ? Infinity : Math.round(winLossRatio * 100) / 100,
         largestWin: Math.round(Math.max(...allProfits) * 100) / 100,
         largestLoss: Math.round(Math.min(...allProfits) * 100) / 100,
         profitFactor: grossLosses > 0 ? Math.round(grossProfits / grossLosses * 100) / 100 : grossProfits > 0 ? Infinity : 0,

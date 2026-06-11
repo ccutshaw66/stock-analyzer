@@ -5,6 +5,7 @@ import {
   BarChart3, TrendingUp, Target, DollarSign,
   Activity, AlertTriangle, Percent, Award,
   Crosshair, Info, Clock, PieChart as PieChartIcon,
+  Scale, TrendingDown,
 } from "lucide-react";
 import { HelpBlock, Example, ScoreRange } from "@/components/HelpBlock";
 import { PageTemplate } from "@/components/PageTemplate";
@@ -24,6 +25,9 @@ interface AnalyticsData {
   winRate: number;
   avgWin: number;
   avgLoss: number;
+  avgWinPct: number;
+  avgLossPct: number;
+  winLossRatio: number;
   largestWin: number;
   largestLoss: number;
   profitFactor: number;
@@ -204,6 +208,11 @@ export default function TradeAnalytics() {
         </div>
       ) : (
         <>
+      {/* ================================================================ */}
+      {/* Expectancy Scorecard — north star: are winners bigger than losers? */}
+      {/* ================================================================ */}
+      <ExpectancyScorecard analytics={analytics} />
+
       {/* Key Metrics */}
       <div className="bg-card border border-card-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -797,6 +806,122 @@ export default function TradeAnalytics() {
         </>
       )}
     </PageTemplate>
+  );
+}
+
+// ─── Expectancy Scorecard ─────────────────────────────────────────────────────
+// The headline answer to the core question: are my winners bigger than my losers?
+// All numbers come from the existing /api/trades/analytics payload — no extra fetch.
+
+function ExpectancyScorecard({ analytics }: { analytics: AnalyticsData }) {
+  const positive = analytics.expectancy >= 0;
+  const ratio = analytics.winLossRatio;
+  const ratioStr = ratio === Infinity ? "∞" : ratio.toFixed(2);
+  const pf = analytics.profitFactor;
+  const pfStr = pf === Infinity ? "∞" : pf.toFixed(2);
+  const expStr = `${analytics.expectancy >= 0 ? "+" : "−"}$${Math.abs(analytics.expectancy).toFixed(2)}`;
+
+  // R-multiple expectancy, only if R/risk data is meaningful (non-zero)
+  const hasR = analytics.avgRWin !== 0 || analytics.avgRLoss !== 0;
+  const lossRate = (100 - analytics.winRate) / 100;
+  const winRateFrac = analytics.winRate / 100;
+  const expectancyR = hasR
+    ? winRateFrac * analytics.avgRWin + lossRate * analytics.avgRLoss
+    : null;
+
+  // Plain-English verdict
+  let verdict: string;
+  if (analytics.wins === 0 && analytics.losses === 0) {
+    verdict = "No closed trades to evaluate yet.";
+  } else if (positive) {
+    const ratioPhrase = ratio === Infinity
+      ? "You have no losing trades so far"
+      : `Your average winner is ${ratioStr}× your average loser`;
+    verdict = `${ratioPhrase} — expectancy ${expStr}/trade. You're growing.`;
+  } else {
+    verdict = `Your losers are bigger than your winners — expectancy ${expStr}/trade. This needs fixing.`;
+  }
+
+  return (
+    <div
+      className={`bg-card border-2 ${positive ? "border-bull/40" : "border-bear/40"} rounded-lg p-4`}
+      data-testid="expectancy-scorecard"
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Scale className={`h-4 w-4 ${positive ? "text-bull-light" : "text-bear-light"}`} />
+        <h3 className="text-sm font-bold text-foreground">Expectancy Scorecard</h3>
+        <span className="text-micro text-muted-foreground">Are your winners bigger than your losers?</span>
+      </div>
+
+      {/* Headline number: Win:Loss size ratio */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+        <div className={`${positive ? "bg-bull/10 border-bull/30" : "bg-bear/10 border-bear/30"} border rounded-lg p-3 flex flex-col justify-center lg:col-span-1`}>
+          <span className="text-micro font-semibold text-muted-foreground uppercase tracking-wider">Win : Loss Size Ratio</span>
+          <span className={`text-3xl font-bold tabular-nums font-mono ${positive ? "text-bull-light" : "text-bear-light"}`}>
+            {ratioStr}×
+          </span>
+          <span className="text-micro text-muted-foreground">avg win ÷ avg loss</span>
+        </div>
+
+        <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+          <MetricCard
+            label="Win Rate"
+            value={`${analytics.winRate}%`}
+            color={analytics.winRate >= 60 ? "text-bull-light" : analytics.winRate >= 45 ? "text-watch-light" : "text-bear-light"}
+            icon={<Percent className="h-3 w-3" />}
+            subtitle={`${analytics.wins}W / ${analytics.losses}L`}
+          />
+          <MetricCard
+            label="Expectancy / Trade"
+            value={expStr}
+            color={positive ? "text-bull-light" : "text-bear-light"}
+            icon={<DollarSign className="h-3 w-3" />}
+            subtitle={expectancyR != null ? `${expectancyR >= 0 ? "+" : ""}${expectancyR.toFixed(2)}R` : "per trade"}
+          />
+          <MetricCard
+            label="Profit Factor"
+            value={pfStr}
+            color={pf >= 1.5 ? "text-bull-light" : pf >= 1 ? "text-watch-light" : "text-bear-light"}
+            icon={<TrendingUp className="h-3 w-3" />}
+            subtitle="gross win ÷ gross loss"
+          />
+          <MetricCard
+            label="Avg Winner"
+            value={`$${analytics.avgWin.toFixed(2)}`}
+            color="text-bull-light"
+            icon={<TrendingUp className="h-3 w-3" />}
+            subtitle={`+${analytics.avgWinPct.toFixed(1)}%`}
+          />
+          <MetricCard
+            label="Avg Loser"
+            value={`$${analytics.avgLoss.toFixed(2)}`}
+            color="text-bear-light"
+            icon={<TrendingDown className="h-3 w-3" />}
+            subtitle={`−${analytics.avgLossPct.toFixed(1)}%`}
+          />
+          <MetricCard
+            label="Avg R (W / L)"
+            value={`${analytics.avgRWin} / ${analytics.avgRLoss}`}
+            color="text-foreground"
+            icon={<Target className="h-3 w-3" />}
+            subtitle="R-multiple"
+          />
+        </div>
+      </div>
+
+      {/* Plain-English verdict */}
+      <div
+        className={`flex items-center gap-2 rounded-lg p-3 ${positive ? "bg-bull/10 border border-bull/30" : "bg-bear/10 border border-bear/30"}`}
+        data-testid="expectancy-verdict"
+      >
+        {positive
+          ? <TrendingUp className="h-4 w-4 text-bull-light shrink-0" />
+          : <AlertTriangle className="h-4 w-4 text-bear-light shrink-0" />}
+        <span className={`text-sm font-semibold ${positive ? "text-bull-light" : "text-bear-light"}`}>
+          {verdict}
+        </span>
+      </div>
+    </div>
   );
 }
 
