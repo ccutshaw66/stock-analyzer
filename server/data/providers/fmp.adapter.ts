@@ -22,6 +22,8 @@ import type {
   InsiderTransaction,
   InstitutionalHolding,
   FinancialSnapshot,
+  Quote,
+  OHLCV,
   Symbol,
 } from "../types";
 import { fmpGet } from "./fmp.client";
@@ -191,6 +193,9 @@ export async function fmpScreenerSymbols(filters: FmpScreenerFilters): Promise<s
 export const fmpAdapter: DataProvider = {
   name: "fmp",
   capabilities: [
+    "quotes",
+    "aggregates",
+    "splits",
     "analyst_ratings",
     "earnings",
     "insider_transactions",
@@ -202,6 +207,54 @@ export const fmpAdapter: DataProvider = {
     // See getInstitutionalHoldings() below — it throws a clear error.
     "financials",
   ],
+
+  async getQuote(symbol: Symbol): Promise<Quote> {
+    const T = symbol.toUpperCase();
+    const rows = await fmpGet<any[]>(`/quote`, { symbol: T });
+    const r = Array.isArray(rows) && rows.length ? rows[0] : null;
+    if (!r || !Number.isFinite(Number(r.price))) {
+      throw new Error(`fmp:no_quote_for_${T}`);
+    }
+    const asOf = r.timestamp ? new Date(Number(r.timestamp) * 1000) : new Date();
+    return {
+      symbol: T,
+      price: num(r.price),
+      change: num(r.change),
+      // FMP stable /quote returns `changePercentage`; older shapes use `changesPercentage`.
+      changePct: num(r.changePercentage ?? r.changesPercentage),
+      volume: num(r.volume),
+      asOf,
+      source: "fmp",
+    };
+  },
+
+  async getAggregates(
+    symbol: Symbol,
+    from: Date,
+    to: Date,
+    _timespan: "day" | "week" | "month",
+  ): Promise<OHLCV[]> {
+    // FMP's stable historical endpoint returns daily EOD bars. The facade only
+    // ever requests "day" in practice (see callers); week/month aggregation is
+    // not used on this path, so we serve daily bars and let callers resample.
+    const T = symbol.toUpperCase();
+    const f = from.toISOString().slice(0, 10);
+    const tt = to.toISOString().slice(0, 10);
+    const raw: any = await fmpGet(`/historical-price-eod/full`, { symbol: T, from: f, to: tt });
+    const arr: any[] = Array.isArray(raw) ? raw : raw?.historical || [];
+    return arr
+      .map((r) => ({
+        t: new Date(r.date),
+        o: num(r.open),
+        h: num(r.high),
+        l: num(r.low),
+        c: num(r.close),
+        v: num(r.volume),
+      }))
+      .filter((b) => !Number.isNaN(b.t.getTime()) && Number.isFinite(b.c))
+      // FMP returns newest-first; normalize to oldest-first (matches Polygon).
+      .sort((a, b) => a.t.getTime() - b.t.getTime());
+  },
 
   async getAnalystRatings(symbol: Symbol): Promise<AnalystRating> {
     // Compose: price-target-consensus (targets) + grades-consensus (buy/hold/sell counts).

@@ -17,11 +17,13 @@ import { inHouseAdapter } from "./providers/in-house.adapter";
 // switch. Polygon is retired EXCEPT for options (FMP has no options data).
 // Institutional ownership is served by FMP Ultimate via fmp-institutional.ts
 // (the request path calls getFmpInstitutional directly; this registry entry is
-// the facade fallback). The core quotes/aggregates migration to FMP is deferred
-// to its own dedicated job, so Polygon stays primary there.
+// the facade fallback). Quotes/aggregates/splits migrated to FMP Ultimate
+// (2026-06-10) after parity verification: daily OHLCV closes matched Polygon
+// to 0.000%, splits matched exactly, latest-quote price matched the true
+// session close (Polygon snapshot lagged one session at the day boundary).
 export const providerChain: Record<Capability, DataProvider[]> = {
-  quotes:                  [polygonAdapter],               // DEFERRED: core quote migration to FMP is its own job
-  aggregates:              [polygonAdapter],               // DEFERRED: core chart migration to FMP is its own job
+  quotes:                  [fmpAdapter],                   // FMP (migrated 2026-06-10; parity verified)
+  aggregates:              [fmpAdapter],                   // FMP (migrated 2026-06-10; daily OHLCV matched Polygon 0.000%)
   options:                 [polygonAdapter],               // RETAINED on Polygon — FMP has no options data
   financials:              [fmpAdapter],                   // FMP-only (Polygon fallback dropped 2026-05-31)
   analyst_ratings:         [fmpAdapter /*, finnhubAdapter */],
@@ -35,10 +37,11 @@ export const providerChain: Record<Capability, DataProvider[]> = {
   // applies local symbol/name ranking on top.
   search:                  [fmpAdapter],
   // Dividends are served FMP-direct via server/data/providers/fmp.dividends.ts
-  // (migrated 2026-05-31). The data facade exposes no dividends/splits method,
-  // so these entries are vestigial; left pointing at Polygon for reference only.
-  dividends:               [polygonAdapter],
-  splits:                  [polygonAdapter],
+  // (migrated 2026-05-31). Splits are served FMP-direct via fmp.splits.ts
+  // (getReverseSplitSummary). The data facade exposes no dividends/splits
+  // method, so these entries are vestigial — they just reflect the true owner.
+  dividends:               [polygonAdapter],               // vestigial; served FMP-direct via fmp.dividends.ts
+  splits:                  [fmpAdapter],                   // served FMP-direct via fmp.splits.ts (migrated 2026-06-10)
 };
 
 export function providersFor(cap: Capability): DataProvider[] {
