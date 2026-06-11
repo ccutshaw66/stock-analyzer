@@ -1,14 +1,14 @@
 /**
  * Long-range chart disk cache.
  *
- * Phase 3.7 design: Yahoo is a background cache filler, never on the request path.
+ * Design: a background cron is the cache filler, never the request path.
  *
  *   - Frontend requests 10y/25y/max charts -> disk cache only.
  *   - If disk has a fresh entry, serve it.
- *   - If disk miss or stale, serve whatever Polygon can give (capped ~5y).
- *   - A daily cron refreshes the disk cache from Yahoo for a curated list of
- *     actively-used symbols, so the cache stays warm without ever being
- *     triggered by a live user request.
+ *   - If disk miss or stale, serve whatever FMP can give on the request path.
+ *   - A daily cron refreshes the disk cache from FMP (chunked deep history)
+ *     for a curated list of actively-used symbols, so the cache stays warm
+ *     without ever being triggered by a live user request.
  *
  * Files live under ./data/long-range-cache/{TICKER}__{range}__{interval}.json
  * Each file is a small JSON blob: { fetchedAt, payload }
