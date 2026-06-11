@@ -11,6 +11,7 @@ vite.config.ts.*
 env.txt
 data.db
 data/long-range-cache/
+data/market-pulse-cache/
 data/htf-ohlcv-cache/
 data/gamma-snapshots/
 data/gamma-bot/
