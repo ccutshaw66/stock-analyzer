@@ -10,6 +10,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageTemplate } from "@/components/PageTemplate";
+import { OptionsDelayNotice } from "@/components/OptionsDelayNotice";
 import { DataTable, DataTableColumn } from "@/components/DataTable";
 
 const fmt$ = (n: number) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n)).toLocaleString();
@@ -102,6 +103,7 @@ export default function StrangleScannerPage() {
       }
     >
       <div className="space-y-3 max-w-[1150px] mx-auto p-1">
+        <OptionsDelayNotice />
         {data?.note ? (
           <div className="rounded-lg border border-border bg-card p-4 text-2xs text-muted-foreground">{data.note}</div>
         ) : (

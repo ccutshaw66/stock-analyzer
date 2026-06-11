@@ -25,6 +25,7 @@ import { apiRequest } from "@/lib/queryClient";
 import mascotUrl from "@/assets/mascot.jpg";
 import InvalidSymbol, { isSymbolNotFound } from "@/components/InvalidSymbol";
 import { PageTemplate } from "@/components/PageTemplate";
+import { OptionsDelayNotice } from "@/components/OptionsDelayNotice";
 import { DataTable, type DataTableColumn } from "@/components/DataTable";
 
 type UnusualActivityRow = {
@@ -151,6 +152,8 @@ export default function MMExposure() {
           Scan
         </button>
       </form>
+
+      <OptionsDelayNotice />
 
       {/* Loading */}
       {isLoading && ticker && (

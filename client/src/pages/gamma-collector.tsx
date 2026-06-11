@@ -8,6 +8,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { PageTemplate } from "@/components/PageTemplate";
+import { OptionsDelayNotice } from "@/components/OptionsDelayNotice";
 import { DataTable, DataTableColumn } from "@/components/DataTable";
 
 const fmtGex = (g: number) => {
@@ -70,6 +71,7 @@ export default function GammaCollectorPage() {
       }
     >
       <div className="space-y-5 max-w-[1100px] mx-auto p-1">
+        <OptionsDelayNotice />
         {/* Progress toward validation */}
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center justify-between mb-2">
