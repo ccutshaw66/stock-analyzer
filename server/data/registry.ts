@@ -9,26 +9,26 @@ import type { Capability, DataProvider } from "./types";
 
 import { polygonAdapter } from "./providers/polygon.adapter";
 import { fmpAdapter } from "./providers/fmp.adapter";
-import { yahooAdapter } from "./providers/yahoo.adapter";
 import { inHouseAdapter } from "./providers/in-house.adapter";
 // import { secEdgarAdapter } from "./providers/sec-edgar.adapter"; // future
 // import { finnhubAdapter } from "./providers/finnhub.adapter";    // future
 
-// Polygon/Yahoo kill status (2026-05-31): Polygon is being retired EXCEPT for
-// options (FMP has no options data at all). Yahoo is retained ONLY for
-// institutional ownership until the SEC EDGAR replacement is built. The core
-// quotes/aggregates migration to FMP is deferred to its own dedicated job.
+// Provider status (2026-06-10): Yahoo fully removed — no fallback, no kill
+// switch. Polygon is retired EXCEPT for options (FMP has no options data).
+// Institutional ownership is served by FMP Ultimate via fmp-institutional.ts
+// (the request path calls getFmpInstitutional directly; this registry entry is
+// the facade fallback). The core quotes/aggregates migration to FMP is deferred
+// to its own dedicated job, so Polygon stays primary there.
 export const providerChain: Record<Capability, DataProvider[]> = {
-  quotes:                  [polygonAdapter, yahooAdapter], // DEFERRED: core quote migration to FMP is its own job
-  aggregates:              [polygonAdapter, yahooAdapter], // DEFERRED: core chart migration to FMP is its own job
+  quotes:                  [polygonAdapter],               // DEFERRED: core quote migration to FMP is its own job
+  aggregates:              [polygonAdapter],               // DEFERRED: core chart migration to FMP is its own job
   options:                 [polygonAdapter],               // RETAINED on Polygon — FMP has no options data
   financials:              [fmpAdapter],                   // FMP-only (Polygon fallback dropped 2026-05-31)
   analyst_ratings:         [fmpAdapter /*, finnhubAdapter */],
   earnings:                [fmpAdapter],                   // FMP-only (Polygon fallback dropped 2026-05-31)
-  insider_transactions:    [fmpAdapter /*, secEdgarAdapter */, yahooAdapter],
-  // NOTE: FMP 13F endpoints are Ultimate-tier only (our Premium plan gets 402).
-  // Yahoo is the current source until the SEC EDGAR replacement ships (own job).
-  institutional_holdings:  [yahooAdapter /*, secEdgarAdapter */],
+  insider_transactions:    [fmpAdapter /*, secEdgarAdapter */],
+  // FMP Ultimate serves 13F institutional ownership (see fmp-institutional.ts).
+  institutional_holdings:  [fmpAdapter /*, secEdgarAdapter */],
   beta:                    [inHouseAdapter],
   // FMP owns search (kill-Polygon directive 2026-05-27). `/search-symbol` +
   // `/search-name` get fanned out by fmp.adapter; the /api/search route
