@@ -1,7 +1,7 @@
 /**
  * SEC EDGAR 13F adapter.
  *
- * Replaces Yahoo institutional ownership. Returns top institutional holders
+ * Authoritative institutional ownership source. Returns top institutional holders
  * and percent-of-shares-outstanding held, sourced from 13F-HR filings.
  *
  * NOTE: This is the Phase 3.4a minimal implementation:

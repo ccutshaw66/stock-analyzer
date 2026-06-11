@@ -1,5 +1,5 @@
 /**
- * Global request queue for Yahoo Finance API calls.
+ * Global request queue for rate-limited provider API calls.
  * Prevents 429 rate limiting by:
  * 1. Limiting concurrent requests (max 2 at a time)
  * 2. Enforcing minimum delay between requests (600ms)
@@ -15,14 +15,14 @@ type QueuedRequest<T> = {
 };
 
 // Tightened 2026-05-04 after persistent 429s during institutional scans.
-// Yahoo's unofficial API tolerates ~1 req/sec sustained; bursts trip 429
+// Rate-limited providers tolerate ~1 req/sec sustained; bursts trip 429
 // even when the average is under their stated cap. Going strictly serial
 // with 1500ms gaps (= 0.66 req/sec) and aggressive backoff. The cost is
 // slower scans (~45s for 30 fresh tickers vs ~15s previously) but with
 // the 24h per-ticker cache this only matters on the first scan.
 const MAX_CONCURRENT = 1;
 const MIN_DELAY_MS = 1500; // minimum ms between request starts (~0.66 req/sec)
-const BACKOFF_BASE_MS = 5000; // base backoff on 429 (was 3s — Yahoo wants longer cooldowns)
+const BACKOFF_BASE_MS = 5000; // base backoff on 429 (was 3s — providers want longer cooldowns)
 const MAX_BACKOFF_MS = 60000; // max backoff (was 30s)
 const CIRCUIT_BREAK_THRESHOLD = 3; // trip sooner so we don't keep hitting 429s (was 5)
 const CIRCUIT_BREAK_PAUSE_MS = 120000; // 2 minute pause on circuit break (was 1m)
@@ -53,10 +53,10 @@ export function recordCacheHit() {
 }
 
 /**
- * Enqueue a Yahoo Finance request. Returns a promise that resolves when
+ * Enqueue a rate-limited provider request. Returns a promise that resolves when
  * the request completes. Requests are processed in order with rate limiting.
  */
-export function enqueue<T>(fn: () => Promise<T>, label = "yahoo"): Promise<T> {
+export function enqueue<T>(fn: () => Promise<T>, label = "request"): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     queue.push({ fn, resolve, reject, label });
     processQueue();

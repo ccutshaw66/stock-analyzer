@@ -13,7 +13,7 @@ import { inHouseAdapter } from "./providers/in-house.adapter";
 // import { secEdgarAdapter } from "./providers/sec-edgar.adapter"; // future
 // import { finnhubAdapter } from "./providers/finnhub.adapter";    // future
 
-// Provider status (2026-06-10): Yahoo fully removed — no fallback, no kill
+// Provider status (2026-06-10): legacy free-scrape provider fully removed — no fallback, no kill
 // switch. Polygon is retired EXCEPT for options (FMP has no options data).
 // Institutional ownership is served by FMP Ultimate via fmp-institutional.ts
 // (the request path calls getFmpInstitutional directly; this registry entry is

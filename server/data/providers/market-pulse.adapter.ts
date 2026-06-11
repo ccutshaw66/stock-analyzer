@@ -10,7 +10,7 @@
  *   - Headline:     5-tier label (RISK-OFF / DEFENSIVE / NEUTRAL / RISK-ON / EUPHORIC)
  *                   + dynamic explainer
  *
- * All sources are FMP stable endpoints. No Polygon, no Yahoo. Field names
+ * All sources are FMP stable endpoints. No Polygon. Field names
  * verified in docs/FMP_REFERENCE.md.
  */
 

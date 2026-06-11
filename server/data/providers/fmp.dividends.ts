@@ -2,7 +2,7 @@
  * FMP dividend data — single canonical source for everything dividend-related
  * on the site (single-ticker lookup, scan, weekly strategy, portfolio).
  *
- * Replaces the legacy Polygon-via-Yahoo-shape path (`extractDividendData` +
+ * Replaces the legacy Polygon-via-canonical shape path (`extractDividendData` +
  * `getQuoteLight` → `getPolygonQuoteSummary`). Polygon is on the kill list.
  *
  * Sources (FMP stable API), fetched in parallel:
@@ -105,7 +105,7 @@ const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
  * ex-date forward one frequency interval at a time until it lands in the
  * future. FMP's historical /dividends feed stops at the last PASSED ex-date,
  * and upcoming dates are often undeclared, so this projection is how we surface
- * a forward-looking "next ex-date" (matching the old Yahoo calendar behavior).
+ * a forward-looking "next ex-date" (matching the legacy calendar behavior).
  */
 function projectForward(from: Date, frequency: string, now: number): Date {
   const months = frequencyMonths(frequency);

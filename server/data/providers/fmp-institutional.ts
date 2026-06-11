@@ -4,22 +4,22 @@
  * Returns institutional 13F data from FMP's stable API instead of SEC EDGAR.
  * Used as the primary institutional source when FMP_TIER=ultimate is set in
  * the environment (i.e. when the user has upgraded their FMP plan from
- * Premium to Ultimate). EDGAR + Yahoo become disabled-but-present fallbacks
+ * Premium to Ultimate). EDGAR becomes a disabled-but-present fallback
  * — kept in code for emergency manual override but not invoked.
  *
  * The point of this module is to remove the dependency on SEC's IP-blocked
- * EDGAR endpoint and Yahoo's rate-limited unofficial scrape. FMP Ultimate
+ * EDGAR endpoint. FMP Ultimate
  * delivers the same underlying SEC 13F data through a paid, contracted API,
  * so we get the headline "institutional flow" feature working reliably.
  *
  * Activation: set FMP_TIER=ultimate in .env, restart the server. Falls back
- * to EDGAR/Yahoo automatically if FMP returns 402 (e.g. plan downgrade) or
+ * to EDGAR automatically if FMP returns 402 (e.g. plan downgrade) or
  * any other error — the consumer in routes.ts treats null as "try the next
  * provider in the chain."
  *
  * Cache: returned shape is in-memory cached for 24h via the shared `cache.ts`
  * keyed as `fmp-inst:{TICKER}`. 13F filings update quarterly so 24h is the
- * right TTL — same cadence as the EDGAR cache and the Yahoo ownership cache.
+ * right TTL — same cadence as the EDGAR cache.
  */
 import { fmpGet, FmpApiError } from "./fmp.client";
 import { getCached, setCache } from "../../cache";
@@ -46,7 +46,7 @@ export interface FmpInstitutionalSummary {
   }>;
   // Same row shape as topHolders, but filtered to mutual fund / ETF / index
   // fund / SMA filers — populates the "Fund Holders" tab on the institutional
-  // page now that the Yahoo-sourced fundOwnership is dead.
+  // page (sourced from FMP's 13F fund/ETF filers).
   topFunds: Array<{
     name: string;
     shares: number;
@@ -283,7 +283,7 @@ export function isFmpUltimateEnabled(): boolean {
 /**
  * Fetch the institutional ownership summary + top holders for a ticker
  * from FMP Ultimate. Returns null on any error (HTTP 402 plan-restricted,
- * 5xx, network) so the caller can fall back to EDGAR or Yahoo cleanly.
+ * 5xx, network) so the caller can fall back to EDGAR cleanly.
  *
  * Uses two FMP stable endpoints:
  *   1. /institutional-ownership/symbol-ownership — summary stats

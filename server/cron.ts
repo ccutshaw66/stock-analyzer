@@ -7,7 +7,6 @@ import { warmLongRangeCache } from "./long-range-warmup";
 import { warmInstitutionalCache } from "./institutional-warmup";
 import { warmIntradaySnapshot, warmDailyBreadth } from "./market-pulse-warmup";
 import { isMarketHours as isMarketPulseMarketHours } from "./data/providers/market-pulse.adapter";
-import { warmYahooOwnershipCache } from "./yahoo-ownership-warmup";
 import { snapshotConvictionForUniverse, updateForwardReturns } from "./conviction/tracker";
 import { snapshotGammaForUniverse } from "./gamma-tracker";
 import { runBotOnStored } from "./gamma-bot";
@@ -15,22 +14,16 @@ import { runBot as runTrendRideBot } from "./trend-ride-bot";
 import { runBot as runStrangleBot } from "./strangle-bot";
 import type { GetCompanySnapshotOpts } from "./snapshot";
 
-// Yahoo Finance helpers will be passed in from routes
+// Helpers passed in from routes
 let _getQuote: ((ticker: string) => Promise<any>) | null = null;
 let _ensureReady: (() => Promise<void>) | null = null;
-let _yahooFetch: ((url: string, retries?: number) => Promise<any>) | null = null;
-let _getYahooOwnership: ((ticker: string) => Promise<any>) | null = null;
 
 export function initCron(
   getQuote: (ticker: string) => Promise<any>,
   ensureReady: () => Promise<void>,
-  yahooFetch?: (url: string, retries?: number) => Promise<any>,
-  getYahooOwnership?: (ticker: string) => Promise<any>,
 ) {
   _getQuote = getQuote;
   _ensureReady = ensureReady;
-  _yahooFetch = yahooFetch ?? null;
-  _getYahooOwnership = getYahooOwnership ?? null;
 
   // Register the price-snapshot job with the Phase 2.5 scheduler.
   // Runs every hour at :00. The handler itself checks market hours so weekends
@@ -113,13 +106,13 @@ export function initCron(
 
   console.log("[CRON] EDGAR Form 4 sweep registered with scheduler (15 * * * *)");
 
-  // Phase 3.7: Long-range chart disk cache warmup. Runs nightly at 3:30am ET
-  // (07:30 UTC). Pulls 10y/25y/max bars from Yahoo for open-trade symbols +
-  // always-on floor, writes them to disk. User requests read disk cache only;
-  // Yahoo is never touched on the request path.
+  // Long-range chart disk cache warmup. Runs nightly at 3:30am ET
+  // (07:30 UTC). Pulls 10y/25y/max bars from FMP (chunked deep history) for
+  // open-trade symbols + always-on floor, writes them to disk. User requests
+  // read disk cache only; the deep-history fetch is never on the request path.
   registerJob({
     id: "long-range-chart-warmup",
-    description: "Nightly Yahoo long-range chart cache filler (disk-only; never on request path)",
+    description: "Nightly FMP long-range chart cache filler (disk-only; never on request path)",
     cron: "30 7 * * *",
     timeoutMs: 60 * 60 * 1000, // 60 min hard cap
     preventOverrun: true,
@@ -131,33 +124,6 @@ export function initCron(
   });
 
   console.log("[CRON] Long-range chart warmup registered with scheduler (30 7 * * *)");
-
-  // Yahoo ownership cache warmup. Runs at 4:30am ET (08:30 UTC), between
-  // the long-range chart warmup at 3:30am ET and the EDGAR institutional
-  // warmup at 5am ET. Pre-fills the in-memory ownership cache for the
-  // always-warm symbol set + open-trade symbols so the institutional page's
-  // Fund Holders tab and money-flow score serve from RAM rather than
-  // hitting Yahoo live during user requests.
-  //
-  // 250 symbols * ~400ms inter-call delay + ~1s avg per fetch ≈ 6 minutes.
-  // 30-min timeout gives generous headroom for Yahoo slowness without ever
-  // overlapping the 5am institutional job.
-  registerJob({
-    id: "yahoo-ownership-warmup",
-    description: "Nightly Yahoo institution + fund ownership cache filler (Fund Holders tab, money-flow score)",
-    cron: "30 8 * * *",
-    timeoutMs: 30 * 60 * 1000,
-    preventOverrun: true,
-    runOnStart: false,
-    handler: async () => {
-      const res = await warmYahooOwnershipCache({ maxSymbols: 250 });
-      console.log(
-        `[CRON] yahoo ownership warmup: ${res.written} written, ${res.errors} errors`
-      );
-    },
-  });
-
-  console.log("[CRON] Yahoo ownership warmup registered with scheduler (30 8 * * *)");
 
   // Phase 3.8: Institutional (EDGAR 13F) disk cache warmup. Runs at 5am ET
   // (09:00 UTC), after the top-filers refresh at 3am ET so the filer list
@@ -199,14 +165,7 @@ export function initCron(
     preventOverrun: true,
     runOnStart: false,
     handler: async () => {
-      if (!_yahooFetch || !_getYahooOwnership) {
-        console.warn("[CRON] conviction-snapshot: yahoo helpers not initialized, skipping");
-        return;
-      }
-      const opts: GetCompanySnapshotOpts = {
-        yahooFetch: _yahooFetch,
-        getYahooOwnership: _getYahooOwnership,
-      };
+      const opts: GetCompanySnapshotOpts = {};
       const res = await snapshotConvictionForUniverse(opts);
       console.log(`[CRON] conviction-snapshot: ${res.written} written, ${res.skipped} skipped (already today), ${res.errors} errors`);
     },

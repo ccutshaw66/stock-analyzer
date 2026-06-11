@@ -8,7 +8,7 @@
  *   - Both revenueActual AND revenueEstimated
  *   - Computed surprise % per quarter
  *
- * Yahoo was previously used here (removed in Phase 1/2) — this is the final
+ * A free-scrape provider was previously used here (removed in Phase 1/2) — this is the final
  * migration of the earnings calendar away from dual-source.
  */
 import { fmpGet } from "./data/providers/fmp.client";

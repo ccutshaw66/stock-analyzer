@@ -1,5 +1,5 @@
 // ============================================================
-// In-memory cache for Yahoo Finance responses
+// In-memory cache for provider responses
 // ============================================================
 
 interface CacheEntry {
@@ -10,7 +10,7 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-// Default TTLs by data type — longer = fewer Yahoo requests = fewer 429s
+// Default TTLs by data type — longer = fewer upstream requests = fewer 429s
 const TTL = {
   quote: 15 * 60 * 1000,        // 15 minutes for quotes (was 5min — prices don't change that fast for scans)
   chart: 30 * 60 * 1000,        // 30 minutes for chart data

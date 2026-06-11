@@ -7,7 +7,7 @@
  * Formula:
  *   beta = cov(stockReturns, spyReturns) / var(spyReturns)
  *
- * Eliminates a Yahoo dependency and avoids paying a provider for a number
+ * Eliminates a third-party dependency and avoids paying a provider for a number
  * that is trivially derived from data we already have.
  */
 import type { DataProvider, BetaValue, OHLCV, Symbol as Sym } from "../types";

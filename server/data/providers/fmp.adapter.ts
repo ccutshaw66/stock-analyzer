@@ -335,7 +335,7 @@ export const fmpAdapter: DataProvider = {
     // FMP's Form 13F endpoints are Ultimate-tier only. On our Premium plan
     // every /institutional-ownership/* path returns HTTP 402 "Restricted
     // Endpoint". Throw a clear error so the registry can route to another
-    // provider (or the caller can decide whether to retain the Yahoo path
+    // provider (or the caller can decide whether to retain a legacy path
     // until we upgrade the plan).
     throw new Error(
       "FMP institutional holdings require the Ultimate tier — not available on Premium. " +
@@ -385,9 +385,9 @@ export const fmpAdapter: DataProvider = {
  *
  * Why this lives outside the providerFmp object: beta is needed by
  * verdict / outlook scoring as a *fallback* when the primary quote
- * pipeline (Polygon-shaped Yahoo facade) doesn't supply it. Polygon
+ * pipeline (Polygon-shaped quoteSummary facade) doesn't supply it. Polygon
  * itself does not expose beta on any tier as of 2026-04, and the
- * Yahoo defaultKeyStatistics.beta path was retired in the Phase 3.7
+ * The legacy defaultKeyStatistics.beta path was retired in the Phase 3.7
  * migration. Pulling from FMP /profile here keeps the failure mode
  * graceful (one extra HTTP call, cached upstream by fmpGet).
  *
@@ -396,7 +396,7 @@ export const fmpAdapter: DataProvider = {
  */
 /**
  * Ticker search via FMP stable endpoints. Polygon's /v3/reference/tickers
- * is on the kill list (see Yahoo/Polygon-kill plan); search lives on FMP
+ * is on the kill list (see the Polygon-kill plan); search lives on FMP
  * going forward. FMP splits ticker vs. company-name lookups, so we fan out
  * to both `/search-symbol` and `/search-name` and merge the results,
  * de-duplicated by symbol. Caller is expected to apply its own ranking

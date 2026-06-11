@@ -1,7 +1,7 @@
 /**
- * Polygon.io API client + Yahoo-shape adapter.
+ * Polygon.io API client + quoteSummary-shape adapter.
  *
- * Goal: produce response objects that look like Yahoo's `quoteSummary.result[0]`,
+ * Goal: produce response objects that look like the canonical `quoteSummary.result[0]`,
  * `chart.result[0]`, `optionChain.result[0]`, etc., so that existing extractors
  * (extractQuoteData, extractDividendData, etc.) continue to work without changes.
  *
@@ -78,7 +78,7 @@ export async function pget(path: string, query: Record<string, any> = {}): Promi
 }
 
 // ────────────────────────────────────────────────────────────
-// Helper: wrap a number in Yahoo's {raw, fmt} envelope
+// Helper: wrap a number in the {raw, fmt} envelope
 // ────────────────────────────────────────────────────────────
 function yf(v: number | null | undefined): { raw: number } | null {
   if (v === null || v === undefined || !Number.isFinite(v as number)) return null;
@@ -92,7 +92,7 @@ function yfDate(unixSec: number | null | undefined): { raw: number; fmt: string 
 }
 
 // ────────────────────────────────────────────────────────────
-// Parallel Polygon fetches + compose Yahoo-shaped quoteSummary
+// Parallel Polygon fetches + compose canonical quoteSummary
 // ────────────────────────────────────────────────────────────
 
 export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
@@ -140,10 +140,10 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
     (snap?.lastTrade?.p && snap.lastTrade.p > 0 ? snap.lastTrade.p : null);
   const prevClose = snap?.prevDay?.c ?? null;
   const change = snap?.todaysChange ?? (regPrice != null && prevClose != null ? regPrice - prevClose : null);
-  // Yahoo returns change percent as a decimal fraction (e.g. 0.0123 = 1.23%).
-  // Polygon returns it as a percentage number (e.g. 1.23 = 1.23%). Normalize to Yahoo shape.
+  // Change percent is a decimal fraction (e.g. 0.0123 = 1.23%).
+  // Polygon returns it as a percentage number (e.g. 1.23 = 1.23%). Normalize to canonical shape.
   const pctRaw = snap?.todaysChangePerc ?? null;
-  const changePctYahoo = pctRaw != null ? pctRaw / 100 : null;
+  const changePctFraction = pctRaw != null ? pctRaw / 100 : null;
 
   const volume = snap?.day?.v ?? 0;
   const marketCap = details?.market_cap ?? null;
@@ -244,7 +244,7 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
       fiftyTwoWeekHigh = Math.max(...bars.map((b: any) => b.h));
       fiftyTwoWeekLow = Math.min(...bars.map((b: any) => b.l));
 
-      // Yahoo's averageDailyVolume3Month is the rolling mean of ~63 trading
+      // the averageDailyVolume3Month is the rolling mean of ~63 trading
       // days (≈ 3 calendar months of US trading sessions). Bars are sorted
       // ascending, so the last 63 entries are the most recent. We accept
       // shorter windows for newly-listed names — better to show an estimate
@@ -269,7 +269,7 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
   const polyType = details?.type || "";
   if (polyType === "ETF" || polyType === "ETV" || polyType === "ETN") quoteType = "ETF";
 
-  // Build Yahoo-compatible summary
+  // Build canonical summary
   const summary: any = {
     price: {
       longName: details?.name || null,
@@ -278,7 +278,7 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
       currency: (details?.currency_name || "USD").toUpperCase(),
       regularMarketPrice: yf(regPrice),
       regularMarketChange: yf(change),
-      regularMarketChangePercent: yf(changePctYahoo),
+      regularMarketChangePercent: yf(changePctFraction),
       regularMarketVolume: yf(volume),
       marketCap: yf(marketCap),
       averageDailyVolume3Month: yf(avgVolume3M),
@@ -365,13 +365,13 @@ export async function getPolygonQuoteSummary(ticker: string): Promise<any> {
 }
 
 // ────────────────────────────────────────────────────────────
-// Chart: Polygon aggregates → Yahoo chart.result shape
+// Chart: Polygon aggregates → canonical chart.result shape
 // ────────────────────────────────────────────────────────────
 
-type YahooRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "2y" | "3y" | "5y" | "10y" | "max" | "25y" | string;
-type YahooInterval = "1m" | "5m" | "15m" | "30m" | "60m" | "1h" | "1d" | "1wk" | "1mo" | string;
+type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "2y" | "3y" | "5y" | "10y" | "max" | "25y" | string;
+type ChartInterval = "1m" | "5m" | "15m" | "30m" | "60m" | "1h" | "1d" | "1wk" | "1mo" | string;
 
-function mapInterval(interval: YahooInterval): { multiplier: number; timespan: string } {
+function mapInterval(interval: ChartInterval): { multiplier: number; timespan: string } {
   switch (interval) {
     case "1m": return { multiplier: 1, timespan: "minute" };
     case "5m": return { multiplier: 5, timespan: "minute" };
@@ -386,7 +386,7 @@ function mapInterval(interval: YahooInterval): { multiplier: number; timespan: s
   }
 }
 
-function rangeToFromDate(range: YahooRange): Date {
+function rangeToFromDate(range: ChartRange): Date {
   const now = new Date();
   const d = new Date(now);
   switch (range) {
@@ -409,8 +409,8 @@ function rangeToFromDate(range: YahooRange): Date {
 
 export async function getPolygonChart(
   ticker: string,
-  range: YahooRange,
-  interval: YahooInterval
+  range: ChartRange,
+  interval: ChartInterval
 ): Promise<any> {
   const T = ticker.toUpperCase();
   const from = rangeToFromDate(range);
@@ -425,7 +425,7 @@ export async function getPolygonChart(
   );
 
   const bars = data?.results || [];
-  // Yahoo shape: { timestamp: number[] (sec), indicators: { quote: [{ close, open, high, low, volume }] } }
+  // Canonical shape: { timestamp: number[] (sec), indicators: { quote: [{ close, open, high, low, volume }] } }
   const timestamp = bars.map((b: any) => Math.floor(b.t / 1000));
   const close = bars.map((b: any) => b.c);
   const open = bars.map((b: any) => b.o);
@@ -450,7 +450,7 @@ export async function getPolygonChart(
 }
 
 // ────────────────────────────────────────────────────────────
-// Options chain: Polygon /v3/snapshot/options → Yahoo optionChain shape
+// Options chain: Polygon /v3/snapshot/options → canonical optionChain shape
 // ────────────────────────────────────────────────────────────
 
 export async function getPolygonOptionsChain(ticker: string, expDateUnixSec?: number): Promise<any> {

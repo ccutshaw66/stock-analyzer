@@ -38,7 +38,7 @@ import { computeClosedTradeProfit, computeOpenStockPL } from "@shared/pnl";
 const routesLog = rootLogger.child({ module: "routes" });
 
 // Phase 3.2: FMP is PRIMARY and ONLY source for analyst ratings.
-// Yahoo was unreliable (stale crumbs, drift, TOS violation for SaaS).
+// The legacy free-scrape provider was unreliable (stale crumbs, drift, TOS violation for SaaS).
 // Calls /price-target-consensus + /grades-consensus directly (not the adapter's
 // collapsed form) so we get per-bucket buy/hold/sell counts.
 import { fmpGet } from "./data/providers/fmp.client";
@@ -161,311 +161,6 @@ function triggerDemoReset(label: string) {
     });
 }
 
-// ============================================================
-// Yahoo Finance direct API fetcher (bypasses yahoo-finance2 lib
-// which gets blocked on cloud servers like Railway/Render)
-// ============================================================
-
-const YF_BASE_HEADERS: Record<string, string> = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Accept-Language": "en-US,en;q=0.9",
-};
-
-let _crumb: string | null = null;
-let _cookie: string | null = null;
-let _crumbTimestamp = 0;
-
-function extractCookies(r: globalThis.Response): string {
-  const parts: string[] = [];
-  if (typeof r.headers.getSetCookie === 'function') {
-    for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);
-  }
-  if (parts.length === 0) {
-    const raw = r.headers.get('set-cookie');
-    if (raw) for (const c of raw.split(/,(?=[A-Z])/)) parts.push(c.trim().split(";")[0]);
-  }
-  return parts.filter(Boolean).join("; ");
-}
-
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-];
-
-async function getYahooCrumb(): Promise<{ crumb: string; cookie: string }> {
-  // Cache crumb for 5 minutes
-  if (_crumb && _cookie && Date.now() - _crumbTimestamp < 5 * 60 * 1000) {
-    return { crumb: _crumb, cookie: _cookie };
-  }
-
-  console.log("[yahoo] Fetching new crumb...");
-  const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-  const headers: Record<string, string> = {
-    ...YF_BASE_HEADERS,
-    "User-Agent": ua,
-  };
-
-  let cookie = "";
-
-  // Method 1: fc.yahoo.com with consent cookie pre-set
-  try {
-    const r = await fetch("https://fc.yahoo.com/", {
-      headers: { ...headers, Cookie: "A3=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S" },
-      redirect: "manual",
-    });
-    cookie = extractCookies(r);
-    if (cookie) console.log("[yahoo] fc.yahoo.com: cookie obtained");
-  } catch (e) {
-    console.log("[yahoo] fc.yahoo.com failed:", (e as Error).message);
-  }
-
-  // Method 2: consent.yahoo.com (bypasses geo blocks)
-  if (!cookie) {
-    try {
-      const r = await fetch("https://consent.yahoo.com/v2/collectConsent?sessionId=1", {
-        headers,
-        redirect: "manual",
-      });
-      cookie = extractCookies(r);
-      if (cookie) console.log("[yahoo] consent.yahoo.com: cookie obtained");
-    } catch (e) {
-      console.log("[yahoo] consent.yahoo.com failed:", (e as Error).message);
-    }
-  }
-
-  // Method 3: login.yahoo.com
-  if (!cookie) {
-    try {
-      const r = await fetch("https://login.yahoo.com/", {
-        headers,
-        redirect: "manual",
-      });
-      cookie = extractCookies(r);
-      if (cookie) console.log("[yahoo] login.yahoo.com: cookie obtained");
-    } catch (e) {
-      console.log("[yahoo] login.yahoo.com failed:", (e as Error).message);
-    }
-  }
-
-  // Method 4: finance.yahoo.com direct
-  if (!cookie) {
-    try {
-      const r = await fetch("https://finance.yahoo.com/", {
-        headers,
-        redirect: "follow",
-      });
-      cookie = extractCookies(r);
-      if (cookie) console.log("[yahoo] finance.yahoo.com: cookie obtained");
-    } catch (e) {
-      console.log("[yahoo] finance.yahoo.com failed:", (e as Error).message);
-    }
-  }
-
-  // Method 5: Synthetic cookie (last resort — works for some endpoints)
-  if (!cookie) {
-    cookie = "A1=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S; A3=d=AQABBCEfZ2sCEGeYRHxNTUFZQJGoCx0FEgEBAQEBaGwDZmYAAAAAAA&S=AQAAApCLhM_S";
-    console.log("[yahoo] Using synthetic cookie as last resort");
-  }
-
-  console.log("[yahoo] Cookie:", cookie ? "obtained" : "MISSING");
-
-  if (!cookie) {
-    throw new Error("Failed to obtain Yahoo Finance cookie");
-  }
-
-  // Try query1 first (better for cloud servers), then query2, with 429 retry
-  let crumb = "";
-  let crumbStatus = 0;
-  for (const host of ["query1", "query2"]) {
-    const crumbResp = await fetch(`https://${host}.finance.yahoo.com/v1/test/getcrumb`, {
-      headers: { ...headers, Accept: "text/plain", Cookie: cookie },
-    });
-    crumbStatus = crumbResp.status;
-    if (crumbResp.status === 429) {
-      console.log(`[yahoo] ${host} crumb returned 429 (rate limited), waiting 3s...`);
-      await new Promise(r => setTimeout(r, 3000));
-      continue;
-    }
-    if (crumbResp.status === 200) {
-      crumb = await crumbResp.text();
-      console.log(`[yahoo] Crumb from ${host}:`, crumb ? crumb.substring(0, 15) + "..." : "EMPTY");
-      break;
-    }
-    console.log(`[yahoo] ${host} crumb failed (${crumbResp.status})`);
-  }
-
-  // Validate crumb
-  if (!crumb || crumb.length > 50 || crumb.includes("<") || crumb.includes("{")) {
-    throw new Error(`Failed to obtain crumb (status ${crumbStatus})`);
-  }
-
-  _crumb = crumb;
-  _cookie = cookie;
-  _crumbTimestamp = Date.now();
-
-  return { crumb, cookie };
-}
-
-// Direct fetch (used by the queue internally)
-async function _yahooFetchDirect(url: string, retries = 3): Promise<any> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const { crumb, cookie } = await getYahooCrumb();
-      const separator = url.includes("?") ? "&" : "?";
-      const fullUrl = `${url}${separator}crumb=${encodeURIComponent(crumb)}`;
-      console.log(`[yahoo] Fetching: ${fullUrl.substring(0, 120)}...`);
-
-      const resp = await fetch(fullUrl, {
-        headers: { ...YF_BASE_HEADERS, Cookie: cookie },
-      });
-
-      if (resp.status === 429) {
-        console.log(`[yahoo] Rate limited (429), waiting ${(attempt + 1) * 2}s before retry...`);
-        _crumb = null; _cookie = null; _crumbTimestamp = 0;
-        if (attempt < retries) { await new Promise(r => setTimeout(r, (attempt + 1) * 2000)); continue; }
-        throw new Error(`Yahoo Finance rate limited (429)`);
-      }
-
-      if (resp.status === 401 || resp.status === 403) {
-        console.log(`[yahoo] Auth error ${resp.status}, refreshing crumb...`);
-        _crumb = null; _cookie = null; _crumbTimestamp = 0;
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 1000)); continue; }
-        throw new Error(`Yahoo Finance returned ${resp.status}`);
-      }
-
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        console.log(`[yahoo] Error ${resp.status}: ${errText.substring(0, 150)}`);
-        // If the error body suggests auth/crumb issue, retry with fresh crumb
-        if (errText.includes('Unauthorized') || errText.includes('crumb')) {
-          _crumb = null; _cookie = null; _crumbTimestamp = 0;
-          if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
-        }
-        throw new Error(`Yahoo Finance API error: ${resp.status}`);
-      }
-
-      const json = await resp.json();
-      
-      // Check if quoteSummary returned null result (bad crumb returns 200 but empty result)
-      if (json?.quoteSummary?.result === null && json?.quoteSummary?.error) {
-        console.log(`[yahoo] quoteSummary returned error: ${JSON.stringify(json.quoteSummary.error)}`);
-        _crumb = null; _cookie = null; _crumbTimestamp = 0;
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 500)); continue; }
-      }
-      
-      return json;
-    } catch (err: any) {
-      if (attempt < retries) {
-        _crumb = null;
-        _cookie = null;
-        _crumbTimestamp = 0;
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-// Master Yahoo kill switch. Yahoo is removed from the live request path when
-// FMP_TIER=ultimate is set OR YAHOO_DISABLED=true. Every Yahoo call routes
-// through this single chokepoint, so the kill switch here disables Yahoo
-// site-wide — the institutional scan, long-range charts, ownership warmups,
-// and any other code path that ends up calling yahooFetch all fail-fast
-// instead of hitting the network and burning into Yahoo's 429 block.
-function isYahooDisabled(): boolean {
-  const tier = (process.env.FMP_TIER || "").toLowerCase();
-  if (tier === "ultimate") return true;
-  if ((process.env.YAHOO_DISABLED || "").toLowerCase() === "true") return true;
-  return false;
-}
-
-class YahooDisabledError extends Error {
-  constructor() {
-    super("yahoo:disabled (FMP_TIER=ultimate or YAHOO_DISABLED=true)");
-    this.name = "YahooDisabledError";
-  }
-}
-
-// Queued Yahoo fetch — all requests go through the global rate limiter.
-// Returns immediately with a YahooDisabledError when Yahoo is disabled,
-// so no socket is opened, no crumb is fetched, no 429 is incurred.
-async function yahooFetch(url: string, retries = 3): Promise<any> {
-  if (isYahooDisabled()) throw new YahooDisabledError();
-  return enqueue(() => _yahooFetchDirect(url, retries), url.substring(0, 80));
-}
-
-// Use query1 as primary (better compatibility with cloud server IPs)
-const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
-
-/**
- * Fetch institutional / mutual-fund ownership and the holder-breakdown
- * percentages from Yahoo's quoteSummary endpoint.
- *
- * Architecture: this function is BOTH the request-path fallback (used by
- * the institutional route when a ticker hasn't been warmed yet) AND the
- * primitive that the nightly Yahoo-ownership warmup cron calls to keep
- * the cache fresh for the always-warm symbol set + open-trade symbols.
- *
- * TTL is 23h so the daily cron at 04:30 ET refreshes everything just
- * before it expires. 13F filings are quarterly and fund holdings monthly,
- * so daily refresh is overkill in terms of underlying data freshness but
- * matches the cadence of your other warmup jobs and keeps the in-memory
- * cache warm across the whole trading day.
- *
- * TODO(Phase 3.4b / N-PORT): replace with EDGAR N-PORT (mutual-fund / ETF
- * holdings) plus 13F QoQ change deltas so this Yahoo dependency can be
- * retired in line with the Master Pathway architectural rule.
- */
-export async function getYahooOwnership(ticker: string): Promise<any> {
-  const T = ticker.toUpperCase();
-  // Master kill switch: when Yahoo is disabled, return the empty shape
-  // immediately. No socket, no crumb fetch, no rate-limit retries.
-  if (isYahooDisabled()) {
-    return {
-      institutionOwnership: null,
-      fundOwnership: null,
-      majorHoldersBreakdown: null,
-      insiderHolders: null,
-    };
-  }
-  const cacheKey = `yahoo:ownership:${T}`;
-  const cached = getCached(cacheKey);
-  if (cached !== undefined && cached !== null) {
-    recordCacheHit();
-    return cached;
-  }
-  const url =
-    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(T)}` +
-    `?modules=fundOwnership,institutionOwnership,majorHoldersBreakdown,insiderHolders`;
-  try {
-    const json = await yahooFetch(url, 2);
-    const block = json?.quoteSummary?.result?.[0] || {};
-    const out = {
-      institutionOwnership: block.institutionOwnership || null,
-      fundOwnership: block.fundOwnership || null,
-      majorHoldersBreakdown: block.majorHoldersBreakdown || null,
-      insiderHolders: block.insiderHolders || null,
-    };
-    // 23h: just under the warmup cadence so the cron always refreshes
-    // before expiry. Data underneath is filed quarterly (13F) / monthly
-    // (N-PORT) so even a stale-by-a-day value is still meaningful.
-    setCache(cacheKey, out, 23 * 60 * 60 * 1000);
-    return out;
-  } catch (e: any) {
-    routesLog.debug?.(
-      { ticker: T, err: String(e?.message || e) },
-      "yahoo ownership fetch failed; returning empty"
-    );
-    const empty = { institutionOwnership: null, fundOwnership: null, majorHoldersBreakdown: null, insiderHolders: null };
-    // Cache empty for only 5 minutes on failure so the next request retries
-    // soon (e.g. transient 429) instead of being stuck for the full window.
-    setCache(cacheKey, empty, 5 * 60 * 1000);
-    return empty;
-  }
-}
 
 async function getQuote(ticker: string): Promise<any> {
   const cacheKey = `quote:${ticker.toUpperCase()}`;
@@ -474,13 +169,13 @@ async function getQuote(ticker: string): Promise<any> {
     recordCacheHit();
     return cached;
   }
-  // Primary: Polygon (Stocks Starter). Returns a Yahoo-shaped quoteSummary.result[0] object.
+  // Primary: Polygon (Stocks Starter). Returns a canonical quoteSummary-shaped object.
   const result = await getPolygonQuoteSummary(ticker);
   if (result) setCache(cacheKey, result, TTL.quote);
   return result;
 }
 
-/** Convert a Yahoo-style range string to a "days back" number for FMP from-date math. */
+/** Convert a canonical range string to a "days back" number for FMP from-date math. */
 function rangeStringToDays(range: string): number {
   const map: Record<string, number> = {
     "1d": 5, "5d": 10, "1mo": 35, "3mo": 95, "6mo": 185,
@@ -490,7 +185,7 @@ function rangeStringToDays(range: string): number {
 }
 
 /**
- * FMP /historical-price-eod/full → Yahoo-shape converter for the short/mid
+ * FMP /historical-price-eod/full → canonical shape converter for the short/mid
  * range path. Single call (FMP caps at ~5000 rows ≈ 20y).
  */
 /**
@@ -640,11 +335,11 @@ async function getChart(ticker: string, range: string, interval: string): Promis
 // ============================================================
 
 async function getInstitutionalData(ticker: string): Promise<any> {
-  // Phase 3.7: fully migrated off Yahoo for the request path.
+  // Phase 3.7: fully migrated off the legacy free-scrape provider for the request path.
   //  - Institutional ownership: SEC EDGAR 13Fs (in parseInstitutionalData)
   //  - Insider transactions: FMP /insider-trading/search
   //  - Price / marketCap / volume: Polygon snapshot via getQuote, merged
-  //    into a Yahoo-shaped blob so parseInstitutionalData stays compatible.
+  //    into a canonical quoteSummary-shaped blob so parseInstitutionalData stays compatible.
   //
   // Cache lives 24h (TTL.institutional) — institutional data updates
   // quarterly (13F) and monthly (N-PORT), so long TTL is correct. The
@@ -719,30 +414,6 @@ async function getInstitutionalData(ticker: string): Promise<any> {
     }
   }
 
-  // Yahoo data — re-enabled here for insider% specifically. Long-term goal
-  // (per 2026-05-06 directive) is FMP-only, but until an FMP-side replacement
-  // for `majorHoldersBreakdown.insidersPercentHeld` is built, Yahoo's
-  // ownership module is the only source for that field. The Yahoo warmup
-  // cron pre-populates this 23h cache nightly so the request-path call
-  // almost always hits cache.
-  let yahooOwnership: {
-    institutionOwnership: any | null;
-    fundOwnership: any | null;
-    majorHoldersBreakdown: any | null;
-    insiderHolders: any | null;
-  } = {
-    institutionOwnership: null,
-    fundOwnership: null,
-    majorHoldersBreakdown: null,
-    insiderHolders: null,
-  };
-  try {
-    const yo = await getYahooOwnership(ticker);
-    if (yo) yahooOwnership = yo;
-  } catch (e: any) {
-    routesLog.debug?.({ ticker, err: String(e?.message || e) }, "yahoo ownership fetch failed; continuing with FMP-only");
-  }
-
   // Derive sharesOutstanding from quote (marketCap / price). Polygon-shaped
   // quote returns regularMarketPrice and marketCap as `{raw}` objects.
   const qPrice = Number(quote?.price?.regularMarketPrice?.raw ?? 0);
@@ -750,10 +421,12 @@ async function getInstitutionalData(ticker: string): Promise<any> {
   const sharesOutstanding = qPrice > 0 && qMcap > 0 ? qMcap / qPrice : 0;
 
   const result: any = {
-    // Yahoo-shaped facade so parseInstitutionalData stays unchanged
+    // quoteSummary-shaped facade so parseInstitutionalData stays unchanged.
+    // Institutional / fund / major-holder modules now come from FMP/EDGAR
+    // inside parseInstitutionalData, so they're left null here.
     price: quote?.price || {},
     summaryDetail: quote?.summaryDetail || {},
-    insiderHolders: yahooOwnership.insiderHolders || { holders: [] },
+    insiderHolders: { holders: [] },
     insiderTransactions: { transactions: insiderTxns },
     netSharePurchaseActivity: {
       buyInfoCount: { raw: buyCount },
@@ -763,33 +436,29 @@ async function getInstitutionalData(ticker: string): Promise<any> {
       buyPercentInsiderShares: { raw: 0 },
       sellPercentInsiderShares: { raw: 0 },
     },
-    // Restored ownership modules — read by parseInstitutionalData below.
-    institutionOwnership: yahooOwnership.institutionOwnership,
-    fundOwnership: yahooOwnership.fundOwnership,
-    majorHoldersBreakdown: yahooOwnership.majorHoldersBreakdown,
+    institutionOwnership: null,
+    fundOwnership: null,
+    majorHoldersBreakdown: null,
     // FMP-derived signals consumed by parseInstitutionalData. insiderTotalShares
     // is the sum of each unique insider's most recent securitiesOwned;
-    // dividing by sharesOutstanding gives an FMP-only insiderPct (replacement
-    // for Yahoo's insidersPercentHeld which is dead under FMP_TIER=ultimate).
+    // dividing by sharesOutstanding gives the FMP-only insiderPct.
     fmpInsiderTotalShares: insiderTotalShares,
     fmpSharesOutstanding: sharesOutstanding,
   };
 
-  // Don't poison the 24h cache with empty results. If neither Yahoo nor FMP
-  // gave us anything useful, cache for only 5 minutes so we retry soon
-  // instead of being stuck for the full window. This is what "blocked +
-  // bad cache" was — Yahoo was failing AND we were caching the empty
-  // result for hours.
-  const hasYahooData = !!(yahooOwnership.majorHoldersBreakdown || yahooOwnership.institutionOwnership);
+  // Don't poison the 24h cache with empty results. If FMP gave us no insider
+  // data, cache for only 5 minutes so we retry soon instead of being stuck
+  // for the full window. (parseInstitutionalData pulls the authoritative
+  // FMP/EDGAR institutional summary on its own, separately cached.)
   const hasInsiderData = insiderTxns.length > 0;
-  const isUseful = hasYahooData || hasInsiderData;
+  const isUseful = hasInsiderData;
   setCache(cacheKey, result, isUseful ? TTL.institutional : 5 * 60 * 1000);
   return result;
 }
 
 async function parseInstitutionalData(raw: any, ticker: string) {
   // Phase 3.4a: institutional data sourced from SEC EDGAR 13Fs.
-  // Yahoo still supplies price/summary/insider modules for now (removed in 3.7).
+  // Price/summary modules come from FMP/Polygon; institutional from FMP/EDGAR.
   const price = raw?.price || {};
   const summary = raw?.summaryDetail || {};
   const insiderHolders = raw?.insiderHolders?.holders || [];
@@ -799,7 +468,7 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   // Institutional summary — provider chain:
   //   1. FMP Ultimate (when FMP_TIER=ultimate is set) — paid, reliable
   //   2. SEC EDGAR — free, authoritative, but IP-blockable
-  //   3. Yahoo majorHoldersBreakdown fallback — handled later in the
+  //   3. (legacy major-holders fallback removed) — handled later in the
   //      `usingEdgar` block, populates summary stats only
   // FMP Ultimate is the primary when configured because it's the paid
   // provider and removes the dependency on free sources that keep getting
@@ -830,92 +499,33 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     }
   }
 
-  // Yahoo-sourced ownership data, attached by getInstitutionalData. If the
-  // Yahoo fetch failed (network, rate limit, captcha) these come back null
-  // and the page degrades to the same empty state as before — no crash.
-  const instOwnership: any[] = raw?.institutionOwnership?.ownershipList || [];
-  const fundOwnership: any[] = raw?.fundOwnership?.ownershipList || [];
-  const majorBreakdown: any = raw?.majorHoldersBreakdown || {};
+  // Institutional summary comes from FMP Ultimate (primary) or EDGAR
+  // (fallback) via `edgar`. The legacy quoteSummary ownership modules are
+  // always null now, so there's no third-party merge to do here.
 
-  // QoQ change source:
-  //   - FMP Ultimate path: `getFmpInstitutional` now diffs the prior 13F quarter
-  //     and writes `changeQoQ` directly onto each top holder. We just read it.
-  //   - EDGAR fallback path: `topHolders` from EDGAR has no QoQ field. Yahoo's
-  //     `institutionOwnership.pctChange` was the historical merge source, but
-  //     under FMP_TIER=ultimate the Yahoo modules are nulled out by
-  //     getInstitutionalData, so this map will be empty and rows fall back to 0.
-  const normalizeOrgName = (s: string): string =>
-    String(s || "")
-      .toLowerCase()
-      .replace(/[.,&'/]/g, " ")
-      .replace(/\b(inc|incorporated|corp|corporation|ltd|limited|llc|lp|llp|plc|the)\b/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const yahooQoQByName = new Map<string, number>();
-  for (const inst of instOwnership) {
-    const key = normalizeOrgName(inst.organization || "");
-    if (!key) continue;
-    const pct = Number(inst.pctChange?.raw);
-    if (Number.isFinite(pct)) yahooQoQByName.set(key, pct);
-  }
-
-  // Top institutional holders. FMP path provides changeQoQ directly; EDGAR
-  // path tries the (likely empty) Yahoo merge as a last-ditch.
+  // Top institutional holders. Both FMP and EDGAR write `changeQoQ` directly
+  // onto each top holder (FMP diffs the prior 13F quarter; EDGAR leaves 0).
   let topInstitutions = (edgar?.topHolders ?? []).map((h: any) => ({
     name: h.name,
     shares: h.shares,
     value: h.value,
     pctHeld: h.pctHeld,
-    changeQoQ: Number.isFinite(h.changeQoQ)
-      ? Number(h.changeQoQ)
-      : (yahooQoQByName.get(normalizeOrgName(h.name)) ?? 0) * 100,
+    changeQoQ: Number.isFinite(h.changeQoQ) ? Number(h.changeQoQ) : 0,
     reportDate: h.reportDate,
     accession: h.accession,
     cik: h.cik,
   }));
 
-  // Yahoo fallback for the top-holders table — when EDGAR is blocked or
-  // returns nothing, populate from Yahoo's institutionOwnership.ownershipList
-  // so the user sees the top ~10 institutional holders Yahoo knows about
-  // instead of an empty table. EDGAR is more authoritative (more holders,
-  // more recent), but an empty table is worse than Yahoo's slim view.
-  if (topInstitutions.length === 0 && instOwnership.length > 0) {
-    topInstitutions = instOwnership.slice(0, 25).map((inst: any) => ({
-      name: inst.organization || "Unknown",
-      shares: inst.position?.raw || 0,
-      value: inst.value?.raw || 0,
-      pctHeld: inst.pctHeld?.raw || 0,
-      changeQoQ: (inst.pctChange?.raw || 0) * 100,
-      reportDate: inst.reportDate?.fmt || null,
-      accession: null,
-      cik: null,
-    }));
-  }
-
-  // Top fund holders (mutual funds / ETFs).
-  // PRIMARY: when edgar source is FMP (paid Ultimate plan), use the topFunds
-  // FMP returned — same 13F data filtered to fund/ETF filers.
-  // FALLBACK: Yahoo's fundOwnership (only populated when Yahoo is enabled).
-  // When neither has data, the Fund Holders tab shows the empty state.
+  // Top fund holders (mutual funds / ETFs) — from FMP's topFunds (same 13F
+  // data filtered to fund/ETF filers). Empty state when FMP has no funds.
   const fmpFunds: any[] = (edgar?.topFunds && Array.isArray(edgar.topFunds)) ? edgar.topFunds : [];
-  const fundSource = fmpFunds.length > 0 ? "fmp" : "yahoo";
-  const topFunds = fundSource === "fmp"
-    ? fmpFunds.map((f: any) => ({
-        name: f.name || "Unknown",
-        shares: Number(f.shares || 0),
-        value: Number(f.value || 0),
-        pctHeld: Number(f.pctHeld || 0),
-        changeQoQ: Number(f.changeQoQ || 0),
-        reportDate: f.reportDate || null,
-      }))
-    : fundOwnership.slice(0, 15).map((fund: any) => ({
-    name: fund.organization || "Unknown",
-    shares: fund.position?.raw || 0,
-    value: fund.value?.raw || 0,
-    pctHeld: fund.pctHeld?.raw || 0,
-    changeQoQ: (fund.pctChange?.raw || 0) * 100,
-    reportDate: fund.reportDate?.fmt || null,
+  const topFunds = fmpFunds.map((f: any) => ({
+    name: f.name || "Unknown",
+    shares: Number(f.shares || 0),
+    value: Number(f.value || 0),
+    pctHeld: Number(f.pctHeld || 0),
+    changeQoQ: Number(f.changeQoQ || 0),
+    reportDate: f.reportDate || null,
   }));
 
   // Display cutoff: surface holders that are EITHER significant in size OR
@@ -953,17 +563,13 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const topFundsFiltered = topFunds.filter(passesDisplayFilter).sort(sortByMoversThenValue);
   topInstitutions = topInstitutionsFiltered;
 
-  // Insider holders (current positions).
-  // PRIMARY: Yahoo's insiderHolders module (only populated when Yahoo is
-  // enabled, which it isn't on FMP_TIER=ultimate).
-  // FALLBACK: derive a roster from the insider transaction history we already
-  // pull from FMP — group by insider name, take the most recent transaction
-  // per name, sum the shares involved as a proxy for "current activity."
-  // It's not a true holdings statement (that requires Form 3/Form 5 data),
+  // Insider holders (current positions). Derived from the FMP insider
+  // transaction history — group by insider name, take the most recent
+  // transaction per name, use the shares involved as a proxy for "current
+  // activity." Not a true holdings statement (that requires Form 3/Form 5),
   // but it gives the Insiders tab a populated roster of who's been moving
   // shares lately, sourced entirely from FMP.
-  const insidersFromTxns = (() => {
-    if (insiderHolders.length > 0) return null; // Yahoo path will be used
+  const insiders = (() => {
     if (!Array.isArray(insiderTxns) || insiderTxns.length === 0) return [];
     const byName = new Map<string, any>();
     for (const tx of insiderTxns) {
@@ -985,16 +591,6 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     }
     return Array.from(byName.values()).slice(0, 20);
   })();
-  const insiders = insidersFromTxns !== null
-    ? insidersFromTxns
-    : insiderHolders.map((h: any) => ({
-    name: h.name || "Unknown",
-    relation: h.relation || "Unknown",
-    shares: h.positionDirect?.raw || 0,
-    sharesIndirect: h.positionIndirect?.raw || 0,
-    latestTransaction: h.transactionDescription || null,
-    latestDate: h.latestTransDate?.fmt || null,
-  }));
 
   // Insider transactions (recent buys/sells)
   //
@@ -1058,14 +654,9 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   const insiderBuyPct = netActivity.buyPercentInsiderShares?.raw || 0;
   const insiderSellPct = netActivity.sellPercentInsiderShares?.raw || 0;
 
-  // Institutional inflow/outflow from QoQ changes.
-  //
-  // Source priority:
-  //   1. FMP topHolders (paid Ultimate path) — has changeQoQ per holder
-  //      computed from CIK-keyed prior-quarter diff. Authoritative when the
-  //      FMP institutional adapter is in play.
-  //   2. Yahoo institutionOwnership.ownershipList — legacy fallback, dead
-  //      under FMP_TIER=ultimate but still works on the EDGAR-only path.
+  // Institutional inflow/outflow from QoQ changes. Source is FMP/EDGAR
+  // topHolders, which carry `changeQoQ` per holder (FMP computes it from a
+  // CIK-keyed prior-quarter diff; EDGAR-only leaves 0).
   let instInflow = 0;
   let instOutflow = 0;
   let instIncreased = 0;
@@ -1073,28 +664,16 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   let instNew = 0;
   let instSoldOut = 0;
   const fmpHolders: any[] = (edgar?.topHolders && Array.isArray(edgar.topHolders)) ? edgar.topHolders : [];
-  if (fmpHolders.length > 0) {
-    for (const h of fmpHolders) {
-      const chgPct = Number(h.changeQoQ || 0); // already in percent (e.g. 5.2)
-      const value = Number(h.value || 0);
-      if (chgPct > 50) instNew++;
-      else if (chgPct > 0) instIncreased++;
-      if (chgPct < -90) instSoldOut++;
-      else if (chgPct < 0) instDecreased++;
-      const chgFraction = chgPct / 100;
-      if (chgFraction > 0) instInflow += value * chgFraction;
-      if (chgFraction < 0) instOutflow += Math.abs(value * chgFraction);
-    }
-  } else {
-    for (const inst of instOwnership) {
-      const chg = inst.pctChange?.raw || 0;
-      if (chg > 50) instNew++;
-      else if (chg > 0) instIncreased++;
-      if (chg < -90) instSoldOut++;
-      else if (chg < 0) instDecreased++;
-      if (chg > 0) instInflow += (inst.value?.raw || 0) * (chg / 100);
-      if (chg < 0) instOutflow += Math.abs((inst.value?.raw || 0) * (chg / 100));
-    }
+  for (const h of fmpHolders) {
+    const chgPct = Number(h.changeQoQ || 0); // already in percent (e.g. 5.2)
+    const value = Number(h.value || 0);
+    if (chgPct > 50) instNew++;
+    else if (chgPct > 0) instIncreased++;
+    if (chgPct < -90) instSoldOut++;
+    else if (chgPct < 0) instDecreased++;
+    const chgFraction = chgPct / 100;
+    if (chgFraction > 0) instInflow += value * chgFraction;
+    if (chgFraction < 0) instOutflow += Math.abs(value * chgFraction);
   }
 
   // Money Flow Score: -100 (all selling) to +100 (all buying)
@@ -1110,15 +689,10 @@ async function parseInstitutionalData(raw: any, ticker: string) {
   else if (combinedScore <= -40) signal = "STRONG OUTFLOW";
   else if (combinedScore <= -15) signal = "DISTRIBUTING";
 
-  // Ownership breakdown — EDGAR is authoritative when it has real data,
-  // but falls back to Yahoo's majorHoldersBreakdown when EDGAR is blocked,
-  // partially-failed, or returns a stub object with zero holders. We test
+  // Ownership breakdown — FMP/EDGAR institutional summary. We test
   // `edgar.institutionCount > 0` rather than `edgar != null` so a partial-
-  // failure EDGAR response (object present but zero counts) also triggers
-  // the fallback — was leaving us stuck on zeros for 49 of 50 megacaps.
-  const yahooInstPct = (majorBreakdown?.institutionsPercentHeld?.raw || 0) * 100;
-  const yahooInstCount = majorBreakdown?.institutionsCount?.raw || 0;
-  const yahooFloatPct = (majorBreakdown?.institutionsFloatPercentHeld?.raw || 0) * 100;
+  // failure response (object present but zero counts) reads as "no data"
+  // rather than a misleading 0%.
   const usingEdgar = !!(edgar?.institutionCount && edgar.institutionCount > 0);
 
   return {
@@ -1132,22 +706,19 @@ async function parseInstitutionalData(raw: any, ticker: string) {
     insiderPct: (() => {
       // FMP-side insider %: sum each unique insider's most recent post-
       // transaction holding (securitiesOwned), divide by sharesOutstanding.
-      // Replaces Yahoo's insidersPercentHeld which is dead under
-      // FMP_TIER=ultimate (and unreliable when alive).
       const fmpInsiderShares = Number(raw?.fmpInsiderTotalShares ?? 0);
       const fmpSharesOut = Number(raw?.fmpSharesOutstanding ?? 0);
       if (fmpInsiderShares > 0 && fmpSharesOut > 0) {
         return (fmpInsiderShares / fmpSharesOut) * 100;
       }
-      // Last-ditch: Yahoo (almost always 0 under Ultimate).
-      return (majorBreakdown?.insidersPercentHeld?.raw || 0) * 100;
+      return 0;
     })(),
-    institutionPct: usingEdgar ? (edgar!.institutionPct || yahooInstPct) : yahooInstPct,
-    institutionCount: usingEdgar ? edgar!.institutionCount : yahooInstCount,
-    floatPct: usingEdgar ? (edgar!.institutionPct || yahooFloatPct) : yahooFloatPct,
+    institutionPct: usingEdgar ? (edgar!.institutionPct || 0) : 0,
+    institutionCount: usingEdgar ? edgar!.institutionCount : 0,
+    floatPct: usingEdgar ? (edgar!.institutionPct || 0) : 0,
     sharesOutstanding: edgar?.sharesOutstanding ?? null,
     institutionalAsOf: edgar?.asOf ?? null,
-    institutionalSource: usingEdgar ? (edgar!.source ?? "sec-edgar-13f") : (yahooInstCount ? "yahoo-major-holders" : "none"),
+    institutionalSource: usingEdgar ? (edgar!.source ?? "sec-edgar-13f") : "none",
 
     // Money flow
     flowScore: combinedScore,
@@ -1202,7 +773,7 @@ interface DecisionQuestion {
 function safeNum(val: any): number | null {
   if (val === undefined || val === null || isNaN(val)) return null;
   const n = Number(val);
-  // Yahoo sometimes returns raw values as {raw: 123, fmt: "123"}
+  // Raw values use the {raw: 123, fmt: "123"} envelope
   if (typeof val === "object" && val.raw !== undefined) return safeNum(val.raw);
   return n;
 }
@@ -1217,7 +788,7 @@ function formatLargeNumber(num: number | null): string {
   return num.toFixed(2);
 }
 
-// Helper to safely extract a raw numeric value from Yahoo's {raw, fmt} format
+// Helper to safely extract a raw numeric value from the {raw, fmt} format
 function raw(val: any): number | null {
   if (val === undefined || val === null) return null;
   if (typeof val === "object" && val.raw !== undefined) return safeNum(val.raw);
@@ -1456,7 +1027,7 @@ function generateDecisionShortcut(data: any): DecisionQuestion[] {
 }
 
 // ============================================================
-// Extract data from Yahoo's quoteSummary response
+// Extract data from the canonical quoteSummary response
 // ============================================================
 
 function extractQuoteData(summary: any) {
@@ -1589,39 +1160,11 @@ export async function registerRoutes(
   // ─── Phase 1B Round 7 — per-user dashboard layout persistence ──────────
   registerDashboardRoutes(app);
 
-  // Warm up Yahoo crumb on startup — API routes wait for this before making
-  // Yahoo calls. SKIPPED entirely when Yahoo is disabled (FMP_TIER=ultimate
-  // or YAHOO_DISABLED=true) — no point burning into Yahoo's 429 block fetching
-  // a crumb we'll never use.
-  let _warmupDone = false;
-  const _warmupPromise = (async () => {
-    if (isYahooDisabled()) {
-      console.log("[yahoo] kill switch active (FMP_TIER=ultimate or YAHOO_DISABLED=true) — skipping crumb warmup");
-      _warmupDone = true;
-      return;
-    }
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      await new Promise(r => setTimeout(r, attempt * 2000)); // 2s, 4s, 6s, 8s, 10s
-      try {
-        await getYahooCrumb();
-        console.log("[yahoo] Crumb warmed up — ready to serve requests");
-        _warmupDone = true;
-        return;
-      } catch (e: any) {
-        console.log(`[yahoo] Warmup attempt ${attempt}/5 failed: ${e.message}`);
-        _crumb = null; _cookie = null; _crumbTimestamp = 0;
-      }
-    }
-    console.log("[yahoo] Warmup failed after 5 attempts — requests will retry on their own");
-    _warmupDone = true; // unblock requests even on failure so they can try themselves
-  })();
-
-  // Helper: ensure warmup is done before any Yahoo API call
+  // Provider startup is now synchronous (FMP/Polygon clients need no crumb
+  // warmup). `ensureReady` is kept as a no-op so the many call sites and the
+  // cron init don't need to change.
   async function ensureReady() {
-    if (!_warmupDone) {
-      console.log("[yahoo] Request waiting for warmup to complete...");
-      await _warmupPromise;
-    }
+    return;
   }
 
   // ─── Auth Routes (public) ─────────────────────────────────────────────────
@@ -2515,7 +2058,7 @@ export async function registerRoutes(
     const cacheKey = `options:${ticker.toUpperCase()}:${expDate || 'default'}`;
     const cached = getCached(cacheKey);
     if (cached) { recordCacheHit(); return cached; }
-    // Primary: Polygon Options Starter. Returns a Yahoo-shaped optionChain.result[0] object.
+    // Primary: Polygon Options Starter. Returns a canonical optionChain-shaped object.
     const result = await getPolygonOptionsChain(ticker, expDate);
     if (result) setCache(cacheKey, result, TTL.options);
     return result;
@@ -2942,7 +2485,7 @@ export async function registerRoutes(
 
       // Beta fallback. Polygon does not expose beta on any tier as of
       // 2026-04 (see polygon.ts where it's hardcoded null), and the
-      // Yahoo defaultKeyStatistics.beta path was retired in Phase 3.7.
+      // The legacy defaultKeyStatistics.beta path was retired in Phase 3.7.
       // FMP /profile carries beta and is already a Premium-tier dependency
       // for analyst data, so the marginal cost is one extra cached call.
       // Failure is non-fatal — UI tolerates a null beta and renders N/A.
@@ -3021,7 +2564,7 @@ export async function registerRoutes(
       let weightedScore: number;
       let scoring: Array<{ name: string; score: number; weight: number; reasoning: string }>;
       try {
-        const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+        const snap = await getCompanySnapshot(ticker, {});
         const next = scoreSnapshot(snap);
         verdict = next.verdict;
         ruling = next.ruling;
@@ -3549,7 +3092,7 @@ export async function registerRoutes(
         date: new Date(timestamps[i] * 1000).toISOString().split("T")[0],
         // OHLC + volume so the TV-style CandlePane can render candles.
         // Fall back to close when individual OHLC fields are missing so the
-        // candle isn't dropped entirely (Yahoo occasionally returns null
+        // candle isn't dropped entirely (providers occasionally return null
         // for opens/highs/lows on illiquid days).
         open: opens[i] != null ? Number(Number(opens[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
         high: highs[i] != null ? Number(Number(highs[i]).toFixed(2)) : Number(closes[i].toFixed(2)),
@@ -3591,7 +3134,7 @@ export async function registerRoutes(
         // Try to get MME data for Gate 3 (best-effort, non-blocking)
         let mmeData = null;
         try {
-          // MME data retired from Yahoo. Gate 3 evaluates without it (EMA-only).
+          // MME data retired. Gate 3 evaluates without it (EMA-only).
           const cacheKey = `mme_gate_${ticker}`;
           const cached = getCached(cacheKey);
           if (cached) {
@@ -4148,7 +3691,7 @@ export async function registerRoutes(
           }
         }
 
-        // Delay between batches to avoid overwhelming Yahoo Finance
+        // Delay between batches to avoid overwhelming the upstream provider
         if (b + 5 < tickers.length) {
           await new Promise(r => setTimeout(r, 500));
         }
@@ -4713,7 +4256,7 @@ export async function registerRoutes(
           let ruling: string;
           let scoring: any[];
           try {
-            const snap = await getCompanySnapshot(ticker, { yahooFetch, getYahooOwnership });
+            const snap = await getCompanySnapshot(ticker, {});
             const next = scoreSnapshot(snap);
             score = next.score10;
             verdict = next.verdict;
@@ -4752,7 +4295,7 @@ export async function registerRoutes(
 
       // Batch 2: Historical charts for stress test.
       // Polygon Stocks Starter is capped ~5y, so the oldest events (Dot-Com,
-      // 9/11, 2008, 2011) require a deeper-history source. With Yahoo killed
+      // 9/11, 2008, 2011) require a deeper-history source. With the legacy provider removed
       // under FMP_TIER=ultimate, the only working long-history source is FMP
       // /historical-price-eod/full, which goes back to 2000-01-01. Same
       // approach already used for gold/silver below — generalised to a single
@@ -5100,7 +4643,7 @@ export async function registerRoutes(
           const scanResults: any[] = [];
 
           // BATCH_SIZE 4 (was 10): each ticker fans out into ~4 provider
-          // calls (Polygon quote, FMP insider, Yahoo ownership, EDGAR), so
+          // calls (Polygon quote, FMP insider, FMP/EDGAR ownership), so
           // batch=10 meant up to ~40 concurrent sockets. Windows defaults
           // make that fragile, especially when EDGAR is timing out and
           // sockets sit in TIME_WAIT. 4 keeps us under ~16 concurrent.
@@ -5126,9 +4669,9 @@ export async function registerRoutes(
           }
 
           // Keep rows that have any signal — institutional ownership (EDGAR
-          // or Yahoo fallback), fund holdings, or insider activity. Previously
+          // or EDGAR fallback), fund holdings, or insider activity. Previously
           // filtered on institutionPct/Count only, which stripped every row
-          // when EDGAR was blocked even though Yahoo had usable data.
+          // when EDGAR was blocked.
           const withInstData = scanResults.filter(r =>
             r.institutionPct > 0 ||
             r.institutionCount > 0 ||
@@ -5334,8 +4877,6 @@ export async function registerRoutes(
       const ticker = req.params.ticker.toUpperCase();
       const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
       const result = await getTriggerCheck(ticker, {
-        yahooFetch,
-        getYahooOwnership,
         forceRefresh,
       });
       res.json(result);
@@ -5935,8 +5476,6 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const snap = await getCompanySnapshot(ticker, {
-        yahooFetch,
-        getYahooOwnership,
         forceRefresh,
       });
       if (view === "health") {
@@ -5984,8 +5523,6 @@ export async function registerRoutes(
     try {
       await ensureReady();
       const snap = await getCompanySnapshot(ticker, {
-        yahooFetch,
-        getYahooOwnership,
         forceRefresh,
       });
       const next = scoreSnapshot(snap);
@@ -6136,7 +5673,7 @@ export async function registerRoutes(
         const slice = tickers.slice(i, i + BATCH);
         const results = await Promise.all(slice.map(async (t) => {
           try {
-            // Polygon only — no Yahoo front-end pulls.
+            // Polygon only — no legacy free-scrape front-end pulls.
             const chart = await getPolygonChart(t, "1mo" as any, "1d" as any);
             const closes: number[] = (chart?.indicators?.quote?.[0]?.close || []).filter((c: any) => c != null);
             const vols: number[] = (chart?.indicators?.quote?.[0]?.volume || []).filter((v: any) => v != null);
