@@ -20,6 +20,7 @@ import { askOtterCompartment } from "./ask-otter";
 import { positionInsidersCompartment } from "./position-insiders";
 import { insiderClustersCompartment } from "./insider-clusters";
 import { insiderRatioCompartment } from "./insider-ratio";
+import { expectancyCompartment } from "./expectancy";
 // Experimental group — research surfaces, opt-in widgets.
 import { hermesCompartment } from "./hermes";
 import { markovCompartment } from "./markov";
@@ -39,6 +40,8 @@ const clientCompartments: ClientCompartmentEntry[] = [
   positionInsidersCompartment,
   insiderClustersCompartment,
   askOtterCompartment,
+  // North-star metric — compact Expectancy tile mirroring the /analytics scorecard.
+  expectancyCompartment,
   // Legacy widgets — kept registered so existing saved layouts still resolve,
   // but no longer mounted by default. Users can opt-in via "Customize layout".
   favoritesCompartment,

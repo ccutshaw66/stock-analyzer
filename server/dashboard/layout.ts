@@ -8,10 +8,15 @@
  * widget interrupting it.
  *
  *   Row 1: Morning Brief (full width banner)
- *   Row 2: Action Queue (8 cols) | Morning Checklist (4 cols)
+ *   Row 2: Expectancy (north-star) | Action Queue | Morning Checklist
  *   Row 3: Position News | Position Insiders
  *   Row 4: Insider B/S Ratio | Insider Clusters
  *   Row 5: Ask Otter (full width — at the bottom)
+ *
+ * 2026-06-11 (Chris): Expectancy tile added directly under the Morning Brief
+ * — the north-star "are my winners bigger than my losers?" greets every
+ * session. Compact mirror of the /analytics Expectancy Scorecard, same
+ * /api/trades/analytics source.
  *
  * Legacy widgets stay in the registry as opt-in (Customize layout reveals
  * them in the toolbar) so users who had a custom layout don't lose data.
@@ -32,8 +37,9 @@ export function buildDefaultDashboardLayout(): DashboardLayout {
         widgets: [
           // Row 1: full-width banner (one row tall)
           { compartmentId: "morning-brief",     visible: true, x: 0, y: 0,  w: 12, h: 2 },
-          // Row 2: Action Queue + Checklist
-          { compartmentId: "action-queue",      visible: true, x: 0, y: 2,  w: 8,  h: 6 },
+          // Row 2: Expectancy north-star (4 cols) + Action Queue (4 cols) + Morning Checklist (4 cols)
+          { compartmentId: "expectancy",         visible: true, x: 0, y: 2,  w: 4,  h: 6 },
+          { compartmentId: "action-queue",      visible: true, x: 4, y: 2,  w: 4,  h: 6 },
           { compartmentId: "morning-checklist", visible: true, x: 8, y: 2,  w: 4,  h: 6 },
           // Row 3: Position News + Position Insiders
           { compartmentId: "position-news",     visible: true, x: 0, y: 8,  w: 6,  h: 6 },
