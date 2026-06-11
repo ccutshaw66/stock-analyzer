@@ -175,7 +175,7 @@ let _crumb: string | null = null;
 let _cookie: string | null = null;
 let _crumbTimestamp = 0;
 
-function extractCookies(r: Response): string {
+function extractCookies(r: globalThis.Response): string {
   const parts: string[] = [];
   if (typeof r.headers.getSetCookie === 'function') {
     for (const c of r.headers.getSetCookie()) parts.push(c.split(";")[0]);

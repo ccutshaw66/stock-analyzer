@@ -73,7 +73,7 @@ export interface IStorage {
   updateUserSubscription(userId: number, data: {
     subscriptionTier?: string;
     stripeCustomerId?: string;
-    stripeSubscriptionId?: string;
+    stripeSubscriptionId?: string | null;
     subscriptionExpiresAt?: Date | null;
   }): Promise<User>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User | undefined>;
@@ -644,7 +644,7 @@ export class DatabaseStorage implements IStorage {
   async updateUserSubscription(userId: number, data: {
     subscriptionTier?: string;
     stripeCustomerId?: string;
-    stripeSubscriptionId?: string;
+    stripeSubscriptionId?: string | null;
     subscriptionExpiresAt?: Date | null;
   }): Promise<User> {
     const updates: Record<string, any> = {};

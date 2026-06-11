@@ -187,7 +187,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   if (subscriptionId) {
     try {
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
-      expiresAt = new Date(sub.current_period_end * 1000);
+      const periodEnd = sub.items.data[0]?.current_period_end;
+      if (periodEnd) expiresAt = new Date(periodEnd * 1000);
     } catch (err) {
       console.error('[stripe] Failed to retrieve subscription:', err);
     }
@@ -219,7 +220,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   else if (priceId === PRICE_IDS.elite) tier = 'elite';
 
   const status = subscription.status;
-  const expiresAt = new Date(subscription.current_period_end * 1000);
+  const periodEnd = subscription.items.data[0]?.current_period_end;
+  const expiresAt = periodEnd ? new Date(periodEnd * 1000) : undefined;
 
   // If subscription is active/trialing, set tier; otherwise downgrade to free
   if (status === 'active' || status === 'trialing') {
