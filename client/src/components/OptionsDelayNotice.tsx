@@ -19,9 +19,8 @@ export function OptionsDelayNotice() {
     >
       <Clock className="h-3 w-3 shrink-0 text-watch-light" />
       <span>
-        <strong className="text-foreground/80">Options data is ~15-minute delayed</strong> and gamma
-        is from an end-of-day snapshot — built for swing analysis, not live execution. Use your
-        broker for real-time quotes and fills.
+        <strong className="text-foreground/80">Options data is delayed</strong> — position pricing
+        will update approximately every 15&nbsp;minutes.
       </span>
     </div>
   );
