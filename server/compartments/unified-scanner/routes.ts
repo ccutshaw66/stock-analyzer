@@ -15,6 +15,7 @@ import { rankHits, SCANNABLE_ENGINE_IDS } from "./engine";
 import { readUnifiedScan, readUnifiedScanFresh, unifiedScanAgeHours } from "../../unified-scan-cache";
 import { tierCacheKey, startWarmInBackground, isWarmInFlight } from "./warmup";
 import { getUserTier } from "../../stripe";
+import { optionalAuth } from "../../auth";
 
 function defaultStrategyIds(): string[] {
   const onByDefault = listScannableStrategies()
@@ -29,7 +30,7 @@ export function mountRoutes(app: Express): void {
   // a daily scan credit — that's what was blocking the page after repeated
   // tries. Auth is still enforced by the global `/api` requireAuth. Only an
   // explicit ?refresh=1 (which kicks real work) is rate-limited.
-  app.get("/api/unified-scanner", async (req, res) => {
+  app.get("/api/unified-scanner", optionalAuth, async (req, res) => {
     const wantsRefresh = req.query.refresh === "1" || req.query.refresh === "true";
     if (wantsRefresh && checkScanRateLimit(req, res)) return;
     try {
