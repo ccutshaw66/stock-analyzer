@@ -151,9 +151,9 @@ function computeSmartMoneyFlow(snap: CompanySnapshot): AxisScore {
   const parts: Array<{ value: number; weight: number }> = [];
 
   // Institutional QoQ flow score is only trustworthy when EDGAR is the
-  // authoritative source. On Yahoo fallback the snapshot suppresses
+  // authoritative source. On the EDGAR-only fallback the snapshot suppresses
   // flowScore to 0 to avoid publishing fake STRONG OUTFLOW signals from
-  // Yahoo's name-matching artifacts — so the value is meaningless to the
+  // name-matching artifacts — so the value is meaningless to the
   // compass as well. Drop the component from the weighted average
   // entirely instead of letting a suppressed-zero dilute the axis toward
   // neutral. This way an insider-driven signal of -90 reads as -90, not

@@ -30,7 +30,7 @@ const cache = new Map<string, { value: TriggerCheckResponse; expiresAt: number }
 
 // ─── Chart shape adapter ───────────────────────────────────────────────────
 
-function yahooChartToOhlcv(chart: any): OHLCV[] {
+function chartSeriesToOhlcv(chart: any): OHLCV[] {
   const ts: number[] = chart?.timestamp ?? [];
   const q = chart?.indicators?.quote?.[0] ?? {};
   const opens: number[] = q.open ?? [];
@@ -203,11 +203,11 @@ export async function getTriggerCheck(
   const [snapshot, mmRaw, chart, marketRegime] = await Promise.all([
     getCompanySnapshot(T, opts),
     computeMMExposure(T).catch(() => null),
-    getChartSnapshot(T, "1y", "1d", opts.yahooFetch).catch(() => null),
+    getChartSnapshot(T, "1y", "1d").catch(() => null),
     fetchMarketRegime(),
   ]);
 
-  const bars = chart?.value ? yahooChartToOhlcv(chart.value) : [];
+  const bars = chart?.value ? chartSeriesToOhlcv(chart.value) : [];
 
   const ctx: CheckContext = {
     ticker: T,

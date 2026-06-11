@@ -7,9 +7,8 @@
  *      52w high/low, etc. Forward PE not exposed on FMP's basic stable
  *      endpoints — left null. Three-call latency (~600ms vs Polygon's
  *      single call ~250ms) is the cost of dropping Polygon Stocks.
- *   2. Polygon — kept as fallback for resilience. Returns Yahoo-shaped blob
- *      via getPolygonQuoteSummary.
- *   3. Yahoo — last-ditch, neutered when FMP_TIER=ultimate.
+ *   2. Polygon — kept as fallback for resilience. Returns a quoteSummary-shaped
+ *      blob via getPolygonQuoteSummary.
  *
  * The chain reorder is part of the broader migration off Polygon Stocks
  * Starter — the goal is for FMP to answer 100% of the time on the happy
@@ -32,7 +31,7 @@ function num(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function quoteFromYahooShape(summary: any): CompanyQuote | null {
+function quoteFromSummaryShape(summary: any): CompanyQuote | null {
   if (!summary) return null;
   const price = summary.price || {};
   const detail = summary.summaryDetail || {};
@@ -42,14 +41,14 @@ function quoteFromYahooShape(summary: any): CompanyQuote | null {
   const marketCap = num(price.marketCap);
   if (regPrice === null && marketCap === null) return null;
 
-  // Yahoo's regularMarketChangePercent is a decimal fraction (0.0123 = 1.23%).
-  // Polygon's adapter normalizes to the same shape. Output as percent.
+  // regularMarketChangePercent is a decimal fraction (0.0123 = 1.23%).
+  // Polygon's adapter normalizes to this shape. Output as percent.
   const pctRaw = num(price.regularMarketChangePercent);
   const changePct = pctRaw === null
     ? null
     : (Math.abs(pctRaw) < 1 ? pctRaw * 100 : pctRaw);
 
-  // Yahoo dividendYield is a decimal fraction; we want percent.
+  // dividendYield is a decimal fraction; we want percent.
   const dyRaw = num(detail.dividendYield) ?? num(detail.trailingAnnualDividendYield);
   const dividendYield = dyRaw === null ? null : dyRaw * 100;
 
@@ -153,20 +152,8 @@ async function fmpQuoteFull(ticker: string): Promise<CompanyQuote | null> {
   };
 }
 
-const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
-
-async function yahooQuote(ticker: string, yahooFetch: (url: string, retries?: number) => Promise<any>): Promise<CompanyQuote | null> {
-  const url =
-    `${YF_QUERY_BASE}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}` +
-    `?modules=price,summaryDetail,defaultKeyStatistics`;
-  const json = await yahooFetch(url, 2);
-  const summary = json?.quoteSummary?.result?.[0];
-  return quoteFromYahooShape(summary);
-}
-
 export async function getQuoteSnapshot(
   ticker: string,
-  yahooFetch: (url: string, retries?: number) => Promise<any>,
 ): Promise<FieldHealth<CompanyQuote>> {
   const T = ticker.toUpperCase();
   const result = await tryProviders<CompanyQuote>(
@@ -179,12 +166,8 @@ export async function getQuoteSnapshot(
         source: "polygon",
         fetch: async () => {
           const summary = await getPolygonQuoteSummary(T);
-          return quoteFromYahooShape(summary);
+          return quoteFromSummaryShape(summary);
         },
-      },
-      {
-        source: "yahoo",
-        fetch: () => yahooQuote(T, yahooFetch),
       },
     ],
     {
@@ -194,7 +177,7 @@ export async function getQuoteSnapshot(
   );
 
   // Beta + dividend yield enrichment when the answer came from a non-FMP
-  // source (Polygon hardcodes beta: null, Yahoo can also miss either field).
+  // source (Polygon hardcodes beta: null).
   // FMP-primary path gets beta + dividendYield directly via fmpQuoteFull,
   // so this block only fires when we fell through to a backup provider.
   if (result.value && (result.value.beta === null || result.value.dividendYield === null)) {

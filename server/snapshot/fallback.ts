@@ -5,7 +5,7 @@
  * "Empty" is caller-defined: pass an isEmpty predicate. If a provider
  * returns a value but isEmpty(value) is true, we record the attempt as
  * empty:true and continue to the next provider. This is the bug we just
- * lived through — Yahoo returned `null` modules and we treated that as
+ * lived through — a provider returned `null` modules and we treated that as
  * "success", showing a blank page instead of falling through to a backup.
  */
 

@@ -1,11 +1,11 @@
 /**
  * Chart adapter for the snapshot pipeline.
  *
- * Provider chain: Polygon → FMP → Yahoo.
+ * Provider chain: FMP → Polygon.
  *
- * Returns Yahoo-shaped chart data: { timestamp: number[], indicators: { quote: [{ close, open, high, low, volume }] } }.
+ * Returns chart data shaped as { timestamp: number[], indicators: { quote: [{ close, open, high, low, volume }] } }.
  * This is the shape the rest of the codebase already consumes (computeAnalysisCore,
- * scanner-v2 indicators, stress test). All three providers translate INTO this shape
+ * scanner-v2 indicators, stress test). Both providers translate INTO this shape
  * so consumers don't need to know which one answered.
  */
 
@@ -14,7 +14,7 @@ import { tryProviders } from "./fallback";
 import { getPolygonChart } from "../polygon";
 import { fmpGet } from "../data/providers/fmp.client";
 
-export interface YahooChart {
+export interface ChartSeries {
   meta?: { symbol?: string; currency?: string; regularMarketPrice?: number | null; range?: string; dataGranularity?: string };
   timestamp: number[];
   indicators: { quote: Array<{ close: number[]; open?: number[]; high?: number[]; low?: number[]; volume?: number[] }> };
@@ -37,7 +37,7 @@ function rangeToFromDate(range: ChartRange): Date {
   return new Date(now.getFullYear() - years, now.getMonth(), now.getDate());
 }
 
-function fmpRowsToYahooShape(rows: any[]): YahooChart | null {
+function fmpRowsToChartSeries(rows: any[]): ChartSeries | null {
   if (!Array.isArray(rows) || rows.length === 0) return null;
   // FMP can return either { historical: [...] } or a flat array depending on endpoint.
   const asc = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -58,24 +58,7 @@ function fmpRowsToYahooShape(rows: any[]): YahooChart | null {
   };
 }
 
-const YF_QUERY_BASE = "https://query1.finance.yahoo.com";
-
-async function yahooChart(
-  ticker: string,
-  range: ChartRange,
-  interval: ChartInterval,
-  yahooFetch: (url: string, retries?: number) => Promise<any>,
-): Promise<YahooChart | null> {
-  const url =
-    `${YF_QUERY_BASE}/v8/finance/chart/${encodeURIComponent(ticker)}` +
-    `?range=${range}&interval=${interval}&includePrePost=false`;
-  const json = await yahooFetch(url, 2);
-  const result = json?.chart?.result?.[0];
-  if (!result?.timestamp?.length) return null;
-  return result as YahooChart;
-}
-
-function isEmptyChart(c: YahooChart): boolean {
+function isEmptyChart(c: ChartSeries): boolean {
   const closes = c?.indicators?.quote?.[0]?.close;
   return !closes || closes.filter(v => Number.isFinite(v)).length === 0;
 }
@@ -84,10 +67,9 @@ export async function getChartSnapshot(
   ticker: string,
   range: ChartRange,
   interval: ChartInterval,
-  yahooFetch: (url: string, retries?: number) => Promise<any>,
-): Promise<FieldHealth<YahooChart>> {
+): Promise<FieldHealth<ChartSeries>> {
   const T = ticker.toUpperCase();
-  return tryProviders<YahooChart>(
+  return tryProviders<ChartSeries>(
     [
       {
         source: "fmp",
@@ -99,19 +81,15 @@ export async function getChartSnapshot(
           // still pull EOD here and let the consumer downsample if needed.
           const rows: any = await fmpGet(`/historical-price-eod/full`, { symbol: T, from, to });
           const arr = Array.isArray(rows) ? rows : (rows?.historical || []);
-          return fmpRowsToYahooShape(arr);
+          return fmpRowsToChartSeries(arr);
         },
       },
       {
         source: "polygon",
         fetch: async () => {
-          // Polygon adapter already returns Yahoo-shape. Kept as fallback.
+          // Polygon adapter already returns this chart shape. Kept as fallback.
           return getPolygonChart(T, range as any, interval as any);
         },
-      },
-      {
-        source: "yahoo",
-        fetch: () => yahooChart(T, range, interval, yahooFetch),
       },
     ],
     {
@@ -125,7 +103,7 @@ export async function getChartSnapshot(
  * Compute 1y / 3y / 5y returns from a single longest chart (5y weekly is enough).
  * Returns percent (e.g. 23.5 for +23.5%).
  */
-export function computeReturns(chart: YahooChart | null): { oneYear: number | null; threeYear: number | null; fiveYear: number | null } {
+export function computeReturns(chart: ChartSeries | null): { oneYear: number | null; threeYear: number | null; fiveYear: number | null } {
   if (!chart?.timestamp?.length) return { oneYear: null, threeYear: null, fiveYear: null };
   const timestamps = chart.timestamp;
   const closes = chart.indicators?.quote?.[0]?.close ?? [];

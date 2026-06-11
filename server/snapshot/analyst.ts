@@ -2,7 +2,7 @@
  * Analyst data adapter.
  *
  * Provider chain: FMP (primary) → no fallback. EDGAR doesn't aggregate analyst
- * consensus, Yahoo's recommendationTrend is fragile, and Polygon doesn't have
+ * consensus, the legacy recommendationTrend was fragile, and Polygon doesn't have
  * it on the Stocks Starter tier. FMP is currently the only viable source.
  */
 

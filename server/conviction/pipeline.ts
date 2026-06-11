@@ -16,7 +16,6 @@
 import type { OHLCV } from "../data/types";
 import type { CompanySnapshot } from "../snapshot/types";
 import { getCompanySnapshot } from "../snapshot";
-import type { GetCompanySnapshotOpts } from "../snapshot";
 import { getChartSnapshot } from "../snapshot/chart";
 import { computeMMExposure } from "../mm-exposure";
 import { computeRSI, computeBollinger, computeMACD } from "../indicators";
@@ -34,9 +33,9 @@ const cache = new Map<string, { value: ConvictionCompass; expiresAt: number }>()
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-/** Convert a Yahoo-shape chart (timestamp[], indicators.quote[0].close[]) into
+/** Convert a chart series (timestamp[], indicators.quote[0].close[]) into
  *  the OHLCV[] shape the existing indicators package expects. */
-function yahooChartToOhlcv(chart: any): OHLCV[] {
+function chartSeriesToOhlcv(chart: any): OHLCV[] {
   const ts: number[] = chart?.timestamp ?? [];
   const q = chart?.indicators?.quote?.[0] ?? {};
   const opens: number[] = q.open ?? [];
@@ -272,8 +271,6 @@ function computeVerdictScoreFromSnapshot(snap: CompanySnapshot): number | null {
 // ─── Public entry ──────────────────────────────────────────────────────────
 
 export interface GetConvictionOpts {
-  yahooFetch: (url: string, retries?: number) => Promise<any>;
-  getYahooOwnership: GetCompanySnapshotOpts["getYahooOwnership"];
   forceRefresh?: boolean;
 }
 
@@ -291,15 +288,13 @@ export async function getConvictionCompass(
   // All four input streams in parallel — failures are fail-soft.
   const [snapshot, mmRaw, chart] = await Promise.all([
     getCompanySnapshot(T, {
-      yahooFetch: opts.yahooFetch,
-      getYahooOwnership: opts.getYahooOwnership,
       forceRefresh: opts.forceRefresh,
     }),
     computeMMExposure(T).catch(() => null),
-    getChartSnapshot(T, "1y", "1d", opts.yahooFetch).catch(() => null),
+    getChartSnapshot(T, "1y", "1d").catch(() => null),
   ]);
 
-  const bars = chart?.value ? yahooChartToOhlcv(chart.value) : [];
+  const bars = chart?.value ? chartSeriesToOhlcv(chart.value) : [];
   const tech = bars.length >= 60 ? deriveTechnicals(bars) : null;
   const mm = mmExposureToInput(mmRaw);
   const fundamentalScore = computeVerdictScoreFromSnapshot(snapshot);

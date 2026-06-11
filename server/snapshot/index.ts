@@ -12,16 +12,13 @@
  * snapshot have their own TTLs (set by each adapter); on a cache hit we
  * still return the cached snapshot — the orchestrator-level cache is the
  * fast path for repeat requests.
- *
- * Dependencies that live in routes.ts (yahooFetch, getYahooOwnership) are
- * injected to avoid a circular import.
  */
 
 import type { CompanySnapshot, FieldHealth } from "./types";
 import { SNAPSHOT_SCHEMA_VERSION } from "./types";
 import { getQuoteSnapshot } from "./quote";
 import { getChartSnapshot, computeReturns } from "./chart";
-import { getOwnershipSnapshot, type GetYahooOwnership } from "./institutional";
+import { getOwnershipSnapshot } from "./institutional";
 import { getInsiderActivitySnapshot } from "./insiders";
 import { getAnalystSnapshot } from "./analyst";
 import { getEarningsSnapshot } from "./earnings";
@@ -31,12 +28,10 @@ import { getProfileSnapshot } from "./profile";
 const SNAPSHOT_TTL_MS = 5 * 60 * 1000; // 5 min — same as quote TTL
 
 // In-process cache. Restart-safe disk caching is per-adapter (EDGAR has its
-// own, Polygon/FMP/Yahoo cache via the route-level setCache calls).
+// own, Polygon/FMP cache via the route-level setCache calls).
 const snapshotCache = new Map<string, { value: CompanySnapshot; expiresAt: number }>();
 
 export interface GetCompanySnapshotOpts {
-  yahooFetch: (url: string, retries?: number) => Promise<any>;
-  getYahooOwnership: GetYahooOwnership;
   forceRefresh?: boolean;
 }
 
@@ -64,11 +59,11 @@ export async function getCompanySnapshot(
     analyst,
     earnings,
   ] = await Promise.all([
-    getQuoteSnapshot(T, opts.yahooFetch),
+    getQuoteSnapshot(T),
     getFundamentalsSnapshot(T),
     getProfileSnapshot(T),
-    getChartSnapshot(T, "5y", "1wk", opts.yahooFetch),
-    getOwnershipSnapshot(T, opts.getYahooOwnership),
+    getChartSnapshot(T, "5y", "1wk"),
+    getOwnershipSnapshot(T),
     getInsiderActivitySnapshot(T),
     getAnalystSnapshot(T),
     getEarningsSnapshot(T),
@@ -161,12 +156,12 @@ export type { CompanySnapshot } from "./types";
  */
 export async function getInstitutionalScanSnapshot(
   ticker: string,
-  opts: GetCompanySnapshotOpts,
+  _opts?: GetCompanySnapshotOpts,
 ): Promise<CompanySnapshot> {
   const T = ticker.toUpperCase();
   const [quote, ownership, insiderActivity] = await Promise.all([
-    getQuoteSnapshot(T, opts.yahooFetch),
-    getOwnershipSnapshot(T, opts.getYahooOwnership),
+    getQuoteSnapshot(T),
+    getOwnershipSnapshot(T),
     getInsiderActivitySnapshot(T),
   ]);
   const empty = <T,>(): FieldHealth<T> => ({

@@ -5,14 +5,14 @@
  *
  * Design rules:
  *   1. Every top-level field is wrapped in FieldHealth so the UI can show
- *      "via EDGAR (live)" / "via Yahoo (fallback)" / "no source available".
+ *      "via EDGAR (live)" / "via FMP" / "no source available".
  *   2. Every value is in OUR units, not the vendor's. No more 0.05-vs-5%
  *      drift between code paths.
  *   3. Adapters never return raw vendor blobs. They translate to these shapes
  *      and tag with the source they used.
  */
 
-export type ProviderSource = "polygon" | "fmp" | "yahoo" | "edgar" | "in-house";
+export type ProviderSource = "polygon" | "fmp" | "edgar" | "in-house";
 
 export interface ProviderAttempt {
   source: ProviderSource;

@@ -7,7 +7,7 @@
  * frontend.
  *
  * Why this matters: the snapshot's ownership adapter has provider fallback
- * (EDGAR → Yahoo). The legacy parseInstitutionalData has none — when EDGAR
+ * (EDGAR fallback). The legacy parseInstitutionalData has none — when EDGAR
  * returns empty (poisoned cache, circuit breaker, or genuine miss), the
  * page renders blank. Routing through the snapshot fixes that for AAPL,
  * PLTR, MSFT and everyone else.
