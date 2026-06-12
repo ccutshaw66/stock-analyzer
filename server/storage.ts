@@ -481,6 +481,8 @@ export class DatabaseStorage implements IStorage {
         maxAllocationPerTrade: r.max_allocation_per_trade ?? 500,
         totalAllocatedLimit: r.total_allocated_limit ?? 0.30,
         cashBalance: r.cash_balance ?? 0,
+        riskPctPerTrade: r.risk_pct_per_trade ?? 0.02,
+        maxPctPerTrade: r.max_pct_per_trade ?? 0.20,
       })) as AccountSettings[];
     }
     if (rows.length === 0) {
@@ -492,6 +494,8 @@ export class DatabaseStorage implements IStorage {
         commPerOptionContract: 0.65,
         maxAllocationPerTrade: 500,
         totalAllocatedLimit: 0.30,
+        riskPctPerTrade: 0.02,
+        maxPctPerTrade: 0.20,
       }).returning();
       return created[0];
     }

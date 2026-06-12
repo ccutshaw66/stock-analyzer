@@ -82,6 +82,12 @@ export const accountSettings = pgTable("account_settings", {
   commPerOptionContract: doublePrecision("comm_per_option_contract").default(0.65),
   maxAllocationPerTrade: doublePrecision("max_allocation_per_trade").default(500),
   totalAllocatedLimit: doublePrecision("total_allocated_limit").default(0.30),
+  // Risk-based position sizer (the "2% rule"): riskPctPerTrade is the fraction of
+  // account value you're willing to lose on one trade (0.02 = 2%); maxPctPerTrade
+  // is the hard concentration ceiling — no single position exceeds this fraction
+  // of account value (0.20 = 20%), regardless of stop. Drives the Add Trade sizer.
+  riskPctPerTrade: doublePrecision("risk_pct_per_trade").default(0.02),
+  maxPctPerTrade: doublePrecision("max_pct_per_trade").default(0.20),
   // Brokerage cash balance — manually entered to match the user's broker app.
   // Combined with open position market value to produce the "Total Portfolio"
   // figure shown at the top of Trade Tracker.

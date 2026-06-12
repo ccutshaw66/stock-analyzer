@@ -9,7 +9,7 @@ import { useHtfScanner, type HtfSetupRow } from "@/compartments/htf-scanner";
 import {
   Plus, Trash2, RefreshCw, X, ChevronDown, ChevronUp, Edit2,
   TrendingUp, TrendingDown, DollarSign, BarChart3, Target, Settings,
-  CheckCircle2, Loader2, History, Clock, ClipboardList
+  CheckCircle2, Loader2, History, Clock, ClipboardList, AlertTriangle
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { PageTemplate } from "@/components/PageTemplate";
@@ -96,7 +96,7 @@ interface Summary {
 interface AccountSettings {
   id: number; startingAccountValue: number; commPerSharesTrade: number;
   commPerOptionContract: number; maxAllocationPerTrade: number; totalAllocatedLimit: number;
-  cashBalance?: number;
+  cashBalance?: number; riskPctPerTrade?: number; maxPctPerTrade?: number;
 }
 
 type FilterTab = "open" | "closed" | "stocks" | "options";
@@ -348,6 +348,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [strikes, setStrikes] = useState(initial?.strikes || "");
   const [spreadWidth, setSpreadWidth] = useState(initial?.spreadWidth ? String(initial.spreadWidth) : "");
   const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");
+  const [stopPct, setStopPct] = useState("8"); // risk-sizer stop % (default 8% — the O'Neil number)
   const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
   const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
   // Strategy is required on every new trade. Pre-existing rows default to
@@ -374,6 +375,31 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const isCredit = typeDef?.isCredit ?? false;
   const isDualVertical = (typeDef as any)?.isDualVertical ?? false;
   const numLegs = typeDef?.legs || 0;
+
+  // ── Risk-based position sizer ("2% rule") ──────────────────────────────────
+  // Account value = startingAccountValue (the same field morning-brief treats as
+  // account value — one source of truth). The stop % is for SIZING only; it does
+  // NOT force an exit. Suggested size = min(risk-based size, concentration cap).
+  const sizing = (() => {
+    const acct = settings.startingAccountValue || 0;
+    const entry = Math.abs(parseFloat(openPrice) || 0);
+    const stopFrac = (parseFloat(stopPct) || 0) / 100;
+    const riskPct = settings.riskPctPerTrade ?? 0.02;
+    const maxPct = settings.maxPctPerTrade ?? 0.20;
+    const mult = category === "Option" ? 100 : 1;
+    if (acct <= 0 || entry <= 0) return null;
+    const riskBudget = riskPct * acct;                                  // $ you'll lose if stopped
+    const capCost = maxPct * acct;                                      // concentration ceiling $
+    const unitCost = entry * mult;                                      // $ per share/contract
+    const riskBasedCost = stopFrac > 0 ? riskBudget / stopFrac : Infinity;
+    const suggestedCost = Math.min(riskBasedCost, capCost);
+    const suggestedUnits = Math.max(0, Math.floor(suggestedCost / unitCost));
+    const curCost = (contractsShares || 0) * unitCost;
+    const curRisk = curCost * stopFrac;
+    const overRisk = stopFrac > 0 && curRisk > riskBudget + 1e-6;
+    const overCap = curCost > capCost + 1e-6;
+    return { acct, riskBudget, capCost, riskPct, maxPct, suggestedUnits, suggestedCost, curCost, curRisk, overRisk, overCap };
+  })();
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -685,7 +711,44 @@ function TradeForm({ mode, initial, settings, onClose }: {
               <input id="tf-allocation" name="allocation" type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
                 className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
             </div>
+            <div>
+              <label htmlFor="tf-stop-pct" className="text-xs font-medium text-muted-foreground mb-1 block">
+                Stop % <span className="text-micro">(sizes the trade — won't auto-exit)</span>
+              </label>
+              <input id="tf-stop-pct" name="stopPct" type="number" step="0.5" value={stopPct} onChange={e => setStopPct(e.target.value)} placeholder="8"
+                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
+            </div>
           </div>
+
+          {/* Risk-based position sizer — suggested size + over-budget warning */}
+          {sizing && (
+            <div className={`rounded-lg border p-3 text-xs ${sizing.overRisk || sizing.overCap ? "border-bear/40 bg-bear/10" : "border-card-border bg-background"}`} data-testid="risk-sizer">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-foreground">Risk Sizer</span>
+                <span className="text-muted-foreground tabular-nums">
+                  acct ${Math.round(sizing.acct).toLocaleString()} · risk {(sizing.riskPct * 100).toFixed(0)}% (${Math.round(sizing.riskBudget).toLocaleString()}) · cap {(sizing.maxPct * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span>Suggested max:</span>
+                <span className="font-bold text-foreground tabular-nums">
+                  {sizing.suggestedUnits.toLocaleString()} {category === "Option" ? "contracts" : "shares"}
+                </span>
+                <span className="tabular-nums">(${Math.round(sizing.suggestedCost).toLocaleString()})</span>
+              </div>
+              {(sizing.overRisk || sizing.overCap) && (
+                <div className="mt-1.5 flex items-start gap-1.5 text-bear-light font-semibold">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    {(contractsShares || 0).toLocaleString()} {category === "Option" ? "contracts" : "shares"} = ${Math.round(sizing.curCost).toLocaleString()}
+                    {sizing.overRisk && ` · risks $${Math.round(sizing.curRisk).toLocaleString()} (over your $${Math.round(sizing.riskBudget).toLocaleString()} budget)`}
+                    {sizing.overCap && !sizing.overRisk && ` · over your ${(sizing.maxPct * 100).toFixed(0)}% cap`}
+                    {". "}Size down to {sizing.suggestedUnits.toLocaleString()}?
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Historical: Close fields */}
           {isHistorical && (
@@ -883,7 +946,10 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
         </div>
         <div className="p-4 space-y-3">
           {([
+            ["startingAccountValue", "Account Value ($) — your total account; drives the risk sizer"],
             ["cashBalance", "Brokerage Cash ($) — set this to whatever your broker shows right now"],
+            ["riskPctPerTrade", "Risk per Trade (decimal, 0.02 = 2%)"],
+            ["maxPctPerTrade", "Max Position Size (decimal, 0.20 = 20%)"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
