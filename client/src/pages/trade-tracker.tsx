@@ -385,7 +385,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
     const entry = Math.abs(parseFloat(openPrice) || 0);
     const stopFrac = (parseFloat(stopPct) || 0) / 100;
     const riskPct = settings.riskPctPerTrade ?? 0.02;
-    const maxPct = settings.maxPctPerTrade ?? 0.20;
+    const maxPct = settings.maxPctPerTrade ?? 0.08;
     const mult = category === "Option" ? 100 : 1;
     if (acct <= 0 || entry <= 0) return null;
     const riskBudget = riskPct * acct;                                  // $ you'll lose if stopped
@@ -949,7 +949,7 @@ function SettingsPanel({ settings, onClose }: { settings: AccountSettings; onClo
             ["startingAccountValue", "Account Value ($) — your total account; drives the risk sizer"],
             ["cashBalance", "Brokerage Cash ($) — set this to whatever your broker shows right now"],
             ["riskPctPerTrade", "Risk per Trade (decimal, 0.02 = 2%)"],
-            ["maxPctPerTrade", "Max Position Size (decimal, 0.20 = 20%)"],
+            ["maxPctPerTrade", "Max Position Size (decimal, 0.08 = 8%)"],
             ["commPerSharesTrade", "Commission per Stock Trade ($)"],
             ["commPerOptionContract", "Commission per Option Contract ($)"],
             ["maxAllocationPerTrade", "Max Allocation per Trade ($)"],
