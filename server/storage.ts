@@ -171,6 +171,11 @@ export class DatabaseStorage implements IStorage {
       // it). Mirror the users-table pattern below so the column always exists.
       await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS cash_balance DOUBLE PRECISION DEFAULT 0`);
       await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS htf_config JSONB`);
+      // Risk-based position sizer columns (added 2026-06). Same additive pattern:
+      // without these, updateAccountSettings silently drops a user's saved risk %
+      // / cap % until db:push runs. ADD here so every deploy self-migrates.
+      await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS risk_pct_per_trade DOUBLE PRECISION DEFAULT 0.02`);
+      await client.query(`ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS max_pct_per_trade DOUBLE PRECISION DEFAULT 0.08`);
       await client.query(`
         CREATE TABLE IF NOT EXISTS account_transactions (
           id SERIAL PRIMARY KEY,

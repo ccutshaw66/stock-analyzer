@@ -347,7 +347,6 @@ function TradeForm({ mode, initial, settings, onClose }: {
   const [closePrice, setClosePrice] = useState(initial?.closePrice != null ? String(Math.abs(initial.closePrice)) : "");
   const [strikes, setStrikes] = useState(initial?.strikes || "");
   const [spreadWidth, setSpreadWidth] = useState(initial?.spreadWidth ? String(initial.spreadWidth) : "");
-  const [allocation, setAllocation] = useState(initial?.allocation ? String(initial.allocation) : "");
   const [stopPct, setStopPct] = useState("8"); // risk-sizer stop % (default 8% — the O'Neil number)
   const [notes, setNotes] = useState(initial?.tradePlanNotes || "");
   const [behaviorTag, setBehaviorTag] = useState(initial?.behaviorTag || "");
@@ -443,7 +442,9 @@ function TradeForm({ mode, initial, settings, onClose }: {
       ? rawPrice // CTV already has correct sign from net calculation
       : (isCredit ? Math.abs(rawPrice) : -Math.abs(rawPrice));
     const sw = parseFloat(spreadWidth) || null;
-    const alloc = parseFloat(allocation) || null;
+    // Allocation field dropped from the form — derive it from actual capital deployed
+    // (cost to open). Keeps the per-trade % return + allocated-% tracking accurate.
+    const alloc = Math.abs(signedPrice) * contractsShares * (category === "Option" ? 100 : 1) || null;
 
     let commIn = 0;
     if (category === "Option") {
@@ -697,7 +698,7 @@ function TradeForm({ mode, initial, settings, onClose }: {
             </div>
           )}
 
-          {/* Spread Width + Allocation */}
+          {/* Spread Width (options) + Stop % — allocation is now auto-derived from cost */}
           <div className="grid grid-cols-2 gap-3">
             {numLegs >= 2 && !isDualVertical && (
               <div>
@@ -706,11 +707,6 @@ function TradeForm({ mode, initial, settings, onClose }: {
                   className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
               </div>
             )}
-            <div>
-              <label htmlFor="tf-allocation" className="text-xs font-medium text-muted-foreground mb-1 block">Allocation / Risk $</label>
-              <input id="tf-allocation" name="allocation" type="number" step="0.01" value={allocation} onChange={e => setAllocation(e.target.value)} placeholder="500"
-                className="w-full h-9 px-3 text-sm bg-background border border-card-border rounded-md text-foreground" />
-            </div>
             <div>
               <label htmlFor="tf-stop-pct" className="text-xs font-medium text-muted-foreground mb-1 block">
                 Stop % <span className="text-micro">(sizes the trade — won't auto-exit)</span>
