@@ -66,6 +66,10 @@ export {
   maxPositionSize,
   maxTotalOpenRisk,
   maxSectorExposure,
+  entryIsChased,
+  dailyLossBreached,
+  weeklyLossBreached,
+  effectiveSlippagePct,
 } from "./risk/position-sizing";
 export type {
   AccountConfig,

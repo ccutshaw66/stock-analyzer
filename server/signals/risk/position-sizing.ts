@@ -9,6 +9,33 @@
  * table (per memory: reuse, don't duplicate). PortfolioState reads from the
  * existing `trades` table (no parallel portfolio.json). The dataclass-style
  * shapes below match what the API endpoints return verbatim.
+ *
+ * ── CAPITAL-PRESERVATION RULES (docs/RULES.md §6) ──────────────────────
+ * §6 is THE success bar: "don't lose money" = positive expectancy + a
+ * controlled worst-case drawdown, NOT beating SPY. The hard numbers below
+ * come straight from the trading books in docs/books/:
+ *
+ *   • maxRiskPerTradePct = 0.02  — never risk >2% of the account on one
+ *     trade (Aziz, *Mastering Trading Psychology*). Was 0.10 = 5× too hot;
+ *     2% is the headline capital-preservation fix.
+ *   • stopLossMaxPct     = 0.08  — cut every loss at ≤8% from cost
+ *     (O'Neil, *How to Make Money in Stocks*). A wider stop only warns; the
+ *     2% risk cap already shrinks the share count so total risk stays ≤2%.
+ *   • maxChasePct        = 0.05  — never enter >5% above the pivot
+ *     (O'Neil). Surfaced via entryIsChased() for the engine/bot.
+ *   • maxDailyLossPct    = 0.01  /  maxWeeklyLossPct = 0.03 — Aziz
+ *     circuit-breaker: stop trading for the day/week once realized losses
+ *     hit these. Config + helpers (dailyLossBreached/weeklyLossBreached)
+ *     land now; ENFORCEMENT is the trading-bot loop (not yet built).
+ *   • assumedSpreadDollars = 0.10 — price-scaled slippage so a $5 name is
+ *     charged far more spread than a $50 name (O'Neil O7 + the liquidity
+ *     book, *Liquidity, Markets and Trading in Action*). See
+ *     effectiveSlippagePct().
+ *   • Never average down — canAddPosition() blocks adding to ANY held
+ *     symbol (O'Neil + Aziz). See the comment there.
+ *
+ * Keep this file in 1:1 parity with backend/patterns/position_sizing.py
+ * (npm run htf:parity). Edits here must be mirrored there identically.
  */
 
 import type { HtfHit } from "../strategies/htf";
@@ -16,7 +43,7 @@ import type { HtfHit } from "../strategies/htf";
 // ─── Configuration ─────────────────────────────────────────────────────
 export interface AccountConfig {
   capital: number;
-  maxRiskPerTradePct: number;       // 0.10 = 10% of capital
+  maxRiskPerTradePct: number;       // 0.02 = 2% of capital (Aziz — never risk >2% on one trade)
   maxPositionPct: number;           // 0.25 = 25% of capital max in one name
   maxSimultaneousPositions: number;
   maxSectorExposurePct: number;     // 0.40 = 40% in one sector
@@ -24,11 +51,16 @@ export interface AccountConfig {
   minRewardRiskRatio: number;       // 2.0 = require 2:1
   commissionPerTrade: number;
   slippagePct: number;
+  stopLossMaxPct: number;           // 0.08 = cut every loss at ≤8% from cost (O'Neil)
+  maxChasePct: number;              // 0.05 = never enter >5% above the pivot (O'Neil)
+  maxDailyLossPct: number;          // 0.01 = stop for the day at 1% realized loss (Aziz)
+  maxWeeklyLossPct: number;         // 0.03 = stop for the week at 3% realized loss (Aziz)
+  assumedSpreadDollars: number;     // 0.10 = assumed bid/ask spread $ (O'Neil O7 + liquidity book)
 }
 
 export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   capital: 7000,
-  maxRiskPerTradePct: 0.1,
+  maxRiskPerTradePct: 0.02,
   maxPositionPct: 0.25,
   maxSimultaneousPositions: 5,
   maxSectorExposurePct: 0.4,
@@ -36,6 +68,11 @@ export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   minRewardRiskRatio: 2.0,
   commissionPerTrade: 0,
   slippagePct: 0.002,
+  stopLossMaxPct: 0.08,
+  maxChasePct: 0.05,
+  maxDailyLossPct: 0.01,
+  maxWeeklyLossPct: 0.03,
+  assumedSpreadDollars: 0.1,
 };
 
 export function maxRiskPerTrade(c: AccountConfig): number {
@@ -49,6 +86,55 @@ export function maxTotalOpenRisk(c: AccountConfig): number {
 }
 export function maxSectorExposure(c: AccountConfig): number {
   return c.capital * c.maxSectorExposurePct;
+}
+
+// ─── Capital-preservation helpers (docs/RULES.md §6) ───────────────────
+
+/**
+ * O'Neil: never chase an entry more than maxChasePct above the pivot.
+ * True when currentPrice has run > pivotPrice * (1 + maxChasePct).
+ * Pure helper for the engine/bot. (Note: htf.ts keeps its own
+ * HTF_MAX_CHASE_PCT for htfLiveStatus — left as-is for now.)
+ */
+export function entryIsChased(
+  currentPrice: number,
+  pivotPrice: number,
+  config: AccountConfig,
+): boolean {
+  if (pivotPrice <= 0) return false;
+  return currentPrice > pivotPrice * (1 + config.maxChasePct);
+}
+
+/**
+ * Aziz circuit-breaker: stop trading for the DAY once realized losses for
+ * today reach maxDailyLossPct of the account. `realizedTodayPct` is a
+ * signed fraction of capital (a 1% loss is -0.01). True = breached.
+ * ENFORCED by the trading-bot loop (not yet built) — config + helper land now.
+ */
+export function dailyLossBreached(realizedTodayPct: number, config: AccountConfig): boolean {
+  return realizedTodayPct <= -config.maxDailyLossPct;
+}
+
+/**
+ * Aziz circuit-breaker: stop trading for the WEEK once realized losses for
+ * the week reach maxWeeklyLossPct of the account. `realizedThisWeekPct` is a
+ * signed fraction of capital (a 3% loss is -0.03). True = breached.
+ * ENFORCED by the trading-bot loop (not yet built) — config + helper land now.
+ */
+export function weeklyLossBreached(realizedThisWeekPct: number, config: AccountConfig): boolean {
+  return realizedThisWeekPct <= -config.maxWeeklyLossPct;
+}
+
+/**
+ * Price-scaled slippage (O'Neil O7 + the liquidity book): the modeled cost is
+ * the flat slippagePct PLUS half the assumed bid/ask spread expressed as a
+ * fraction of price. A $5 name pays far more spread, proportionally, than a
+ * $50 name. Exported for the validation harness + bot (and applied wherever
+ * slippage is modeled).
+ */
+export function effectiveSlippagePct(price: number, config: AccountConfig): number {
+  if (price <= 0) return config.slippagePct;
+  return config.slippagePct + (config.assumedSpreadDollars / 2) / price;
 }
 
 // ─── Position recommendation ───────────────────────────────────────────
@@ -132,6 +218,15 @@ export function sizePosition(hit: HtfHit, config: AccountConfig): PositionRecomm
   }
   if (maxByPosition < maxByRisk) {
     warnings.push("position-cap limited (wide stop on expensive stock)");
+  }
+  // O'Neil: cut every loss at ≤8% from cost. A wider stop is NOT blocked (the
+  // 2% per-trade risk cap already shrank the share count to keep risk ≤2%), but
+  // it earns a warning so the trader sees the stop is past O'Neil's max.
+  const stopPct = entry > 0 ? (entry - stop) / entry : 0;
+  if (stopPct > config.stopLossMaxPct) {
+    warnings.push(
+      `stop ${Math.round(stopPct * 100)}% below entry exceeds your ${Math.round(config.stopLossMaxPct * 100)}% max (O'Neil) — position auto-sized down to keep risk ≤${Math.round(config.maxRiskPerTradePct * 100)}%`,
+    );
   }
 
   return {
@@ -242,6 +337,8 @@ export class PortfolioState {
     if (!isActionable(rec)) {
       return { allowed: false, reason: rec.blockedReason || "not actionable" };
     }
+    // Never average down (O'Neil + Aziz): blocking adds to ANY already-held
+    // symbol enforces this — you can't pour more capital into an open loser.
     if (this.positions.some(p => p.symbol === hit.symbol)) {
       return { allowed: false, reason: `already hold ${hit.symbol}` };
     }

@@ -9,6 +9,37 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-13 — Capital-preservation rules in the risk engine (RULES §6)
+
+**Why:** `docs/RULES.md` §6 makes "don't lose money" (positive expectancy + controlled drawdown)
+THE success bar — not beating SPY. The sizing engine was violating the most basic version of that:
+`maxRiskPerTradePct` was **0.10 (10%)**, 5× the 2% per-trade cap every trading book insists on
+(Aziz, *Mastering Trading Psychology*). A $7K account risking 10% per trade is one bad streak from
+ruin. This change brings the engine in line with the hard numbers from the books in `docs/books/`
+(O'Neil *How to Make Money in Stocks*, Aziz, Chan *Quantitative Trading*, and *Liquidity, Markets
+and Trading in Action*).
+
+**What (applied identically to BOTH 1:1-mirrored sizing files —
+`server/signals/risk/position-sizing.ts` and `backend/patterns/position_sizing.py`):**
+- **maxRiskPerTradePct 0.10 → 0.02** (Aziz: never risk >2% on one trade). Headline fix — share
+  counts now size to ≤2% account risk. Every parity demo case is now risk-capped.
+- **stopLossMaxPct = 0.08** (O'Neil: cut every loss ≤8% from cost). A wider stop pushes a WARNING
+  (not a block — the 2% cap already shrinks size); warning text mirrored in Python so behavior matches.
+- **maxChasePct = 0.05** + pure helper `entryIsChased(price, pivot, config)` (O'Neil: never enter
+  >5% above the pivot). `htf.ts`'s separate `HTF_MAX_CHASE_PCT=0.10` left as-is per the task.
+- **maxDailyLossPct = 0.01 / maxWeeklyLossPct = 0.03** + helpers `dailyLossBreached` /
+  `weeklyLossBreached` (Aziz circuit-breaker). Config + helpers land now; ENFORCEMENT is the
+  trading-bot loop (not yet built).
+- **assumedSpreadDollars = 0.10** + `effectiveSlippagePct(price, config)` = slippagePct +
+  (spread/2)/price (O'Neil O7 + the liquidity book) — price-scaled, so a $5 name pays ~1.2% vs a
+  $50 name at ~0.3%. Exported for the validation harness + bot.
+- **Never average down:** clarifying comment on `canAddPosition`'s already-held block (O'Neil + Aziz).
+  No behavior change.
+- Documentation header block citing RULES §6 + the books with the numbers; new helpers re-exported
+  from `server/signals/index.ts`; `scripts/htf-sizing-parity.ts` expectations recomputed for the 2%
+  cap. TS↔Python parity verified cent-for-cent (`npm run htf:parity` green).
+
+---
 ## 2026-06-10 — Housekeeping: commit the validated-only rule + BBTC/AMC validation artifacts
 
 **Why:** Three files had been sitting uncommitted across machines — the CLAUDE.md block that makes

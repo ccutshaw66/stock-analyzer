@@ -15,6 +15,29 @@ Usage:
     # Check against open portfolio
     portfolio = PortfolioState.load("portfolio.json")
     can_take, reason = portfolio.can_add_position(rec, hit, config)
+
+CAPITAL-PRESERVATION RULES (docs/RULES.md §6) — 1:1 with the TS port
+(server/signals/risk/position-sizing.ts). §6 is THE success bar: "don't
+lose money" = positive expectancy + controlled drawdown, NOT beating SPY.
+The hard numbers come from the trading books in docs/books/:
+
+  - max_risk_per_trade_pct = 0.02  -> never risk >2% of the account on one
+    trade (Aziz, *Mastering Trading Psychology*). Was 0.10 = 5x too hot.
+  - stop_loss_max_pct      = 0.08  -> cut every loss at <=8% from cost
+    (O'Neil, *How to Make Money in Stocks*). A wider stop only warns; the 2%
+    risk cap already shrinks the share count so total risk stays <=2%.
+  - max_chase_pct          = 0.05  -> never enter >5% above the pivot
+    (O'Neil). Surfaced via entry_is_chased() for the engine/bot.
+  - max_daily_loss_pct     = 0.01  /  max_weekly_loss_pct = 0.03 -> Aziz
+    circuit-breaker. Config + helpers (daily_loss_breached/weekly_loss_breached)
+    land now; ENFORCEMENT is the trading-bot loop (not yet built).
+  - assumed_spread_dollars = 0.10  -> price-scaled slippage; a $5 name pays
+    far more spread than a $50 name (O'Neil O7 + *Liquidity, Markets and
+    Trading in Action*). See effective_slippage_pct().
+  - Never average down -> can_add_position() blocks adding to ANY held symbol
+    (O'Neil + Aziz). See the comment there.
+
+Keep in 1:1 parity with the TS port (npm run htf:parity).
 """
 
 from __future__ import annotations
@@ -37,7 +60,7 @@ from patterns._common import PatternHit
 class AccountConfig:
     """Account-level risk parameters. All thresholds tunable as capital grows."""
     capital: float = 7000.0
-    max_risk_per_trade_pct: float = 0.10        # 10% of capital
+    max_risk_per_trade_pct: float = 0.02        # 2% of capital (Aziz — never risk >2% on one trade)
     max_position_pct: float = 0.25              # 25% of capital max in one name
     max_simultaneous_positions: int = 5
     max_sector_exposure_pct: float = 0.40       # 40% in one sector
@@ -45,6 +68,11 @@ class AccountConfig:
     min_reward_risk_ratio: float = 2.0          # require 2:1 reward/risk
     commission_per_trade: float = 0.0           # broker-specific
     slippage_pct: float = 0.002                 # 0.2% on entry+exit
+    stop_loss_max_pct: float = 0.08             # cut every loss at <=8% from cost (O'Neil)
+    max_chase_pct: float = 0.05                 # never enter >5% above the pivot (O'Neil)
+    max_daily_loss_pct: float = 0.01            # stop for the day at 1% realized loss (Aziz)
+    max_weekly_loss_pct: float = 0.03           # stop for the week at 3% realized loss (Aziz)
+    assumed_spread_dollars: float = 0.10        # assumed bid/ask spread $ (O'Neil O7 + liquidity book)
 
     @property
     def max_risk_per_trade(self) -> float:
@@ -70,6 +98,52 @@ class AccountConfig:
     def save(self, path: str):
         with open(path, "w") as f:
             json.dump(asdict(self), f, indent=2)
+
+
+# ---------------------------------------------------------------------
+# Capital-preservation helpers (docs/RULES.md §6)
+# ---------------------------------------------------------------------
+def entry_is_chased(current_price: float, pivot_price: float,
+                    config: AccountConfig) -> bool:
+    """
+    O'Neil: never chase an entry more than max_chase_pct above the pivot.
+    True when current_price has run > pivot_price * (1 + max_chase_pct).
+    """
+    if pivot_price <= 0:
+        return False
+    return current_price > pivot_price * (1 + config.max_chase_pct)
+
+
+def daily_loss_breached(realized_today_pct: float, config: AccountConfig) -> bool:
+    """
+    Aziz circuit-breaker: stop trading for the DAY once realized losses for
+    today reach max_daily_loss_pct of the account. `realized_today_pct` is a
+    signed fraction of capital (a 1% loss is -0.01). True = breached.
+    ENFORCED by the trading-bot loop (not yet built) — config + helper land now.
+    """
+    return realized_today_pct <= -config.max_daily_loss_pct
+
+
+def weekly_loss_breached(realized_this_week_pct: float, config: AccountConfig) -> bool:
+    """
+    Aziz circuit-breaker: stop trading for the WEEK once realized losses for
+    the week reach max_weekly_loss_pct of the account. `realized_this_week_pct`
+    is a signed fraction of capital (a 3% loss is -0.03). True = breached.
+    ENFORCED by the trading-bot loop (not yet built) — config + helper land now.
+    """
+    return realized_this_week_pct <= -config.max_weekly_loss_pct
+
+
+def effective_slippage_pct(price: float, config: AccountConfig) -> float:
+    """
+    Price-scaled slippage (O'Neil O7 + the liquidity book): flat slippage_pct
+    PLUS half the assumed bid/ask spread as a fraction of price. A $5 name pays
+    far more spread, proportionally, than a $50 name. Exported for the
+    validation harness + bot (and applied wherever slippage is modeled).
+    """
+    if price <= 0:
+        return config.slippage_pct
+    return config.slippage_pct + (config.assumed_spread_dollars / 2) / price
 
 
 # ---------------------------------------------------------------------
@@ -203,6 +277,17 @@ def size_position(hit: PatternHit, config: AccountConfig) -> PositionRecommendat
     if max_by_position < max_by_risk:
         warnings.append("position-cap limited (wide stop on expensive stock)")
 
+    # O'Neil: cut every loss at <=8% from cost. A wider stop is NOT blocked (the
+    # 2% per-trade risk cap already shrank the share count to keep risk <=2%), but
+    # it earns a warning so the trader sees the stop is past O'Neil's max.
+    stop_pct = (entry - stop) / entry if entry > 0 else 0
+    if stop_pct > config.stop_loss_max_pct:
+        warnings.append(
+            f"stop {round(stop_pct * 100)}% below entry exceeds your "
+            f"{round(config.stop_loss_max_pct * 100)}% max (O'Neil) — position "
+            f"auto-sized down to keep risk ≤{round(config.max_risk_per_trade_pct * 100)}%"
+        )
+
     return PositionRecommendation(
         symbol=hit.symbol,
         entry_price=entry, stop_price=stop, target_price=target,
@@ -281,7 +366,8 @@ class PortfolioState:
         if not rec.is_actionable:
             return False, rec.blocked_reason or "not actionable"
 
-        # Already have this name?
+        # Never average down (O'Neil + Aziz): blocking adds to ANY already-held
+        # symbol enforces this — you can't pour more capital into an open loser.
         if any(p.symbol == hit.symbol for p in self.positions):
             return False, f"already hold {hit.symbol}"
 
@@ -348,7 +434,7 @@ class PortfolioState:
 if __name__ == "__main__":
     # Demo: take the RKLB May 11 breakout from our earlier work
     print("=" * 70)
-    print("POSITION SIZING DEMO — $7,000 account, 10% max risk")
+    print("POSITION SIZING DEMO — $7,000 account, 2% max risk")
     print("=" * 70)
 
     config = AccountConfig(capital=7000.0)

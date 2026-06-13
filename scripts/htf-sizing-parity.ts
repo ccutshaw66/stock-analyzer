@@ -34,54 +34,57 @@ interface Case {
 }
 
 // Expected values computed by hand from the Python algorithm for capital=$7000,
-// max_risk_per_trade=$700, max_position=$1750. Format: cent-for-cent match.
+// max_risk_per_trade=$140 (2% — Aziz capital-preservation cap), max_position=$1750.
+// Format: cent-for-cent match. Under the 2% cap EVERY case is risk-capped
+// (max_by_risk < max_by_position), so the "position-cap limited" warning no
+// longer fires for any of these.
 const CASES: Case[] = [
   {
     // RKLB: entry 105.27, stop 74.00, target 130.00, score 85
     // risk/share = 31.27, reward/share = 24.73, R/R = 0.79 → BLOCKED (R/R < 1.0)
     // Python still computes shares/value/risk even when blocked (informational).
-    // max_by_risk=floor(700/31.27)=22, max_by_pos=floor(1750/105.27)=16 → 16
+    // max_by_risk=floor(140/31.27)=4, max_by_pos=floor(1750/105.27)=16 → 4
     symbol: "RKLB", entry: 105.27, stop: 74.0, target: 130.0, score: 85,
-    expect: { shares: 16, positionValue: 1684.32, actualRisk: 500.32, rewardRiskRatio: 0.79, blocked: true },
+    expect: { shares: 4, positionValue: 421.08, actualRisk: 125.08, rewardRiskRatio: 0.79, blocked: true },
   },
   {
     // LUNR: entry 23.59, stop 19.00, target 32.00, score 75
     // risk/share = 4.59, reward/share = 8.41, R/R = 1.83
-    // max_by_risk = floor(700/4.59) = 152, max_by_pos = floor(1750/23.59) = 74 → 74
-    // pos_value = 74 * 23.59 = 1745.66, risk = 74 * 4.59 = 339.66
+    // max_by_risk = floor(140/4.59) = 30, max_by_pos = floor(1750/23.59) = 74 → 30
+    // pos_value = 30 * 23.59 = 707.70, risk = 30 * 4.59 = 137.70
     symbol: "LUNR", entry: 23.59, stop: 19.0, target: 32.0, score: 75,
-    expect: { shares: 74, positionValue: 1745.66, actualRisk: 339.66, rewardRiskRatio: 1.83, blocked: false },
+    expect: { shares: 30, positionValue: 707.7, actualRisk: 137.7, rewardRiskRatio: 1.83, blocked: false },
   },
   {
     // BKSY: entry 41.38, stop 33.00, target 55.00, score 75
     // risk/share = 8.38, reward/share = 13.62, R/R = 1.63
-    // max_by_risk = floor(700/8.38) = 83, max_by_pos = floor(1750/41.38) = 42 → 42
-    // pos_value = 42 * 41.38 = 1737.96, risk = 42 * 8.38 = 351.96
+    // max_by_risk = floor(140/8.38) = 16, max_by_pos = floor(1750/41.38) = 42 → 16
+    // pos_value = 16 * 41.38 = 662.08, risk = 16 * 8.38 = 134.08
     symbol: "BKSY", entry: 41.38, stop: 33.0, target: 55.0, score: 75,
-    expect: { shares: 42, positionValue: 1737.96, actualRisk: 351.96, rewardRiskRatio: 1.63, blocked: false },
+    expect: { shares: 16, positionValue: 662.08, actualRisk: 134.08, rewardRiskRatio: 1.63, blocked: false },
   },
   {
     // CHEAP: entry 4.50, stop 3.60, target 8.00, score 80
     // risk/share = 0.90, reward/share = 3.50, R/R = 3.89
-    // max_by_risk = floor(700/0.9) = 777, max_by_pos = floor(1750/4.5) = 388 → 388
-    // pos_value = 388 * 4.5 = 1746, risk = 388 * 0.9 = 349.2
+    // max_by_risk = floor(140/0.9) = 155, max_by_pos = floor(1750/4.5) = 388 → 155
+    // pos_value = 155 * 4.5 = 697.50, risk = 155 * 0.9 = 139.50
     symbol: "CHEAP", entry: 4.5, stop: 3.6, target: 8.0, score: 80,
-    expect: { shares: 388, positionValue: 1746, actualRisk: 349.2, rewardRiskRatio: 3.89, blocked: false },
+    expect: { shares: 155, positionValue: 697.5, actualRisk: 139.5, rewardRiskRatio: 3.89, blocked: false },
   },
   {
     // EXPENSIVE: entry 95.00, stop 80.00, target 130.00, score 80
     // risk/share = 15, reward/share = 35, R/R = 2.33
-    // max_by_risk = floor(700/15) = 46, max_by_pos = floor(1750/95) = 18 → 18
-    // pos_value = 18 * 95 = 1710, risk = 18 * 15 = 270
+    // max_by_risk = floor(140/15) = 9, max_by_pos = floor(1750/95) = 18 → 9
+    // pos_value = 9 * 95 = 855, risk = 9 * 15 = 135
     symbol: "EXPENSIVE", entry: 95.0, stop: 80.0, target: 130.0, score: 80,
-    expect: { shares: 18, positionValue: 1710, actualRisk: 270, rewardRiskRatio: 2.33, blocked: false },
+    expect: { shares: 9, positionValue: 855, actualRisk: 135, rewardRiskRatio: 2.33, blocked: false },
   },
   {
     // BADRR: entry 30.00, stop 25.00, target 32.00, score 75
     // risk/share = 5, reward/share = 2, R/R = 0.4 → BLOCKED (R/R < 1.0)
-    // max_by_risk=floor(700/5)=140, max_by_pos=floor(1750/30)=58 → 58
+    // max_by_risk=floor(140/5)=28, max_by_pos=floor(1750/30)=58 → 28
     symbol: "BADRR", entry: 30.0, stop: 25.0, target: 32.0, score: 75,
-    expect: { shares: 58, positionValue: 1740.0, actualRisk: 290.0, rewardRiskRatio: 0.4, blocked: true },
+    expect: { shares: 28, positionValue: 840.0, actualRisk: 140.0, rewardRiskRatio: 0.4, blocked: true },
   },
 ];
 
