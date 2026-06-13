@@ -60,7 +60,7 @@ harness. Codifying his actual rules stops the relitigation.
   dropped because that memory doesn't sync; the index now travels with the books.
 
 Docs/rules only — no application code, build gate unaffected.
->>>>>>> feature/foundation-rules-books
+---
 ## 2026-06-10 — Housekeeping: commit the validated-only rule + BBTC/AMC validation artifacts
 
 **Why:** Three files had been sitting uncommitted across machines — the CLAUDE.md block that makes
