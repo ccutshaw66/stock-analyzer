@@ -32,8 +32,15 @@ order with what to expect.
   a long time. New widget needs a number that already exists somewhere? Reuse that source.
 
 ## Data providers
-- **FMP is the data source.** Yahoo and Polygon are being killed — do NOT add new callers to
-  either. Find FMP endpoints/field names with the `fmp-endpoint` skill instead of guessing.
+- **FMP is the EQUITY/fundamentals source** (quotes, fundamentals, financials, ratios, insider,
+  institutional, earnings). Find FMP endpoints/field names with the `fmp-endpoint` skill, not guessing.
+- **Polygon is the OPTIONS source — KEEP IT.** Options chains, IV, and open interest come from Polygon
+  (`getPolygonOptionsChain` → MM Exposure), which feed the **in-house Black-Scholes Greeks engine**
+  (`server/options/greeks.ts`). Verified 2026-06-13: FMP serves **no** options data (AAPL options-chain
+  returns empty), so Polygon cannot be replaced for options. Do NOT "kill Polygon" — it's load-bearing
+  for everything options/Greeks. (The earlier "Polygon is being killed" rule was wrong: it only meant
+  *equity* data that FMP already covers.)
+- **Yahoo is being killed** — do NOT add new Yahoo callers; move any equity data off it to FMP.
 - Cache aggressively (quarterly/historical data on a quarterly/earnings cadence, not per
   request). Splits/corporate actions: long TTLs.
 
