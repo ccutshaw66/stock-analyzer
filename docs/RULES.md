@@ -89,6 +89,20 @@ How to apply:
   refs.
 - Backups get deleted only when Chris asks: "clean up old backups."
 
+### 1.5 Broken or bad → remove it, don't repair it
+
+Chris, repeatedly (said it 5+ times): *"If something is broke don't try to fix it. Get rid of
+the page and move on. Take it out if it is bad."*
+
+When a page / feature / widget / bot is broken or just not good enough, the default is to
+**REMOVE it**, not sink time into repairing it.
+
+- Don't open a repair rabbit-hole on something that isn't pulling its weight. Cut it and move on.
+- When torn between "fix" and "remove," **remove.** Chris would rather a smaller site that works
+  than a bigger one that's half-broken.
+- Distinction vs. the strategy rule: a *functional-but-unvalidated strategy* gets demoted to the
+  owner-only Admin Playground (trim, don't delete). A *broken or bad page* gets deleted.
+
 ---
 
 ## 2. Build & structure
@@ -256,6 +270,27 @@ repo MUST remain private. Flipping it public requires removing
 `docs/books/` first.
 
 ---
+
+## 6. Capital preservation — THE success bar
+
+Chris: *"I don't care if we consistently beat the market year after year, I just don't want to
+lose money. The rest will come."* Capital preservation is the success criterion for every
+strategy, bot, score, and recommendation — not market outperformance.
+
+A strategy / bot "works" only if, validated **out-of-sample after costs on the $5–75 universe**:
+
+- **positive expectancy** (it makes money over many trades),
+- **controlled worst-case drawdown** (target ≤ ~account/20),
+- **broad across tickers** (not carried by 1–2 lucky names), and
+- a **win rate that keeps expectancy positive**.
+
+**Beating SPY is NOT the bar and is not required.** A defensive, high-win-rate, tight-stop,
+sit-in-cash-when-the-market-is-weak approach is on-thesis even if it trails the index in a bull run.
+
+This **supersedes the older "SPY-relative" wording** in `CLAUDE.md`'s VALIDATED-ONLY rule:
+validation still gates what goes public, but the metric is **capital preservation, not SPY-excess**.
+The validation harness (`python/validation/`) must report win rate, expectancy ($ and R), profit
+factor, % losing trades, and max drawdown — not just SPY-relative return.
 
 ## How to extend this document
 

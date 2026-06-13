@@ -40,6 +40,27 @@ and Trading in Action*).
   cap. TS↔Python parity verified cent-for-cent (`npm run htf:parity` green).
 
 ---
+## 2026-06-13 — Codify capital-preservation bar + "remove broken, don't repair"; in-repo book index
+
+**Why:** Three things Chris had to keep repeating were never written down, so every new session drifted.
+(1) His success bar is **capital preservation — "don't lose money," NOT "beat the market."** (2) Broken/
+bad pages should be **removed, not repaired.** (3) The "beat SPY / SPY-relative" validation bar that had
+been steering all strategy work was an **AI-introduced assumption** (timestamped "rule set 2026-06-03" in
+CLAUDE.md) that Chris never asked for — it propagated through CLAUDE.md → the validation artifacts → the
+harness. Codifying his actual rules stops the relitigation.
+
+**What:**
+- `docs/RULES.md` — new **§1.5 "Broken or bad → remove it, don't repair it"** and new **§6 "Capital
+  preservation — THE success bar"** (positive expectancy + controlled drawdown OOS, beating SPY NOT
+  required).
+- `CLAUDE.md` — VALIDATED-ONLY ON MAIN reworded from "SPY-relative" to the capital-preservation bar
+  (pointer to RULES.md §6).
+- `docs/books/README.md` — turned the placeholder into the **canonical in-repo book index** (per-book
+  "consult it for" + by-workstream cross-reference). The old pointer to a per-machine memory file was
+  dropped because that memory doesn't sync; the index now travels with the books.
+
+Docs/rules only — no application code, build gate unaffected.
+>>>>>>> feature/foundation-rules-books
 ## 2026-06-10 — Housekeeping: commit the validated-only rule + BBTC/AMC validation artifacts
 
 **Why:** Three files had been sitting uncommitted across machines — the CLAUDE.md block that makes
