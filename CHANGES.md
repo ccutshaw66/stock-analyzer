@@ -9,6 +9,19 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-13 — Fix Conviction Compass liquidity penalty for micro-caps
+
+**Why:** A deep-dive correctness audit found the `fundamentalQuality` axis of the Conviction Compass
+applied the wrong liquidity penalty to sub-$300M stocks. In `computeVerdictScoreFromSnapshot`
+(`server/conviction/pipeline.ts`) the market-cap branches were ordered `mcap < 1e9` **before**
+`mcap < 300e6`, so every sub-$1B company hit the lenient `-1` branch first and the `< 300e6` (`-2`)
+branch was dead code. A $200M micro-cap was scored as if it were a $900M company. Swapped the two
+branches to match the canonical `scoreSnapshot` ordering in `server/snapshot/score.ts`.
+
+**Note:** The audit also flagged this function as "missing institutional/insider/analyst weights," but
+that is **not** a bug — the Compass keeps those in a separate `smartMoneyFlow` axis, so the fundamentals
+axis is fundamentals-only by design. Folding the full score in would double-count smart money; left as-is.
+
 ## 2026-06-03 — Indicator validation harness (out-of-sample, SPY-relative)
 
 **Why:** First evidence-based check of whether the signals actually beat SPY. `python/validation/validate_indicators.py`

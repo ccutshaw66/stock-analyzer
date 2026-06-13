@@ -235,8 +235,8 @@ function computeVerdictScoreFromSnapshot(snap: CompanySnapshot): number | null {
   if (mcap !== null) {
     if (mcap > 100e9) liquidity += 2;
     else if (mcap > 10e9) liquidity += 1;
-    else if (mcap < 1e9) liquidity -= 1;
     else if (mcap < 300e6) liquidity -= 2;
+    else if (mcap < 1e9) liquidity -= 1;
   }
   if (avgVol !== null) {
     if (avgVol > 5e6) liquidity += 1;
