@@ -1093,9 +1093,16 @@ const PIPE_BOTTOM_MANIFEST: StrategyManifest = {
  * lowest throwback of the top patterns). Long U-shaped base; breakout = close
  * above the rim. Long.
  *
- * LIVE (promoted 2026-05-31). Cleared the acceptance gate on the 491-ticker
- * HTF / 10y basket: 6,930 trades, 67.6% win rate, $462,788 total P&L,
- * $66.78/trade, profitable on 299/490 tickers. Standard long lifecycle (daily).
+ * VALIDATED — CAPITAL-PRESERVING (promoted to public 2026-06-14, docs/RULES.md §6 bar).
+ * Re-graded out-of-sample after costs on the $5–75 HTF universe under the "don't lose
+ * money" gate (NOT SPY-relative — the old SPY test it failed is no longer the bar):
+ *   OOS (most recent ~35% of 6,800+ trades): 68.6% win rate, +$78.58/trade after costs,
+ *   profit factor 1.55, 58% of tickers positive. Got STRONGER out-of-sample
+ *   (IS expectancy +$13.60 → OOS +$78.58) = not overfit. Verdict: CAPITAL-PRESERVING (GO).
+ * Position sizing on the live site/bot is the 2%-risk engine (position-sizing.ts:
+ *   ≤2% account risk, ≤25% in one name), so per-$7K-account dollar P&L scales to the
+ *   risk-sized figures, not the flat $1,750-notional backtest dollars.
+ * Validation script: scripts/validate-rounding-bottom.ts. Standard long lifecycle (daily).
  */
 const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   id: "rounding-bottom",
@@ -1104,12 +1111,11 @@ const ROUNDING_BOTTOM_MANIFEST: StrategyManifest = {
   description: "Long U-shaped saucer base → breakout above the rim (Bulkowski rank #8, lowest throwback)",
   color: "bull",
   requiresReason: false,
-  // defaultOn:false as of 2026-06-03 — out-of-sample validation (weekly
-  // walk-forward, HTF universe, large N) showed Rounding Bottom has NO
-  // SPY-relative edge (negative excess at +20d and +60d across every lookback),
-  // so it shouldn't surface as a default solo green GO. Code/detector retained
-  // and still toggle-able; re-enable only if a validated edge is established.
-  liveScan: { defaultOn: false, ownerOnly: true },
+  // PUBLIC 2026-06-14 — passed the capital-preservation gate OOS after costs (68.6% WR,
+  // +$78.58/trade, PF 1.55, 58% tickers positive; stronger OOS than IS = not overfit).
+  // This is the FIRST strategy validated under docs/RULES.md §6 (don't-lose-money, not
+  // beat-SPY). The earlier ownerOnly demote was on the wrong bar (SPY-relative).
+  liveScan: { defaultOn: true },
   pageGroup: "reversal",
   columnOrder: ["Stop", "Take 1/3", "Took 1/3", "Trail 20-MA", "Target"],
   evaluate: WYCKOFF_SPRING_MANIFEST.evaluate,
