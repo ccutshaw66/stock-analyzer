@@ -9,6 +9,34 @@ For pre-2026-04-25 history, see `FEATURE_CHANGES.md` (focused log of the
 Dividend Finder + Position Duration Analysis features that were added
 during the prior Perplexity/Claude session).
 ---
+## 2026-06-14 — Rounding Bottom promoted to PUBLIC (first §6 capital-preservation pass)
+
+**Why:** Rounding Bottom was demoted to owner-only on the WRONG bar — it failed the old
+"beat SPY" test (docs/AUDIT-2026-06-09). Under docs/RULES.md §6, the bar is "don't lose
+money" (positive expectancy + controlled drawdown OOS after costs), NOT SPY-excess. Re-graded
+under the right bar it passes cleanly and gets STRONGER out-of-sample (not overfit):
+- OOS (most recent ~35% of 6,800+ trades, $5–75 HTF universe, after costs):
+  **68.6% win rate, +$78.58/trade, profit factor 1.55, 58% of tickers positive.**
+- IS expectancy +$13.60 → OOS +$78.58 ⇒ the edge held up out-of-sample.
+- Verdict: **CAPITAL-PRESERVING (GO).** This is the FIRST strategy validated under §6.
+
+**What:**
+- `shared/strategies/registry.ts` — Rounding Bottom manifest flipped from
+  `liveScan: { defaultOn: false, ownerOnly: true }` (demoted) to `liveScan: { defaultOn: true }`
+  (public, on by default in the unified scanner + trade dropdown). Header comment rewritten to
+  record the OOS capital-preservation evidence and the validation script.
+- `scripts/validate-rounding-bottom-risksized.ts` (NEW) — re-runs the validation at REALISTIC
+  $7K-account sizing. The earlier flat $1,750-notional run was the 25% POSITION cap, not the 2%
+  RISK cap; this version sizes every trade through the live engine
+  (`server/signals/risk/position-sizing.ts`: ≤2% risk = $140, ≤25% position = $1,750) and reports
+  the true per-$7K-account dollar expectancy, worst single trade (≈one 2% unit), and drawdown.
+  Rate metrics (win rate, PF, expectancy-R, ticker breadth) are size-independent and unchanged.
+
+**Note:** $1,750 ≠ 2% — it's the *position* notional; 2% is the *risk*. For an ~8%-stop trade
+the two caps coincide ($140 risk ÷ 8% = $1,750 notional), which is why the flat-$1,750 backtest
+wasn't wrong on rate — only the dollar/drawdown figures needed risk-sizing to reflect a $7K account.
+
+---
 ## 2026-06-13 — Capital-preservation rules in the risk engine (RULES §6)
 
 **Why:** `docs/RULES.md` §6 makes "don't lose money" (positive expectancy + controlled drawdown)

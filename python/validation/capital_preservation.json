@@ -1,0 +1,29 @@
+{
+  "BBTC (trend follower)": {
+    "trades": 1116,
+    "winPct": 36.5,
+    "expectancy": 3.7,
+    "medianPct": -2.99,
+    "verdict": "FAT-TAIL EV",
+    "why": "positive EV but win rate 36.5% / median -2.99 \u2014 loses on the typical trade, leans on big winners",
+    "ddNote": "$9,539 maxDD"
+  },
+  "AMC (momentum confluence)": {
+    "trades": 7137,
+    "winPct": 14.3,
+    "expectancy": -0.263,
+    "medianPct": 0.88,
+    "verdict": "NO-GO",
+    "why": "negative/zero expectancy \u2014 loses money",
+    "ddNote": "expectancy in R"
+  },
+  "HTF (high tight flag)": {
+    "trades": 817,
+    "winPct": 44.8,
+    "expectancy": 16.56,
+    "medianPct": 0.34,
+    "verdict": "FAT-TAIL EV",
+    "why": "positive EV but win rate 44.8% / median 0.33999999999999997 \u2014 loses on the typical trade, leans on big winners",
+    "ddNote": "mean is fat-tail (top1%=43% of excess)"
+  }
+}
